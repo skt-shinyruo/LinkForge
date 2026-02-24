@@ -1,0 +1,108 @@
+services:
+  mysql:
+    image: mysql:8.0.36
+    environment:
+      MYSQL_DATABASE: linkforge
+      MYSQL_USER: linkforge
+      MYSQL_PASSWORD: linkforge
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3306:3306"
+    command:
+      - "--character-set-server=utf8mb4"
+      - "--collation-server=utf8mb4_unicode_ci"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7.2.4-alpine
+    ports:
+      # 避免与本机已有 Redis 占用 6379 冲突
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  server-api:
+    build:
+      context: ../server
+      dockerfile: Dockerfile.api
+    environment:
+      DB_URL: jdbc:mysql://mysql:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
+      DB_USERNAME: linkforge
+      DB_PASSWORD: linkforge
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_COOKIE_ENABLED: ${JWT_COOKIE_ENABLED:-false}
+      JWT_COOKIE_NAME: ${JWT_COOKIE_NAME:-lf_token}
+      JWT_COOKIE_SECURE: ${JWT_COOKIE_SECURE:-false}
+      JWT_COOKIE_SAMESITE: ${JWT_COOKIE_SAMESITE:-Lax}
+      ANALYTICS_SALT: ${ANALYTICS_SALT}
+      APP_BASE_URL: ${APP_BASE_URL}
+      ID_WORKER_ID: ${ID_WORKER_ID:-1}
+      ID_DATACENTER_ID: ${ID_DATACENTER_ID:-1}
+      APP_STRICT_CONFIG: ${APP_STRICT_CONFIG:-false}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+      CORS_ALLOW_CREDENTIALS: ${CORS_ALLOW_CREDENTIALS:-false}
+      # 可选：默认 302；如需 301 可设为 301
+      REDIRECT_DEFAULT_STATUS_CODE: 302
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: on-failure
+
+  server-edge:
+    build:
+      context: ../server
+      dockerfile: Dockerfile.edge
+    environment:
+      DB_URL: jdbc:mysql://mysql:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
+      DB_USERNAME: linkforge
+      DB_PASSWORD: linkforge
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      ANALYTICS_SALT: ${ANALYTICS_SALT}
+      # 可信代理链（开箱即用）：docker compose + nginx 反代场景下，Edge 看到的 remoteAddr 通常是 web(Nginx) 容器 IP
+      # 因此需要显式信任“内网代理网段”，才能采信 X-Real-IP / X-Forwarded-For，避免 UV/IP 统计失真
+      EDGE_TRUSTED_PROXIES: ${EDGE_TRUSTED_PROXIES:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+      ID_WORKER_ID: ${ID_WORKER_ID:-1}
+      ID_DATACENTER_ID: ${ID_DATACENTER_ID:-1}
+      APP_STRICT_CONFIG: ${APP_STRICT_CONFIG:-false}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+      CORS_ALLOW_CREDENTIALS: ${CORS_ALLOW_CREDENTIALS:-false}
+      # 可选：默认 302；如需 301 可设为 301
+      REDIRECT_DEFAULT_STATUS_CODE: 302
+    ports:
+      - "8081:8081"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      server-api:
+        condition: service_started
+    restart: on-failure
+
+  web:
+    build:
+      context: ../web
+    ports:
+      - "80:80"
+    depends_on:
+      - server-api
+      - server-edge
+
+volumes:
+  mysql_data:

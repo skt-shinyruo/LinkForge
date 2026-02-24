@@ -1,0 +1,14 @@
+import { defineConfig } from "vite";
+import vue from "@vitejs/plugin-vue";
+
+// https://vite.dev/config/
+export default defineConfig({
+  plugins: [vue()],
+  server: {
+    proxy: {
+      // 本地开发：将 API 与跳转请求代理到后端
+      "/api": "http://localhost:8080",
+      "/r": "http://localhost:8081",
+    },
+  },
+});

@@ -1,0 +1,10 @@
+# Java
+server/target/
+
+# Node
+web/node_modules/
+web/dist/
+
+# Local env
+deploy/.env
+

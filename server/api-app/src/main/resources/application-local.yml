@@ -1,0 +1,15 @@
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
+    username: linkforge
+    password: linkforge
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+app:
+  base-url: http://localhost
+  security:
+    jwt:
+      secret: dev-change-me-please-set-env-and-long-enough-32-bytes

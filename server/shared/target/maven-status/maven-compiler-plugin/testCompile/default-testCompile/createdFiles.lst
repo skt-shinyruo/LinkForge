@@ -1,0 +1,3 @@
+com/linkforge/analytics/service/AnalyticsKeysTest.class
+com/linkforge/analytics/service/VisitDimensionNormalizerTest.class
+com/linkforge/analytics/service/VisitorFingerprintTest.class

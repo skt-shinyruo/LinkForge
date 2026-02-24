@@ -1,0 +1,24 @@
+# LinkForge API Service 镜像
+# - 构建阶段：Maven + JDK17（与 maven-compiler release 对齐）
+# - 运行阶段：JRE17
+
+FROM maven:3.9.9-eclipse-temurin-17 AS build
+WORKDIR /app
+
+COPY pom.xml /app/pom.xml
+COPY shared /app/shared
+COPY api-app /app/api-app
+COPY edge-app /app/edge-app
+
+RUN mvn -q -DskipTests -pl api-app -am package
+
+FROM eclipse-temurin:17-jre
+WORKDIR /app
+
+ENV SERVER_PORT=8080
+EXPOSE 8080
+
+COPY --from=build /app/api-app/target/linkforge-api-app-0.1.0-SNAPSHOT.jar /app/app.jar
+
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+

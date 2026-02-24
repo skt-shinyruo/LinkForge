@@ -1,0 +1,62 @@
+spring:
+  application:
+    name: linkforge-edge
+
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC}
+    username: ${DB_USERNAME:linkforge}
+    password: ${DB_PASSWORD:linkforge}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+server:
+  port: ${SERVER_PORT:8081}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+app:
+  strict-config: ${APP_STRICT_CONFIG:false}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+    allow-credentials: ${CORS_ALLOW_CREDENTIALS:false}
+  id:
+    worker-id: ${ID_WORKER_ID:1}
+    datacenter-id: ${ID_DATACENTER_ID:1}
+  redirect:
+    cache-ttl-seconds: ${REDIRECT_CACHE_TTL_SECONDS:3600}
+    default-status-code: ${REDIRECT_DEFAULT_STATUS_CODE:302} # 302 or 301
+  analytics:
+    salt: ${ANALYTICS_SALT:dev-salt-change-me}
+    redis-key-ttl-days: ${ANALYTICS_REDIS_TTL_DAYS:45}
+  edge:
+    # 可信代理链（CIDR 列表）：仅当 remoteAddr 命中该列表时，才采信 X-Real-IP / X-Forwarded-For 等头部
+    trusted-proxies: ${EDGE_TRUSTED_PROXIES:}
+    risk-control:
+      enabled: ${EDGE_RISK_ENABLED:false}
+      ip-allowlist: ${EDGE_RISK_IP_ALLOWLIST:}
+      ip-denylist: ${EDGE_RISK_IP_DENYLIST:}
+      rate-limit:
+        enabled: ${EDGE_RISK_RATE_LIMIT_ENABLED:false}
+        window-seconds: ${EDGE_RISK_RATE_LIMIT_WINDOW_SECONDS:60}
+        ip-max-requests: ${EDGE_RISK_RATE_LIMIT_IP_MAX:120}
+        ip-code-enabled: ${EDGE_RISK_RATE_LIMIT_IP_CODE_ENABLED:false}
+        ip-code-max-requests: ${EDGE_RISK_RATE_LIMIT_IP_CODE_MAX:60}
+        fail-open: ${EDGE_RISK_RATE_LIMIT_FAIL_OPEN:true}
+      bot:
+        enabled: ${EDGE_RISK_BOT_ENABLED:false}
+        user-agent-keywords: ${EDGE_RISK_BOT_UA_KEYWORDS:bot,crawler,spider,curl,wget,python-requests,httpclient}
+        ip-max-requests: ${EDGE_RISK_BOT_IP_MAX:30}
+        block: ${EDGE_RISK_BOT_BLOCK:false}
+
+logging:
+  level:
+    root: INFO

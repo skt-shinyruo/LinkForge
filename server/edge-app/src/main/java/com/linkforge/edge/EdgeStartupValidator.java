@@ -2,6 +2,7 @@ package com.linkforge.edge;
 
 import com.linkforge.edge.net.CidrBlocks;
 import com.linkforge.platform.config.AppProperties;
+import com.linkforge.platform.config.StartupValidation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -33,13 +34,7 @@ public class EdgeStartupValidator implements ApplicationRunner {
 
         List<String> errors = new ArrayList<>();
 
-        int status = properties.getRedirect().getDefaultStatusCode();
-        if (status != 301 && status != 302) {
-            errors.add("app.redirect.default-status-code 仅支持 301/302");
-        }
-        if (properties.getRedirect().getCacheTtlSeconds() <= 0) {
-            errors.add("app.redirect.cache-ttl-seconds 必须 > 0");
-        }
+        StartupValidation.validateRedirectBasics(properties, errors);
 
         // Redirect 体验增强配置（可选）
         try {
@@ -89,76 +84,13 @@ public class EdgeStartupValidator implements ApplicationRunner {
             errors.add("redirect 配置校验异常: " + e.getMessage());
         }
 
-        String salt = properties.getAnalytics().getSalt();
-        if (isBlank(salt)) {
-            errors.add("app.analytics.salt 不能为空（用于访客指纹 hash）");
-        } else if (looksLikeDev(salt)) {
-            if (strict) {
-                errors.add("analytics salt 看起来像开发默认值，请在生产环境覆盖 ANALYTICS_SALT");
-            } else {
-                log.warn("analytics salt 使用了疑似开发默认值；生产环境请覆盖 ANALYTICS_SALT");
-            }
-        }
-        if (properties.getAnalytics().getRedisKeyTtlDays() <= 0) {
-            errors.add("app.analytics.redis-key-ttl-days 必须 > 0");
-        }
+        StartupValidation.validateAnalyticsBasics(properties, strict, log, errors);
 
         // analytics 追踪参数采集白名单（可选）：仅做格式校验，避免误配把敏感 query 带入统计
         try {
-            var allowlist = properties.getAnalytics().getTrackingParamAllowlist();
-            if (allowlist != null) {
-                for (String p : allowlist) {
-                    String v = trimToNull(p);
-                    if (v == null) {
-                        continue;
-                    }
-                    if (!isValidParamPattern(v)) {
-                        errors.add("app.analytics.tracking-param-allowlist 包含不合法项: " + v);
-                        break;
-                    }
-                }
-            }
-
-            var dims = properties.getAnalytics().getDimensions();
-            if (dims != null && dims.isEnabled()) {
-                var types = dims.getTypes();
-                if (types != null) {
-                    for (String t : types) {
-                        String v = trimToNull(t);
-                        if (v == null) {
-                            continue;
-                        }
-                        String s = v.trim();
-                        for (int i = 0; i < s.length(); i++) {
-                            char ch = s.charAt(i);
-                            boolean ok = (ch >= '0' && ch <= '9')
-                                    || (ch >= 'a' && ch <= 'z')
-                                    || ch == '_';
-                            if (!ok) {
-                                errors.add("app.analytics.dimensions.types 包含不合法项: " + v);
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            var ev = properties.getAnalytics().getEvents();
-            if (ev != null && ev.isEnabled()) {
-                double r = ev.getSampleRate();
-                if (r < 0 || r > 1) {
-                    errors.add("app.analytics.events.sample-rate 必须在 0~1 之间");
-                }
-                if (ev.getMaxUserAgentLength() < 0) {
-                    errors.add("app.analytics.events.max-user-agent-length 必须 >= 0");
-                }
-                if (ev.getMaxTrackingValueLength() < 0) {
-                    errors.add("app.analytics.events.max-tracking-value-length 必须 >= 0");
-                }
-                if (ev.getRetentionDays() < 0) {
-                    errors.add("app.analytics.events.retention-days 必须 >= 0");
-                }
-            }
+            StartupValidation.validateAnalyticsTrackingAllowlist(properties, errors);
+            StartupValidation.validateAnalyticsDimensionsTypes(properties, errors);
+            StartupValidation.validateAnalyticsEvents(properties, errors);
         } catch (Exception e) {
             errors.add("analytics 配置校验异常: " + e.getMessage());
         }
@@ -203,24 +135,8 @@ public class EdgeStartupValidator implements ApplicationRunner {
         }
     }
 
-    private static boolean looksLikeDev(String v) {
-        String t = v.trim().toLowerCase();
-        return t.contains("dev-change-me")
-                || t.contains("please_set_")
-                || t.contains("please-set-")
-                || t.contains("change-me");
-    }
-
-    private static boolean isBlank(String v) {
-        return v == null || v.trim().isBlank();
-    }
-
     private static String trimToNull(String v) {
-        if (v == null) {
-            return null;
-        }
-        String t = v.trim();
-        return t.isBlank() ? null : t;
+        return StartupValidation.trimToNull(v);
     }
 
     private static boolean isHttpUrl(String url) {
@@ -237,28 +153,6 @@ public class EdgeStartupValidator implements ApplicationRunner {
     }
 
     private static boolean isValidParamPattern(String p) {
-        if (p == null || p.isBlank()) {
-            return false;
-        }
-        String t = p.trim();
-        if ("*".equals(t)) {
-            return false;
-        }
-        boolean star = t.endsWith("*");
-        String base = star ? t.substring(0, t.length() - 1) : t;
-        if (base.isBlank()) {
-            return false;
-        }
-        for (int i = 0; i < base.length(); i++) {
-            char ch = base.charAt(i);
-            boolean ok = (ch >= '0' && ch <= '9')
-                    || (ch >= 'A' && ch <= 'Z')
-                    || (ch >= 'a' && ch <= 'z')
-                    || ch == '_';
-            if (!ok) {
-                return false;
-            }
-        }
-        return true;
+        return StartupValidation.isValidParamPattern(p);
     }
 }

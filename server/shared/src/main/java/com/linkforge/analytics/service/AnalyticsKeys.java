@@ -3,26 +3,31 @@ package com.linkforge.analytics.service;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 
-final class AnalyticsKeys {
+/**
+ * Analytics Redis key 契约（跨模块 SSOT）。
+ *
+ * <p>说明：Edge 写入，API flush/查询读取；变更需谨慎并配合契约测试锁定格式。</p>
+ */
+public final class AnalyticsKeys {
 
     private static final DateTimeFormatter DAY = DateTimeFormatter.BASIC_ISO_DATE; // yyyyMMdd
 
     private AnalyticsKeys() {
     }
 
-    static String activeSetKey(LocalDate day) {
+    public static String activeSetKey(LocalDate day) {
         return "stats:active:" + DAY.format(day);
     }
 
-    static String activeMember(long tenantId, long linkId) {
+    public static String activeMember(long tenantId, long linkId) {
         return tenantId + ":" + linkId;
     }
 
-    static String pvKey(long tenantId, long linkId, LocalDate day) {
+    public static String pvKey(long tenantId, long linkId, LocalDate day) {
         return "stats:pv:" + tenantId + ":" + linkId + ":" + DAY.format(day);
     }
 
-    static String uvKey(long tenantId, long linkId, LocalDate day) {
+    public static String uvKey(long tenantId, long linkId, LocalDate day) {
         return "stats:uv:" + tenantId + ":" + linkId + ":" + DAY.format(day);
     }
 
@@ -31,7 +36,7 @@ final class AnalyticsKeys {
      * <p>
      * 示例：stats:dim:pv:{tenantId}:{linkId}:{yyyyMMdd}:{dimType}
      */
-    static String dimPvHashKey(long tenantId, long linkId, LocalDate day, String dimType) {
+    public static String dimPvHashKey(long tenantId, long linkId, LocalDate day, String dimType) {
         String t = dimType == null ? "unknown" : dimType.trim().toLowerCase();
         if (t.isBlank()) {
             t = "unknown";
@@ -44,7 +49,7 @@ final class AnalyticsKeys {
     /**
      * 访问明细事件流（Redis Stream）。
      */
-    static String visitEventStreamKey() {
+    public static String visitEventStreamKey() {
         return "stats:visit:events";
     }
 }

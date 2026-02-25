@@ -1,0 +1,153 @@
+package com.linkforge.api.iam.service;
+
+import com.linkforge.api.iam.entity.ApiKeyEntity;
+import com.linkforge.api.iam.repo.ApiKeyRepository;
+import com.linkforge.api.iam.service.IamConstants;
+import com.linkforge.platform.config.AppProperties;
+import com.linkforge.platform.id.SnowflakeIdGenerator;
+import com.linkforge.api.security.TenantGuard;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.security.crypto.password.PasswordEncoder;
+
+import java.time.LocalDateTime;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+class ApiKeyServiceTest {
+
+    @Test
+    void authenticate_shouldNotUpdateLastUsedAt_whenWithinThrottleWindow() {
+        ApiKeyRepository repo = mock(ApiKeyRepository.class);
+        PasswordEncoder encoder = mock(PasswordEncoder.class);
+
+        AppProperties props = new AppProperties();
+        props.getSecurity().getApiKey().setLastUsedUpdateIntervalSeconds(300);
+
+        ApiKeyService service = new ApiKeyService(
+                mock(SnowflakeIdGenerator.class),
+                repo,
+                encoder,
+                mock(TenantGuard.class),
+                props
+        );
+
+        ApiKeyEntity e = new ApiKeyEntity();
+        e.setId(123L);
+        e.setTenantId(1L);
+        e.setStatus(IamConstants.STATUS_ACTIVE);
+        e.setKeyHash("hash");
+        e.setLastUsedAt(LocalDateTime.now());
+
+        when(repo.findById(123L)).thenReturn(Optional.of(e));
+        when(encoder.matches("secret", "hash")).thenReturn(true);
+
+        service.authenticate("lfk_123_secret");
+
+        verify(repo, never()).save(any());
+    }
+
+    @Test
+    void authenticate_shouldUpdateLastUsedAt_whenMissing() {
+        ApiKeyRepository repo = mock(ApiKeyRepository.class);
+        PasswordEncoder encoder = mock(PasswordEncoder.class);
+
+        AppProperties props = new AppProperties();
+        props.getSecurity().getApiKey().setLastUsedUpdateIntervalSeconds(300);
+
+        ApiKeyService service = new ApiKeyService(
+                mock(SnowflakeIdGenerator.class),
+                repo,
+                encoder,
+                mock(TenantGuard.class),
+                props
+        );
+
+        ApiKeyEntity e = new ApiKeyEntity();
+        e.setId(123L);
+        e.setTenantId(1L);
+        e.setStatus(IamConstants.STATUS_ACTIVE);
+        e.setKeyHash("hash");
+        e.setLastUsedAt(null);
+
+        when(repo.findById(123L)).thenReturn(Optional.of(e));
+        when(encoder.matches("secret", "hash")).thenReturn(true);
+        when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.authenticate("lfk_123_secret");
+
+        ArgumentCaptor<ApiKeyEntity> captor = ArgumentCaptor.forClass(ApiKeyEntity.class);
+        verify(repo).save(captor.capture());
+        assertThat(captor.getValue().getLastUsedAt()).isNotNull();
+    }
+
+    @Test
+    void authenticate_shouldUpdateLastUsedAt_whenOlderThanThrottleWindow() {
+        ApiKeyRepository repo = mock(ApiKeyRepository.class);
+        PasswordEncoder encoder = mock(PasswordEncoder.class);
+
+        AppProperties props = new AppProperties();
+        props.getSecurity().getApiKey().setLastUsedUpdateIntervalSeconds(300);
+
+        ApiKeyService service = new ApiKeyService(
+                mock(SnowflakeIdGenerator.class),
+                repo,
+                encoder,
+                mock(TenantGuard.class),
+                props
+        );
+
+        ApiKeyEntity e = new ApiKeyEntity();
+        e.setId(123L);
+        e.setTenantId(1L);
+        e.setStatus(IamConstants.STATUS_ACTIVE);
+        e.setKeyHash("hash");
+        e.setLastUsedAt(LocalDateTime.now().minusSeconds(3600));
+
+        when(repo.findById(123L)).thenReturn(Optional.of(e));
+        when(encoder.matches("secret", "hash")).thenReturn(true);
+        when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.authenticate("lfk_123_secret");
+
+        verify(repo).save(any());
+    }
+
+    @Test
+    void authenticate_shouldNotUpdateLastUsedAt_whenThrottleDisabled() {
+        ApiKeyRepository repo = mock(ApiKeyRepository.class);
+        PasswordEncoder encoder = mock(PasswordEncoder.class);
+
+        AppProperties props = new AppProperties();
+        props.getSecurity().getApiKey().setLastUsedUpdateIntervalSeconds(0);
+
+        ApiKeyService service = new ApiKeyService(
+                mock(SnowflakeIdGenerator.class),
+                repo,
+                encoder,
+                mock(TenantGuard.class),
+                props
+        );
+
+        ApiKeyEntity e = new ApiKeyEntity();
+        e.setId(123L);
+        e.setTenantId(1L);
+        e.setStatus(IamConstants.STATUS_ACTIVE);
+        e.setKeyHash("hash");
+        e.setLastUsedAt(null);
+
+        when(repo.findById(123L)).thenReturn(Optional.of(e));
+        when(encoder.matches("secret", "hash")).thenReturn(true);
+
+        service.authenticate("lfk_123_secret");
+
+        verify(repo, never()).save(any());
+    }
+}
+

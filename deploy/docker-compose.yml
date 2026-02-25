@@ -3,9 +3,14 @@ services:
     image: mysql:8.0.36
     environment:
       MYSQL_DATABASE: linkforge
-      MYSQL_USER: linkforge
-      MYSQL_PASSWORD: linkforge
-      MYSQL_ROOT_PASSWORD: root
+      # API（读写）账号：用于 Flyway 与业务写入
+      MYSQL_USER: ${MYSQL_API_USER:-linkforge_api}
+      MYSQL_PASSWORD: ${MYSQL_API_PASSWORD:-linkforge_api}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+
+      # Edge（只读）账号：用于公网跳转服务最小权限
+      MYSQL_EDGE_USER: ${MYSQL_EDGE_USER:-linkforge_edge}
+      MYSQL_EDGE_PASSWORD: ${MYSQL_EDGE_PASSWORD:-linkforge_edge}
     ports:
       - "3306:3306"
     command:
@@ -13,8 +18,9 @@ services:
       - "--collation-server=utf8mb4_unicode_ci"
     volumes:
       - mysql_data:/var/lib/mysql
+      - ./mysql-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"]
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p${MYSQL_ROOT_PASSWORD:-root} --silent"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -36,8 +42,8 @@ services:
       dockerfile: Dockerfile.api
     environment:
       DB_URL: jdbc:mysql://mysql:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
-      DB_USERNAME: linkforge
-      DB_PASSWORD: linkforge
+      DB_USERNAME: ${MYSQL_API_USER:-linkforge_api}
+      DB_PASSWORD: ${MYSQL_API_PASSWORD:-linkforge_api}
       REDIS_HOST: redis
       REDIS_PORT: 6379
       JWT_SECRET: ${JWT_SECRET}
@@ -69,8 +75,8 @@ services:
       dockerfile: Dockerfile.edge
     environment:
       DB_URL: jdbc:mysql://mysql:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
-      DB_USERNAME: linkforge
-      DB_PASSWORD: linkforge
+      DB_USERNAME: ${MYSQL_EDGE_USER:-linkforge_edge}
+      DB_PASSWORD: ${MYSQL_EDGE_PASSWORD:-linkforge_edge}
       REDIS_HOST: redis
       REDIS_PORT: 6379
       ANALYTICS_SALT: ${ANALYTICS_SALT}

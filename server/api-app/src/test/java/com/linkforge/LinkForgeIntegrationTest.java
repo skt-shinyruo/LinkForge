@@ -2,9 +2,9 @@ package com.linkforge;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linkforge.analytics.service.AnalyticsDimensionFlushJob;
-import com.linkforge.analytics.service.AnalyticsEventIngestJob;
-import com.linkforge.analytics.service.AnalyticsFlushJob;
+import com.linkforge.api.analytics.service.AnalyticsDimensionFlushJob;
+import com.linkforge.api.analytics.service.AnalyticsEventIngestJob;
+import com.linkforge.api.analytics.service.AnalyticsFlushJob;
 import com.linkforge.api.LinkForgeApiApplication;
 import com.linkforge.platform.api.ErrorCode;
 import org.junit.jupiter.api.Test;
@@ -206,7 +206,11 @@ class LinkForgeIntegrationTest {
                 "deviceType", "desktop",
                 "utmSource", "ads"
         )));
-        analyticsEventIngestJob.ingest();
+        assertThat(redis.hasKey(streamKey)).isTrue();
+        // ingest 为 best-effort：这里多跑几次以避免消费组初始化/IO 抖动导致的偶发空结果
+        for (int i = 0; i < 3; i++) {
+            analyticsEventIngestJob.ingest();
+        }
 
         String statsResp = mockMvc.perform(
                         get("/api/v1/stats/links/" + linkId + "/daily")
@@ -244,18 +248,26 @@ class LinkForgeIntegrationTest {
         assertThat(dimJson.get("data").get(0).get("value").asText()).isEqualTo("google.com");
 
         // 6.3) 访问明细查询
-        String eventResp = mockMvc.perform(
-                        get("/api/v1/stats/links/" + linkId + "/events")
-                                .header("Authorization", "Bearer " + token)
-                                .param("limit", "10")
-                )
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-        JsonNode eventJson = objectMapper.readTree(eventResp);
-        assertThat(eventJson.get("code").asInt()).isEqualTo(0);
-        assertThat(eventJson.get("data").isArray()).isTrue();
+        JsonNode eventJson = null;
+        for (int i = 0; i < 5; i++) {
+            String eventResp = mockMvc.perform(
+                            get("/api/v1/stats/links/" + linkId + "/events")
+                                    .header("Authorization", "Bearer " + token)
+                                    .param("limit", "10")
+                    )
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+            eventJson = objectMapper.readTree(eventResp);
+            assertThat(eventJson.get("code").asInt()).isEqualTo(0);
+            assertThat(eventJson.get("data").isArray()).isTrue();
+            if (eventJson.get("data").size() > 0) {
+                break;
+            }
+            Thread.sleep(200);
+        }
+        assertThat(eventJson).isNotNull();
         assertThat(eventJson.get("data").size()).isGreaterThan(0);
 
         // 7) Top 链接报表（JWT）
@@ -435,6 +447,103 @@ class LinkForgeIntegrationTest {
                                 .content(objectMapper.writeValueAsString(createKeyBody))
                 )
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void register_shouldRejectDuplicateEmailAcrossTenants() throws Exception {
+        String email = "dup-" + System.nanoTime() + "@example.com";
+        String password = "password123";
+
+        JsonNode registerBody1 = objectMapper.createObjectNode()
+                .put("tenantName", "dup-tenant-1-" + System.nanoTime())
+                .put("email", email)
+                .put("password", password);
+        mockMvc.perform(
+                        post("/api/v1/auth/register")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(registerBody1))
+                )
+                .andExpect(status().isOk());
+
+        JsonNode registerBody2 = objectMapper.createObjectNode()
+                .put("tenantName", "dup-tenant-2-" + System.nanoTime())
+                .put("email", email)
+                .put("password", password);
+        String resp2 = mockMvc.perform(
+                        post("/api/v1/auth/register")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(registerBody2))
+                )
+                .andExpect(status().isBadRequest())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        JsonNode json2 = objectMapper.readTree(resp2);
+        assertThat(json2.get("code").asInt()).isEqualTo(ErrorCode.EMAIL_ALREADY_EXISTS.getCode());
+        assertThat(json2.get("requestId").asText()).isNotBlank();
+    }
+
+    @Test
+    void createUser_shouldRejectEmailUsedInAnotherTenant() throws Exception {
+        String password = "password123";
+
+        String emailTenant1 = "t1-" + System.nanoTime() + "@example.com";
+        String emailTenant2 = "t2-" + System.nanoTime() + "@example.com";
+
+        // tenant1 注册
+        JsonNode registerBody1 = objectMapper.createObjectNode()
+                .put("tenantName", "t1-" + System.nanoTime())
+                .put("email", emailTenant1)
+                .put("password", password);
+        String registerResp1 = mockMvc.perform(
+                        post("/api/v1/auth/register")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(registerBody1))
+                )
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        JsonNode registerJson1 = objectMapper.readTree(registerResp1);
+        String token1 = registerJson1.get("data").get("token").asText();
+        assertThat(token1).isNotBlank();
+
+        // tenant2 注册
+        JsonNode registerBody2 = objectMapper.createObjectNode()
+                .put("tenantName", "t2-" + System.nanoTime())
+                .put("email", emailTenant2)
+                .put("password", password);
+        String registerResp2 = mockMvc.perform(
+                        post("/api/v1/auth/register")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(registerBody2))
+                )
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        JsonNode registerJson2 = objectMapper.readTree(registerResp2);
+        String token2 = registerJson2.get("data").get("token").asText();
+        assertThat(token2).isNotBlank();
+
+        // tenant2 尝试创建一个 email 与 tenant1 已存在用户相同的账号 -> 应失败
+        JsonNode createUserBody = objectMapper.createObjectNode()
+                .put("email", emailTenant1)
+                .put("password", password);
+        String createUserResp = mockMvc.perform(
+                        post("/api/v1/users")
+                                .header("Authorization", "Bearer " + token2)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(createUserBody))
+                )
+                .andExpect(status().isBadRequest())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        JsonNode createUserJson = objectMapper.readTree(createUserResp);
+        assertThat(createUserJson.get("code").asInt()).isEqualTo(ErrorCode.EMAIL_ALREADY_EXISTS.getCode());
+        assertThat(createUserJson.get("requestId").asText()).isNotBlank();
     }
 
     @Test

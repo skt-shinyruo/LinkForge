@@ -4,7 +4,7 @@ import com.linkforge.edge.LinkForgeEdgeApplication;
 import com.linkforge.platform.api.BusinessException;
 import com.linkforge.platform.api.ErrorCode;
 import com.linkforge.redirect.service.LinkMeta;
-import com.linkforge.redirect.service.RedirectService;
+import com.linkforge.edge.redirect.service.RedirectService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -242,4 +242,3 @@ class RedirectExperienceIntegrationTest {
         verify(redirectService, never()).recordVisitIfAvailable(any(), any());
     }
 }
-

@@ -21,6 +21,9 @@ jobs:
           java-version: "21"
           cache: maven
 
+      - name: Check split packages (server)
+        run: python3 server/tools/check_split_packages.py
+
       - name: Test (server)
         working-directory: server
         run: mvn -B test
@@ -46,4 +49,3 @@ jobs:
       - name: Build (web)
         working-directory: web
         run: npm run build
-

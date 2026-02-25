@@ -9,6 +9,10 @@ const AUTH_MODE = ((import.meta as any).env?.VITE_AUTH_MODE || "bearer") as Auth
 const TOKEN_STORAGE_MODE = ((import.meta as any).env?.VITE_TOKEN_STORAGE ||
   (AUTH_MODE === "cookie" ? "none" : "session")) as TokenStorageMode;
 
+const CSRF_COOKIE_NAME = "XSRF-TOKEN";
+const CSRF_HEADER_NAME = "X-XSRF-TOKEN";
+const CSRF_ENDPOINT = "/api/v1/auth/csrf";
+
 let onUnauthorized: (() => void) | null = null;
 
 export function setUnauthorizedHandler(handler: (() => void) | null) {
@@ -54,6 +58,10 @@ export async function authFetch(
     }
   }
 
+  if (AUTH_MODE === "cookie") {
+    await attachCsrfHeaderIfNeeded(headers, options.method || "GET");
+  }
+
   const resp = await fetch(path, {
     ...options,
     headers,
@@ -66,6 +74,48 @@ export async function authFetch(
   }
 
   return resp;
+}
+
+function isUnsafeMethod(method: string): boolean {
+  const m = (method || "GET").toUpperCase();
+  return m === "POST" || m === "PUT" || m === "DELETE" || m === "PATCH";
+}
+
+function getCookie(name: string): string | null {
+  if (typeof document === "undefined" || !document.cookie) {
+    return null;
+  }
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const m = document.cookie.match(new RegExp(`(?:^|;\\s*)${escaped}=([^;]*)`));
+  const value = m?.[1];
+  return value == null ? null : decodeURIComponent(value);
+}
+
+let csrfInitPromise: Promise<void> | null = null;
+
+async function ensureCsrfCookie(): Promise<void> {
+  if (!csrfInitPromise) {
+    csrfInitPromise = fetch(CSRF_ENDPOINT, { method: "GET", credentials: "include" }).then(() => {});
+  }
+  await csrfInitPromise;
+}
+
+async function attachCsrfHeaderIfNeeded(headers: Headers, method: string): Promise<void> {
+  if (!isUnsafeMethod(method)) {
+    return;
+  }
+  if (headers.has(CSRF_HEADER_NAME)) {
+    return;
+  }
+
+  let token = getCookie(CSRF_COOKIE_NAME);
+  if (!token) {
+    await ensureCsrfCookie();
+    token = getCookie(CSRF_COOKIE_NAME);
+  }
+  if (token) {
+    headers.set(CSRF_HEADER_NAME, token);
+  }
 }
 
 export async function apiFetch<T>(

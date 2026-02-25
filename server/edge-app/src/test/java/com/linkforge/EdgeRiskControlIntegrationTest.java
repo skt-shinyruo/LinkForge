@@ -3,7 +3,7 @@ package com.linkforge;
 import com.linkforge.edge.LinkForgeEdgeApplication;
 import com.linkforge.platform.web.VisitInfo;
 import com.linkforge.redirect.service.LinkMeta;
-import com.linkforge.redirect.service.RedirectService;
+import com.linkforge.edge.redirect.service.RedirectService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;

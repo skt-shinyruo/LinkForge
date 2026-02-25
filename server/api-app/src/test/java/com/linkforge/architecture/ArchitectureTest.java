@@ -23,14 +23,13 @@ class ArchitectureTest {
     }
 
     @Test
-    void only_services_or_api_layer_should_access_repositories() {
+    void only_services_should_access_repositories() {
         ArchRule rule = noClasses()
                 .that()
-                .resideOutsideOfPackages("..service..", "..api..", "..repo..")
+                .resideOutsideOfPackages("..service..", "..repo..")
                 .should()
                 .dependOnClassesThat()
                 .resideInAnyPackage("..repo..");
         rule.check(CLASSES);
     }
 }
-

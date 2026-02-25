@@ -73,6 +73,7 @@ public class AppProperties {
 
     public static class Security {
         private Jwt jwt = new Jwt();
+        private ApiKey apiKey = new ApiKey();
 
         public Jwt getJwt() {
             return jwt;
@@ -80,6 +81,14 @@ public class AppProperties {
 
         public void setJwt(Jwt jwt) {
             this.jwt = jwt;
+        }
+
+        public ApiKey getApiKey() {
+            return apiKey;
+        }
+
+        public void setApiKey(ApiKey apiKey) {
+            this.apiKey = apiKey;
         }
 
         public static class Jwt {
@@ -145,6 +154,24 @@ public class AppProperties {
 
             public void setCookieSameSite(String cookieSameSite) {
                 this.cookieSameSite = cookieSameSite;
+            }
+        }
+
+        public static class ApiKey {
+            /**
+             * 认证成功后写回 last_used_at 的最小间隔（秒）。
+             *
+             * <p>说明：用于降低 OpenAPI 高 QPS 场景下的 DB 写放大。</p>
+             * <p>设为 0 表示不写回（彻底关闭 last_used_at 更新）。</p>
+             */
+            private long lastUsedUpdateIntervalSeconds = 300;
+
+            public long getLastUsedUpdateIntervalSeconds() {
+                return lastUsedUpdateIntervalSeconds;
+            }
+
+            public void setLastUsedUpdateIntervalSeconds(long lastUsedUpdateIntervalSeconds) {
+                this.lastUsedUpdateIntervalSeconds = lastUsedUpdateIntervalSeconds;
             }
         }
     }
@@ -367,6 +394,14 @@ public class AppProperties {
              */
             private List<String> types;
 
+            /**
+             * 每次 flush（按天）最多处理的活跃短链数上限（用于控制 active-set×dimTypes 的扫描成本）。
+             *
+             * <p>说明：维度 flush 属于 best-effort 作业；当活跃链接规模很大时，可通过该上限降低单次作业对 Redis 的压力。</p>
+             * <p>设为 <=0 表示不限制。</p>
+             */
+            private int maxLinksPerDay = 5000;
+
             public boolean isEnabled() {
                 return enabled;
             }
@@ -381,6 +416,14 @@ public class AppProperties {
 
             public void setTypes(List<String> types) {
                 this.types = types;
+            }
+
+            public int getMaxLinksPerDay() {
+                return maxLinksPerDay;
+            }
+
+            public void setMaxLinksPerDay(int maxLinksPerDay) {
+                this.maxLinksPerDay = maxLinksPerDay;
             }
         }
 

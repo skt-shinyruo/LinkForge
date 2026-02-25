@@ -14,6 +14,34 @@ public final class StartupValidation {
     private StartupValidation() {
     }
 
+    public static void validateIdBasics(AppProperties properties, boolean strict, Logger log, List<String> errors) {
+        if (properties == null || properties.getId() == null) {
+            errors.add("id 配置缺失");
+            return;
+        }
+
+        long workerId = properties.getId().getWorkerId();
+        long datacenterId = properties.getId().getDatacenterId();
+
+        // Snowflake: workerId/datacenterId 均为 5 bits（0~31）
+        if (workerId < 0 || workerId > 31) {
+            errors.add("app.id.worker-id 仅支持 0~31");
+        }
+        if (datacenterId < 0 || datacenterId > 31) {
+            errors.add("app.id.datacenter-id 仅支持 0~31");
+        }
+
+        // 多实例部署护栏：避免“默认值忘改”导致 ID 冲突（主键冲突/数据错写）
+        if (strict && workerId == 1L && datacenterId == 1L) {
+            errors.add("生产/strict 模式禁止使用默认 app.id.worker-id=1 且 app.id.datacenter-id=1；多实例部署会发生 ID 冲突，请显式配置（例如通过 ID_WORKER_ID/ID_DATACENTER_ID）");
+        }
+
+        // 非严格模式保持静默，避免本地开发日志噪音；如需强约束请开启 app.strict-config 或 prod profile
+        if (!strict && workerId == 1L && datacenterId == 1L && log != null) {
+            // no-op (intentionally silent)
+        }
+    }
+
     public static void validateRedirectBasics(AppProperties properties, List<String> errors) {
         if (properties == null || properties.getRedirect() == null) {
             errors.add("redirect 配置缺失");
@@ -25,6 +53,9 @@ public final class StartupValidation {
         }
         if (properties.getRedirect().getCacheTtlSeconds() <= 0) {
             errors.add("app.redirect.cache-ttl-seconds 必须 > 0");
+        }
+        if (properties.getRedirect().getNotFoundCacheTtlSeconds() < 0) {
+            errors.add("app.redirect.not-found-cache-ttl-seconds 必须 >= 0");
         }
     }
 
@@ -171,4 +202,3 @@ public final class StartupValidation {
         return true;
     }
 }
-

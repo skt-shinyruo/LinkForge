@@ -18,6 +18,7 @@
 | 202602201217 | analytics_visit_events_dims | Enhancement | ✅Completed | [Link](2026-02/202602201217_analytics_visit_events_dims/) |
 | 202602201407 | lifecycle_governance_closure | Enhancement | ✅Completed | [Link](2026-02/202602201407_lifecycle_governance_closure/) |
 | 202602241741 | architecture_hardening | Refactor | ✅Completed | [Link](2026-02/202602241741_architecture_hardening/) |
+| 202602250305 | m0_id_edge_cache_hardening | Enhancement | ✅Completed | [Link](2026-02/202602250305_m0_id_edge_cache_hardening/) |
 
 ---
 
@@ -35,3 +36,4 @@
 - [202602201217_analytics_visit_events_dims](2026-02/202602201217_analytics_visit_events_dims/) - 统计增强：维度聚合 + 访问明细事件（短期留存）+ 新增维度/明细查询 API
 - [202602201407_lifecycle_governance_closure](2026-02/202602201407_lifecycle_governance_closure/) - 生命周期治理闭环（短链归档/恢复/删除、用户启用/禁用/重置密码、API Key 启用/禁用/轮换、Links UI 对齐）
 - [202602241741_architecture_hardening](2026-02/202602241741_architecture_hardening/) - 架构加固：IAM 唯一约束、Edge 最小权限、Cookie+CSRF、统计 flush 优化、契约显式化、API Key 节流、配置校验去重
+- [202602250305_m0_id_edge_cache_hardening](2026-02/202602250305_m0_id_edge_cache_hardening/) - M0 护栏：prod/strict 禁止默认 Snowflake 1/1；Edge 增加短码快速拒绝 + NOT_FOUND 负缓存

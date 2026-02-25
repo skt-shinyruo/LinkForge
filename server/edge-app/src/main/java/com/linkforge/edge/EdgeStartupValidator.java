@@ -34,6 +34,8 @@ public class EdgeStartupValidator implements ApplicationRunner {
 
         List<String> errors = new ArrayList<>();
 
+        StartupValidation.validateIdBasics(properties, strict, log, errors);
+
         StartupValidation.validateRedirectBasics(properties, errors);
 
         // Redirect 体验增强配置（可选）

@@ -64,3 +64,4 @@ API 详情见：
 - [202602191426_edge_api_split_refactor](../../history/2026-02/202602191426_edge_api_split_refactor/) - 拆分为 API Service：负责 `/api/v1/**` 与统计落库/查询
 - [202602201026_redirect_experience_control](../../history/2026-02/202602201026_redirect_experience_control/) - 短链 API 扩展跳转策略字段（按链接状态码/预览页/query 透传/不可用落地页）
 - [202602201217_analytics_visit_events_dims](../../history/2026-02/202602201217_analytics_visit_events_dims/) - 统计增强：维度聚合 + 访问明细事件（Redis Stream ingest + retention）+ 新增统计查询 API
+- [202602250305_m0_id_edge_cache_hardening](../../history/2026-02/202602250305_m0_id_edge_cache_hardening/) - M0 护栏：prod/strict 禁止默认 Snowflake 1/1（多实例安全）

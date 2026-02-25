@@ -23,10 +23,12 @@
 - 修复：访问明细事件 `occurred_at` 写入/查询统一使用 UTC 语义（避免 MySQL `DATETIME` + `Timestamp` 时区偏移导致 `/events` 查询为空）
 - 安全与一致性：统一错误响应（`ApiResponse + requestId`）、缺失认证主体返回 401；Service 层引入 tenant guard 防越权
 - 配置与部署：新增启动期关键配置校验（strict-config/prod）；CORS 收敛白名单并支持 Cookie 会话的 credentials 校验；Snowflake workerId/datacenterId 配置化
+- 配置加固：在 `prod` 或 `app.strict-config=true` 下禁止 Snowflake 使用默认 `workerId/datacenterId=1/1`，避免多实例部署时发生 ID 冲突（主键冲突/数据错写）
 - 前端会话：统一 401 处理（自动登出并跳登录）；token 存储默认收敛到 `sessionStorage`，并提供可选 Cookie 模式
 - Redirect Edge：新增可信代理链校验（安全取 IP），并提供可配置的 /r/** 风控能力（IP 黑白名单、Redis 限流、bot 降频）
 - 部署体验：`deploy/docker-compose.yml` 默认配置 `EDGE_TRUSTED_PROXIES`，并在 README/.env.example 补充说明，避免 docker+nginx 默认部署下 IP/UV 统计失真
 - Redirect：跳转体验与跳转行为可控性增强（404/410 HTML、可选落地页、预览页确认后跳转、按链接 301/302、Query 透传策略 OFF/ALLOWLIST/ALL）
+- Redirect：Edge `/r/**` 增加短码格式快速拒绝 + 短码不存在负缓存（可配置 `app.redirect.not-found-cache-ttl-seconds`），降低缓存穿透导致的 MySQL 回源放大风险
 - 管理后台：短链创建/编辑表单补齐跳转策略配置项（状态码、预览页、Query 透传与 allowlist、不可用落地页）
 - 生命周期治理：短链归档/恢复/删除；用户启用/禁用/重置密码；API Key 启用/禁用/轮换；管理后台对齐（customCode/expiresAt/tags/归档筛选）
 

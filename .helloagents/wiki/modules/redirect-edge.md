@@ -73,6 +73,7 @@
 
 #### Scenario: cache-miss（未命中）
 - 回源 MySQL 查询后写回 Redis（设置 TTL）
+- 若短码不存在：写入短 TTL 的负缓存（避免缓存穿透导致 DB 回源被打穿）
 
 ---
 
@@ -116,6 +117,7 @@
 - **Edge 侧避免引入 JPA**：只做只读回源查询（JDBC），减少依赖与启动成本
 - **业务用例去 Servlet 化**：Service 只接收稳定值对象（如 `VisitInfo`），由 Controller 做协议适配
 - **归档过滤**：回源查询带 `archived_at IS NULL`；归档短链在 Edge 侧视为不可用（表现为短码不存在）
+- **短码快速拒绝**：进入缓存/回源前先校验短码长度与字符集（仅字母数字，且 `<=32`），减少异常输入导致的 key/日志/路由复杂度与无效回源
 - **统计采集**：仅写 Redis（PV/UV + 活跃索引；可选维度 PV；可选访问事件 Stream），不在跳转链路写 MySQL 明细（明细由 API Service 异步落库）
 - **浏览器体验（Accept 协商）**：仅当 Accept 包含 `text/html` 时输出 HTML 页面/预览页，避免破坏脚本/OpenAPI 调用方的 JSON 协议
 - **Query 透传安全默认**：默认 OFF/ALLOWLIST；过滤内部保留字段（默认包含 `__lf_confirm`）
@@ -191,3 +193,4 @@ app:
 - [202602201026_redirect_experience_control](../../history/2026-02/202602201026_redirect_experience_control/) - 跳转体验与跳转策略增强（404/410 HTML、预览页、按链接 301/302、Query 透传策略）
 - [202602201217_analytics_visit_events_dims](../../history/2026-02/202602201217_analytics_visit_events_dims/) - 统计增强：扩展 VisitInfo 采集维度，并支持写入维度 PV 与访问明细事件 Stream（可配置）
 - [202602201407_lifecycle_governance_closure](../../history/2026-02/202602201407_lifecycle_governance_closure/) - 生命周期治理闭环：归档短链 Edge 侧不可达（回源过滤）
+- [202602250305_m0_id_edge_cache_hardening](../../history/2026-02/202602250305_m0_id_edge_cache_hardening/) - M0 护栏：短码快速拒绝 + NOT_FOUND 负缓存（抗穿透）

@@ -36,6 +36,8 @@ public class ApiStartupValidator implements ApplicationRunner {
 
         List<String> errors = new ArrayList<>();
 
+        StartupValidation.validateIdBasics(properties, strict, log, errors);
+
         if (StartupValidation.isBlank(properties.getBaseUrl())) {
             errors.add("app.base-url 不能为空（用于拼接 shortUrl）");
         }

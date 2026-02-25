@@ -231,6 +231,13 @@ public class AppProperties {
         private long cacheTtlSeconds;
         private int defaultStatusCode;
         /**
+         * 短码不存在（404）的负缓存 TTL（秒）。
+         *
+         * <p>用于防止随机短码扫描导致缓存穿透，从而把 MySQL 回源打穿。</p>
+         * <p>设为 0 表示关闭负缓存。</p>
+         */
+        private long notFoundCacheTtlSeconds = 60;
+        /**
          * 短码不存在（404）时的全局落地页 URL（可选）。未配置则返回内置 HTML 页面。
          */
         private String notFoundLandingUrl;
@@ -269,6 +276,14 @@ public class AppProperties {
 
         public void setDefaultStatusCode(int defaultStatusCode) {
             this.defaultStatusCode = defaultStatusCode;
+        }
+
+        public long getNotFoundCacheTtlSeconds() {
+            return notFoundCacheTtlSeconds;
+        }
+
+        public void setNotFoundCacheTtlSeconds(long notFoundCacheTtlSeconds) {
+            this.notFoundCacheTtlSeconds = notFoundCacheTtlSeconds;
         }
 
         public String getNotFoundLandingUrl() {

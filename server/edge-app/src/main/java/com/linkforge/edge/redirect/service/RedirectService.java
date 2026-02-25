@@ -50,17 +50,23 @@ public class RedirectService {
     }
 
     private LinkMeta resolveMeta(String code) {
-        if (code == null || code.isBlank()) {
+        String normalized = normalizeAndValidateCode(code);
+
+        LinkCacheService.LookupResult cached = linkCacheService.lookup(normalized);
+        if (cached.notFound()) {
             throw new BusinessException(ErrorCode.LINK_NOT_FOUND);
         }
-
-        LinkMeta cached = linkCacheService.get(code);
-        if (cached != null) {
-            return cached;
+        if (cached.hit()) {
+            return cached.meta();
         }
 
-        ShortLinkLookupRepository.ShortLinkRow e = shortLinkLookupRepository.findByCode(code)
-                .orElseThrow(() -> new BusinessException(ErrorCode.LINK_NOT_FOUND));
+        ShortLinkLookupRepository.ShortLinkRow e = shortLinkLookupRepository.findByCode(normalized)
+                .orElse(null);
+        if (e == null) {
+            // 负缓存：避免随机短码扫描导致缓存穿透，把 MySQL 回源打穿
+            linkCacheService.markNotFound(normalized);
+            throw new BusinessException(ErrorCode.LINK_NOT_FOUND);
+        }
 
         LinkMeta meta = new LinkMeta(
                 e.id(),
@@ -78,6 +84,31 @@ public class RedirectService {
 
         linkCacheService.put(meta);
         return meta;
+    }
+
+    private static String normalizeAndValidateCode(String code) {
+        if (code == null) {
+            throw new BusinessException(ErrorCode.LINK_NOT_FOUND);
+        }
+        String v = code.trim();
+        if (v.isBlank()) {
+            throw new BusinessException(ErrorCode.LINK_NOT_FOUND);
+        }
+        // DB 约束：short_links.code 为 VARCHAR(32)
+        if (v.length() > 32) {
+            throw new BusinessException(ErrorCode.LINK_NOT_FOUND);
+        }
+        // 安全默认：仅允许字母数字，避免异常字符导致 key/日志/路由复杂度上升
+        for (int i = 0; i < v.length(); i++) {
+            char ch = v.charAt(i);
+            boolean ok = (ch >= '0' && ch <= '9')
+                    || (ch >= 'A' && ch <= 'Z')
+                    || (ch >= 'a' && ch <= 'z');
+            if (!ok) {
+                throw new BusinessException(ErrorCode.LINK_NOT_FOUND);
+            }
+        }
+        return v;
     }
 
     private static boolean isAvailable(LinkMeta meta) {

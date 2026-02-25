@@ -96,6 +96,7 @@ sequenceDiagram
 - **不可用体验（Accept 协商）**：当 Accept 包含 `text/html` 时，Edge 对短码不存在返回 404 HTML、禁用/过期返回 410 HTML（可配置落地页跳转）；非 HTML 请求保持 JSON 错误结构。
 - **预览页（确认后再跳）**：当链接开启 `previewEnabled=true` 且为浏览器请求时，首次访问返回 200 HTML 预览页；携带 `__lf_confirm=1` 后才跳转并计数。
 - **Query 透传策略**：支持 OFF/ALLOWLIST/ALL（按链接优先，其次全局默认）；过滤内部保留字段；冲突策略为“目标 URL 优先”（不覆盖同名参数）。
+- **抗穿透（负缓存 + 快速拒绝）**：Edge 在解析前对短码做“长度/字符集”快速校验；短码不存在时写入短 TTL 的负缓存（同 key 空值标记），降低随机短码扫描把 MySQL 回源打穿的风险。
 
 ### 3.3 统计落库（API Service Flush Job，active-set 增量驱动）
 
@@ -124,6 +125,7 @@ sequenceDiagram
 - **OpenAPI 写热点治理（P2）**：API Key 认证路径对 `last_used_at` 采用节流写回（默认 300s），避免高 QPS 下 DB 写放大。
 - **配置校验去重（P2）**：API/Edge 启动期配置校验的公共规则抽取到 shared（`StartupValidation`），减少长期漂移点。
 - **工程卫生（P2）**：Maven `target/` 构建产物不应入库，统一通过 `.gitignore` 忽略并清理。
+- **多实例安全护栏（M0/P0）**：在 `prod` 或 `app.strict-config=true` 下，启动期禁止 Snowflake 使用默认 `workerId/datacenterId=1/1`，避免水平扩容时出现 ID 冲突（主键冲突/数据错写）。
 
 ---
 

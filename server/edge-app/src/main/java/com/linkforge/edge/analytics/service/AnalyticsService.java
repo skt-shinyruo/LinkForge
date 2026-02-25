@@ -9,9 +9,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
-import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -66,15 +66,17 @@ public class AnalyticsService {
             // 活跃索引：供 flush job 增量读取
             Long activeAdd = redis.opsForSet().add(activeKey, activeMember);
 
-            Duration ttl = Duration.ofDays(properties.getAnalytics().getRedisKeyTtlDays());
-            if (pv != null && pv == 1L) {
-                redis.expire(pvKey, ttl);
-            }
-            if (uvAdd != null && uvAdd > 0) {
-                redis.expire(uvKey, ttl);
-            }
-            if (activeAdd != null && activeAdd > 0) {
-                redis.expire(activeKey, ttl);
+            Date expireAt = resolveDayExpireAtUtc(day);
+            if (expireAt != null) {
+                if (pv != null && pv == 1L) {
+                    redis.expireAt(pvKey, expireAt);
+                }
+                if (uvAdd != null && uvAdd > 0) {
+                    redis.expireAt(uvKey, expireAt);
+                }
+                if (activeAdd != null && activeAdd > 0) {
+                    redis.expireAt(activeKey, expireAt);
+                }
             }
 
             AppProperties.Analytics a = properties.getAnalytics();
@@ -94,7 +96,7 @@ public class AnalyticsService {
             );
 
             if (dimsEnabled) {
-                recordDimensions(tenantId, linkId, day, n, ttl);
+                recordDimensions(tenantId, linkId, day, n, expireAt);
             }
             if (eventsEnabled) {
                 recordVisitEvent(tenantId, linkId, visitInfo, n);
@@ -111,7 +113,7 @@ public class AnalyticsService {
         }
     }
 
-    private void recordDimensions(long tenantId, long linkId, LocalDate day, VisitDimensionNormalizer.Normalized n, Duration ttl) {
+    private void recordDimensions(long tenantId, long linkId, LocalDate day, VisitDimensionNormalizer.Normalized n, Date expireAt) {
         AppProperties.Analytics.Dimensions cfg = properties.getAnalytics() == null ? null : properties.getAnalytics().getDimensions();
         List<String> types = cfg == null ? null : cfg.getTypes();
         if (types == null || types.isEmpty()) {
@@ -130,10 +132,22 @@ public class AnalyticsService {
 
             String key = AnalyticsKeys.dimPvHashKey(tenantId, linkId, day, dimType);
             Long v = redis.opsForHash().increment(key, value, 1L);
-            if (v != null && v == 1L) {
-                redis.expire(key, ttl);
+            if (expireAt != null && v != null && v == 1L) {
+                redis.expireAt(key, expireAt);
             }
         }
+    }
+
+    private Date resolveDayExpireAtUtc(LocalDate day) {
+        if (day == null) {
+            return null;
+        }
+        AppProperties.Analytics cfg = properties == null ? null : properties.getAnalytics();
+        long ttlDays = cfg == null ? 0 : cfg.getRedisKeyTtlDays();
+        if (ttlDays <= 0) {
+            return null;
+        }
+        return Date.from(day.plusDays(ttlDays).atStartOfDay(ZoneOffset.UTC).toInstant());
     }
 
     private static String resolveDimValue(String dimType, VisitDimensionNormalizer.Normalized n) {

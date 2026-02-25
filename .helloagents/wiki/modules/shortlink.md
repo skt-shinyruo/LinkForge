@@ -9,6 +9,33 @@
 - **Last Updated:** 2026-02-25
 - **Code Root Package:** `com.linkforge.api.shortlink.*`（短链领域在 API Service 内的实现）
 
+## Cache Consistency（DB ↔ Redis）
+
+Redirect Edge 的短链解析链路依赖 Redis 缓存（`LinkCacheService`），cache miss 时会回源 MySQL 并写回缓存。因此短链管理侧（API Service）在更新短链数据时必须确保“缓存副作用”与 DB 事务一致：
+
+- **原则**：仅在 DB 事务 **提交后（AFTER_COMMIT）** 才允许 `put/evict Redis`。
+- **原因**：
+  - 事务回滚时缓存写入/驱逐不会回滚，可能造成 DB 与 Redis 永久不一致。
+  - 事务未提交先驱逐会形成竞态窗口：Edge miss 回源读到旧 DB 值并回填，导致提交后缓存仍是旧值（甚至持续到 TTL）。
+- **落地（低延迟路径）**：`ShortLinkService` 中对 `linkCacheService.put/evict(...)` 的调用通过 `AfterCommit.run(...)` 延后到 commit 后执行（rollback 不执行）。
+- **落地（可靠兜底）**：API Service 在同一事务内写入 `link_cache_outbox`（REFRESH 语义），由后台 job 消费并按 DB 当前状态幂等刷新/驱逐缓存，用于覆盖 “commit 后进程崩溃/Redis 短暂不可用” 等场景，保证最终一致。
+
+### Outbox 运维（清理 / 监控 / 告警）
+
+- **DONE 清理**：API Service 定时删除历史 `DONE` 行避免表增长（默认保留 7 天，可通过环境变量调整）：
+  - `APP_LINK_CACHE_OUTBOX_DONE_RETENTION_DAYS`（默认 7；<=0 关闭清理）
+  - `APP_LINK_CACHE_OUTBOX_CLEANUP_DELAY_MS`（默认 3600000）
+  - `APP_LINK_CACHE_OUTBOX_CLEANUP_BATCH_SIZE`（默认 1000）
+  - `APP_LINK_CACHE_OUTBOX_CLEANUP_MAX_BATCHES`（默认 20）
+- **关键指标（Micrometer）**：
+  - `linkforge.shortlink.cache_outbox.pending.total`：PENDING 总数
+  - `linkforge.shortlink.cache_outbox.pending.ready`：可执行（`available_at <= now`）的 PENDING 数
+  - `linkforge.shortlink.cache_outbox.pending.lag.seconds`：最老 `available_at` 的滞留秒数（>=0）
+  - `linkforge.shortlink.cache_outbox.drain.processed{result=done|retry|error}`：消费处理结果计数
+  - `linkforge.shortlink.cache_outbox.cleanup.deleted`：清理删除行计数
+- **告警建议**：以 `pending.ready` 与 `pending.lag.seconds` 为主（意味着消费者追不上或 Redis/DB 异常导致重试/积压）。
+  - Job 内置阈值日志（WARN）可配置：`APP_LINK_CACHE_OUTBOX_PENDING_WARN_THRESHOLD`、`APP_LINK_CACHE_OUTBOX_READY_WARN_THRESHOLD`、`APP_LINK_CACHE_OUTBOX_LAG_WARN_SECONDS`
+
 ## Specifications
 
 ### Requirement: shortlink-create（创建短链）
@@ -126,3 +153,5 @@
 - [202602191426_edge_api_split_refactor](../../history/2026-02/202602191426_edge_api_split_refactor/) - 分层边界治理（Controller→Service）、tenant guard、导入导出去 Web 类型污染
 - [202602201026_redirect_experience_control](../../history/2026-02/202602201026_redirect_experience_control/) - 跳转策略字段落库与 API 回显（按链接 301/302、预览页、query 透传、不可用落地页）
 - [202602201407_lifecycle_governance_closure](../../history/2026-02/202602201407_lifecycle_governance_closure/) - 生命周期治理闭环：短链归档/恢复/删除 + 列表归档筛选 + UI 能力对齐
+- [202602251453_shortlink-cache-after-commit](../../archive/2026-02/202602251453_shortlink-cache-after-commit/) - 缓存一致性治理：事务提交后（AFTER_COMMIT）再写/驱逐 Redis，避免回滚污染与旧值回填
+- [202602251605_shortlink-cache-outbox](../../archive/2026-02/202602251605_shortlink-cache-outbox/) - 缓存最终一致兜底：持久化 outbox + job 补偿刷新/驱逐，覆盖 commit 后崩溃不丢刷新（shortlink-cache-outbox#D001）

@@ -106,7 +106,9 @@ sequenceDiagram
 - Edge 写入活跃索引集合：`stats:active:{yyyyMMdd}`，成员为 `{tenantId}:{linkId}`
 - PV key：`stats:pv:{tenantId}:{linkId}:{yyyyMMdd}`
 - UV key：`stats:uv:{tenantId}:{linkId}:{yyyyMMdd}`（HLL 近似去重）
+- TTL 语义：day 级 `stats:*` key 统一采用绝对过期时间（EXPIREAT 到 `day + ttlDays` 的 UTC 00:00），避免活跃索引续期导致“active-set 还在但计数 key 过期”的不一致
 - API Flush Job 仅扫描活跃集合并批量 upsert MySQL，具备降级与幂等能力
+- 数据保护：flush 遇到缺失/过期 key 时跳过写库，避免 pv/uv “写回 0”覆盖已有数据
 - 多实例治理：flush/dim flush/retention 等定时作业通过 ShedLock（Redis）互斥，避免水平扩容导致重复跑任务、重复写库放大
 - 可追赶回补：flush 支持按回补窗口（最近 N 天，包含今天）追赶落库，降低部署中断导致“历史缺天”的风险
 

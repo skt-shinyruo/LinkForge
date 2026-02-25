@@ -96,7 +96,7 @@ public class AnalyticsFlushJob {
         }
     }
 
-    private void flushActiveMembers(LocalDate day, List<String> members) {
+    void flushActiveMembers(LocalDate day, List<String> members) {
         long startNs = System.nanoTime();
         List<MemberParts> parts = new ArrayList<>(members.size());
         for (String m : members) {
@@ -122,19 +122,49 @@ public class AnalyticsFlushJob {
                 """;
 
         List<Object[]> batch = new ArrayList<>(parts.size());
+        int skipped = 0;
         for (int i = 0; i < parts.size(); i++) {
             MemberParts p = parts.get(i);
-            long pv = safeLong(pvValues == null ? null : pvValues.get(i), 0L);
-            long uv = safeLong(i < uvValues.size() ? uvValues.get(i) : null, 0L);
+            String pvRaw = pvValues == null || i >= pvValues.size() ? null : pvValues.get(i);
+            Long uvRaw = uvValues == null || i >= uvValues.size() ? null : uvValues.get(i);
+
+            // flush 侧不允许“缺失 key -> 兜底 0 -> 覆盖写库”导致的统计回退/写回 0 数据破坏
+            long pv = safeLong(pvRaw, -1L);
+            long uv = safeLong(uvRaw, -1L);
+            if (pv <= 0 || uv <= 0) {
+                skipped++;
+                continue;
+            }
             batch.add(new Object[]{p.linkId, p.tenantId, Date.valueOf(day), pv, uv});
+        }
+
+        if (batch.isEmpty()) {
+            if (skipped > 0) {
+                log.info("flush stats batch skipped: day={}, scanned={}, skipped={}", day, parts.size(), skipped);
+            }
+            return;
         }
 
         try {
             jdbcTemplate.batchUpdate(sql, batch);
             long latencyMs = (System.nanoTime() - startNs) / 1_000_000;
-            log.info("flush stats batch ok: day={}, size={}, latencyMs={}", day, batch.size(), latencyMs);
+            log.info(
+                    "flush stats batch ok: day={}, written={}, scanned={}, skipped={}, latencyMs={}",
+                    day,
+                    batch.size(),
+                    parts.size(),
+                    skipped,
+                    latencyMs
+            );
         } catch (DataAccessException e) {
-            log.warn("flush stats batch failed: day={}, size={}, err={}", day, batch.size(), e.getMessage());
+            log.warn(
+                    "flush stats batch failed: day={}, written={}, scanned={}, skipped={}, err={}",
+                    day,
+                    batch.size(),
+                    parts.size(),
+                    skipped,
+                    e.getMessage()
+            );
         }
     }
 

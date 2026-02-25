@@ -87,12 +87,22 @@ public class LinkCacheService {
     }
 
     public void put(LinkMeta meta) {
+        tryPut(meta);
+    }
+
+    /**
+     * 尝试写入缓存；成功返回 true，失败返回 false（不抛异常）。
+     *
+     * <p>说明：提供给 outbox/job 等“需要感知写入是否成功以便重试”的场景。</p>
+     */
+    public boolean tryPut(LinkMeta meta) {
         if (meta == null || meta.code() == null || meta.code().isBlank()) {
-            return;
+            return true;
         }
         try {
             String raw = objectMapper.writeValueAsString(meta);
             redis.opsForValue().set(key(meta.code()), raw, Duration.ofSeconds(properties.getRedirect().getCacheTtlSeconds()));
+            return true;
         } catch (Exception e) {
             // 缓存写入失败不应影响主链路
             log.debug(
@@ -102,6 +112,7 @@ public class LinkCacheService {
                     meta == null ? null : meta.id(),
                     e.getMessage()
             );
+            return false;
         }
     }
 
@@ -124,13 +135,22 @@ public class LinkCacheService {
     }
 
     public void evict(String code) {
+        tryEvict(code);
+    }
+
+    /**
+     * 尝试驱逐缓存；成功返回 true，失败返回 false（不抛异常）。
+     */
+    public boolean tryEvict(String code) {
         if (code == null || code.isBlank()) {
-            return;
+            return true;
         }
         try {
             redis.delete(key(code));
+            return true;
         } catch (Exception e) {
             log.debug("cache evict failed: code={}, err={}", code, e.getMessage());
+            return false;
         }
     }
 

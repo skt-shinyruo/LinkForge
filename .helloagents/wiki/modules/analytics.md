@@ -56,7 +56,7 @@ Redirect Edge 链路做轻量写入，避免 MySQL 明细写放大。
 - **实现约束：** flush 任务以 active-set 为输入，增量批量化处理，避免 `SCAN stats:pv:*`
 - **多实例治理：** flush 作业通过 ShedLock（Redis）互斥，水平扩容时确保同一时刻仅 1 个实例执行，避免重复扫描/重复写库放大
 - **可追赶回补：** 支持按回补窗口（最近 N 天，包含今天）追赶 flush（配置：`app.analytics.flush-backfill-days`，默认 7）
-- **TTL 与数据窗口：** Redis 侧 `stats:*` key 会设置统一 TTL（配置：`app.analytics.redis-key-ttl-days`）。当 flush 停摆超过 TTL 时，Redis 侧统计数据可能已过期，无法再回补（best-effort 语义）。
+- **TTL 与数据窗口：** Redis 侧 day 级 `stats:*` key 统一采用“绝对过期时间”（按 `day + ttlDays` 的 UTC 00:00 `EXPIREAT`，配置：`app.analytics.redis-key-ttl-days`），避免活跃索引续期导致 key 过期语义不一致。当 flush 停摆超过 TTL 时，Redis 侧统计数据可能已过期，无法再回补（best-effort 语义）。同时 flush 遇到缺失/过期 key 时会跳过写库，避免 pv/uv “写回 0”覆盖已有数据。
 
 ---
 

@@ -180,6 +180,32 @@ link_tags（关联表）：
 
 ---
 
+### 2.10 link_cache_outbox（短链缓存刷新 outbox）
+
+> 用于保证“短链管理侧更新 DB 后，对应 Redis 缓存最终一致可追赶”，覆盖 commit 后进程崩溃/短暂缓存不可用等场景。
+>
+> 语义：对某个 `code` 触发一次 REFRESH（消费时按 DB 当前状态决定写入或驱逐缓存）。
+
+| 字段 | 类型 | 约束 | 描述 |
+|------|------|------|------|
+| code | varchar(32) | PK | 短码（全局唯一；用作天然去重/合并 key） |
+| status | varchar(16) | not null | PENDING / DONE |
+| available_at | datetime | not null | 可执行时间（用于退避重试） |
+| attempts | int | not null | 重试次数 |
+| last_error | varchar(512) | null | 最近一次失败原因（截断） |
+| processed_at | datetime | null | 最近一次成功处理时间 |
+| created_at | datetime | not null | 创建时间 |
+| updated_at | datetime | not null | 更新时间 |
+
+索引：
+- `idx_lco_status_available_at`（status, available_at）
+- `idx_lco_status_processed_at`（status, processed_at）— 用于 DONE 清理
+
+运维：
+- DONE 清理：API Service 定时按“保留 N 天”删除 `status='DONE' AND processed_at < now - N days` 的行，避免 outbox 表无限增长（可通过环境变量配置保留天数与每轮删除上限）。
+
+---
+
 ## 3. 统计实现建议（与表配套）
 
 - Redirect 链路只做轻量写入：

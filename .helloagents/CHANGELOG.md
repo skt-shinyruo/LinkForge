@@ -19,6 +19,7 @@
 - 统计增强：新增维度按天聚合（referer/language/ua/os/device/utm_*）与访问明细事件（Redis Stream → MySQL 短期留存），并新增统计查询接口 `/api/v1/stats/links/{id}/dimensions` 与 `/api/v1/stats/links/{id}/events`
 - 调度治理：API Service 引入 ShedLock（Redis）对 flush/dim flush/retention 等定时作业做多实例互斥，避免水平扩容导致重复跑任务/重复写库放大
 - 统计落库：flush 支持可配置回补窗口（`app.analytics.flush-backfill-days`，默认 7），降低部署中断导致“历史缺天”的风险
+- 统计修复：Redis day 级 key 统一采用绝对过期时间（UTC 00:00），flush 遇到缺失 key 时跳过写库，避免 pv/uv “写回 0”覆盖已有数据
 - 访问明细：事件 ingest consumer 稳定化（可配置 `app.analytics.events.consumer-name`）并支持 pending reclaim（`XPENDING + XCLAIM`），避免 consumer 漂移/下线导致长期积压
 - 修复：访问明细事件 `occurred_at` 写入/查询统一使用 UTC 语义（避免 MySQL `DATETIME` + `Timestamp` 时区偏移导致 `/events` 查询为空）
 - 安全与一致性：统一错误响应（`ApiResponse + requestId`）、缺失认证主体返回 401；Service 层引入 tenant guard 防越权
@@ -31,6 +32,28 @@
 - Redirect：Edge `/r/**` 增加短码格式快速拒绝 + 短码不存在负缓存（可配置 `app.redirect.not-found-cache-ttl-seconds`），降低缓存穿透导致的 MySQL 回源放大风险
 - 管理后台：短链创建/编辑表单补齐跳转策略配置项（状态码、预览页、Query 透传与 allowlist、不可用落地页）
 - 生命周期治理：短链归档/恢复/删除；用户启用/禁用/重置密码；API Key 启用/禁用/轮换；管理后台对齐（customCode/expiresAt/tags/归档筛选）
+
+## [0.1.3] - 2026-02-25
+
+### 改进
+- **[shortlink]**: link_cache_outbox 增加 DONE 清理策略与可观测指标（PENDING 积压、最老 available_at 滞留），便于监控与告警
+
+## [0.1.2] - 2026-02-25
+
+### 修复
+- **[shortlink]**: 引入持久化 outbox + 消费 job（`link_cache_outbox`），覆盖 commit 后崩溃/Redis 短暂不可用导致的缓存刷新丢失，保证最终一致
+  - 方案: [202602251605_shortlink-cache-outbox](archive/2026-02/202602251605_shortlink-cache-outbox/)
+  - 决策: shortlink-cache-outbox#D001(持久化 outbox + job 兜底最终一致)
+
+### 改进
+- **[infra]**: 调度开关 `app.scheduling.enabled`（默认 true；测试默认 false），便于在特定环境禁用所有 `@Scheduled` 作业并提升测试稳定性
+
+## [0.1.1] - 2026-02-25
+
+### 修复
+- **[shortlink]**: 短链管理侧缓存更新延后到事务提交后（AFTER_COMMIT），避免 DB 回滚污染缓存与提交前驱逐导致旧值回填
+  - 方案: [202602251453_shortlink-cache-after-commit](archive/2026-02/202602251453_shortlink-cache-after-commit/)
+  - 决策: shortlink-cache-after-commit#D001(事务提交后再写/驱逐短链缓存)
 
 ## [0.1.0] - 2026-02-18
 

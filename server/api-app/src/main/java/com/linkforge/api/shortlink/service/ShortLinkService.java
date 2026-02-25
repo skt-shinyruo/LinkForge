@@ -4,6 +4,8 @@ import com.linkforge.platform.api.BusinessException;
 import com.linkforge.platform.api.ErrorCode;
 import com.linkforge.platform.config.AppProperties;
 import com.linkforge.platform.id.SnowflakeIdGenerator;
+import com.linkforge.platform.tx.AfterCommit;
+import com.linkforge.api.shortlink.cache.LinkCacheOutboxRepository;
 import com.linkforge.api.security.TenantGuard;
 import com.linkforge.platform.util.Base62;
 import com.linkforge.redirect.service.LinkCacheService;
@@ -51,6 +53,7 @@ public class ShortLinkService {
     private final TagRepository tagRepository;
     private final LinkTagRepository linkTagRepository;
     private final LinkCacheService linkCacheService;
+    private final LinkCacheOutboxRepository linkCacheOutboxRepository;
     private final AppProperties appProperties;
     private final UrlValidator urlValidator;
     private final TenantGuard tenantGuard;
@@ -62,6 +65,7 @@ public class ShortLinkService {
             TagRepository tagRepository,
             LinkTagRepository linkTagRepository,
             LinkCacheService linkCacheService,
+            LinkCacheOutboxRepository linkCacheOutboxRepository,
             AppProperties appProperties,
             UrlValidator urlValidator,
             TenantGuard tenantGuard,
@@ -72,6 +76,7 @@ public class ShortLinkService {
         this.tagRepository = tagRepository;
         this.linkTagRepository = linkTagRepository;
         this.linkCacheService = linkCacheService;
+        this.linkCacheOutboxRepository = linkCacheOutboxRepository;
         this.appProperties = appProperties;
         this.urlValidator = urlValidator;
         this.tenantGuard = tenantGuard;
@@ -110,7 +115,9 @@ public class ShortLinkService {
         e.setCreatedBy(createdBy);
         shortLinkRepository.save(e);
         setTags(tenantId, e.getId(), req.tags());
-        linkCacheService.put(toMeta(e));
+        linkCacheOutboxRepository.enqueueRefresh(e.getCode());
+        LinkMeta meta = toMeta(e);
+        AfterCommit.run(() -> linkCacheService.put(meta));
         return toDto(tenantId, e, loadTagsByLinkId(e.getId()));
     }
 
@@ -139,7 +146,9 @@ public class ShortLinkService {
             shortLinkRepository.save(e);
         }
 
-        linkCacheService.evict(e.getCode());
+        String code = e.getCode();
+        linkCacheOutboxRepository.enqueueRefresh(code);
+        AfterCommit.run(() -> linkCacheService.evict(code));
         return toDto(tenantId, e, loadTagsByLinkId(linkId));
     }
 
@@ -154,8 +163,13 @@ public class ShortLinkService {
             shortLinkRepository.save(e);
         }
 
-        linkCacheService.evict(e.getCode());
-        linkCacheService.put(toMeta(e));
+        String code = e.getCode();
+        linkCacheOutboxRepository.enqueueRefresh(code);
+        LinkMeta meta = toMeta(e);
+        AfterCommit.run(() -> {
+            linkCacheService.evict(code);
+            linkCacheService.put(meta);
+        });
         return toDto(tenantId, e, loadTagsByLinkId(linkId));
     }
 
@@ -169,8 +183,9 @@ public class ShortLinkService {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "删除前请先归档（可避免误删）");
         }
 
-        // 先驱逐缓存，避免短时间内 Edge 继续命中
-        linkCacheService.evict(e.getCode());
+        String code = e.getCode();
+        linkCacheOutboxRepository.enqueueRefresh(code);
+        AfterCommit.run(() -> linkCacheService.evict(code));
 
         // 清理关联（标签）
         linkTagRepository.deleteAllByIdLinkId(linkId);
@@ -276,10 +291,16 @@ public class ShortLinkService {
             setTags(tenantId, linkId, req.tags());
         }
 
-        if (needEvict) {
-            linkCacheService.evict(e.getCode());
-        }
-        linkCacheService.put(toMeta(e));
+        String code = e.getCode();
+        linkCacheOutboxRepository.enqueueRefresh(code);
+        LinkMeta meta = toMeta(e);
+        boolean evict = needEvict;
+        AfterCommit.run(() -> {
+            if (evict) {
+                linkCacheService.evict(code);
+            }
+            linkCacheService.put(meta);
+        });
         return toDto(tenantId, e, loadTagsByLinkId(linkId));
     }
 

@@ -12,8 +12,9 @@
 - 前端性能：统计趋势图拆分多卡片并支持按需展示（点击“显示图表”后再加载图表 chunk）
 - Redirect：新增 k6 压测脚本与本地基线结果记录（`bench/redirect/`）
 - 部署：`deploy/docker-compose.yml` 增加 MySQL/Redis healthcheck + server 重启策略，并将 Redis 暴露端口调整为 6380（避免 6379 冲突）
-- 后端架构：拆分为 API Service（`/api/v1/**`）与 Redirect Edge Service（`/r/**`），并抽取 `server/shared` 作为跨服务 SSOT
-- 后端架构：落地 package ownership（`com.linkforge.api.*` / `com.linkforge.edge.*` / shared 契约），消除跨模块 split package；CI 增加 split package 检测（`server/tools/check_split_packages.py`）（package-ownership-refactor#D001）
+- 后端架构：拆分为 API Service（`/api/v1/**`）与 Redirect Edge Service（`/r/**`），并抽取 `server/platform` 作为跨服务 SSOT
+- 后端架构：落地 package ownership（`com.linkforge.api.*` / `com.linkforge.edge.*` / shared 契约），消除跨模块 split package；CI 增加 split package 检测（`server/tooling/check_split_packages.py`）（package-ownership-refactor#D001）
+- 构建与命名：重命名后端模块目录（`api` / `edge` / `platform` / `tooling`），并同步更新 Dockerfile/CI/文档（Maven artifactId 保持不变）
 - 构建基线：后端 Java 版本基线调整为 17（与当前开发/测试环境对齐；目标仍可升级到 21）
 - 统计链路：Redirect Edge 轻量写 Redis；API Service 的 flush job 改为 active-set 增量驱动（避免全量 `SCAN stats:pv:*`）
 - 统计增强：新增维度按天聚合（referer/language/ua/os/device/utm_*）与访问明细事件（Redis Stream → MySQL 短期留存），并新增统计查询接口 `/api/v1/stats/links/{id}/dimensions` 与 `/api/v1/stats/links/{id}/events`
@@ -32,6 +33,13 @@
 - Redirect：Edge `/r/**` 增加短码格式快速拒绝 + 短码不存在负缓存（可配置 `app.redirect.not-found-cache-ttl-seconds`），降低缓存穿透导致的 MySQL 回源放大风险
 - 管理后台：短链创建/编辑表单补齐跳转策略配置项（状态码、预览页、Query 透传与 allowlist、不可用落地页）
 - 生命周期治理：短链归档/恢复/删除；用户启用/禁用/重置密码；API Key 启用/禁用/轮换；管理后台对齐（customCode/expiresAt/tags/归档筛选）
+
+## [0.1.4] - 2026-02-26
+
+### 修复
+- **[docs]**: 修复知识库 Mermaid 图表语法，兼容 Mermaid v10.9.5（统一 `/r/{code}`→`/r/:code`；必要时对含括号/特殊字符的 label 引号化）
+  - 方案: [202602261140_fix-mermaid-syntax](archive/2026-02/202602261140_fix-mermaid-syntax/)
+  - 决策: fix-mermaid-syntax#D001(Flowchart 标签语法标准化)
 
 ## [0.1.3] - 2026-02-25
 

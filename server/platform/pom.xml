@@ -11,9 +11,9 @@
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>linkforge-shared</artifactId>
-    <name>linkforge-shared</name>
-    <description>LinkForge shared library (SSOT)</description>
+    <artifactId>linkforge-platform-shared</artifactId>
+    <name>linkforge-platform-shared</name>
+    <description>LinkForge platform shared library (SSOT)</description>
 
     <dependencies>
         <dependency>

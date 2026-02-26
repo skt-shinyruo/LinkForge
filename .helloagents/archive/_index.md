@@ -7,6 +7,9 @@
 
 | 时间戳 | 名称 | 类型 | 涉及模块 | 决策 | 结果 |
 |--------|------|------|---------|------|------|
+| 202602261140 | fix-mermaid-syntax | - | - | - | ✅完成 |
+| 202602252307 | rename-server-modules-minimal | - | - | - | ✅完成 |
+| 202602252042 | shortlink-core-gap-analysis | - | - | - | ✅完成 |
 | 202602242331 | package-ownership-refactor | - | - | package-ownership-refactor#D001 | ✅完成 |
 | 202602251453 | shortlink-cache-after-commit | - | - | shortlink-cache-after-commit#D001 | ✅完成 |
 | 202602251605 | shortlink-cache-outbox | - | - | shortlink-cache-outbox#D001 | ✅完成 |

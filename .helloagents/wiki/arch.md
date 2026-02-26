@@ -2,11 +2,11 @@
 
 ## 1. 总体架构（API Service + Redirect Edge Service）
 
-LinkForge 将后端拆分为两个可独立部署的 Spring Boot 服务，并通过 `shared` 模块共享跨服务 SSOT（错误码/响应体/RequestId/配置约定等）。
+LinkForge 将后端拆分为两个可独立部署的 Spring Boot 服务，并通过 `platform` 模块共享跨服务 SSOT（错误码/响应体/RequestId/配置约定等）。
 
 ```mermaid
 flowchart TD
-    U[公网访问者/浏览器] -->|GET /r/{code}| EDGE[Redirect Edge Service<br/>Spring Boot :8081]
+    U[公网访问者/浏览器] -->|GET /r/:code| EDGE[Redirect Edge Service<br/>Spring Boot :8081]
     A[租户用户/管理员] -->|Web| W[Admin UI<br/>Vue3 + Nginx :80]
     W -->|/api/v1/*| API[API Service<br/>Spring Boot :8080]
     W -->|/r/*| EDGE
@@ -20,13 +20,13 @@ flowchart TD
     API -->|定时 Flush（active-set 增量）| DB
 
     %% Future (optional)
-    Redis -.可选扩展.-> MQ[(Kafka / MQ)]
-    MQ -.可选扩展.-> OLAP[(ClickHouse / ES)]
+    Redis -. 可选扩展 .-> MQ[(Kafka / MQ)]
+    MQ -. 可选扩展 .-> OLAP[(ClickHouse / ES)]
 ```
 
 ### 1.1 边界与职责（核心约束）
 
-| 边界 | API Service（`server/api-app`） | Redirect Edge Service（`server/edge-app`） | shared（`server/shared`） |
+| 边界 | API Service（`server/api`） | Redirect Edge Service（`server/edge`） | platform（`server/platform`） |
 |------|-------------------------------|-------------------------------------------|---------------------------|
 | 路由 | `/api/v1/**` | `/r/**` | 不对外暴露路由 |
 | 主要职责 | IAM、短链 CRUD、OpenAPI、统计查询、统计落库（flush job） | 短链解析与跳转、缓存治理、轻量统计写入 | 响应体与错误码、异常、RequestId、统一配置与安全基础类型 |
@@ -34,7 +34,7 @@ flowchart TD
 | 性能目标 | 管理后台优先正确性与安全 | 跳转链路优先低延迟与稳定性 | 作为 SSOT，优先稳定与一致性 |
 
 补充约束（代码组织 / 包归属）：
-- **shared 是“可复用能力/契约”的唯一归属**：例如 `com.linkforge.platform.*`、`com.linkforge.redirect.*`（`LinkMeta/LinkCacheService`）、`com.linkforge.analytics.*`（`AnalyticsKeys` 作为 Redis key 契约）。
+- **platform 是“可复用能力/契约”的唯一归属**：例如 `com.linkforge.platform.*`、`com.linkforge.redirect.*`（`LinkMeta/LinkCacheService`）、`com.linkforge.analytics.*`（`AnalyticsKeys` 作为 Redis key 契约）。
 - **应用侧实现必须落入应用前缀包**：
   - API Service：`com.linkforge.api.*`（controller/service/job/config/security 等）
   - Edge Service：`com.linkforge.edge.*`（controller/service/risk/net 等）
@@ -125,7 +125,7 @@ sequenceDiagram
 - **统计 flush 可控性（P1/P2）**：`AnalyticsFlushJob` 对 UV 的 `PFCOUNT` 查询改为 pipeline 降低 Redis RTT；维度 flush 增加“单次按天处理活跃链接数上限”以控制扫描成本。
 - **契约显式化（P2）**：将 `stats:*` Redis key 约定提升为 public contract（`AnalyticsKeys`），并用单测锁定 key 格式，避免跨模块隐式耦合。
 - **OpenAPI 写热点治理（P2）**：API Key 认证路径对 `last_used_at` 采用节流写回（默认 300s），避免高 QPS 下 DB 写放大。
-- **配置校验去重（P2）**：API/Edge 启动期配置校验的公共规则抽取到 shared（`StartupValidation`），减少长期漂移点。
+- **配置校验去重（P2）**：API/Edge 启动期配置校验的公共规则抽取到 platform（`StartupValidation`），减少长期漂移点。
 - **工程卫生（P2）**：Maven `target/` 构建产物不应入库，统一通过 `.gitignore` 忽略并清理。
 - **多实例安全护栏（M0/P0）**：在 `prod` 或 `app.strict-config=true` 下，启动期禁止 Snowflake 使用默认 `workerId/datacenterId=1/1`，避免水平扩容时出现 ID 冲突（主键冲突/数据错写）。
 
@@ -141,6 +141,6 @@ sequenceDiagram
 | ADR-002 | Redirect 采用 Redis Cache-aside，默认 302 | 2026-02-18 | ✅Adopted | redirect | [how.md](../history/2026-02/202602182227_shortlink_system_mvp/how.md) |
 | ADR-003 | 统计采用 Redis 聚合 + 定时落库（按天） | 2026-02-18 | ✅Adopted | analytics | [how.md](../history/2026-02/202602182227_shortlink_system_mvp/how.md) |
 | ADR-004 | 多租户隔离采用 tenant_id 强制注入 | 2026-02-18 | ✅Adopted | iam / shortlink | [how.md](../history/2026-02/202602182227_shortlink_system_mvp/how.md) |
-| ADR-005 | 后端拆分 API/Edge + shared SSOT；统计 flush 改为 active-set 增量驱动 | 2026-02-19 | ✅Adopted | api-service / redirect-edge / analytics | [how.md](../history/2026-02/202602191426_edge_api_split_refactor/how.md) |
+| ADR-005 | 后端拆分 API/Edge + platform SSOT；统计 flush 改为 active-set 增量驱动 | 2026-02-19 | ✅Adopted | api / edge / analytics | [how.md](../history/2026-02/202602191426_edge_api_split_refactor/how.md) |
 | ADR-006 | Redirect 不可用场景按 Accept 输出 HTML（仅 /r/**） | 2026-02-20 | ✅Adopted | redirect | [how.md](../history/2026-02/202602201026_redirect_experience_control/how.md) |
 | ADR-007 | Query 透传默认 OFF/ALLOWLIST（安全默认），按链接可覆盖 | 2026-02-20 | ✅Adopted | redirect / shortlink | [how.md](../history/2026-02/202602201026_redirect_experience_control/how.md) |

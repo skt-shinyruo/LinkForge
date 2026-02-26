@@ -128,10 +128,10 @@ Redirect Edge 链路做轻量写入，避免 MySQL 明细写放大。
 见 `.helloagents/wiki/data.md`。
 
 ## Dependencies
-- redirect-edge（采集入口）
-- api-service（flush job + 报表查询 API）
+- edge（采集入口）
+- api（flush job + 报表查询 API）
 - shortlink（短链维度）
-- shared（Redis key 契约 + 平台基础能力：Redis/MySQL、调度、幂等、错误处理）
+- platform（Redis key 契约 + 平台基础能力：Redis/MySQL、调度、幂等、错误处理）
 
 ## Known Issues / TODO（已记录，待后续演进）
 - active-set “增量”仍是“每轮扫描全量 active-set”，规模上来会变重；下一步建议将活跃索引改为可消费队列/Stream，或 flush 后按桶 SREM/分片集合

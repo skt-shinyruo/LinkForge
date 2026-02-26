@@ -42,8 +42,8 @@ docker compose --env-file .env up --build
 cd server
 mvn test
 # 需要分别启动 API 与 Edge（两个终端）
-mvn -pl api-app spring-boot:run
-mvn -pl edge-app spring-boot:run
+mvn -pl api spring-boot:run
+mvn -pl edge spring-boot:run
 ```
 
 前端：

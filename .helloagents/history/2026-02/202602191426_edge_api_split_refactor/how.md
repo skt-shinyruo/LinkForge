@@ -25,8 +25,8 @@
 
 ```mermaid
 flowchart TD
-    U[Public Browser] -->|GET /r/{code}| G[Ingress / Nginx]
-    A[Admin UI (Vue)] -->|/api/v1/*| G
+    U[Public Browser] -->|GET /r/:code| G[Ingress / Nginx]
+    A["Admin UI (Vue)"] -->|/api/v1/*| G
 
     G -->|/r/*| EDGE[Redirect Edge Service]
     G -->|/api/*| API[API Service]
@@ -37,7 +37,7 @@ flowchart TD
 
     API --> DB
     API --> R
-    API -->|flush job (scheduled)| DB
+    API -->|"flush job (scheduled)"| DB
 
     %% Optional future
     R -. event stream (optional) .-> MQ[(Kafka/MQ)]
@@ -140,4 +140,3 @@ flowchart TD
   - docker-compose：新增 `server-api` 与 `server-edge` 两服务，分别暴露端口（例如 8080/8081）
   - web/nginx：按路径反代到不同服务
   - 迁移策略：先双跑（Edge 影子部署）→ 灰度切流 `/r/**` → 完全切换 → 清理 API 服务中的 redirect 路由
-

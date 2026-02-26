@@ -22,7 +22,7 @@ jobs:
           cache: maven
 
       - name: Check split packages (server)
-        run: python3 server/tools/check_split_packages.py
+        run: python3 server/tooling/check_split_packages.py
 
       - name: Test (server)
         working-directory: server

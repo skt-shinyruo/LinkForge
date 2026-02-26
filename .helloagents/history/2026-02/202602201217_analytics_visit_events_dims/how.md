@@ -43,7 +43,7 @@
 
 ```mermaid
 flowchart TD
-  A[Redirect Edge /r/{code}] -->|PV/UV INCR & HLL| R[(Redis)]
+  A[Redirect Edge /r/:code] -->|PV/UV INCR & HLL| R[(Redis)]
   A -->|XADD visit event| S[(Redis Stream)]
   B[API Service Job] -->|Flush PV/UV| M[(MySQL link_stats_daily)]
   B -->|Flush dims| D[(MySQL link_stats_dim_daily)]

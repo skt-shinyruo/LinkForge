@@ -11,14 +11,14 @@
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>linkforge-api-app</artifactId>
-    <name>linkforge-api-app</name>
+    <artifactId>linkforge-api-service</artifactId>
+    <name>linkforge-api-service</name>
     <description>LinkForge API Service (Spring Boot)</description>
 
     <dependencies>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-shared</artifactId>
+            <artifactId>linkforge-platform-shared</artifactId>
             <version>${project.version}</version>
         </dependency>
 

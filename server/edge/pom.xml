@@ -11,14 +11,14 @@
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>linkforge-edge-app</artifactId>
-    <name>linkforge-edge-app</name>
+    <artifactId>linkforge-redirect-edge</artifactId>
+    <name>linkforge-redirect-edge</name>
     <description>LinkForge Redirect Edge Service (Spring Boot)</description>
 
     <dependencies>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-shared</artifactId>
+            <artifactId>linkforge-platform-shared</artifactId>
             <version>${project.version}</version>
         </dependency>
 

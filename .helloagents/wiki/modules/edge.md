@@ -1,4 +1,4 @@
-# redirect-edge
+# edge
 
 ## Purpose
 提供短码解析与跳转服务（`/r/**`），并以低延迟方式采集统计信息（PV/UV/可选维度/可选访问事件），作为可独立部署的 Redirect Edge Service。
@@ -12,7 +12,7 @@
 ## Specifications
 
 ### Requirement: redirect-resolve（短码解析）
-**Module:** redirect-edge
+**Module:** edge
 将短码解析为原始 URL，并处理启用/过期状态。
 
 #### Scenario: redirect-302（默认 302 跳转）
@@ -33,7 +33,7 @@
 ---
 
 ### Requirement: redirect-experience-control（跳转体验与行为可控性）
-**Module:** redirect-edge
+**Module:** edge
 为浏览器用户提供更友好的不可用体验，并支持按链接配置跳转行为（状态码/预览页/query 透传策略）。
 
 #### Scenario: unavailable-404-html（短码不存在）
@@ -65,7 +65,7 @@
 - 冲突策略：目标 URL 已存在同名参数时不覆盖（目标优先）
 
 ### Requirement: redirect-cache（缓存）
-**Module:** redirect-edge
+**Module:** edge
 优先读 Redis 缓存，缓存未命中再回源 MySQL。
 
 #### Scenario: cache-hit（命中）
@@ -78,7 +78,7 @@
 ---
 
 ### Requirement: redirect-benchmark（压测）
-**Module:** redirect-edge
+**Module:** edge
 提供 Redirect 链路的基线压测脚本与结果记录，便于容量评估与回归对比。
 
 #### Scenario: k6-baseline
@@ -88,7 +88,7 @@
 ---
 
 ### Requirement: edge-abuse-protection（防滥用 / 可信代理链 / 风控）
-**Module:** redirect-edge
+**Module:** edge
 为公网跳转链路提供基础保护：可信代理链校验、安全取 IP、IP 黑白名单、限流与 bot 降频策略。
 
 #### Scenario: trusted-proxy-chain（可信代理链）

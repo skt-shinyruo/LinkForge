@@ -9,7 +9,7 @@
 - 后端：
   - **现状构建基线：Java 17**（`server/pom.xml`）
   - 目标：Java 21（当运行/CI 环境具备时可上调）
-  - Spring Boot 3.2.x，Maven 多模块（`shared` + `api-app` + `edge-app`）
+  - Spring Boot 3.2.x，Maven 多模块（`platform` + `api` + `edge`）
 - 鉴权：
   - 管理后台/自助创建：JWT（`Authorization: Bearer <token>`）
   - 可选：JWT **HttpOnly Cookie** 模式（适用于更安全的浏览器会话）
@@ -25,9 +25,9 @@
 ## 2. 仓库目录建议
 
 - `server/`：后端（Maven 多模块）
-  - `server/shared/`：跨服务 SSOT（`ApiResponse`、`ErrorCode`、`BusinessException`、RequestId、配置约定等）
-  - `server/api-app/`：API Service（`/api/v1/**`）
-  - `server/edge-app/`：Redirect Edge Service（`/r/**`）
+  - `server/platform/`：跨服务 SSOT（`ApiResponse`、`ErrorCode`、`BusinessException`、RequestId、配置约定等）
+  - `server/api/`：API Service（`/api/v1/**`）
+  - `server/edge/`：Redirect Edge Service（`/r/**`）
   - `server/Dockerfile.api`、`server/Dockerfile.edge`：分别构建两个后端镜像
 - `web/`：Vue 管理后台
 - `deploy/`：Docker Compose、环境示例
@@ -101,8 +101,8 @@
   - 跳转：`http://localhost/r/{code}`
 
 ### 7.2 后端本地运行（IDE / Maven）
-- API Service：`server/api-app`（默认 8080）
-- Edge Service：`server/edge-app`（默认 8081）
+- API Service：`server/api`（默认 8080）
+- Edge Service：`server/edge`（默认 8081）
 - 根目录聚合测试：`cd server && mvn test`
 
 ### 7.3 关键环境变量（与 deploy 对齐）

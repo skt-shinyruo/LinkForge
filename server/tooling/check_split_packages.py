@@ -66,8 +66,8 @@ def main(argv: list[str]) -> int:
     )
     parser.add_argument(
         "--modules",
-        default="shared,api-app,edge-app",
-        help="Comma-separated server modules to scan (default: shared,api-app,edge-app).",
+        default="platform,api,edge",
+        help="Comma-separated server modules to scan (default: platform,api,edge).",
     )
     args = parser.parse_args(argv)
 
@@ -96,4 +96,3 @@ def main(argv: list[str]) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main(sys.argv[1:]))
-

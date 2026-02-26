@@ -145,7 +145,7 @@ Redirect Edge 的短链解析链路依赖 Redis 缓存（`LinkCacheService`）�
 
 ## Dependencies
 - iam（多租户与权限）
-- redirect-edge（缓存预热/更新）
+- edge（缓存预热/更新）
 - analytics（统计查询）
 
 ## Change History

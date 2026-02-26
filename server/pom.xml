@@ -19,9 +19,9 @@
     <description>LinkForge backend multi-module build (API + Edge + shared)</description>
 
     <modules>
-        <module>shared</module>
-        <module>api-app</module>
-        <module>edge-app</module>
+        <module>platform</module>
+        <module>api</module>
+        <module>edge</module>
     </modules>
 
     <properties>

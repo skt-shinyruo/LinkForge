@@ -47,7 +47,7 @@
 ```mermaid
 flowchart LR
     subgraph Public
-      B[Browser] -->|GET /r/{code}| R[Redirect]
+      B[Browser] -->|GET /r/:code| R[Redirect]
     end
 
     subgraph Admin
@@ -168,4 +168,3 @@ CREATE TABLE link_stats_daily (
 - **Deployment:**
   - Docker Compose：MySQL + Redis + server + web
   - CI：后端编译/测试、前端构建、镜像构建（可选）
-

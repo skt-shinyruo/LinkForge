@@ -32,8 +32,8 @@ LinkForge 旨在提供一个面向公网的自助短链平台，支持多租户�
 
 | 模块 | 责任 | 状态 | 文档 |
 |------|------|------|------|
-| api-service | 管理后台/API：`/api/v1/**`（IAM、ShortLink、OpenAPI、统计查询/落库） | 🚧In Development | [modules/api-service.md](modules/api-service.md) |
-| redirect-edge | 跳转边缘服务：`/r/**`（解析、缓存治理、轻量统计写入） | 🚧In Development | [modules/redirect-edge.md](modules/redirect-edge.md) |
+| api | 管理后台/API：`/api/v1/**`（IAM、ShortLink、OpenAPI、统计查询/落库） | 🚧In Development | [modules/api.md](modules/api.md) |
+| edge | 跳转边缘服务：`/r/**`（解析、缓存治理、轻量统计写入） | 🚧In Development | [modules/edge.md](modules/edge.md) |
 | iam | 多租户、用户、登录与权限（RBAC） | 🚧In Development | [modules/iam.md](modules/iam.md) |
 | shortlink | 短链创建/编辑/禁用、标签、有效期、批量导入导出 | 🚧In Development | [modules/shortlink.md](modules/shortlink.md) |
 | analytics | PV/UV 统计采集、聚合落库、报表查询 API | 🚧In Development | [modules/analytics.md](modules/analytics.md) |

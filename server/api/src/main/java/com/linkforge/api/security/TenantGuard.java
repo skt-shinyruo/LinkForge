@@ -1,7 +1,7 @@
 package com.linkforge.api.security;
 
-import com.linkforge.platform.api.BusinessException;
-import com.linkforge.platform.api.ErrorCode;
+import com.linkforge.contract.api.BusinessException;
+import com.linkforge.contract.api.ErrorCode;
 import org.springframework.stereotype.Component;
 
 /**

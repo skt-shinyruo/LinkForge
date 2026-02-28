@@ -1,7 +1,7 @@
 package com.linkforge.api.iam.web;
 
 import com.linkforge.api.iam.service.ApiKeyService;
-import com.linkforge.platform.api.ApiResponse;
+import com.linkforge.contract.api.ApiResponse;
 import com.linkforge.api.security.AuthContext;
 import com.linkforge.platform.web.RequestId;
 import jakarta.validation.Valid;

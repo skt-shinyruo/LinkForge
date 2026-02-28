@@ -1,7 +1,7 @@
 package com.linkforge.api.iam.web;
 
 import com.linkforge.api.iam.service.AuthService;
-import com.linkforge.platform.api.ApiResponse;
+import com.linkforge.contract.api.ApiResponse;
 import com.linkforge.platform.config.AppProperties;
 import com.linkforge.api.security.AuthPrincipal;
 import com.linkforge.platform.web.RequestId;

@@ -21,6 +21,11 @@
             <artifactId>linkforge-platform-shared</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-api-contract</artifactId>
+            <version>${project.version}</version>
+        </dependency>
 
         <dependency>
             <groupId>org.springframework.boot</groupId>

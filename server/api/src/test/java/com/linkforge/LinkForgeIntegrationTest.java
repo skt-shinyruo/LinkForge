@@ -6,7 +6,7 @@ import com.linkforge.api.analytics.service.AnalyticsDimensionFlushJob;
 import com.linkforge.api.analytics.service.AnalyticsEventIngestJob;
 import com.linkforge.api.analytics.service.AnalyticsFlushJob;
 import com.linkforge.api.LinkForgeApiApplication;
-import com.linkforge.platform.api.ErrorCode;
+import com.linkforge.contract.api.ErrorCode;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;

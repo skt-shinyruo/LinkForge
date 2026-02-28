@@ -2,8 +2,8 @@ package com.linkforge.edge.risk;
 
 import com.linkforge.edge.net.CidrBlock;
 import com.linkforge.edge.net.CidrBlocks;
-import com.linkforge.platform.api.ErrorCode;
 import com.linkforge.platform.config.AppProperties;
+import com.linkforge.edge.web.error.EdgeErrorCode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -163,7 +163,7 @@ public class EdgeRiskControl {
     public record Decision(
             boolean allowed,
             int httpStatus,
-            ErrorCode errorCode,
+            EdgeErrorCode errorCode,
             String message,
             Long retryAfterSeconds,
             String reasonCode
@@ -173,12 +173,11 @@ public class EdgeRiskControl {
         }
 
         static Decision forbidden(String reasonCode, String message) {
-            return new Decision(false, 403, ErrorCode.FORBIDDEN, message, null, reasonCode);
+            return new Decision(false, 403, EdgeErrorCode.FORBIDDEN, message, null, reasonCode);
         }
 
         static Decision tooManyRequests(String reasonCode, String message, Long retryAfterSeconds) {
-            return new Decision(false, 429, ErrorCode.TOO_MANY_REQUESTS, message, retryAfterSeconds, reasonCode);
+            return new Decision(false, 429, EdgeErrorCode.TOO_MANY_REQUESTS, message, retryAfterSeconds, reasonCode);
         }
     }
 }
-

@@ -1,8 +1,8 @@
 package com.linkforge.edge.redirect.service;
 
 import com.linkforge.edge.analytics.service.AnalyticsService;
-import com.linkforge.platform.api.BusinessException;
-import com.linkforge.platform.api.ErrorCode;
+import com.linkforge.edge.web.error.EdgeBusinessException;
+import com.linkforge.edge.web.error.EdgeErrorCode;
 import com.linkforge.platform.web.VisitInfo;
 import com.linkforge.redirect.service.LinkCacheService;
 import com.linkforge.redirect.service.LinkMeta;
@@ -54,7 +54,7 @@ public class RedirectService {
 
         LinkCacheService.LookupResult cached = linkCacheService.lookup(normalized);
         if (cached.notFound()) {
-            throw new BusinessException(ErrorCode.LINK_NOT_FOUND);
+            throw new EdgeBusinessException(EdgeErrorCode.LINK_NOT_FOUND);
         }
         if (cached.hit()) {
             return cached.meta();
@@ -65,7 +65,7 @@ public class RedirectService {
         if (e == null) {
             // 负缓存：避免随机短码扫描导致缓存穿透，把 MySQL 回源打穿
             linkCacheService.markNotFound(normalized);
-            throw new BusinessException(ErrorCode.LINK_NOT_FOUND);
+            throw new EdgeBusinessException(EdgeErrorCode.LINK_NOT_FOUND);
         }
 
         LinkMeta meta = new LinkMeta(
@@ -88,15 +88,15 @@ public class RedirectService {
 
     private static String normalizeAndValidateCode(String code) {
         if (code == null) {
-            throw new BusinessException(ErrorCode.LINK_NOT_FOUND);
+            throw new EdgeBusinessException(EdgeErrorCode.LINK_NOT_FOUND);
         }
         String v = code.trim();
         if (v.isBlank()) {
-            throw new BusinessException(ErrorCode.LINK_NOT_FOUND);
+            throw new EdgeBusinessException(EdgeErrorCode.LINK_NOT_FOUND);
         }
         // DB 约束：short_links.code 为 VARCHAR(32)
         if (v.length() > 32) {
-            throw new BusinessException(ErrorCode.LINK_NOT_FOUND);
+            throw new EdgeBusinessException(EdgeErrorCode.LINK_NOT_FOUND);
         }
         // 安全默认：仅允许字母数字，避免异常字符导致 key/日志/路由复杂度上升
         for (int i = 0; i < v.length(); i++) {
@@ -105,7 +105,7 @@ public class RedirectService {
                     || (ch >= 'A' && ch <= 'Z')
                     || (ch >= 'a' && ch <= 'z');
             if (!ok) {
-                throw new BusinessException(ErrorCode.LINK_NOT_FOUND);
+                throw new EdgeBusinessException(EdgeErrorCode.LINK_NOT_FOUND);
             }
         }
         return v;

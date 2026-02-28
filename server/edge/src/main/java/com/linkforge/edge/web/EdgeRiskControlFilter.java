@@ -1,8 +1,8 @@
 package com.linkforge.edge.web;
 
 import com.linkforge.edge.risk.EdgeRiskControl;
+import com.linkforge.edge.web.error.EdgeErrorResponseWriter;
 import com.linkforge.platform.config.AppProperties;
-import com.linkforge.platform.api.ApiErrorResponseWriter;
 import com.linkforge.platform.web.RequestId;
 import com.linkforge.platform.web.VisitInfo;
 import jakarta.servlet.FilterChain;
@@ -35,13 +35,13 @@ public class EdgeRiskControlFilter extends OncePerRequestFilter {
 
     private final EdgeClientIpResolver clientIpResolver;
     private final EdgeRiskControl riskControl;
-    private final ApiErrorResponseWriter errorResponseWriter;
+    private final EdgeErrorResponseWriter errorResponseWriter;
     private final AppProperties properties;
 
     public EdgeRiskControlFilter(
             EdgeClientIpResolver clientIpResolver,
             EdgeRiskControl riskControl,
-            ApiErrorResponseWriter errorResponseWriter,
+            EdgeErrorResponseWriter errorResponseWriter,
             AppProperties properties
     ) {
         this.clientIpResolver = clientIpResolver;
@@ -86,7 +86,7 @@ public class EdgeRiskControlFilter extends OncePerRequestFilter {
                 RequestId.get(),
                 visitInfo == null ? null : visitInfo.ip()
         );
-        errorResponseWriter.write(response, d.httpStatus(), d.errorCode(), d.message());
+        errorResponseWriter.write(request, response, d.httpStatus(), d.errorCode(), d.message());
     }
 
     private VisitInfo resolveVisitInfo(HttpServletRequest request) {

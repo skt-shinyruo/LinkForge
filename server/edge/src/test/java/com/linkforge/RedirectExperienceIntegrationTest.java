@@ -1,8 +1,8 @@
 package com.linkforge;
 
 import com.linkforge.edge.LinkForgeEdgeApplication;
-import com.linkforge.platform.api.BusinessException;
-import com.linkforge.platform.api.ErrorCode;
+import com.linkforge.edge.web.error.EdgeBusinessException;
+import com.linkforge.edge.web.error.EdgeErrorCode;
 import com.linkforge.redirect.service.LinkMeta;
 import com.linkforge.edge.redirect.service.RedirectService;
 import org.junit.jupiter.api.Test;
@@ -76,7 +76,7 @@ class RedirectExperienceIntegrationTest {
     @Test
     void should_return_404_html_when_link_not_found_and_accept_html() throws Exception {
         when(redirectService.resolve(anyString()))
-                .thenThrow(new BusinessException(ErrorCode.LINK_NOT_FOUND));
+                .thenThrow(new EdgeBusinessException(EdgeErrorCode.LINK_NOT_FOUND));
 
         mockMvc.perform(get("/r/missing").header(HttpHeaders.ACCEPT, "text/html"))
                 .andExpect(status().isNotFound())
@@ -88,12 +88,12 @@ class RedirectExperienceIntegrationTest {
     @Test
     void should_return_json_when_link_not_found_and_accept_not_html() throws Exception {
         when(redirectService.resolve(anyString()))
-                .thenThrow(new BusinessException(ErrorCode.LINK_NOT_FOUND));
+                .thenThrow(new EdgeBusinessException(EdgeErrorCode.LINK_NOT_FOUND));
 
         mockMvc.perform(get("/r/missing").header(HttpHeaders.ACCEPT, "application/json"))
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.code").value(ErrorCode.LINK_NOT_FOUND.getCode()));
+                .andExpect(jsonPath("$.code").value(EdgeErrorCode.LINK_NOT_FOUND.getCode()));
 
         verify(redirectService, never()).recordVisitIfAvailable(any(), any());
     }
@@ -237,7 +237,7 @@ class RedirectExperienceIntegrationTest {
         mockMvc.perform(get("/r/abc").header(HttpHeaders.ACCEPT, "application/json"))
                 .andExpect(status().isGone())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.code").value(ErrorCode.LINK_EXPIRED.getCode()));
+                .andExpect(jsonPath("$.code").value(EdgeErrorCode.LINK_EXPIRED.getCode()));
 
         verify(redirectService, never()).recordVisitIfAvailable(any(), any());
     }

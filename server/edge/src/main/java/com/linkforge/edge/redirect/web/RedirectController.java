@@ -1,8 +1,8 @@
 package com.linkforge.edge.redirect.web;
 
 import com.linkforge.platform.config.AppProperties;
-import com.linkforge.platform.api.BusinessException;
-import com.linkforge.platform.api.ErrorCode;
+import com.linkforge.edge.web.error.EdgeBusinessException;
+import com.linkforge.edge.web.error.EdgeErrorCode;
 import com.linkforge.platform.web.RequestId;
 import com.linkforge.platform.web.VisitInfo;
 import com.linkforge.edge.web.EdgeRiskControlFilter;
@@ -70,8 +70,8 @@ public class RedirectController {
                     logUnavailable(startNs, code, unavailable, visitInfo);
                     return resp;
                 }
-                // 非浏览器调用方保持 JSON 错误结构（由 GlobalExceptionHandler 处理）
-                throw new BusinessException(unavailable.toErrorCode());
+                // 非浏览器调用方保持 JSON 错误结构（由 EdgeGlobalExceptionHandler 处理）
+                throw new EdgeBusinessException(unavailable.toErrorCode());
             }
 
             // 预览页：仅浏览器请求展示，且未确认时不写统计
@@ -105,9 +105,9 @@ public class RedirectController {
                     visitInfo == null ? null : visitInfo.ip()
             );
             return new ResponseEntity<>(headers, status);
-        } catch (BusinessException e) {
+        } catch (EdgeBusinessException e) {
             long latencyMs = (System.nanoTime() - startNs) / 1_000_000;
-            if (isHtmlRequest(request) && e.getErrorCode() == ErrorCode.LINK_NOT_FOUND) {
+            if (isHtmlRequest(request) && e.getErrorCode() == EdgeErrorCode.LINK_NOT_FOUND) {
                 // 浏览器体验：短码不存在时返回 404 HTML 或跳转至全局落地页
                 ResponseEntity<?> resp = handleNotFoundHtml(code);
                 log.info(
@@ -571,11 +571,11 @@ public class RedirectController {
         DISABLED,
         EXPIRED;
 
-        ErrorCode toErrorCode() {
+        EdgeErrorCode toErrorCode() {
             return switch (this) {
-                case NOT_FOUND -> ErrorCode.LINK_NOT_FOUND;
-                case DISABLED -> ErrorCode.LINK_DISABLED;
-                case EXPIRED -> ErrorCode.LINK_EXPIRED;
+                case NOT_FOUND -> EdgeErrorCode.LINK_NOT_FOUND;
+                case DISABLED -> EdgeErrorCode.LINK_DISABLED;
+                case EXPIRED -> EdgeErrorCode.LINK_EXPIRED;
             };
         }
     }

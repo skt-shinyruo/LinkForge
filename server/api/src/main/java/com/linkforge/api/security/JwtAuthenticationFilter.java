@@ -1,7 +1,7 @@
 package com.linkforge.api.security;
 
-import com.linkforge.platform.api.ApiErrorResponseWriter;
-import com.linkforge.platform.api.ErrorCode;
+import com.linkforge.contract.api.ApiErrorResponseWriter;
+import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.platform.config.AppProperties;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;

@@ -1,8 +1,8 @@
 package com.linkforge.api.shortlink.web;
 
-import com.linkforge.platform.api.ApiResponse;
-import com.linkforge.platform.api.BusinessException;
-import com.linkforge.platform.api.ErrorCode;
+import com.linkforge.contract.api.ApiResponse;
+import com.linkforge.contract.api.BusinessException;
+import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.api.security.AuthContext;
 import com.linkforge.api.security.AuthPrincipal;
 import com.linkforge.platform.web.RequestId;

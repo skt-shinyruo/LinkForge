@@ -1,7 +1,7 @@
 package com.linkforge.api.shortlink.service;
 
-import com.linkforge.platform.api.BusinessException;
-import com.linkforge.platform.api.ErrorCode;
+import com.linkforge.contract.api.BusinessException;
+import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.platform.config.AppProperties;
 import com.linkforge.platform.id.SnowflakeIdGenerator;
 import com.linkforge.platform.tx.AfterCommit;

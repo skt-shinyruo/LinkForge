@@ -7,3 +7,7 @@ web/dist/
 
 # Local env
 deploy/.env
+
+# Git worktrees
+.worktrees/
+worktrees/

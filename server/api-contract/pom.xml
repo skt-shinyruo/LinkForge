@@ -18,7 +18,7 @@
     <dependencies>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-platform-shared</artifactId>
+            <artifactId>linkforge-platform-web</artifactId>
             <version>${project.version}</version>
         </dependency>
 
@@ -44,4 +44,3 @@
     </dependencies>
 
 </project>
-

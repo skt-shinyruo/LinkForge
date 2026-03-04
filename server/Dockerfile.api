@@ -7,6 +7,9 @@ WORKDIR /app
 
 COPY pom.xml /app/pom.xml
 COPY platform /app/platform
+COPY platform-web /app/platform-web
+COPY platform-redis /app/platform-redis
+COPY api-contract /app/api-contract
 COPY api /app/api
 COPY edge /app/edge
 

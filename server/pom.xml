@@ -20,6 +20,8 @@
 
     <modules>
         <module>platform</module>
+        <module>platform-web</module>
+        <module>platform-redis</module>
         <module>api-contract</module>
         <module>api</module>
         <module>edge</module>

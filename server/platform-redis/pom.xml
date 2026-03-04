@@ -11,27 +11,24 @@
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>linkforge-platform-shared</artifactId>
-    <name>linkforge-platform-shared</name>
-    <description>LinkForge platform shared library (SSOT)</description>
+    <artifactId>linkforge-platform-redis</artifactId>
+    <name>linkforge-platform-redis</name>
+    <description>LinkForge platform Redis runtime helpers (cache, serialization)</description>
 
     <dependencies>
         <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-platform-shared</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework</groupId>
-            <artifactId>spring-tx</artifactId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-configuration-processor</artifactId>
-            <optional>true</optional>
+            <artifactId>spring-boot-starter-json</artifactId>
         </dependency>
 
         <!-- test -->
@@ -40,12 +37,7 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
-        <dependency>
-            <groupId>com.tngtech.archunit</groupId>
-            <artifactId>archunit-junit5</artifactId>
-            <version>1.3.0</version>
-            <scope>test</scope>
-        </dependency>
     </dependencies>
 
 </project>
+

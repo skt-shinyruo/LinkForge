@@ -1,7 +1,7 @@
 package com.linkforge.analytics.application.job;
 
 import com.linkforge.contract.analytics.AnalyticsKeys;
-import com.linkforge.foundation.config.AppProperties;
+import com.linkforge.foundation.config.AnalyticsProperties;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,12 +28,12 @@ public class AnalyticsFlushJob {
 
     private final StringRedisTemplate redis;
     private final JdbcTemplate jdbcTemplate;
-    private final AppProperties properties;
+    private final AnalyticsProperties analyticsProperties;
 
-    public AnalyticsFlushJob(StringRedisTemplate redis, JdbcTemplate jdbcTemplate, AppProperties properties) {
+    public AnalyticsFlushJob(StringRedisTemplate redis, JdbcTemplate jdbcTemplate, AnalyticsProperties analyticsProperties) {
         this.redis = redis;
         this.jdbcTemplate = jdbcTemplate;
-        this.properties = properties;
+        this.analyticsProperties = analyticsProperties;
     }
 
     @Scheduled(fixedDelayString = "${APP_ANALYTICS_FLUSH_DELAY_MS:60000}")
@@ -75,7 +75,7 @@ public class AnalyticsFlushJob {
     }
 
     private int resolveBackfillDays() {
-        AppProperties.Analytics cfg = properties == null ? null : properties.getAnalytics();
+        AnalyticsProperties cfg = analyticsProperties;
         int days = cfg == null ? 2 : cfg.getFlushBackfillDays();
         if (days <= 0) {
             days = 1;

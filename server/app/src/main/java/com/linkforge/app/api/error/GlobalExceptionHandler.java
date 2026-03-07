@@ -1,6 +1,7 @@
 package com.linkforge.app.api.error;
 
 import com.linkforge.contract.api.ApiResponse;
+import com.linkforge.contract.api.AppErrorCode;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.web.RequestId;
@@ -21,7 +22,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusiness(BusinessException ex) {
-        ErrorCode ec = ex.getErrorCode();
+        AppErrorCode ec = ex.getErrorCode();
         ApiResponse<Void> body = ApiResponse.error(ec.getCode(), ex.getMessage(), RequestId.get());
         HttpStatus status = mapToHttpStatus(ec);
         return ResponseEntity.status(status).body(body);
@@ -67,32 +68,15 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
     }
 
-    private static HttpStatus mapToHttpStatus(ErrorCode ec) {
-        if (ec == ErrorCode.UNAUTHORIZED || ec == ErrorCode.INVALID_CREDENTIALS || ec == ErrorCode.API_KEY_INVALID) {
-            return HttpStatus.UNAUTHORIZED;
-        }
-        if (ec == ErrorCode.FORBIDDEN || ec == ErrorCode.TENANT_DISABLED || ec == ErrorCode.USER_DISABLED
-                || ec == ErrorCode.API_KEY_DISABLED) {
-            return HttpStatus.FORBIDDEN;
-        }
-        if (ec == ErrorCode.NOT_FOUND || ec == ErrorCode.LINK_NOT_FOUND) {
-            return HttpStatus.NOT_FOUND;
-        }
-        if (ec == ErrorCode.BAD_REQUEST || ec == ErrorCode.INVALID_URL) {
+    private static HttpStatus mapToHttpStatus(AppErrorCode ec) {
+        if (ec == null) {
             return HttpStatus.BAD_REQUEST;
         }
-        if (ec == ErrorCode.TOO_MANY_REQUESTS) {
-            return HttpStatus.TOO_MANY_REQUESTS;
+        int status = ec.getHttpStatus();
+        try {
+            return HttpStatus.valueOf(status);
+        } catch (Exception e) {
+            return HttpStatus.BAD_REQUEST;
         }
-        if (ec == ErrorCode.CODE_ALREADY_EXISTS) {
-            return HttpStatus.CONFLICT;
-        }
-        if (ec == ErrorCode.LINK_DISABLED || ec == ErrorCode.LINK_EXPIRED) {
-            return HttpStatus.GONE;
-        }
-        if (ec == ErrorCode.INTERNAL_ERROR) {
-            return HttpStatus.INTERNAL_SERVER_ERROR;
-        }
-        return HttpStatus.BAD_REQUEST;
     }
 }

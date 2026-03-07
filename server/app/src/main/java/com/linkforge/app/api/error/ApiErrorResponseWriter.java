@@ -2,7 +2,7 @@ package com.linkforge.app.api.error;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkforge.contract.api.ApiResponse;
-import com.linkforge.contract.api.ErrorCode;
+import com.linkforge.contract.api.AppErrorCode;
 import com.linkforge.foundation.web.RequestId;
 import com.linkforge.foundation.web.RequestIdFilter;
 import jakarta.servlet.http.HttpServletResponse;
@@ -27,11 +27,11 @@ public class ApiErrorResponseWriter {
         this.objectMapper = objectMapper;
     }
 
-    public void write(HttpServletResponse response, int httpStatus, ErrorCode errorCode) throws IOException {
+    public void write(HttpServletResponse response, int httpStatus, AppErrorCode errorCode) throws IOException {
         write(response, httpStatus, errorCode, errorCode.getDefaultMessage());
     }
 
-    public void write(HttpServletResponse response, int httpStatus, ErrorCode errorCode, String message) throws IOException {
+    public void write(HttpServletResponse response, int httpStatus, AppErrorCode errorCode, String message) throws IOException {
         if (response == null) {
             return;
         }

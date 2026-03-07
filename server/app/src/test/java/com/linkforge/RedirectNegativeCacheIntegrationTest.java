@@ -1,7 +1,7 @@
 package com.linkforge;
 
 import com.linkforge.LinkForgeApplication;
-import com.linkforge.redirect.infrastructure.persistence.ShortLinkLookupRepository;
+import com.linkforge.contract.redirect.LinkMetaQueryPort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -70,7 +70,7 @@ class RedirectNegativeCacheIntegrationTest {
     StringRedisTemplate redis;
 
     @SpyBean
-    ShortLinkLookupRepository shortLinkLookupRepository;
+    LinkMetaQueryPort linkMetaQueryPort;
 
     @BeforeEach
     void setUp() {
@@ -82,6 +82,7 @@ class RedirectNegativeCacheIntegrationTest {
                           tenant_id BIGINT NOT NULL,
                           code VARCHAR(32) NOT NULL,
                           original_url TEXT NOT NULL,
+                          note VARCHAR(512) NULL,
                           enabled TINYINT(1) NOT NULL,
                           expires_at DATETIME NULL,
                           archived_at DATETIME NULL,
@@ -89,7 +90,10 @@ class RedirectNegativeCacheIntegrationTest {
                           preview_enabled TINYINT(1) NOT NULL,
                           unavailable_landing_url TEXT NULL,
                           query_forward_mode VARCHAR(16) NULL,
-                          query_forward_allowlist VARCHAR(1024) NULL
+                          query_forward_allowlist VARCHAR(1024) NULL,
+                          created_by BIGINT NOT NULL,
+                          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                         )
                         """
         );
@@ -106,6 +110,6 @@ class RedirectNegativeCacheIntegrationTest {
         mockMvc.perform(get("/r/missing").header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE))
                 .andExpect(status().isNotFound());
 
-        verify(shortLinkLookupRepository, times(1)).findByCode("missing");
+        verify(linkMetaQueryPort, times(1)).findActiveByCode("missing");
     }
 }

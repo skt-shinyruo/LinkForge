@@ -1,11 +1,12 @@
 package com.linkforge.redirect.interfaces.web;
 
-import com.linkforge.foundation.config.AppProperties;
+import com.linkforge.foundation.config.RedirectProperties;
 import com.linkforge.redirect.application.error.RedirectBusinessException;
 import com.linkforge.redirect.application.error.RedirectErrorCode;
 import com.linkforge.foundation.web.RequestId;
 import com.linkforge.foundation.web.VisitInfo;
 import com.linkforge.contract.redirect.LinkMeta;
+import com.linkforge.redirect.application.RedirectUrlBuilder;
 import com.linkforge.redirect.application.RedirectService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
@@ -22,11 +23,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 @RestController
 @RequestMapping("/r")
@@ -35,11 +32,13 @@ public class RedirectController {
     private static final Logger log = LoggerFactory.getLogger(RedirectController.class);
 
     private final RedirectService redirectService;
-    private final AppProperties appProperties;
+    private final RedirectProperties redirectProperties;
+    private final RedirectUrlBuilder redirectUrlBuilder;
 
-    public RedirectController(RedirectService redirectService, AppProperties appProperties) {
+    public RedirectController(RedirectService redirectService, RedirectProperties redirectProperties, RedirectUrlBuilder redirectUrlBuilder) {
         this.redirectService = redirectService;
-        this.appProperties = appProperties;
+        this.redirectProperties = redirectProperties;
+        this.redirectUrlBuilder = redirectUrlBuilder;
     }
 
     @GetMapping("/{code}")
@@ -90,7 +89,7 @@ public class RedirectController {
             HttpStatus status = statusCode == 301 ? HttpStatus.MOVED_PERMANENTLY : HttpStatus.FOUND;
 
             HttpHeaders headers = new HttpHeaders();
-            headers.setLocation(URI.create(buildFinalRedirectUrl(meta, request)));
+            headers.setLocation(URI.create(redirectUrlBuilder.buildFinalRedirectUrl(meta, request == null ? null : request.getParameterMap())));
 
             long latencyMs = (System.nanoTime() - startNs) / 1_000_000;
             log.debug(
@@ -154,7 +153,7 @@ public class RedirectController {
         if (v != null && (v == 301 || v == 302)) {
             return v;
         }
-        int global = appProperties.getRedirect().getDefaultStatusCode();
+        int global = redirectProperties.getDefaultStatusCode();
         return global == 301 ? 301 : 302;
     }
 
@@ -172,7 +171,7 @@ public class RedirectController {
     }
 
     private ResponseEntity<?> handleNotFoundHtml(String code) {
-        String landing = trimToNull(appProperties.getRedirect().getNotFoundLandingUrl());
+        String landing = trimToNull(redirectProperties.getNotFoundLandingUrl());
         if (isHttpUrl(landing)) {
             return ResponseEntity.status(HttpStatus.FOUND)
                     .location(URI.create(landing))
@@ -198,7 +197,7 @@ public class RedirectController {
                     .header(HttpHeaders.CACHE_CONTROL, "no-store")
                     .build();
         }
-        String landing = trimToNull(appProperties.getRedirect().getGoneLandingUrl());
+        String landing = trimToNull(redirectProperties.getGoneLandingUrl());
         if (isHttpUrl(landing)) {
             return ResponseEntity.status(HttpStatus.FOUND)
                     .location(URI.create(landing))
@@ -214,143 +213,6 @@ public class RedirectController {
                 .contentType(MediaType.TEXT_HTML)
                 .header(HttpHeaders.CACHE_CONTROL, "no-store")
                 .body(renderUnavailableHtml(title, msg, code));
-    }
-
-    private String buildFinalRedirectUrl(LinkMeta meta, HttpServletRequest request) {
-        if (meta == null) {
-            return null;
-        }
-        String originalUrl = meta.originalUrl();
-        if (request == null) {
-            return originalUrl;
-        }
-
-        String mode = resolveQueryForwardMode(meta);
-        if ("OFF".equals(mode)) {
-            return originalUrl;
-        }
-
-        Map<String, String[]> params = request.getParameterMap();
-        if (params == null || params.isEmpty()) {
-            return originalUrl;
-        }
-
-        List<String> allowlist = resolveQueryForwardAllowlist(meta);
-        if ("ALLOWLIST".equals(mode) && allowlist.isEmpty()) {
-            return originalUrl;
-        }
-
-        List<String> reserved = resolveReservedParams();
-
-        UriComponentsBuilder b;
-        try {
-            b = UriComponentsBuilder.fromUriString(originalUrl);
-        } catch (Exception e) {
-            return originalUrl;
-        }
-
-        Set<String> existingKeys = new HashSet<>();
-        try {
-            existingKeys.addAll(b.build().getQueryParams().keySet());
-        } catch (Exception ignored) {
-            // 解析失败时保持“尽量不破坏”，继续尝试追加（可能无现有 key 保护）
-        }
-
-        for (Map.Entry<String, String[]> entry : params.entrySet()) {
-            String name = entry.getKey();
-            if (name == null || name.isBlank()) {
-                continue;
-            }
-            if (matchesAny(name, reserved)) {
-                continue;
-            }
-            if ("ALLOWLIST".equals(mode) && !matchesAny(name, allowlist)) {
-                continue;
-            }
-            // 冲突策略：目标 URL 优先（已有同名参数时不覆盖）
-            if (existingKeys.contains(name)) {
-                continue;
-            }
-            String[] values = entry.getValue();
-            if (values == null || values.length == 0) {
-                b.queryParam(name);
-                continue;
-            }
-            List<String> safeValues = new ArrayList<>();
-            for (String v : values) {
-                if (v != null) {
-                    safeValues.add(v);
-                }
-            }
-            if (safeValues.isEmpty()) {
-                b.queryParam(name);
-            } else {
-                b.queryParam(name, safeValues.toArray());
-            }
-        }
-
-        try {
-            return b.build().toUriString();
-        } catch (Exception e) {
-            return originalUrl;
-        }
-    }
-
-    private String resolveQueryForwardMode(LinkMeta meta) {
-        String raw = trimToNull(meta == null ? null : meta.queryForwardMode());
-        if (raw == null) {
-            raw = trimToNull(appProperties.getRedirect().getQueryForwardMode());
-        }
-        if (raw == null) {
-            return "OFF";
-        }
-        String t = raw.trim().toUpperCase();
-        return ("OFF".equals(t) || "ALLOWLIST".equals(t) || "ALL".equals(t)) ? t : "OFF";
-    }
-
-    private List<String> resolveQueryForwardAllowlist(LinkMeta meta) {
-        // allowlist：全局 + per-link 组合（去重）
-        Set<String> set = new HashSet<>();
-
-        var global = appProperties.getRedirect().getQueryForwardAllowlist();
-        if (global != null) {
-            for (String p : global) {
-                String v = trimToNull(p);
-                if (v != null) {
-                    set.add(v);
-                }
-            }
-        }
-
-        String perLinkRaw = trimToNull(meta == null ? null : meta.queryForwardAllowlist());
-        if (perLinkRaw != null) {
-            String[] parts = perLinkRaw.split(",");
-            for (String p : parts) {
-                String v = trimToNull(p);
-                if (v != null) {
-                    set.add(v);
-                }
-            }
-        }
-
-        return set.isEmpty() ? List.of() : new ArrayList<>(set);
-    }
-
-    private List<String> resolveReservedParams() {
-        var raw = appProperties.getRedirect().getQueryForwardReservedParams();
-        Set<String> set = new HashSet<>();
-        if (raw != null) {
-            for (String p : raw) {
-                String v = trimToNull(p);
-                if (v != null) {
-                    set.add(v);
-                }
-            }
-        }
-        // 安全兜底：内部参数默认不透传
-        set.add("__lf_confirm");
-        set.add("__lf_preview");
-        return new ArrayList<>(set);
     }
 
     private String renderPreviewHtml(LinkMeta meta, HttpServletRequest request) {
@@ -496,27 +358,6 @@ public class RedirectController {
             }
         }
         return out.toString();
-    }
-
-    private static boolean matchesAny(String name, List<String> patterns) {
-        if (name == null || name.isBlank() || patterns == null || patterns.isEmpty()) {
-            return false;
-        }
-        for (String p : patterns) {
-            String v = trimToNull(p);
-            if (v == null) {
-                continue;
-            }
-            if (v.endsWith("*")) {
-                String prefix = v.substring(0, v.length() - 1);
-                if (!prefix.isBlank() && name.startsWith(prefix)) {
-                    return true;
-                }
-            } else if (name.equals(v)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private static boolean isHttpUrl(String url) {

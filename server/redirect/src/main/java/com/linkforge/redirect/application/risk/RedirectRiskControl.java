@@ -1,8 +1,9 @@
-package com.linkforge.redirect.interfaces.risk;
+package com.linkforge.redirect.application.risk;
 
-import com.linkforge.redirect.interfaces.net.CidrBlock;
-import com.linkforge.redirect.interfaces.net.CidrBlocks;
-import com.linkforge.foundation.config.AppProperties;
+import com.linkforge.redirect.domain.net.CidrBlock;
+import com.linkforge.redirect.domain.net.CidrBlocks;
+import com.linkforge.redirect.domain.risk.UserAgentBotDetector;
+import com.linkforge.foundation.config.EdgeProperties;
 import com.linkforge.redirect.application.error.RedirectErrorCode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,7 +26,7 @@ public class RedirectRiskControl {
             "bot", "crawler", "spider", "curl", "wget", "python-requests", "httpclient"
     );
 
-    private final RedisFixedWindowRateLimiter rateLimiter;
+    private final RateLimiterPort rateLimiter;
 
     private final boolean enabled;
     private final List<CidrBlock> ipAllowlist;
@@ -43,21 +44,17 @@ public class RedirectRiskControl {
     private final long botIpMaxRequests;
     private final boolean botBlock;
 
-    public RedirectRiskControl(AppProperties properties, RedisFixedWindowRateLimiter rateLimiter) {
+    public RedirectRiskControl(EdgeProperties properties, RateLimiterPort rateLimiter) {
         this.rateLimiter = rateLimiter;
 
-        AppProperties.Edge.RiskControl cfg = properties == null
-                || properties.getEdge() == null
-                || properties.getEdge().getRiskControl() == null
-                ? null
-                : properties.getEdge().getRiskControl();
+        EdgeProperties.RiskControl cfg = properties == null ? null : properties.getRiskControl();
 
         this.enabled = cfg != null && cfg.isEnabled();
 
         this.ipAllowlist = CidrBlocks.parseList(cfg == null ? null : cfg.getIpAllowlist(), "app.edge.risk-control.ip-allowlist");
         this.ipDenylist = CidrBlocks.parseList(cfg == null ? null : cfg.getIpDenylist(), "app.edge.risk-control.ip-denylist");
 
-        AppProperties.Edge.RiskControl.RateLimit rl = cfg == null ? null : cfg.getRateLimit();
+        EdgeProperties.RiskControl.RateLimit rl = cfg == null ? null : cfg.getRateLimit();
         this.rateLimitEnabled = rl != null && rl.isEnabled();
         this.windowSeconds = rl == null ? 60 : rl.getWindowSeconds();
         this.ipMaxRequests = rl == null ? 120 : rl.getIpMaxRequests();
@@ -65,7 +62,7 @@ public class RedirectRiskControl {
         this.ipCodeMaxRequests = rl == null ? 60 : rl.getIpCodeMaxRequests();
         this.failOpen = rl == null || rl.isFailOpen();
 
-        AppProperties.Edge.RiskControl.BotPolicy bot = cfg == null ? null : cfg.getBot();
+        EdgeProperties.RiskControl.BotPolicy bot = cfg == null ? null : cfg.getBot();
         this.botEnabled = bot != null && bot.isEnabled();
         List<String> rawKeywords = bot == null ? null : bot.getUserAgentKeywords();
         this.botKeywords = (rawKeywords == null || rawKeywords.isEmpty()) ? DEFAULT_BOT_KEYWORDS : rawKeywords;

@@ -71,6 +71,7 @@ class ArchivedLinkRedirectIntegrationTest {
                           tenant_id BIGINT NOT NULL,
                           code VARCHAR(32) NOT NULL,
                           original_url TEXT NOT NULL,
+                          note VARCHAR(512) NULL,
                           enabled TINYINT(1) NOT NULL,
                           expires_at DATETIME NULL,
                           archived_at DATETIME NULL,
@@ -78,7 +79,10 @@ class ArchivedLinkRedirectIntegrationTest {
                           preview_enabled TINYINT(1) NOT NULL,
                           unavailable_landing_url TEXT NULL,
                           query_forward_mode VARCHAR(16) NULL,
-                          query_forward_allowlist VARCHAR(1024) NULL
+                          query_forward_allowlist VARCHAR(1024) NULL,
+                          created_by BIGINT NOT NULL,
+                          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                         )
                         """
         );
@@ -87,14 +91,16 @@ class ArchivedLinkRedirectIntegrationTest {
         jdbcTemplate.update(
                 """
                         INSERT INTO short_links (
-                          id, tenant_id, code, original_url, enabled, expires_at, archived_at,
-                          redirect_status_code, preview_enabled, unavailable_landing_url, query_forward_mode, query_forward_allowlist
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          id, tenant_id, code, original_url, note, enabled, expires_at, archived_at,
+                          redirect_status_code, preview_enabled, unavailable_landing_url, query_forward_mode, query_forward_allowlist,
+                          created_by
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                 1L,
                 1L,
                 "abc",
                 "https://example.com",
+                null,
                 1,
                 null,
                 java.sql.Timestamp.valueOf("2026-02-20 00:00:00"),
@@ -102,7 +108,8 @@ class ArchivedLinkRedirectIntegrationTest {
                 0,
                 null,
                 null,
-                null
+                null,
+                1L
         );
     }
 

@@ -1,4 +1,4 @@
-package com.linkforge.redirect.interfaces.net;
+package com.linkforge.redirect.domain.net;
 
 import java.util.ArrayList;
 import java.util.Collections;

@@ -1,9 +1,9 @@
 package com.linkforge.redirect.interfaces.web;
 
-import com.linkforge.redirect.interfaces.net.CidrBlock;
-import com.linkforge.redirect.interfaces.net.CidrBlocks;
-import com.linkforge.redirect.interfaces.net.IpStrings;
-import com.linkforge.foundation.config.AppProperties;
+import com.linkforge.redirect.domain.net.CidrBlock;
+import com.linkforge.redirect.domain.net.CidrBlocks;
+import com.linkforge.redirect.domain.net.IpStrings;
+import com.linkforge.foundation.config.EdgeProperties;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.stereotype.Component;
 
@@ -21,10 +21,8 @@ public class RedirectClientIpResolver {
 
     private final List<CidrBlock> trustedProxies;
 
-    public RedirectClientIpResolver(AppProperties properties) {
-        List<String> raw = properties == null || properties.getEdge() == null
-                ? null
-                : properties.getEdge().getTrustedProxies();
+    public RedirectClientIpResolver(EdgeProperties properties) {
+        List<String> raw = properties == null ? null : properties.getTrustedProxies();
         this.trustedProxies = CidrBlocks.parseList(raw, "app.edge.trusted-proxies");
     }
 

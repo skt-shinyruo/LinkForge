@@ -6,7 +6,8 @@ import com.linkforge.analytics.application.job.AnalyticsDimensionFlushJob;
 import com.linkforge.analytics.application.job.AnalyticsEventIngestJob;
 import com.linkforge.analytics.application.job.AnalyticsFlushJob;
 import com.linkforge.LinkForgeApplication;
-import com.linkforge.contract.api.ErrorCode;
+import com.linkforge.contract.accounts.AccountsErrorCode;
+import com.linkforge.contract.openapi.OpenApiErrorCode;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -480,7 +481,7 @@ class LinkForgeIntegrationTest {
                 .getContentAsString();
 
         JsonNode json2 = objectMapper.readTree(resp2);
-        assertThat(json2.get("code").asInt()).isEqualTo(ErrorCode.EMAIL_ALREADY_EXISTS.getCode());
+        assertThat(json2.get("code").asInt()).isEqualTo(AccountsErrorCode.EMAIL_ALREADY_EXISTS.getCode());
         assertThat(json2.get("requestId").asText()).isNotBlank();
     }
 
@@ -542,7 +543,7 @@ class LinkForgeIntegrationTest {
                 .getResponse()
                 .getContentAsString();
         JsonNode createUserJson = objectMapper.readTree(createUserResp);
-        assertThat(createUserJson.get("code").asInt()).isEqualTo(ErrorCode.EMAIL_ALREADY_EXISTS.getCode());
+        assertThat(createUserJson.get("code").asInt()).isEqualTo(AccountsErrorCode.EMAIL_ALREADY_EXISTS.getCode());
         assertThat(createUserJson.get("requestId").asText()).isNotBlank();
     }
 
@@ -900,7 +901,7 @@ class LinkForgeIntegrationTest {
                 .getResponse()
                 .getContentAsString();
         JsonNode openDisabledJson = objectMapper.readTree(openDisabledResp);
-        assertThat(openDisabledJson.get("code").asInt()).isEqualTo(ErrorCode.API_KEY_DISABLED.getCode());
+        assertThat(openDisabledJson.get("code").asInt()).isEqualTo(OpenApiErrorCode.API_KEY_DISABLED.getCode());
 
         mockMvc.perform(
                         put("/api/v1/api-keys/" + apiKeyId + "/enable")
@@ -942,7 +943,7 @@ class LinkForgeIntegrationTest {
                 .getResponse()
                 .getContentAsString();
         JsonNode openOldKeyJson = objectMapper.readTree(openOldKeyResp);
-        assertThat(openOldKeyJson.get("code").asInt()).isEqualTo(ErrorCode.API_KEY_INVALID.getCode());
+        assertThat(openOldKeyJson.get("code").asInt()).isEqualTo(OpenApiErrorCode.API_KEY_INVALID.getCode());
 
         mockMvc.perform(
                         post("/api/v1/open/links")
@@ -1002,7 +1003,7 @@ class LinkForgeIntegrationTest {
                 .getResponse()
                 .getContentAsString();
         JsonNode loginDisabledJson = objectMapper.readTree(loginDisabledResp);
-        assertThat(loginDisabledJson.get("code").asInt()).isEqualTo(ErrorCode.USER_DISABLED.getCode());
+        assertThat(loginDisabledJson.get("code").asInt()).isEqualTo(AccountsErrorCode.USER_DISABLED.getCode());
 
         // 启用 + 重置密码
         mockMvc.perform(
@@ -1032,7 +1033,7 @@ class LinkForgeIntegrationTest {
                 .getResponse()
                 .getContentAsString();
         JsonNode loginOldPwdJson = objectMapper.readTree(loginOldPwdResp);
-        assertThat(loginOldPwdJson.get("code").asInt()).isEqualTo(ErrorCode.INVALID_CREDENTIALS.getCode());
+        assertThat(loginOldPwdJson.get("code").asInt()).isEqualTo(AccountsErrorCode.INVALID_CREDENTIALS.getCode());
 
         // 新密码可登录
         JsonNode loginNewPwdBody = objectMapper.createObjectNode()

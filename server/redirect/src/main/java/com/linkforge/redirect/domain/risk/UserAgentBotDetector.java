@@ -1,4 +1,4 @@
-package com.linkforge.redirect.interfaces.risk;
+package com.linkforge.redirect.domain.risk;
 
 import java.util.List;
 
@@ -7,12 +7,12 @@ import java.util.List;
  *
  * <p>注意：此策略仅用于“降频/降级”，不应作为强安全边界。</p>
  */
-final class UserAgentBotDetector {
+public final class UserAgentBotDetector {
 
     private UserAgentBotDetector() {
     }
 
-    static boolean isBot(String userAgent, List<String> keywords) {
+    public static boolean isBot(String userAgent, List<String> keywords) {
         if (userAgent == null || userAgent.isBlank()) {
             return false;
         }

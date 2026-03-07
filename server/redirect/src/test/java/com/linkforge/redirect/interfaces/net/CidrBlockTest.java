@@ -1,5 +1,6 @@
 package com.linkforge.redirect.interfaces.net;
 
+import com.linkforge.redirect.domain.net.CidrBlock;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;

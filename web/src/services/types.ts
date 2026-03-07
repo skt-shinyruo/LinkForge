@@ -49,10 +49,11 @@ export type DailyStat = {
 
 export type TopLinkStat = {
   linkId: number;
-  code: string;
-  originalUrl: string;
+  code: string | null;
+  originalUrl: string | null;
   pv: number;
   uv: number;
+  deleted: boolean;
 };
 
 export type TagDto = {

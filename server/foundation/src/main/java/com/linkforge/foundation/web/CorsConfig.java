@@ -1,6 +1,6 @@
 package com.linkforge.foundation.web;
 
-import com.linkforge.foundation.config.AppProperties;
+import com.linkforge.foundation.config.CorsProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.cors.CorsConfiguration;
@@ -13,10 +13,10 @@ import java.util.List;
 public class CorsConfig {
 
     @Bean
-    public CorsConfigurationSource corsConfigurationSource(AppProperties properties) {
+    public CorsConfigurationSource corsConfigurationSource(CorsProperties properties) {
         CorsConfiguration cfg = new CorsConfiguration();
-        List<String> allowedOrigins = properties.getCors() == null ? null : properties.getCors().getAllowedOrigins();
-        boolean allowCredentials = properties.getCors() != null && properties.getCors().isAllowCredentials();
+        List<String> allowedOrigins = properties == null ? null : properties.getAllowedOrigins();
+        boolean allowCredentials = properties != null && properties.isAllowCredentials();
         if (allowedOrigins != null) {
             allowedOrigins = allowedOrigins.stream()
                     .map(s -> s == null ? null : s.trim())

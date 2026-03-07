@@ -12,6 +12,7 @@ import com.linkforge.accounts.infrastructure.persistence.repo.UserRoleRepository
 import com.linkforge.accounts.infrastructure.security.JwtService;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
+import com.linkforge.contract.accounts.AccountsErrorCode;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -51,7 +52,7 @@ public class AuthService {
     @Transactional
     public AuthResult register(String tenantName, String email, String rawPassword) {
         userRepository.findFirstByEmail(email).ifPresent(u -> {
-            throw new BusinessException(ErrorCode.EMAIL_ALREADY_EXISTS);
+            throw new BusinessException(AccountsErrorCode.EMAIL_ALREADY_EXISTS);
         });
 
         long tenantId = idGenerator.nextId();
@@ -72,7 +73,7 @@ public class AuthService {
             userRepository.save(u);
         } catch (DataIntegrityViolationException e) {
             // 并发注册或绕过应用层校验时，以 DB 约束为准，返回一致的业务错误码
-            throw new BusinessException(ErrorCode.EMAIL_ALREADY_EXISTS);
+            throw new BusinessException(AccountsErrorCode.EMAIL_ALREADY_EXISTS);
         }
 
         userRoleRepository.save(new UserRoleEntity(new UserRoleId(userId, Roles.TENANT_ADMIN)));
@@ -84,19 +85,19 @@ public class AuthService {
 
     public AuthResult login(String email, String rawPassword) {
         UserEntity u = userRepository.findFirstByEmail(email)
-                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_CREDENTIALS));
+                .orElseThrow(() -> new BusinessException(AccountsErrorCode.INVALID_CREDENTIALS));
 
         TenantEntity t = tenantRepository.findById(u.getTenantId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_ERROR, "租户不存在"));
 
         if (!AccountsConstants.STATUS_ACTIVE.equals(t.getStatus())) {
-            throw new BusinessException(ErrorCode.TENANT_DISABLED);
+            throw new BusinessException(AccountsErrorCode.TENANT_DISABLED);
         }
         if (!AccountsConstants.STATUS_ACTIVE.equals(u.getStatus())) {
-            throw new BusinessException(ErrorCode.USER_DISABLED);
+            throw new BusinessException(AccountsErrorCode.USER_DISABLED);
         }
         if (!passwordEncoder.matches(rawPassword, u.getPasswordHash())) {
-            throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
+            throw new BusinessException(AccountsErrorCode.INVALID_CREDENTIALS);
         }
 
         Set<String> roles = userRoleRepository.findAllByUserId(u.getId()).stream()

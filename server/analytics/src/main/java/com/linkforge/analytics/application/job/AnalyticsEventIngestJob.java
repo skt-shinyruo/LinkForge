@@ -1,7 +1,8 @@
 package com.linkforge.analytics.application.job;
 
 import com.linkforge.contract.analytics.AnalyticsKeys;
-import com.linkforge.foundation.config.AppProperties;
+import com.linkforge.foundation.config.AnalyticsProperties;
+import com.linkforge.foundation.config.IdProperties;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,28 +45,29 @@ public class AnalyticsEventIngestJob {
 
     private final StringRedisTemplate redis;
     private final JdbcTemplate jdbcTemplate;
-    private final AppProperties properties;
+    private final AnalyticsProperties analyticsProperties;
+    private final IdProperties idProperties;
     private final SnowflakeIdGenerator idGenerator;
     private final String consumerName;
 
     public AnalyticsEventIngestJob(
             StringRedisTemplate redis,
             JdbcTemplate jdbcTemplate,
-            AppProperties properties,
+            AnalyticsProperties analyticsProperties,
+            IdProperties idProperties,
             SnowflakeIdGenerator idGenerator
     ) {
         this.redis = redis;
         this.jdbcTemplate = jdbcTemplate;
-        this.properties = properties;
+        this.analyticsProperties = analyticsProperties;
+        this.idProperties = idProperties;
         this.idGenerator = idGenerator;
-        this.consumerName = resolveConsumerName(properties);
+        this.consumerName = resolveConsumerName(analyticsProperties, idProperties);
     }
 
     @Scheduled(fixedDelayString = "${APP_ANALYTICS_EVENT_INGEST_DELAY_MS:2000}")
     public void ingest() {
-        AppProperties.Analytics.Events cfg = properties == null || properties.getAnalytics() == null
-                ? null
-                : properties.getAnalytics().getEvents();
+        AnalyticsProperties.Events cfg = analyticsProperties == null ? null : analyticsProperties.getEvents();
         if (cfg == null || !cfg.isEnabled()) {
             return;
         }
@@ -299,17 +301,15 @@ public class AnalyticsEventIngestJob {
         }
     }
 
-    private static String resolveConsumerName(AppProperties properties) {
-        AppProperties.Analytics.Events cfg = properties == null || properties.getAnalytics() == null
-                ? null
-                : properties.getAnalytics().getEvents();
+    private static String resolveConsumerName(AnalyticsProperties analyticsProperties, IdProperties idProperties) {
+        AnalyticsProperties.Events cfg = analyticsProperties == null ? null : analyticsProperties.getEvents();
         String configured = cfg == null ? null : trimToNull(cfg.getConsumerName());
         if (configured != null) {
             return NON_SAFE.matcher(configured).replaceAll("_");
         }
 
-        long workerId = properties == null || properties.getId() == null ? 0 : properties.getId().getWorkerId();
-        long datacenterId = properties == null || properties.getId() == null ? 0 : properties.getId().getDatacenterId();
+        long workerId = idProperties == null ? 0 : idProperties.getWorkerId();
+        long datacenterId = idProperties == null ? 0 : idProperties.getDatacenterId();
 
         String host = trimToNull(System.getenv("HOSTNAME"));
         if (host == null) {

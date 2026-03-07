@@ -4,7 +4,8 @@ import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.contract.redirect.LinkCachePort;
 import com.linkforge.contract.redirect.LinkMeta;
-import com.linkforge.foundation.config.AppProperties;
+import com.linkforge.contract.shortlink.ShortLinkErrorCode;
+import com.linkforge.foundation.config.CoreProperties;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.tx.AfterCommit;
 import com.linkforge.foundation.security.TenantGuard;
@@ -23,7 +24,6 @@ import org.apache.commons.csv.CSVPrinter;
 import org.apache.commons.csv.CSVRecord;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -54,10 +54,9 @@ public class ShortLinkService {
     private final LinkTagRepository linkTagRepository;
     private final LinkCachePort linkCache;
     private final LinkCacheOutboxRepository linkCacheOutboxRepository;
-    private final AppProperties appProperties;
+    private final CoreProperties coreProperties;
     private final UrlValidator urlValidator;
     private final TenantGuard tenantGuard;
-    private final JdbcTemplate jdbcTemplate;
 
     public ShortLinkService(
             SnowflakeIdGenerator idGenerator,
@@ -66,10 +65,9 @@ public class ShortLinkService {
             LinkTagRepository linkTagRepository,
             LinkCachePort linkCache,
             LinkCacheOutboxRepository linkCacheOutboxRepository,
-            AppProperties appProperties,
+            CoreProperties coreProperties,
             UrlValidator urlValidator,
-            TenantGuard tenantGuard,
-            JdbcTemplate jdbcTemplate
+            TenantGuard tenantGuard
     ) {
         this.idGenerator = idGenerator;
         this.shortLinkRepository = shortLinkRepository;
@@ -77,10 +75,9 @@ public class ShortLinkService {
         this.linkTagRepository = linkTagRepository;
         this.linkCache = linkCache;
         this.linkCacheOutboxRepository = linkCacheOutboxRepository;
-        this.appProperties = appProperties;
+        this.coreProperties = coreProperties;
         this.urlValidator = urlValidator;
         this.tenantGuard = tenantGuard;
-        this.jdbcTemplate = jdbcTemplate;
     }
 
     @Transactional
@@ -131,7 +128,7 @@ public class ShortLinkService {
     public LinkDto detail(long tenantId, long linkId) {
         tenantGuard.requireCurrentTenant(tenantId);
         ShortLinkEntity e = shortLinkRepository.findByTenantIdAndId(tenantId, linkId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.LINK_NOT_FOUND));
+                .orElseThrow(() -> new BusinessException(ShortLinkErrorCode.LINK_NOT_FOUND));
         return toDto(tenantId, e, loadTagsByLinkId(linkId));
     }
 
@@ -139,7 +136,7 @@ public class ShortLinkService {
     public LinkDto archive(long tenantId, long linkId) {
         tenantGuard.requireCurrentTenant(tenantId);
         ShortLinkEntity e = shortLinkRepository.findByTenantIdAndId(tenantId, linkId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.LINK_NOT_FOUND));
+                .orElseThrow(() -> new BusinessException(ShortLinkErrorCode.LINK_NOT_FOUND));
 
         if (e.getArchivedAt() == null) {
             e.setArchivedAt(LocalDateTime.now());
@@ -156,7 +153,7 @@ public class ShortLinkService {
     public LinkDto restore(long tenantId, long linkId) {
         tenantGuard.requireCurrentTenant(tenantId);
         ShortLinkEntity e = shortLinkRepository.findByTenantIdAndId(tenantId, linkId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.LINK_NOT_FOUND));
+                .orElseThrow(() -> new BusinessException(ShortLinkErrorCode.LINK_NOT_FOUND));
 
         if (e.getArchivedAt() != null) {
             e.setArchivedAt(null);
@@ -177,7 +174,7 @@ public class ShortLinkService {
     public void delete(long tenantId, long linkId) {
         tenantGuard.requireCurrentTenant(tenantId);
         ShortLinkEntity e = shortLinkRepository.findByTenantIdAndId(tenantId, linkId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.LINK_NOT_FOUND));
+                .orElseThrow(() -> new BusinessException(ShortLinkErrorCode.LINK_NOT_FOUND));
 
         if (e.getArchivedAt() == null) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "删除前请先归档（可避免误删）");
@@ -190,12 +187,6 @@ public class ShortLinkService {
         // 清理关联（标签）
         linkTagRepository.deleteAllByIdLinkId(linkId);
 
-        // 清理统计/明细（避免产生大量孤儿数据）
-        // 注意：短链删除是低频治理动作，可接受同步清理
-        jdbcTemplate.update("DELETE FROM link_stats_daily WHERE tenant_id = ? AND link_id = ?", tenantId, linkId);
-        jdbcTemplate.update("DELETE FROM link_stats_dim_daily WHERE tenant_id = ? AND link_id = ?", tenantId, linkId);
-        jdbcTemplate.update("DELETE FROM link_visit_events WHERE tenant_id = ? AND link_id = ?", tenantId, linkId);
-
         shortLinkRepository.delete(e);
     }
 
@@ -203,7 +194,7 @@ public class ShortLinkService {
     public LinkDto update(long tenantId, long linkId, UpdateLinkRequest req) {
         tenantGuard.requireCurrentTenant(tenantId);
         ShortLinkEntity e = shortLinkRepository.findByTenantIdAndId(tenantId, linkId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.LINK_NOT_FOUND));
+                .orElseThrow(() -> new BusinessException(ShortLinkErrorCode.LINK_NOT_FOUND));
 
         if (e.getArchivedAt() != null) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "短链已归档，请先恢复后再编辑");
@@ -507,7 +498,7 @@ public class ShortLinkService {
     }
 
     private String buildShortUrl(String code) {
-        String base = appProperties.getBaseUrl();
+        String base = coreProperties == null ? null : coreProperties.getBaseUrl();
         if (base == null) {
             base = "";
         }
@@ -519,7 +510,7 @@ public class ShortLinkService {
 
     private void ensureCodeAvailable(String code) {
         if (shortLinkRepository.findByCode(code).isPresent()) {
-            throw new BusinessException(ErrorCode.CODE_ALREADY_EXISTS);
+            throw new BusinessException(ShortLinkErrorCode.CODE_ALREADY_EXISTS);
         }
     }
 

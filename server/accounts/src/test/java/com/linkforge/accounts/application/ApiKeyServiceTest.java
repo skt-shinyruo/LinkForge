@@ -3,7 +3,7 @@ package com.linkforge.accounts.application;
 import com.linkforge.accounts.domain.AccountsConstants;
 import com.linkforge.accounts.infrastructure.persistence.entity.ApiKeyEntity;
 import com.linkforge.accounts.infrastructure.persistence.repo.ApiKeyRepository;
-import com.linkforge.foundation.config.AppProperties;
+import com.linkforge.foundation.config.SecurityProperties;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.security.TenantGuard;
 import org.junit.jupiter.api.Test;
@@ -27,8 +27,8 @@ class ApiKeyServiceTest {
         ApiKeyRepository repo = mock(ApiKeyRepository.class);
         PasswordEncoder encoder = mock(PasswordEncoder.class);
 
-        AppProperties props = new AppProperties();
-        props.getSecurity().getApiKey().setLastUsedUpdateIntervalSeconds(300);
+        SecurityProperties props = new SecurityProperties();
+        props.getApiKey().setLastUsedUpdateIntervalSeconds(300);
 
         ApiKeyService service = new ApiKeyService(
                 mock(SnowflakeIdGenerator.class),
@@ -58,8 +58,8 @@ class ApiKeyServiceTest {
         ApiKeyRepository repo = mock(ApiKeyRepository.class);
         PasswordEncoder encoder = mock(PasswordEncoder.class);
 
-        AppProperties props = new AppProperties();
-        props.getSecurity().getApiKey().setLastUsedUpdateIntervalSeconds(300);
+        SecurityProperties props = new SecurityProperties();
+        props.getApiKey().setLastUsedUpdateIntervalSeconds(300);
 
         ApiKeyService service = new ApiKeyService(
                 mock(SnowflakeIdGenerator.class),
@@ -92,8 +92,8 @@ class ApiKeyServiceTest {
         ApiKeyRepository repo = mock(ApiKeyRepository.class);
         PasswordEncoder encoder = mock(PasswordEncoder.class);
 
-        AppProperties props = new AppProperties();
-        props.getSecurity().getApiKey().setLastUsedUpdateIntervalSeconds(300);
+        SecurityProperties props = new SecurityProperties();
+        props.getApiKey().setLastUsedUpdateIntervalSeconds(300);
 
         ApiKeyService service = new ApiKeyService(
                 mock(SnowflakeIdGenerator.class),
@@ -124,8 +124,8 @@ class ApiKeyServiceTest {
         ApiKeyRepository repo = mock(ApiKeyRepository.class);
         PasswordEncoder encoder = mock(PasswordEncoder.class);
 
-        AppProperties props = new AppProperties();
-        props.getSecurity().getApiKey().setLastUsedUpdateIntervalSeconds(0);
+        SecurityProperties props = new SecurityProperties();
+        props.getApiKey().setLastUsedUpdateIntervalSeconds(0);
 
         ApiKeyService service = new ApiKeyService(
                 mock(SnowflakeIdGenerator.class),

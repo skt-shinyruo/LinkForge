@@ -1,7 +1,7 @@
 package com.linkforge.accounts.infrastructure.security;
 
 import com.linkforge.foundation.security.AuthPrincipal;
-import com.linkforge.foundation.config.AppProperties;
+import com.linkforge.foundation.config.SecurityProperties;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.Jwts;
@@ -18,12 +18,16 @@ import java.util.Set;
 @Service
 public class JwtService {
 
-    private final AppProperties properties;
+    private final SecurityProperties.Jwt jwt;
     private final SecretKey key;
 
-    public JwtService(AppProperties properties) {
-        this.properties = properties;
-        byte[] raw = properties.getSecurity().getJwt().getSecret().getBytes(StandardCharsets.UTF_8);
+    public JwtService(SecurityProperties properties) {
+        this.jwt = properties == null ? null : properties.getJwt();
+        String secret = jwt == null ? null : jwt.getSecret();
+        if (secret == null || secret.isBlank()) {
+            throw new IllegalArgumentException("JWT secret 不能为空，请通过环境变量 JWT_SECRET 配置");
+        }
+        byte[] raw = secret.getBytes(StandardCharsets.UTF_8);
         if (raw.length < 32) {
             throw new IllegalArgumentException("JWT secret 太短（需要 >= 32 bytes），请通过环境变量 JWT_SECRET 配置");
         }
@@ -31,11 +35,11 @@ public class JwtService {
     }
 
     public String issueToken(long userId, long tenantId, String email, Set<String> roles) {
-        long ttlSeconds = properties.getSecurity().getJwt().getTtlSeconds();
+        long ttlSeconds = jwt == null ? 0 : jwt.getTtlSeconds();
         Instant now = Instant.now();
         Instant exp = now.plusSeconds(ttlSeconds);
         return Jwts.builder()
-                .issuer(properties.getSecurity().getJwt().getIssuer())
+                .issuer(jwt == null ? null : jwt.getIssuer())
                 .subject(Long.toString(userId))
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(exp))
@@ -48,7 +52,7 @@ public class JwtService {
 
     public AuthPrincipal parseToken(String token) {
         Jws<Claims> jws = Jwts.parser()
-                .requireIssuer(properties.getSecurity().getJwt().getIssuer())
+                .requireIssuer(jwt == null ? null : jwt.getIssuer())
                 .verifyWith(key)
                 .build()
                 .parseSignedClaims(token);

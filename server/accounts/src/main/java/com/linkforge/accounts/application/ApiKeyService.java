@@ -3,10 +3,12 @@ package com.linkforge.accounts.application;
 import com.linkforge.accounts.domain.AccountsConstants;
 import com.linkforge.accounts.infrastructure.persistence.entity.ApiKeyEntity;
 import com.linkforge.accounts.infrastructure.persistence.repo.ApiKeyRepository;
+import com.linkforge.contract.api.AppErrorCode;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
+import com.linkforge.contract.openapi.OpenApiErrorCode;
 import com.linkforge.foundation.security.TenantGuard;
-import com.linkforge.foundation.config.AppProperties;
+import com.linkforge.foundation.config.SecurityProperties;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,20 +32,20 @@ public class ApiKeyService {
     private final ApiKeyRepository apiKeyRepository;
     private final PasswordEncoder passwordEncoder;
     private final TenantGuard tenantGuard;
-    private final AppProperties properties;
+    private final SecurityProperties securityProperties;
 
     public ApiKeyService(
             SnowflakeIdGenerator idGenerator,
             ApiKeyRepository apiKeyRepository,
             PasswordEncoder passwordEncoder,
             TenantGuard tenantGuard,
-            AppProperties properties
+            SecurityProperties securityProperties
     ) {
         this.idGenerator = idGenerator;
         this.apiKeyRepository = apiKeyRepository;
         this.passwordEncoder = passwordEncoder;
         this.tenantGuard = tenantGuard;
-        this.properties = properties;
+        this.securityProperties = securityProperties;
     }
 
     @Transactional
@@ -67,13 +69,13 @@ public class ApiKeyService {
     public ApiKeyAuthResult authenticate(String apiKey) {
         Parsed parsed = parse(apiKey);
         ApiKeyEntity e = apiKeyRepository.findById(parsed.id)
-                .orElseThrow(() -> new ApiKeyAuthException(ErrorCode.API_KEY_INVALID));
+                .orElseThrow(() -> new ApiKeyAuthException(OpenApiErrorCode.API_KEY_INVALID));
 
         if (!AccountsConstants.STATUS_ACTIVE.equals(e.getStatus())) {
-            throw new ApiKeyAuthException(ErrorCode.API_KEY_DISABLED);
+            throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_DISABLED);
         }
         if (!passwordEncoder.matches(parsed.secret, e.getKeyHash())) {
-            throw new ApiKeyAuthException(ErrorCode.API_KEY_INVALID);
+            throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_INVALID);
         }
 
         // OpenAPI 高调用路径：last_used_at 采用节流写回，避免 DB 写热点
@@ -147,14 +149,14 @@ public class ApiKeyService {
     }
 
     public static class ApiKeyAuthException extends RuntimeException {
-        private final ErrorCode errorCode;
+        private final AppErrorCode errorCode;
 
-        public ApiKeyAuthException(ErrorCode errorCode) {
+        public ApiKeyAuthException(AppErrorCode errorCode) {
             super(errorCode.getDefaultMessage());
             this.errorCode = errorCode;
         }
 
-        public ErrorCode errorCode() {
+        public AppErrorCode errorCode() {
             return errorCode;
         }
     }
@@ -171,24 +173,24 @@ public class ApiKeyService {
 
     private static Parsed parse(String apiKey) {
         if (apiKey == null) {
-            throw new ApiKeyAuthException(ErrorCode.API_KEY_INVALID);
+            throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_INVALID);
         }
         String[] parts = apiKey.split("_", 3);
         if (parts.length != 3) {
-            throw new ApiKeyAuthException(ErrorCode.API_KEY_INVALID);
+            throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_INVALID);
         }
         if (!API_KEY_PREFIX.equals(parts[0])) {
-            throw new ApiKeyAuthException(ErrorCode.API_KEY_INVALID);
+            throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_INVALID);
         }
         long id;
         try {
             id = Long.parseLong(parts[1]);
         } catch (NumberFormatException e) {
-            throw new ApiKeyAuthException(ErrorCode.API_KEY_INVALID);
+            throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_INVALID);
         }
         String secret = parts[2];
         if (secret.isBlank()) {
-            throw new ApiKeyAuthException(ErrorCode.API_KEY_INVALID);
+            throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_INVALID);
         }
         return new Parsed(id, secret);
     }
@@ -205,10 +207,8 @@ public class ApiKeyService {
         }
         long intervalSeconds = 300;
         try {
-            if (properties != null
-                    && properties.getSecurity() != null
-                    && properties.getSecurity().getApiKey() != null) {
-                intervalSeconds = properties.getSecurity().getApiKey().getLastUsedUpdateIntervalSeconds();
+            if (securityProperties != null && securityProperties.getApiKey() != null) {
+                intervalSeconds = securityProperties.getApiKey().getLastUsedUpdateIntervalSeconds();
             }
         } catch (Exception ignore) {
             // ignore

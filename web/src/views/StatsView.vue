@@ -152,7 +152,10 @@ function logout() {
   router.replace("/login");
 }
 
-async function copyShort(code: string) {
+async function copyShort(code: string | null) {
+  if (!code) {
+    return;
+  }
   const url = `${location.origin}/r/${code}`;
   try {
     await navigator.clipboard.writeText(url);
@@ -250,15 +253,22 @@ onMounted(refresh);
         <tbody>
           <tr v-for="(t, idx) in topLinks" :key="t.linkId">
             <td class="mono">{{ idx + 1 }}</td>
-            <td class="mono">{{ t.code }}</td>
             <td class="mono">
-              <a :href="`/r/${t.code}`" target="_blank" rel="noreferrer">/r/{{ t.code }}</a>
+              <span v-if="t.code">{{ t.code }}</span>
+              <span v-else class="sub">已删除</span>
             </td>
-            <td class="mono">{{ t.originalUrl }}</td>
+            <td class="mono">
+              <a v-if="t.code" :href="`/r/${t.code}`" target="_blank" rel="noreferrer">/r/{{ t.code }}</a>
+              <span v-else class="sub">已删除</span>
+            </td>
+            <td class="mono">
+              <span v-if="t.originalUrl">{{ t.originalUrl }}</span>
+              <span v-else class="sub">-</span>
+            </td>
             <td class="mono">{{ t.pv }}</td>
             <td class="mono">{{ t.uv }}</td>
             <td>
-              <button class="btn small secondary" @click="copyShort(t.code)">复制</button>
+              <button class="btn small secondary" :disabled="!t.code" @click="copyShort(t.code)">复制</button>
             </td>
           </tr>
           <tr v-if="topLinks.length === 0">

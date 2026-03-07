@@ -4,9 +4,9 @@ import com.linkforge.contract.analytics.VisitContext;
 import com.linkforge.contract.analytics.VisitRecorderPort;
 import com.linkforge.contract.redirect.LinkCachePort;
 import com.linkforge.contract.redirect.LinkMeta;
+import com.linkforge.contract.redirect.LinkMetaQueryPort;
 import com.linkforge.redirect.application.error.RedirectBusinessException;
 import com.linkforge.redirect.application.error.RedirectErrorCode;
-import com.linkforge.redirect.infrastructure.persistence.ShortLinkLookupRepository;
 import com.linkforge.foundation.web.VisitInfo;
 import org.springframework.stereotype.Service;
 
@@ -15,16 +15,16 @@ import java.time.LocalDateTime;
 @Service
 public class RedirectService {
 
-    private final ShortLinkLookupRepository shortLinkLookupRepository;
+    private final LinkMetaQueryPort linkMetaQuery;
     private final LinkCachePort linkCache;
     private final VisitRecorderPort visitRecorder;
 
     public RedirectService(
-            ShortLinkLookupRepository shortLinkLookupRepository,
+            LinkMetaQueryPort linkMetaQuery,
             LinkCachePort linkCache,
             VisitRecorderPort visitRecorder
     ) {
-        this.shortLinkLookupRepository = shortLinkLookupRepository;
+        this.linkMetaQuery = linkMetaQuery;
         this.linkCache = linkCache;
         this.visitRecorder = visitRecorder;
     }
@@ -62,27 +62,12 @@ public class RedirectService {
             return cached.meta();
         }
 
-        ShortLinkLookupRepository.ShortLinkRow e = shortLinkLookupRepository.findByCode(normalized)
-                .orElse(null);
-        if (e == null) {
+        LinkMeta meta = linkMetaQuery.findActiveByCode(normalized).orElse(null);
+        if (meta == null) {
             // 负缓存：避免随机短码扫描导致缓存穿透，把 MySQL 回源打穿
             linkCache.markNotFound(normalized);
             throw new RedirectBusinessException(RedirectErrorCode.LINK_NOT_FOUND);
         }
-
-        LinkMeta meta = new LinkMeta(
-                e.id(),
-                e.tenantId(),
-                e.code(),
-                e.originalUrl(),
-                e.enabled(),
-                e.expiresAt(),
-                e.redirectStatusCode(),
-                e.previewEnabled(),
-                e.unavailableLandingUrl(),
-                e.queryForwardMode(),
-                e.queryForwardAllowlist()
-        );
 
         linkCache.tryPut(meta);
         return meta;
@@ -96,7 +81,7 @@ public class RedirectService {
         if (v.isBlank()) {
             throw new RedirectBusinessException(RedirectErrorCode.LINK_NOT_FOUND);
         }
-        // DB 约束：short_links.code 为 VARCHAR(32)
+        // 约束：短码最大长度为 32
         if (v.length() > 32) {
             throw new RedirectBusinessException(RedirectErrorCode.LINK_NOT_FOUND);
         }

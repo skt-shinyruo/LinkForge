@@ -1,6 +1,6 @@
 package com.linkforge.redirect.interfaces.web;
 
-import com.linkforge.foundation.config.AppProperties;
+import com.linkforge.foundation.config.EdgeProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 
@@ -12,10 +12,8 @@ class RedirectClientIpResolverTest {
 
     @Test
     void should_ignore_forwarded_headers_when_remote_not_trusted() {
-        AppProperties p = new AppProperties();
-        AppProperties.Edge edge = new AppProperties.Edge();
-        edge.setTrustedProxies(List.of("10.0.0.0/8"));
-        p.setEdge(edge);
+        EdgeProperties p = new EdgeProperties();
+        p.setTrustedProxies(List.of("10.0.0.0/8"));
 
         RedirectClientIpResolver r = new RedirectClientIpResolver(p);
 
@@ -29,10 +27,8 @@ class RedirectClientIpResolverTest {
 
     @Test
     void should_trust_x_real_ip_when_remote_trusted() {
-        AppProperties p = new AppProperties();
-        AppProperties.Edge edge = new AppProperties.Edge();
-        edge.setTrustedProxies(List.of("10.0.0.0/8"));
-        p.setEdge(edge);
+        EdgeProperties p = new EdgeProperties();
+        p.setTrustedProxies(List.of("10.0.0.0/8"));
 
         RedirectClientIpResolver r = new RedirectClientIpResolver(p);
 
@@ -46,10 +42,8 @@ class RedirectClientIpResolverTest {
 
     @Test
     void should_fallback_to_xff_chain_when_x_real_ip_missing() {
-        AppProperties p = new AppProperties();
-        AppProperties.Edge edge = new AppProperties.Edge();
-        edge.setTrustedProxies(List.of("10.0.0.0/8"));
-        p.setEdge(edge);
+        EdgeProperties p = new EdgeProperties();
+        p.setTrustedProxies(List.of("10.0.0.0/8"));
 
         RedirectClientIpResolver r = new RedirectClientIpResolver(p);
 

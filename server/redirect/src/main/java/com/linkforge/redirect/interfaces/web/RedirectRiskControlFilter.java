@@ -1,8 +1,8 @@
 package com.linkforge.redirect.interfaces.web;
 
-import com.linkforge.redirect.interfaces.risk.RedirectRiskControl;
+import com.linkforge.redirect.application.risk.RedirectRiskControl;
 import com.linkforge.redirect.interfaces.web.error.RedirectErrorResponseWriter;
-import com.linkforge.foundation.config.AppProperties;
+import com.linkforge.foundation.config.AnalyticsProperties;
 import com.linkforge.foundation.web.RequestId;
 import com.linkforge.foundation.web.VisitInfo;
 import jakarta.servlet.FilterChain;
@@ -36,18 +36,18 @@ public class RedirectRiskControlFilter extends OncePerRequestFilter {
     private final RedirectClientIpResolver clientIpResolver;
     private final RedirectRiskControl riskControl;
     private final RedirectErrorResponseWriter errorResponseWriter;
-    private final AppProperties properties;
+    private final AnalyticsProperties analyticsProperties;
 
     public RedirectRiskControlFilter(
             RedirectClientIpResolver clientIpResolver,
             RedirectRiskControl riskControl,
             RedirectErrorResponseWriter errorResponseWriter,
-            AppProperties properties
+            AnalyticsProperties analyticsProperties
     ) {
         this.clientIpResolver = clientIpResolver;
         this.riskControl = riskControl;
         this.errorResponseWriter = errorResponseWriter;
-        this.properties = properties;
+        this.analyticsProperties = analyticsProperties;
     }
 
     @Override
@@ -107,10 +107,9 @@ public class RedirectRiskControlFilter extends OncePerRequestFilter {
             return Map.of();
         }
 
-        List<String> allowlist = properties == null
-                || properties.getAnalytics() == null
-                ? List.of()
-                : properties.getAnalytics().getTrackingParamAllowlist();
+        List<String> allowlist = analyticsProperties == null
+                ? null
+                : analyticsProperties.getTrackingParamAllowlist();
         if (allowlist == null || allowlist.isEmpty()) {
             // 安全默认：仅采集常见营销参数，避免把业务 query（token/账号等）带入统计链路
             allowlist = List.of("utm_*", "gclid", "fbclid");

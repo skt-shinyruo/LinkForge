@@ -11,7 +11,7 @@ class StartupValidationTest {
 
     @Test
     void strict_mode_should_reject_default_snowflake_id_config() {
-        AppProperties p = new AppProperties();
+        IdProperties p = new IdProperties();
         List<String> errors = new ArrayList<>();
 
         StartupValidation.validateIdBasics(p, true, null, errors);
@@ -21,7 +21,7 @@ class StartupValidationTest {
 
     @Test
     void non_strict_mode_should_allow_default_snowflake_id_config() {
-        AppProperties p = new AppProperties();
+        IdProperties p = new IdProperties();
         List<String> errors = new ArrayList<>();
 
         StartupValidation.validateIdBasics(p, false, null, errors);
@@ -31,9 +31,9 @@ class StartupValidationTest {
 
     @Test
     void id_values_should_be_within_expected_range() {
-        AppProperties p = new AppProperties();
-        p.getId().setWorkerId(32);
-        p.getId().setDatacenterId(-1);
+        IdProperties p = new IdProperties();
+        p.setWorkerId(32);
+        p.setDatacenterId(-1);
 
         List<String> errors = new ArrayList<>();
         StartupValidation.validateIdBasics(p, false, null, errors);

@@ -3,7 +3,7 @@ package com.linkforge.accounts.interfaces.web;
 import com.linkforge.accounts.application.AuthService;
 import com.linkforge.contract.api.ApiResponse;
 import com.linkforge.foundation.security.AuthPrincipal;
-import com.linkforge.foundation.config.AppProperties;
+import com.linkforge.foundation.config.SecurityProperties;
 import com.linkforge.foundation.web.RequestId;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -26,11 +26,11 @@ import java.time.Duration;
 public class AuthController {
 
     private final AuthService authService;
-    private final AppProperties properties;
+    private final SecurityProperties securityProperties;
 
-    public AuthController(AuthService authService, AppProperties properties) {
+    public AuthController(AuthService authService, SecurityProperties securityProperties) {
         this.authService = authService;
-        this.properties = properties;
+        this.securityProperties = securityProperties;
     }
 
     @PostMapping("/register")
@@ -70,13 +70,13 @@ public class AuthController {
         if (response == null) {
             return;
         }
-        if (!properties.getSecurity().getJwt().isCookieEnabled()) {
+        if (securityProperties == null || !securityProperties.getJwt().isCookieEnabled()) {
             return;
         }
-        String name = defaultIfBlank(properties.getSecurity().getJwt().getCookieName(), "lf_token");
-        String sameSite = defaultIfBlank(properties.getSecurity().getJwt().getCookieSameSite(), "Lax");
-        boolean secure = properties.getSecurity().getJwt().isCookieSecure();
-        long maxAgeSeconds = Math.max(properties.getSecurity().getJwt().getTtlSeconds(), 0);
+        String name = defaultIfBlank(securityProperties.getJwt().getCookieName(), "lf_token");
+        String sameSite = defaultIfBlank(securityProperties.getJwt().getCookieSameSite(), "Lax");
+        boolean secure = securityProperties.getJwt().isCookieSecure();
+        long maxAgeSeconds = Math.max(securityProperties.getJwt().getTtlSeconds(), 0);
 
         ResponseCookie cookie = ResponseCookie.from(name, token == null ? "" : token)
                 .httpOnly(true)
@@ -92,12 +92,12 @@ public class AuthController {
         if (response == null) {
             return;
         }
-        if (!properties.getSecurity().getJwt().isCookieEnabled()) {
+        if (securityProperties == null || !securityProperties.getJwt().isCookieEnabled()) {
             return;
         }
-        String name = defaultIfBlank(properties.getSecurity().getJwt().getCookieName(), "lf_token");
-        String sameSite = defaultIfBlank(properties.getSecurity().getJwt().getCookieSameSite(), "Lax");
-        boolean secure = properties.getSecurity().getJwt().isCookieSecure();
+        String name = defaultIfBlank(securityProperties.getJwt().getCookieName(), "lf_token");
+        String sameSite = defaultIfBlank(securityProperties.getJwt().getCookieSameSite(), "Lax");
+        boolean secure = securityProperties.getJwt().isCookieSecure();
 
         ResponseCookie cookie = ResponseCookie.from(name, "")
                 .httpOnly(true)

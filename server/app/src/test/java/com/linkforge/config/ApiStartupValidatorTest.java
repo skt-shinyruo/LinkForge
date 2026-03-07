@@ -1,7 +1,13 @@
 package com.linkforge.config;
 
 import com.linkforge.app.startup.AppStartupValidator;
-import com.linkforge.foundation.config.AppProperties;
+import com.linkforge.foundation.config.AnalyticsProperties;
+import com.linkforge.foundation.config.CoreProperties;
+import com.linkforge.foundation.config.CorsProperties;
+import com.linkforge.foundation.config.EdgeProperties;
+import com.linkforge.foundation.config.IdProperties;
+import com.linkforge.foundation.config.RedirectProperties;
+import com.linkforge.foundation.config.SecurityProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.env.MockEnvironment;
 
@@ -14,13 +20,30 @@ class ApiStartupValidatorTest {
         MockEnvironment env = new MockEnvironment()
                 .withProperty("app.strict-config", "true");
 
-        AppProperties props = new AppProperties();
-        props.setBaseUrl("http://localhost");
-        props.getSecurity().getJwt().setSecret("dev-change-me-please-set-env-and-long-enough-32-bytes");
-        props.getAnalytics().setSalt("dev-salt-change-me");
-        props.getAnalytics().setRedisKeyTtlDays(1);
+        CoreProperties core = new CoreProperties();
+        core.setBaseUrl("http://localhost");
 
-        AppStartupValidator v = new AppStartupValidator(env, props);
+        IdProperties id = new IdProperties();
+        id.setWorkerId(2);
+        id.setDatacenterId(2);
+
+        SecurityProperties security = new SecurityProperties();
+        security.getJwt().setSecret("dev-change-me-please-set-env-and-long-enough-32-bytes");
+
+        CorsProperties cors = new CorsProperties();
+
+        RedirectProperties redirect = new RedirectProperties();
+        redirect.setDefaultStatusCode(302);
+        redirect.setCacheTtlSeconds(60);
+        redirect.setNotFoundCacheTtlSeconds(60);
+
+        AnalyticsProperties analytics = new AnalyticsProperties();
+        analytics.setSalt("dev-salt-change-me");
+        analytics.setRedisKeyTtlDays(1);
+
+        EdgeProperties edge = new EdgeProperties();
+
+        AppStartupValidator v = new AppStartupValidator(env, core, id, security, cors, redirect, analytics, edge);
         assertThatThrownBy(() -> v.run(null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("JWT secret");
@@ -30,16 +53,32 @@ class ApiStartupValidatorTest {
     void cors_allowCredentials_should_require_whitelist() {
         MockEnvironment env = new MockEnvironment();
 
-        AppProperties props = new AppProperties();
-        props.setBaseUrl("http://localhost");
-        props.getSecurity().getJwt().setSecret("test-secret-please-change-but-long-enough-32-bytes");
-        props.getAnalytics().setSalt("test-analytics-salt");
-        props.getAnalytics().setRedisKeyTtlDays(1);
+        CoreProperties core = new CoreProperties();
+        core.setBaseUrl("http://localhost");
 
-        props.getCors().setAllowCredentials(true);
-        props.getCors().setAllowedOrigins(java.util.List.of());
+        IdProperties id = new IdProperties();
+        id.setWorkerId(2);
+        id.setDatacenterId(2);
 
-        AppStartupValidator v = new AppStartupValidator(env, props);
+        SecurityProperties security = new SecurityProperties();
+        security.getJwt().setSecret("test-secret-please-change-but-long-enough-32-bytes");
+
+        RedirectProperties redirect = new RedirectProperties();
+        redirect.setDefaultStatusCode(302);
+        redirect.setCacheTtlSeconds(60);
+        redirect.setNotFoundCacheTtlSeconds(60);
+
+        AnalyticsProperties analytics = new AnalyticsProperties();
+        analytics.setSalt("test-analytics-salt");
+        analytics.setRedisKeyTtlDays(1);
+
+        EdgeProperties edge = new EdgeProperties();
+
+        CorsProperties cors = new CorsProperties();
+        cors.setAllowCredentials(true);
+        cors.setAllowedOrigins(java.util.List.of());
+
+        AppStartupValidator v = new AppStartupValidator(env, core, id, security, cors, redirect, analytics, edge);
         assertThatThrownBy(() -> v.run(null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("CORS");

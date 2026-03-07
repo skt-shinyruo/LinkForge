@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkforge.contract.redirect.LinkCachePort;
 import com.linkforge.contract.redirect.LinkCachePort.LookupResult;
 import com.linkforge.contract.redirect.LinkMeta;
-import com.linkforge.foundation.config.AppProperties;
+import com.linkforge.foundation.config.RedirectProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -21,12 +21,12 @@ public class LinkCacheService implements LinkCachePort {
 
     private final StringRedisTemplate redis;
     private final ObjectMapper objectMapper;
-    private final AppProperties properties;
+    private final RedirectProperties redirectProperties;
 
-    public LinkCacheService(StringRedisTemplate redis, ObjectMapper objectMapper, AppProperties properties) {
+    public LinkCacheService(StringRedisTemplate redis, ObjectMapper objectMapper, RedirectProperties redirectProperties) {
         this.redis = redis;
         this.objectMapper = objectMapper;
-        this.properties = properties;
+        this.redirectProperties = redirectProperties;
     }
 
     /**
@@ -88,7 +88,7 @@ public class LinkCacheService implements LinkCachePort {
         }
         try {
             String raw = objectMapper.writeValueAsString(meta);
-            redis.opsForValue().set(key(meta.code()), raw, Duration.ofSeconds(properties.getRedirect().getCacheTtlSeconds()));
+            redis.opsForValue().set(key(meta.code()), raw, Duration.ofSeconds(redirectProperties.getCacheTtlSeconds()));
             return true;
         } catch (Exception e) {
             // 缓存写入失败不应影响主链路
@@ -108,9 +108,7 @@ public class LinkCacheService implements LinkCachePort {
         if (code == null || code.isBlank()) {
             return;
         }
-        long ttlSeconds = properties == null || properties.getRedirect() == null
-                ? 0
-                : properties.getRedirect().getNotFoundCacheTtlSeconds();
+        long ttlSeconds = redirectProperties == null ? 0 : redirectProperties.getNotFoundCacheTtlSeconds();
         if (ttlSeconds <= 0) {
             return;
         }

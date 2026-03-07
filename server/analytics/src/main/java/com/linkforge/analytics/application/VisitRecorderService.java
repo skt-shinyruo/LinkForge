@@ -3,7 +3,7 @@ package com.linkforge.analytics.application;
 import com.linkforge.contract.analytics.AnalyticsKeys;
 import com.linkforge.contract.analytics.VisitContext;
 import com.linkforge.contract.analytics.VisitRecorderPort;
-import com.linkforge.foundation.config.AppProperties;
+import com.linkforge.foundation.config.AnalyticsProperties;
 import com.linkforge.foundation.web.RequestId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,11 +43,11 @@ public class VisitRecorderService implements VisitRecorderPort {
     );
 
     private final StringRedisTemplate redis;
-    private final AppProperties properties;
+    private final AnalyticsProperties analyticsProperties;
 
-    public VisitRecorderService(StringRedisTemplate redis, AppProperties properties) {
+    public VisitRecorderService(StringRedisTemplate redis, AnalyticsProperties analyticsProperties) {
         this.redis = redis;
-        this.properties = properties;
+        this.analyticsProperties = analyticsProperties;
     }
 
     @Override
@@ -63,7 +63,7 @@ public class VisitRecorderService implements VisitRecorderPort {
             // PV：计数
             Long pv = redis.opsForValue().increment(pvKey);
             // UV：近似去重（HLL）
-            String visitor = VisitorFingerprint.fingerprint(day, visitContext, properties.getAnalytics().getSalt());
+            String visitor = VisitorFingerprint.fingerprint(day, visitContext, analyticsProperties == null ? null : analyticsProperties.getSalt());
             Long uvAdd = redis.opsForHyperLogLog().add(uvKey, visitor);
             // 活跃索引：供 flush job 增量读取
             Long activeAdd = redis.opsForSet().add(activeKey, activeMember);
@@ -81,7 +81,7 @@ public class VisitRecorderService implements VisitRecorderPort {
                 }
             }
 
-            AppProperties.Analytics a = properties.getAnalytics();
+            AnalyticsProperties a = analyticsProperties;
             boolean dimsEnabled = a != null && a.getDimensions() != null && a.getDimensions().isEnabled();
             boolean eventsEnabled = a != null && a.getEvents() != null && a.getEvents().isEnabled();
             if (!dimsEnabled && !eventsEnabled) {
@@ -116,7 +116,7 @@ public class VisitRecorderService implements VisitRecorderPort {
     }
 
     private void recordDimensions(long tenantId, long linkId, LocalDate day, VisitDimensionNormalizer.Normalized n, Date expireAt) {
-        AppProperties.Analytics.Dimensions cfg = properties.getAnalytics() == null ? null : properties.getAnalytics().getDimensions();
+        AnalyticsProperties.Dimensions cfg = analyticsProperties == null ? null : analyticsProperties.getDimensions();
         List<String> types = cfg == null ? null : cfg.getTypes();
         if (types == null || types.isEmpty()) {
             types = DEFAULT_DIM_TYPES;
@@ -144,8 +144,7 @@ public class VisitRecorderService implements VisitRecorderPort {
         if (day == null) {
             return null;
         }
-        AppProperties.Analytics cfg = properties == null ? null : properties.getAnalytics();
-        long ttlDays = cfg == null ? 0 : cfg.getRedisKeyTtlDays();
+        long ttlDays = analyticsProperties == null ? 0 : analyticsProperties.getRedisKeyTtlDays();
         if (ttlDays <= 0) {
             return null;
         }
@@ -170,7 +169,7 @@ public class VisitRecorderService implements VisitRecorderPort {
     }
 
     private void recordVisitEvent(long tenantId, long linkId, VisitContext visitContext, VisitDimensionNormalizer.Normalized n) {
-        AppProperties.Analytics.Events cfg = properties.getAnalytics() == null ? null : properties.getAnalytics().getEvents();
+        AnalyticsProperties.Events cfg = analyticsProperties == null ? null : analyticsProperties.getEvents();
         if (cfg == null || !cfg.isEnabled()) {
             return;
         }
@@ -195,7 +194,7 @@ public class VisitRecorderService implements VisitRecorderPort {
         }
         fields.put("requestId", requestId);
 
-        String salt = properties.getAnalytics() == null ? null : properties.getAnalytics().getSalt();
+        String salt = analyticsProperties == null ? null : analyticsProperties.getSalt();
         putIfNonBlank(fields, "ipHash", VisitorFingerprint.ipHash(visitContext, salt));
 
         putIfNonBlank(fields, "uaRaw", n == null ? null : n.userAgentRaw());

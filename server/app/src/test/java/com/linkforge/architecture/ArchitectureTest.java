@@ -5,7 +5,10 @@ import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.lang.ArchRule;
 import org.junit.jupiter.api.Test;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.RestController;
 
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 class ArchitectureTest {
@@ -26,6 +29,17 @@ class ArchitectureTest {
     }
 
     @Test
+    void interfaces_should_not_depend_on_infrastructure() {
+        ArchRule rule = noClasses()
+                .that()
+                .resideInAnyPackage("..interfaces..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAnyPackage("..infrastructure..");
+        rule.check(CLASSES);
+    }
+
+    @Test
     void only_application_or_infrastructure_should_access_repositories() {
         ArchRule rule = noClasses()
                 .that()
@@ -34,6 +48,20 @@ class ArchitectureTest {
                 .dependOnClassesThat()
                 .resideInAnyPackage("..repo..");
         rule.check(CLASSES);
+    }
+
+    @Test
+    void controllers_should_reside_in_interfaces_layer() {
+        classes()
+                .that().areAnnotatedWith(RestController.class)
+                .should().resideInAnyPackage("..interfaces..")
+                .check(CLASSES);
+
+        classes()
+                .that().areAnnotatedWith(Controller.class)
+                .should().resideInAnyPackage("..interfaces..")
+                .allowEmptyShould(true)
+                .check(CLASSES);
     }
 
     @Test
@@ -48,6 +76,21 @@ class ArchitectureTest {
     }
 
     @Test
+    void application_and_domain_should_not_depend_on_web_or_servlet() {
+        ArchRule rule = noClasses()
+                .that()
+                .resideInAnyPackage("..application..", "..domain..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAnyPackage(
+                        "jakarta.servlet..",
+                        "org.springframework.web..",
+                        "org.springframework.http.."
+                );
+        rule.check(CLASSES);
+    }
+
+    @Test
     void domain_should_not_depend_on_outer_layers() {
         ArchRule rule = noClasses()
                 .that()
@@ -55,6 +98,21 @@ class ArchitectureTest {
                 .should()
                 .dependOnClassesThat()
                 .resideInAnyPackage("..application..", "..infrastructure..", "..interfaces..");
+        rule.check(CLASSES);
+    }
+
+    @Test
+    void redirect_bounded_context_should_not_use_jdbc_or_sql_packages() {
+        ArchRule rule = noClasses()
+                .that()
+                .resideInAnyPackage("com.linkforge.redirect..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAnyPackage(
+                        "org.springframework.jdbc..",
+                        "javax.sql..",
+                        "java.sql.."
+                );
         rule.check(CLASSES);
     }
 

@@ -1,6 +1,6 @@
 package com.linkforge.analytics.application.job;
 
-import com.linkforge.foundation.config.AppProperties;
+import com.linkforge.foundation.config.AnalyticsProperties;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.data.redis.core.RedisCallback;
@@ -29,7 +29,7 @@ class AnalyticsFlushJobTest {
     void flushActiveMembers_should_skip_rows_when_pv_key_missing() {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
-        AppProperties properties = new AppProperties();
+        AnalyticsProperties properties = new AnalyticsProperties();
 
         @SuppressWarnings("unchecked")
         ValueOperations<String, String> valueOps = mock(ValueOperations.class);
@@ -63,7 +63,7 @@ class AnalyticsFlushJobTest {
     void flushActiveMembers_should_skip_rows_when_uv_key_missing_or_zero() {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
-        AppProperties properties = new AppProperties();
+        AnalyticsProperties properties = new AnalyticsProperties();
 
         @SuppressWarnings("unchecked")
         ValueOperations<String, String> valueOps = mock(ValueOperations.class);

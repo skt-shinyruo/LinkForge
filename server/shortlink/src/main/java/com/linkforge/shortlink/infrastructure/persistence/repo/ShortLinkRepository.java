@@ -15,6 +15,8 @@ public interface ShortLinkRepository extends JpaRepository<ShortLinkEntity, Long
 
     Optional<ShortLinkEntity> findByCode(String code);
 
+    Optional<ShortLinkEntity> findByCodeAndArchivedAtIsNull(String code);
+
     @Query(
             value = """
                     select distinct l from ShortLinkEntity l

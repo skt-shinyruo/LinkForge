@@ -14,14 +14,14 @@ public final class StartupValidation {
     private StartupValidation() {
     }
 
-    public static void validateIdBasics(AppProperties properties, boolean strict, Logger log, List<String> errors) {
-        if (properties == null || properties.getId() == null) {
+    public static void validateIdBasics(IdProperties properties, boolean strict, Logger log, List<String> errors) {
+        if (properties == null) {
             errors.add("id 配置缺失");
             return;
         }
 
-        long workerId = properties.getId().getWorkerId();
-        long datacenterId = properties.getId().getDatacenterId();
+        long workerId = properties.getWorkerId();
+        long datacenterId = properties.getDatacenterId();
 
         // Snowflake: workerId/datacenterId 均为 5 bits（0~31）
         if (workerId < 0 || workerId > 31) {
@@ -42,30 +42,30 @@ public final class StartupValidation {
         }
     }
 
-    public static void validateRedirectBasics(AppProperties properties, List<String> errors) {
-        if (properties == null || properties.getRedirect() == null) {
+    public static void validateRedirectBasics(RedirectProperties properties, List<String> errors) {
+        if (properties == null) {
             errors.add("redirect 配置缺失");
             return;
         }
-        int status = properties.getRedirect().getDefaultStatusCode();
+        int status = properties.getDefaultStatusCode();
         if (status != 301 && status != 302) {
             errors.add("app.redirect.default-status-code 仅支持 301/302");
         }
-        if (properties.getRedirect().getCacheTtlSeconds() <= 0) {
+        if (properties.getCacheTtlSeconds() <= 0) {
             errors.add("app.redirect.cache-ttl-seconds 必须 > 0");
         }
-        if (properties.getRedirect().getNotFoundCacheTtlSeconds() < 0) {
+        if (properties.getNotFoundCacheTtlSeconds() < 0) {
             errors.add("app.redirect.not-found-cache-ttl-seconds 必须 >= 0");
         }
     }
 
-    public static void validateAnalyticsBasics(AppProperties properties, boolean strict, Logger log, List<String> errors) {
-        if (properties == null || properties.getAnalytics() == null) {
+    public static void validateAnalyticsBasics(AnalyticsProperties properties, boolean strict, Logger log, List<String> errors) {
+        if (properties == null) {
             errors.add("analytics 配置缺失");
             return;
         }
 
-        String salt = properties.getAnalytics().getSalt();
+        String salt = properties.getSalt();
         if (isBlank(salt)) {
             errors.add("app.analytics.salt 不能为空（用于访客指纹 hash）");
         } else if (looksLikeDev(salt)) {
@@ -76,16 +76,16 @@ public final class StartupValidation {
             }
         }
 
-        if (properties.getAnalytics().getRedisKeyTtlDays() <= 0) {
+        if (properties.getRedisKeyTtlDays() <= 0) {
             errors.add("app.analytics.redis-key-ttl-days 必须 > 0");
         }
     }
 
-    public static void validateAnalyticsTrackingAllowlist(AppProperties properties, List<String> errors) {
-        if (properties == null || properties.getAnalytics() == null) {
+    public static void validateAnalyticsTrackingAllowlist(AnalyticsProperties properties, List<String> errors) {
+        if (properties == null) {
             return;
         }
-        var allowlist = properties.getAnalytics().getTrackingParamAllowlist();
+        var allowlist = properties.getTrackingParamAllowlist();
         if (allowlist == null) {
             return;
         }
@@ -101,11 +101,11 @@ public final class StartupValidation {
         }
     }
 
-    public static void validateAnalyticsDimensionsTypes(AppProperties properties, List<String> errors) {
-        if (properties == null || properties.getAnalytics() == null) {
+    public static void validateAnalyticsDimensionsTypes(AnalyticsProperties properties, List<String> errors) {
+        if (properties == null) {
             return;
         }
-        var dims = properties.getAnalytics().getDimensions();
+        var dims = properties.getDimensions();
         if (dims == null || !dims.isEnabled()) {
             return;
         }
@@ -133,11 +133,11 @@ public final class StartupValidation {
         }
     }
 
-    public static void validateAnalyticsEvents(AppProperties properties, List<String> errors) {
-        if (properties == null || properties.getAnalytics() == null) {
+    public static void validateAnalyticsEvents(AnalyticsProperties properties, List<String> errors) {
+        if (properties == null) {
             return;
         }
-        var ev = properties.getAnalytics().getEvents();
+        var ev = properties.getEvents();
         if (ev == null || !ev.isEnabled()) {
             return;
         }

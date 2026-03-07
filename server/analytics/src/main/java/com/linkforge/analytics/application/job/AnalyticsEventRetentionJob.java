@@ -1,6 +1,6 @@
 package com.linkforge.analytics.application.job;
 
-import com.linkforge.foundation.config.AppProperties;
+import com.linkforge.foundation.config.AnalyticsProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
@@ -18,19 +18,17 @@ public class AnalyticsEventRetentionJob {
     private static final Logger log = LoggerFactory.getLogger(AnalyticsEventRetentionJob.class);
 
     private final JdbcTemplate jdbcTemplate;
-    private final AppProperties properties;
+    private final AnalyticsProperties analyticsProperties;
 
-    public AnalyticsEventRetentionJob(JdbcTemplate jdbcTemplate, AppProperties properties) {
+    public AnalyticsEventRetentionJob(JdbcTemplate jdbcTemplate, AnalyticsProperties analyticsProperties) {
         this.jdbcTemplate = jdbcTemplate;
-        this.properties = properties;
+        this.analyticsProperties = analyticsProperties;
     }
 
     @Scheduled(fixedDelayString = "${APP_ANALYTICS_EVENT_RETENTION_DELAY_MS:3600000}") // 1h
     @SchedulerLock(name = "lf:job:analytics:event-retention", lockAtMostFor = "PT30M")
     public void cleanup() {
-        AppProperties.Analytics.Events cfg = properties == null || properties.getAnalytics() == null
-                ? null
-                : properties.getAnalytics().getEvents();
+        AnalyticsProperties.Events cfg = analyticsProperties == null ? null : analyticsProperties.getEvents();
         if (cfg == null || !cfg.isEnabled()) {
             return;
         }

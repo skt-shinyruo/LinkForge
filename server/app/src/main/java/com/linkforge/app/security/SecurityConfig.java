@@ -1,6 +1,6 @@
 package com.linkforge.app.security;
 
-import com.linkforge.foundation.config.AppProperties;
+import com.linkforge.foundation.config.SecurityProperties;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -24,9 +24,8 @@ public class SecurityConfig {
             HttpSecurity http,
             RestAuthenticationEntryPoint restAuthenticationEntryPoint,
             RestAccessDeniedHandler restAccessDeniedHandler,
-            ApiKeyAuthenticationFilter apiKeyAuthenticationFilter,
-            JwtAuthenticationFilter jwtAuthenticationFilter,
-            AppProperties properties
+            ApiCompositeAuthenticationFilter apiCompositeAuthenticationFilter,
+            SecurityProperties securityProperties
     ) throws Exception {
         http
                 // In monolith mode we must not let security filters affect redirect endpoints (/r/**).
@@ -45,14 +44,13 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/**").authenticated()
                         .anyRequest().authenticated()
                 )
-                .addFilterBefore(apiKeyAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(apiCompositeAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         // Cookie 模式进生产时必须具备 CSRF（双提交 cookie）。
         // Bearer/OpenAPI Key 等非 Cookie 认证路径不应被 CSRF 机制影响。
-        if (properties != null && properties.getSecurity() != null
-                && properties.getSecurity().getJwt() != null
-                && properties.getSecurity().getJwt().isCookieEnabled()) {
+        if (securityProperties != null
+                && securityProperties.getJwt() != null
+                && securityProperties.getJwt().isCookieEnabled()) {
             CookieCsrfTokenRepository repo = CookieCsrfTokenRepository.withHttpOnlyFalse();
             repo.setCookiePath("/");
             // SPA（双提交 cookie）模式：使用“原始 token”而不是 XOR 掩码，保证 cookie 值可直接作为 header 发送

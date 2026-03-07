@@ -9,6 +9,7 @@ import com.linkforge.accounts.infrastructure.persistence.repo.UserRepository;
 import com.linkforge.accounts.infrastructure.persistence.repo.UserRoleRepository;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
+import com.linkforge.contract.accounts.AccountsErrorCode;
 import com.linkforge.foundation.security.TenantGuard;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -74,7 +75,7 @@ public class UserAdminService {
 
         // MVP：为了简化登录（email 不需要选择租户），仍然约束全局唯一
         userRepository.findFirstByEmail(req.email()).ifPresent(u -> {
-            throw new BusinessException(ErrorCode.EMAIL_ALREADY_EXISTS);
+            throw new BusinessException(AccountsErrorCode.EMAIL_ALREADY_EXISTS);
         });
 
         long userId = idGenerator.nextId();
@@ -88,7 +89,7 @@ public class UserAdminService {
             userRepository.save(u);
         } catch (DataIntegrityViolationException e) {
             // 并发创建或绕过应用层校验时，以 DB 约束为准，返回一致的业务错误码
-            throw new BusinessException(ErrorCode.EMAIL_ALREADY_EXISTS);
+            throw new BusinessException(AccountsErrorCode.EMAIL_ALREADY_EXISTS);
         }
 
         Set<String> roles = req.roles() == null || req.roles().isEmpty() ? Set.of(Roles.USER) : req.roles();

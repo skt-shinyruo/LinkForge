@@ -1,7 +1,7 @@
 package com.linkforge.analytics.application.job;
 
 import com.linkforge.contract.analytics.AnalyticsKeys;
-import com.linkforge.foundation.config.AppProperties;
+import com.linkforge.foundation.config.AnalyticsProperties;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,20 +43,18 @@ public class AnalyticsDimensionFlushJob {
 
     private final StringRedisTemplate redis;
     private final JdbcTemplate jdbcTemplate;
-    private final AppProperties properties;
+    private final AnalyticsProperties analyticsProperties;
 
-    public AnalyticsDimensionFlushJob(StringRedisTemplate redis, JdbcTemplate jdbcTemplate, AppProperties properties) {
+    public AnalyticsDimensionFlushJob(StringRedisTemplate redis, JdbcTemplate jdbcTemplate, AnalyticsProperties analyticsProperties) {
         this.redis = redis;
         this.jdbcTemplate = jdbcTemplate;
-        this.properties = properties;
+        this.analyticsProperties = analyticsProperties;
     }
 
     @Scheduled(fixedDelayString = "${APP_ANALYTICS_DIM_FLUSH_DELAY_MS:60000}")
     @SchedulerLock(name = "lf:job:analytics:dim-flush", lockAtMostFor = "PT15M")
     public void flush() {
-        AppProperties.Analytics.Dimensions cfg = properties == null || properties.getAnalytics() == null
-                ? null
-                : properties.getAnalytics().getDimensions();
+        AnalyticsProperties.Dimensions cfg = analyticsProperties == null ? null : analyticsProperties.getDimensions();
         if (cfg == null || !cfg.isEnabled()) {
             return;
         }
@@ -68,7 +66,7 @@ public class AnalyticsDimensionFlushJob {
         }
     }
 
-    private void flushDay(LocalDate day, AppProperties.Analytics.Dimensions cfg) {
+    private void flushDay(LocalDate day, AnalyticsProperties.Dimensions cfg) {
         String activeKey = AnalyticsKeys.activeSetKey(day);
         if (!hasKey(activeKey)) {
             return;
@@ -111,7 +109,7 @@ public class AnalyticsDimensionFlushJob {
     }
 
     private int resolveBackfillDays() {
-        AppProperties.Analytics a = properties == null ? null : properties.getAnalytics();
+        AnalyticsProperties a = analyticsProperties;
         int days = a == null ? 2 : a.getFlushBackfillDays();
         if (days <= 0) {
             days = 1;
@@ -132,7 +130,7 @@ public class AnalyticsDimensionFlushJob {
         }
     }
 
-    private void flushActiveMembers(LocalDate day, AppProperties.Analytics.Dimensions cfg, List<String> members) {
+    private void flushActiveMembers(LocalDate day, AnalyticsProperties.Dimensions cfg, List<String> members) {
         long startNs = System.nanoTime();
         List<MemberParts> parts = new ArrayList<>(members.size());
         for (String m : members) {

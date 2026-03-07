@@ -37,7 +37,7 @@ docker compose --env-file .env up --build
 ```bash
 cd server
 mvn test
-mvn spring-boot:run
+mvn -pl app spring-boot:run
 ```
 
 前端：

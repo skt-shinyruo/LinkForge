@@ -1,6 +1,6 @@
 # Backend Monolith (Single Maven Module) Design
 
-**Date:** 2026-03-06
+**Date:** 2026-03-07
 
 ## Goal
 
@@ -99,3 +99,11 @@
   - `/r/**` 在 `Accept: text/html` 下返回 HTML/redirect，在非 HTML 下返回 Edge JSON 错误结构
 - 前端/反代（`web/nginx.conf`、Vite proxy、compose）无需改变对外 URL（仍为 `/api/**` 与 `/r/**`）
 
+## Testing & Guardrails
+
+单体合并后，原先“模块级别”的架构约束测试需要调整其扫描范围，否则会把整个 monolith 都当成 platform-shared 扫描导致误报。
+
+调整策略：
+
+- `PlatformSharedArchitectureTest`：只约束“纯共享包”（例如 `com.linkforge.platform.config/id/tx/util` 以及纯工具类包），避免包含 `platform.web` / `redirect` 等运行时包。
+- 测试环境默认关闭定时任务（`app.scheduling.enabled=false`），避免在集成测试 teardown 阶段出现 Redis/MySQL 连接重置带来的噪音与潜在抖动。

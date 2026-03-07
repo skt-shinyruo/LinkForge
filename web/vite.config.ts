@@ -8,7 +8,7 @@ export default defineConfig({
     proxy: {
       // 本地开发：将 API 与跳转请求代理到后端
       "/api": "http://localhost:8080",
-      "/r": "http://localhost:8081",
+      "/r": "http://localhost:8080",
     },
   },
 });

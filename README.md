@@ -13,12 +13,9 @@
 - `JWT_SECRET`：长度至少 32 bytes
 - `ANALYTICS_SALT`：用于统计访客指纹 hash 的盐
 - `APP_BASE_URL`：创建短链时用于拼接 shortUrl（建议指向反向代理/网关域名；本地默认 `http://localhost`）
-- （可选/生产建议）`EDGE_TRUSTED_PROXIES`：Edge 可信代理链（CIDR）。当 `/r/**` 经 Nginx/网关反代时需要配置，否则客户端 IP/UV 统计可能严重失真
-- （可选）MySQL 账号拆分（默认值可直接使用）：
-  - `MYSQL_API_USER` / `MYSQL_API_PASSWORD`：API 服务读写账号（Flyway 迁移与业务写入）
-  - `MYSQL_EDGE_USER` / `MYSQL_EDGE_PASSWORD`：Edge 服务只读账号（仅授权读取 `short_links`）
-  - 注意：MySQL init 脚本仅在“全新数据卷”时执行；如需重新初始化账号权限，请先清理 `mysql_data` 数据卷
-  - 验证方式（可选）：使用 `MYSQL_EDGE_USER` 连接数据库，`SELECT` 应成功；`INSERT/UPDATE/DELETE` 应被拒绝（只读）
+- （可选/生产建议）`EDGE_TRUSTED_PROXIES`：可信代理链（CIDR）。当 `/r/**` 经 Nginx/网关反代时需要配置，否则客户端 IP/UV 统计可能严重失真
+- （可选）MySQL 账号（默认值可直接使用）：
+  - `MYSQL_API_USER` / `MYSQL_API_PASSWORD`：后端服务读写账号（Flyway 迁移与业务写入）
 
 3) 启动：
 
@@ -30,8 +27,7 @@ docker compose --env-file .env up --build
 访问：
 
 - 管理后台：`http://localhost/`
-- API 服务：`http://localhost:8080/`（管理后台 / OpenAPI：`/api/v1/**`）
-- Edge 服务：`http://localhost:8081/`（跳转：`/r/**`）
+- 后端服务：`http://localhost:8080/`（管理 API：`/api/v1/**`；跳转：`/r/**`）
 - 跳转（推荐通过反代访问）：`http://localhost/r/{code}`
 
 ## 2. 本地开发（前后端分离）
@@ -41,9 +37,7 @@ docker compose --env-file .env up --build
 ```bash
 cd server
 mvn test
-# 需要分别启动 API 与 Edge（两个终端）
-mvn -pl api spring-boot:run
-mvn -pl edge spring-boot:run
+mvn spring-boot:run
 ```
 
 前端：
@@ -56,9 +50,8 @@ npm run dev
 
 默认 Vite 代理已配置：
 - `/api` → `http://localhost:8080`
-- `/r` → `http://localhost:8081`
+- `/r` → `http://localhost:8080`
 
 ## 3. 方案与文档（SSOT）
 
-- `.helloagents/wiki/`：项目知识库（架构/API/数据模型/模块说明）
-- `.helloagents/history/`：已执行方案包归档（why/how/task）
+- `docs/plans/`：方案与实现计划（SSOT）

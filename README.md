@@ -37,6 +37,7 @@ docker compose --env-file .env up --build
 ```bash
 cd server
 mvn test
+mvn -Pit test   # 运行集成测试（需要 Docker/Testcontainers）
 mvn -pl app spring-boot:run
 ```
 

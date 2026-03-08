@@ -11,3 +11,7 @@ deploy/.env
 # Git worktrees
 .worktrees/
 worktrees/
+
+# JetBrains IDEs
+.idea/
+*.iml

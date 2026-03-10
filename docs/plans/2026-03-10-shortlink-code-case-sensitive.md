@@ -30,7 +30,7 @@ status: implemented
   - `short_links.code`
   - `link_cache_outbox.code`
 
-对应 Flyway 迁移：`server/app/src/main/resources/db/migration/V9__shortlink_code_case_sensitive.sql`
+对应 Flyway 迁移：已折叠进初始迁移 `server/app/src/main/resources/db/migration/V1__init.sql`（squash 到最新 schema）
 
 ### 应用层（并发/竞态处理）
 

@@ -12,7 +12,7 @@ services:
     command:
       - "--character-set-server=utf8mb4"
       - "--collation-server=utf8mb4_unicode_ci"
-      # Note: shortlink code is strictly case-sensitive via column-level collation (see Flyway V9),
+      # Note: shortlink code is strictly case-sensitive via column-level collation (see Flyway V1 init schema),
       # even though the server default collation is case-insensitive.
     volumes:
       - mysql_data:/var/lib/mysql

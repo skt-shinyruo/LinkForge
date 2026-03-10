@@ -22,6 +22,7 @@ import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVPrinter;
 import org.apache.commons.csv.CSVRecord;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -33,7 +34,6 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -110,7 +110,15 @@ public class ShortLinkService {
         e.setQueryForwardMode(normalizeQueryForwardMode(req.queryForwardMode()));
         e.setQueryForwardAllowlist(normalizeAllowlist(req.queryForwardAllowlist()));
         e.setCreatedBy(createdBy);
-        shortLinkRepository.save(e);
+        try {
+            // Ensure unique-constraint violations surface within this method (race-safe for custom codes).
+            shortLinkRepository.saveAndFlush(e);
+        } catch (DataIntegrityViolationException ex) {
+            if (customCode != null) {
+                throw new BusinessException(ShortLinkErrorCode.CODE_ALREADY_EXISTS);
+            }
+            throw ex;
+        }
         setTags(tenantId, e.getId(), req.tags());
         linkCacheOutboxRepository.enqueueRefresh(e.getCode());
         LinkMeta meta = toMeta(e);
@@ -659,12 +667,10 @@ public class ShortLinkService {
         try {
             return LocalDateTime.parse(s);
         } catch (DateTimeParseException e) {
-            // 兼容仅日期
-            try {
-                return LocalDate.parse(s).atStartOfDay();
-            } catch (Exception ignored) {
-                throw new BusinessException(ErrorCode.BAD_REQUEST, "expiresAt 格式错误（建议 ISO-8601）");
-            }
+            throw new BusinessException(
+                    ErrorCode.BAD_REQUEST,
+                    "expiresAt 格式错误（需 ISO-8601 LocalDateTime，例如 2026-03-10T12:00:00）"
+            );
         }
     }
 

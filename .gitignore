@@ -8,6 +8,9 @@ web/dist/
 # Local env
 deploy/.env
 
+# Local Maven repo (used in sandbox/CI runs)
+.m2/
+
 # Git worktrees
 .worktrees/
 worktrees/

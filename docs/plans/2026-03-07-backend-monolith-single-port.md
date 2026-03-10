@@ -119,7 +119,7 @@ Expected: PASS（且不再出现 scheduler 在 teardown 阶段打 Redis 的噪�
 
 **Step 2: `.env.example` 移除/弱化 Edge 独立账号描述**
 
-单体模式下不再需要 `MYSQL_EDGE_USER` / `MYSQL_EDGE_PASSWORD` 的“只读账号”叙述（可保留但标注为 legacy/无效）。
+单体模式下不再需要 `MYSQL_EDGE_USER` / `MYSQL_EDGE_PASSWORD` 的“只读账号”叙述（建议直接移除，避免误导）。
 
 ---
 
@@ -163,4 +163,3 @@ Expected:
 - `http://localhost/` 前端可打开
 - `http://localhost/api/v1/auth/csrf` 可返回
 - `http://localhost/r/{code}` 可跳转/返回 HTML
-

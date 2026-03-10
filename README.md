@@ -29,6 +29,7 @@ docker compose --env-file .env up --build
 - 管理后台：`http://localhost/`
 - 后端服务：`http://localhost:8080/`（管理 API：`/api/v1/**`；跳转：`/r/**`）
 - 跳转（推荐通过反代访问）：`http://localhost/r/{code}`
+  - 说明：短码 `code` **严格区分大小写**（例如 `Abcdef` ≠ `abcdef`）
 
 ## 2. 本地开发（前后端分离）
 

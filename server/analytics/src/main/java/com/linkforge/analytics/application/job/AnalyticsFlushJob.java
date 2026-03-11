@@ -1,6 +1,8 @@
 package com.linkforge.analytics.application.job;
 
 import com.linkforge.contract.analytics.AnalyticsKeys;
+import com.linkforge.analytics.infrastructure.persistence.mapper.LinkStatsDailyMapper;
+import com.linkforge.analytics.infrastructure.persistence.mapper.LinkStatsDailyUpsertRow;
 import com.linkforge.foundation.config.AnalyticsProperties;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.slf4j.Logger;
@@ -11,11 +13,9 @@ import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.serializer.RedisSerializer;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.sql.Date;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -27,12 +27,12 @@ public class AnalyticsFlushJob {
     private static final Logger log = LoggerFactory.getLogger(AnalyticsFlushJob.class);
 
     private final StringRedisTemplate redis;
-    private final JdbcTemplate jdbcTemplate;
+    private final LinkStatsDailyMapper linkStatsDailyMapper;
     private final AnalyticsProperties analyticsProperties;
 
-    public AnalyticsFlushJob(StringRedisTemplate redis, JdbcTemplate jdbcTemplate, AnalyticsProperties analyticsProperties) {
+    public AnalyticsFlushJob(StringRedisTemplate redis, LinkStatsDailyMapper linkStatsDailyMapper, AnalyticsProperties analyticsProperties) {
         this.redis = redis;
-        this.jdbcTemplate = jdbcTemplate;
+        this.linkStatsDailyMapper = linkStatsDailyMapper;
         this.analyticsProperties = analyticsProperties;
     }
 
@@ -115,13 +115,7 @@ public class AnalyticsFlushJob {
         List<String> uvKeys = parts.stream().map(p -> AnalyticsKeys.uvKey(p.tenantId, p.linkId, day)).toList();
         List<Long> uvValues = pfCountPipeline(uvKeys);
 
-        String sql = """
-                INSERT INTO link_stats_daily (link_id, tenant_id, day, pv, uv, updated_at)
-                VALUES (?, ?, ?, ?, ?, NOW())
-                ON DUPLICATE KEY UPDATE pv = VALUES(pv), uv = VALUES(uv), updated_at = NOW()
-                """;
-
-        List<Object[]> batch = new ArrayList<>(parts.size());
+        List<LinkStatsDailyUpsertRow> batch = new ArrayList<>(parts.size());
         int skipped = 0;
         for (int i = 0; i < parts.size(); i++) {
             MemberParts p = parts.get(i);
@@ -135,7 +129,13 @@ public class AnalyticsFlushJob {
                 skipped++;
                 continue;
             }
-            batch.add(new Object[]{p.linkId, p.tenantId, Date.valueOf(day), pv, uv});
+            LinkStatsDailyUpsertRow row = new LinkStatsDailyUpsertRow();
+            row.setLinkId(p.linkId);
+            row.setTenantId(p.tenantId);
+            row.setDay(day);
+            row.setPv(pv);
+            row.setUv(uv);
+            batch.add(row);
         }
 
         if (batch.isEmpty()) {
@@ -146,7 +146,7 @@ public class AnalyticsFlushJob {
         }
 
         try {
-            jdbcTemplate.batchUpdate(sql, batch);
+            linkStatsDailyMapper.batchUpsert(batch);
             long latencyMs = (System.nanoTime() - startNs) / 1_000_000;
             log.info(
                     "flush stats batch ok: day={}, written={}, scanned={}, skipped={}, latencyMs={}",

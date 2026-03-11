@@ -1,6 +1,8 @@
 package com.linkforge.analytics.application.job;
 
 import com.linkforge.contract.analytics.AnalyticsKeys;
+import com.linkforge.analytics.infrastructure.persistence.mapper.LinkStatsDimDailyMapper;
+import com.linkforge.analytics.infrastructure.persistence.mapper.LinkStatsDimDailyUpsertRow;
 import com.linkforge.foundation.config.AnalyticsProperties;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.slf4j.Logger;
@@ -9,11 +11,9 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.sql.Date;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -42,12 +42,16 @@ public class AnalyticsDimensionFlushJob {
     );
 
     private final StringRedisTemplate redis;
-    private final JdbcTemplate jdbcTemplate;
+    private final LinkStatsDimDailyMapper linkStatsDimDailyMapper;
     private final AnalyticsProperties analyticsProperties;
 
-    public AnalyticsDimensionFlushJob(StringRedisTemplate redis, JdbcTemplate jdbcTemplate, AnalyticsProperties analyticsProperties) {
+    public AnalyticsDimensionFlushJob(
+            StringRedisTemplate redis,
+            LinkStatsDimDailyMapper linkStatsDimDailyMapper,
+            AnalyticsProperties analyticsProperties
+    ) {
         this.redis = redis;
-        this.jdbcTemplate = jdbcTemplate;
+        this.linkStatsDimDailyMapper = linkStatsDimDailyMapper;
         this.analyticsProperties = analyticsProperties;
     }
 
@@ -148,13 +152,7 @@ public class AnalyticsDimensionFlushJob {
             types = DEFAULT_DIM_TYPES;
         }
 
-        String sql = """
-                INSERT INTO link_stats_dim_daily (tenant_id, link_id, day, dim_type, dim_value, pv, uv, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
-                ON DUPLICATE KEY UPDATE pv = VALUES(pv), uv = VALUES(uv), updated_at = NOW()
-                """;
-
-        List<Object[]> batch = new ArrayList<>(800);
+        List<LinkStatsDimDailyUpsertRow> batch = new ArrayList<>(800);
         long flushedRows = 0;
         ScanOptions hscan = ScanOptions.scanOptions().count(1000).build();
 
@@ -177,18 +175,18 @@ public class AnalyticsDimensionFlushJob {
                         if (pv <= 0) {
                             continue;
                         }
-                        batch.add(new Object[]{
-                                p.tenantId,
-                                p.linkId,
-                                Date.valueOf(day),
-                                dimType,
-                                dimValue,
-                                pv,
-                                0L
-                        });
+                        LinkStatsDimDailyUpsertRow row = new LinkStatsDimDailyUpsertRow();
+                        row.setTenantId(p.tenantId);
+                        row.setLinkId(p.linkId);
+                        row.setDay(day);
+                        row.setDimType(dimType);
+                        row.setDimValue(dimValue);
+                        row.setPv(pv);
+                        row.setUv(0L);
+                        batch.add(row);
                         if (batch.size() >= 500) {
                             flushedRows += batch.size();
-                            flushBatch(sql, batch);
+                            flushBatch(batch);
                             batch.clear();
                         }
                     }
@@ -200,7 +198,7 @@ public class AnalyticsDimensionFlushJob {
 
         if (!batch.isEmpty()) {
             flushedRows += batch.size();
-            flushBatch(sql, batch);
+            flushBatch(batch);
         }
 
         if (flushedRows > 0) {
@@ -209,9 +207,12 @@ public class AnalyticsDimensionFlushJob {
         }
     }
 
-    private void flushBatch(String sql, List<Object[]> batch) {
+    private void flushBatch(List<LinkStatsDimDailyUpsertRow> batch) {
+        if (batch == null || batch.isEmpty()) {
+            return;
+        }
         try {
-            jdbcTemplate.batchUpdate(sql, batch);
+            linkStatsDimDailyMapper.batchUpsert(batch);
         } catch (DataAccessException e) {
             log.warn("flush dim batch failed: size={}, err={}", batch.size(), e.getMessage());
         }

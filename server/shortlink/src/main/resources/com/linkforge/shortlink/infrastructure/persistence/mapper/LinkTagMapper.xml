@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.linkforge.shortlink.infrastructure.persistence.mapper.LinkTagMapper">
+
+    <resultMap id="LinkTagNameRowResultMap" type="com.linkforge.shortlink.infrastructure.persistence.mapper.LinkTagNameRow">
+        <result property="linkId" column="link_id"/>
+        <result property="tagName" column="tag_name"/>
+    </resultMap>
+
+    <insert id="insert">
+        INSERT INTO link_tags (
+            link_id,
+            tag_id
+        ) VALUES (
+            #{param1},
+            #{param2}
+        )
+    </insert>
+
+    <delete id="deleteAllByLinkId">
+        DELETE FROM link_tags
+        WHERE link_id = #{param1}
+    </delete>
+
+    <select id="findTagNamesByLinkId" resultType="string">
+        SELECT t.name
+        FROM link_tags lt
+        JOIN tags t ON t.id = lt.tag_id
+        WHERE lt.link_id = #{param1}
+        ORDER BY t.created_at DESC, t.id DESC
+    </select>
+
+    <select id="findTagNamesByLinkIds" resultMap="LinkTagNameRowResultMap">
+        SELECT lt.link_id AS link_id,
+               t.name AS tag_name
+        FROM link_tags lt
+        JOIN tags t ON t.id = lt.tag_id
+        WHERE lt.link_id IN
+        <foreach collection="list" item="linkId" open="(" separator="," close=")">
+            #{linkId}
+        </foreach>
+        ORDER BY lt.link_id ASC, t.created_at DESC, t.id DESC
+    </select>
+</mapper>
+

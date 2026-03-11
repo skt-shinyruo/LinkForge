@@ -1,10 +1,10 @@
 package com.linkforge.analytics.application.job;
 
+import com.linkforge.analytics.infrastructure.persistence.mapper.LinkVisitEventMapper;
 import com.linkforge.foundation.config.AnalyticsProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
@@ -17,11 +17,11 @@ public class AnalyticsEventRetentionJob {
 
     private static final Logger log = LoggerFactory.getLogger(AnalyticsEventRetentionJob.class);
 
-    private final JdbcTemplate jdbcTemplate;
+    private final LinkVisitEventMapper visitEventMapper;
     private final AnalyticsProperties analyticsProperties;
 
-    public AnalyticsEventRetentionJob(JdbcTemplate jdbcTemplate, AnalyticsProperties analyticsProperties) {
-        this.jdbcTemplate = jdbcTemplate;
+    public AnalyticsEventRetentionJob(LinkVisitEventMapper visitEventMapper, AnalyticsProperties analyticsProperties) {
+        this.visitEventMapper = visitEventMapper;
         this.analyticsProperties = analyticsProperties;
     }
 
@@ -44,10 +44,7 @@ public class AnalyticsEventRetentionJob {
             loops++;
             int deleted;
             try {
-                deleted = jdbcTemplate.update(
-                        "DELETE FROM link_visit_events WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY) LIMIT 5000",
-                        days
-                );
+                deleted = visitEventMapper.deleteOld(days);
             } catch (DataAccessException e) {
                 log.debug("cleanup visit events failed: err={}", e.getMessage());
                 return;

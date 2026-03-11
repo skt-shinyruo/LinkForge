@@ -18,9 +18,11 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -47,7 +49,10 @@ class RedirectExperienceIntegrationTest {
 
     @Container
     static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.2.4-alpine")
-            .withExposedPorts(6379);
+            .withExposedPorts(6379)
+            .waitingFor(Wait.forLogMessage(".*Ready to accept connections.*\\n", 1)
+                    .withStartupTimeout(Duration.ofSeconds(120)))
+            .withStartupAttempts(3);
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry r) {

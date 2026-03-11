@@ -1,6 +1,8 @@
 package com.linkforge.analytics.application.job;
 
 import com.linkforge.contract.analytics.AnalyticsKeys;
+import com.linkforge.analytics.infrastructure.persistence.mapper.LinkVisitEventInsertRow;
+import com.linkforge.analytics.infrastructure.persistence.mapper.LinkVisitEventMapper;
 import com.linkforge.foundation.config.AnalyticsProperties;
 import com.linkforge.foundation.config.IdProperties;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
@@ -17,7 +19,6 @@ import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.connection.stream.PendingMessage;
 import org.springframework.data.redis.connection.stream.PendingMessages;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -44,7 +45,7 @@ public class AnalyticsEventIngestJob {
     private static final Pattern NON_SAFE = Pattern.compile("[^a-zA-Z0-9._:-]");
 
     private final StringRedisTemplate redis;
-    private final JdbcTemplate jdbcTemplate;
+    private final LinkVisitEventMapper visitEventMapper;
     private final AnalyticsProperties analyticsProperties;
     private final IdProperties idProperties;
     private final SnowflakeIdGenerator idGenerator;
@@ -52,13 +53,13 @@ public class AnalyticsEventIngestJob {
 
     public AnalyticsEventIngestJob(
             StringRedisTemplate redis,
-            JdbcTemplate jdbcTemplate,
+            LinkVisitEventMapper visitEventMapper,
             AnalyticsProperties analyticsProperties,
             IdProperties idProperties,
             SnowflakeIdGenerator idGenerator
     ) {
         this.redis = redis;
-        this.jdbcTemplate = jdbcTemplate;
+        this.visitEventMapper = visitEventMapper;
         this.analyticsProperties = analyticsProperties;
         this.idProperties = idProperties;
         this.idGenerator = idGenerator;
@@ -178,22 +179,7 @@ public class AnalyticsEventIngestJob {
             return;
         }
 
-        String sql = """
-                INSERT INTO link_visit_events (
-                  id, tenant_id, link_id, occurred_at, request_id,
-                  ip_hash, ua_raw, ua_family, os_family, device_type,
-                  referer_domain, language, utm_source, utm_medium, utm_campaign,
-                  created_at
-                ) VALUES (
-                  ?, ?, ?, ?, ?,
-                  ?, ?, ?, ?, ?,
-                  ?, ?, ?, ?, ?,
-                  NOW()
-                )
-                ON DUPLICATE KEY UPDATE id = id
-                """;
-
-        List<Object[]> batch = new ArrayList<>(records.size());
+        List<LinkVisitEventInsertRow> batch = new ArrayList<>(records.size());
         List<RecordId> ackAlways = new ArrayList<>(Math.min(records.size(), 200));
         List<RecordId> ackAfterWrite = new ArrayList<>(Math.min(records.size(), 200));
 
@@ -226,24 +212,23 @@ public class AnalyticsEventIngestJob {
 
             long ts = safeLong(v.get("ts"), System.currentTimeMillis());
             LocalDateTime occurredAt = Instant.ofEpochMilli(ts).atOffset(ZoneOffset.UTC).toLocalDateTime();
-
-            batch.add(new Object[]{
-                    idGenerator.nextId(),
-                    tenantId,
-                    linkId,
-                    occurredAt,
-                    requestId,
-                    trimToNull(v.get("ipHash")),
-                    trimToNull(v.get("uaRaw")),
-                    trimToNull(v.get("uaFamily")),
-                    trimToNull(v.get("osFamily")),
-                    trimToNull(v.get("deviceType")),
-                    trimToNull(v.get("refererDomain")),
-                    trimToNull(v.get("language")),
-                    trimToNull(v.get("utmSource")),
-                    trimToNull(v.get("utmMedium")),
-                    trimToNull(v.get("utmCampaign"))
-            });
+            LinkVisitEventInsertRow row = new LinkVisitEventInsertRow();
+            row.setId(idGenerator.nextId());
+            row.setTenantId(tenantId);
+            row.setLinkId(linkId);
+            row.setOccurredAt(occurredAt);
+            row.setRequestId(requestId);
+            row.setIpHash(trimToNull(v.get("ipHash")));
+            row.setUaRaw(trimToNull(v.get("uaRaw")));
+            row.setUaFamily(trimToNull(v.get("uaFamily")));
+            row.setOsFamily(trimToNull(v.get("osFamily")));
+            row.setDeviceType(trimToNull(v.get("deviceType")));
+            row.setRefererDomain(trimToNull(v.get("refererDomain")));
+            row.setLanguage(trimToNull(v.get("language")));
+            row.setUtmSource(trimToNull(v.get("utmSource")));
+            row.setUtmMedium(trimToNull(v.get("utmMedium")));
+            row.setUtmCampaign(trimToNull(v.get("utmCampaign")));
+            batch.add(row);
             ackAfterWrite.add(r.getId());
         }
 
@@ -253,7 +238,7 @@ public class AnalyticsEventIngestJob {
         }
 
         try {
-            jdbcTemplate.batchUpdate(sql, batch);
+            visitEventMapper.batchInsertIgnore(batch);
         } catch (DataAccessException e) {
             log.warn("ingest visit events failed: size={}, err={}", batch.size(), e.getMessage());
             acknowledge(streamKey, ackAlways);

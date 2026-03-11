@@ -3,13 +3,13 @@ package com.linkforge.shortlink.application;
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.shortlink.application.job.LinkCacheOutboxJob;
+import com.linkforge.shortlink.infrastructure.outbox.LinkCacheOutboxRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -18,9 +18,11 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 
@@ -42,7 +44,10 @@ class ShortLinkCacheAfterCommitIntegrationTest {
 
     @Container
     static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.2.4-alpine")
-            .withExposedPorts(6379);
+            .withExposedPorts(6379)
+            .waitingFor(Wait.forLogMessage(".*Ready to accept connections.*\\n", 1)
+                    .withStartupTimeout(Duration.ofSeconds(120)))
+            .withStartupAttempts(3);
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry r) {
@@ -70,7 +75,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
     StringRedisTemplate redis;
 
     @Autowired
-    JdbcTemplate jdbcTemplate;
+    LinkCacheOutboxRepository linkCacheOutboxRepository;
 
     @Autowired
     PlatformTransactionManager transactionManager;
@@ -87,9 +92,6 @@ class ShortLinkCacheAfterCommitIntegrationTest {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(principal, "N/A", List.of())
         );
-
-        // keep tests isolated
-        jdbcTemplate.update("DELETE FROM link_cache_outbox");
     }
 
     @AfterEach
@@ -126,12 +128,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
 
         // ROLLBACK: cache write should never happen
         assertThat(redis.opsForValue().get(key(code))).isNull();
-        Integer outboxRows = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM link_cache_outbox WHERE code = ?",
-                Integer.class,
-                code
-        );
-        assertThat(outboxRows).isEqualTo(0);
+        assertThat(linkCacheOutboxRepository.findStatusByCode(code)).isNull();
     }
 
     @Test
@@ -229,11 +226,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
         String key = key(code);
 
         // outbox should be persisted in DB transaction
-        String status = jdbcTemplate.queryForObject(
-                "SELECT status FROM link_cache_outbox WHERE code = ?",
-                String.class,
-                code
-        );
+        String status = linkCacheOutboxRepository.findStatusByCode(code);
         assertThat(status).isEqualTo("PENDING");
 
         // simulate: commit happened but cache update was lost (crash before afterCommit)
@@ -243,11 +236,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
         linkCacheOutboxJob.drain();
 
         assertThat(redis.opsForValue().get(key)).isNotNull();
-        String statusAfter = jdbcTemplate.queryForObject(
-                "SELECT status FROM link_cache_outbox WHERE code = ?",
-                String.class,
-                code
-        );
+        String statusAfter = linkCacheOutboxRepository.findStatusByCode(code);
         assertThat(statusAfter).isEqualTo("DONE");
     }
 

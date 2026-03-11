@@ -2,21 +2,25 @@ package com.linkforge.shortlink.application;
 
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.foundation.security.AuthPrincipal;
+import com.linkforge.shortlink.infrastructure.outbox.LinkCacheOutboxRepository;
+import com.linkforge.shortlink.infrastructure.persistence.entity.ShortLinkEntity;
+import com.linkforge.shortlink.infrastructure.persistence.mapper.ShortLinkQueryMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 
@@ -40,7 +44,10 @@ class ShortLinkCodeCaseSensitivityIntegrationTest {
 
     @Container
     static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.2.4-alpine")
-            .withExposedPorts(6379);
+            .withExposedPorts(6379)
+            .waitingFor(Wait.forLogMessage(".*Ready to accept connections.*\\n", 1)
+                    .withStartupTimeout(Duration.ofSeconds(120)))
+            .withStartupAttempts(3);
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry r) {
@@ -65,7 +72,10 @@ class ShortLinkCodeCaseSensitivityIntegrationTest {
     ShortLinkService shortLinkService;
 
     @Autowired
-    JdbcTemplate jdbcTemplate;
+    ShortLinkQueryMapper shortLinkQueryMapper;
+
+    @Autowired
+    LinkCacheOutboxRepository linkCacheOutboxRepository;
 
     private static final long TENANT_ID = 1L;
     private static final long USER_ID = 1L;
@@ -76,12 +86,6 @@ class ShortLinkCodeCaseSensitivityIntegrationTest {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(principal, "N/A", List.of())
         );
-
-        // keep tests isolated
-        jdbcTemplate.update("DELETE FROM link_cache_outbox");
-        jdbcTemplate.update("DELETE FROM link_tags");
-        jdbcTemplate.update("DELETE FROM tags");
-        jdbcTemplate.update("DELETE FROM short_links");
     }
 
     @AfterEach
@@ -124,21 +128,19 @@ class ShortLinkCodeCaseSensitivityIntegrationTest {
         assertThat(a.code()).isEqualTo("Abcdef");
         assertThat(b.code()).isEqualTo("abcdef");
 
-        Integer links = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM short_links WHERE code IN (?, ?)",
-                Integer.class,
-                "Abcdef",
-                "abcdef"
-        );
-        assertThat(links).isEqualTo(2);
+        ShortLinkEntity linkA = shortLinkQueryMapper.findByCode("Abcdef");
+        assertThat(linkA).isNotNull();
+        assertThat(linkA.getCode()).isEqualTo("Abcdef");
 
-        Integer outbox = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM link_cache_outbox WHERE code IN (?, ?)",
-                Integer.class,
-                "Abcdef",
-                "abcdef"
-        );
-        assertThat(outbox).isEqualTo(2);
+        ShortLinkEntity linkB = shortLinkQueryMapper.findByCode("abcdef");
+        assertThat(linkB).isNotNull();
+        assertThat(linkB.getCode()).isEqualTo("abcdef");
+        assertThat(linkA.getId()).isNotEqualTo(linkB.getId());
+
+        assertThat(linkCacheOutboxRepository.findStatusByCode("Abcdef")).isEqualTo("PENDING");
+        assertThat(linkCacheOutboxRepository.findStatusByCode("abcdef")).isEqualTo("PENDING");
+        assertThat(linkCacheOutboxRepository.listPending(1000))
+                .extracting(LinkCacheOutboxRepository.PendingItem::code)
+                .contains("Abcdef", "abcdef");
     }
 }
-

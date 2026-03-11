@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.linkforge.shortlink.infrastructure.persistence.mapper.TagMapper">
+
+    <resultMap id="TagResultMap" type="com.linkforge.shortlink.infrastructure.persistence.entity.TagEntity">
+        <id property="id" column="id"/>
+        <result property="tenantId" column="tenant_id"/>
+        <result property="name" column="name"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <sql id="tagColumns">
+        id, tenant_id, name, created_at
+    </sql>
+
+    <insert id="insert" parameterType="com.linkforge.shortlink.infrastructure.persistence.entity.TagEntity">
+        INSERT INTO tags (
+            id,
+            tenant_id,
+            name
+        ) VALUES (
+            #{id},
+            #{tenantId},
+            #{name}
+        )
+    </insert>
+
+    <select id="findByTenantIdAndName" resultMap="TagResultMap">
+        SELECT
+        <include refid="tagColumns"/>
+        FROM tags
+        WHERE tenant_id = #{param1}
+          AND name = #{param2}
+        LIMIT 1
+    </select>
+
+    <select id="findAllByTenantIdOrderByCreatedAtDesc" resultMap="TagResultMap">
+        SELECT
+        <include refid="tagColumns"/>
+        FROM tags
+        WHERE tenant_id = #{param1}
+        ORDER BY created_at DESC, id DESC
+    </select>
+</mapper>
+

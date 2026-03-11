@@ -2,7 +2,7 @@ package com.linkforge.accounts.application;
 
 import com.linkforge.accounts.domain.AccountsConstants;
 import com.linkforge.accounts.infrastructure.persistence.entity.ApiKeyEntity;
-import com.linkforge.accounts.infrastructure.persistence.repo.ApiKeyRepository;
+import com.linkforge.accounts.infrastructure.persistence.mapper.ApiKeyMapper;
 import com.linkforge.contract.api.AppErrorCode;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
@@ -29,20 +29,20 @@ public class ApiKeyService {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final SnowflakeIdGenerator idGenerator;
-    private final ApiKeyRepository apiKeyRepository;
+    private final ApiKeyMapper apiKeyMapper;
     private final PasswordEncoder passwordEncoder;
     private final TenantGuard tenantGuard;
     private final SecurityProperties securityProperties;
 
     public ApiKeyService(
             SnowflakeIdGenerator idGenerator,
-            ApiKeyRepository apiKeyRepository,
+            ApiKeyMapper apiKeyMapper,
             PasswordEncoder passwordEncoder,
             TenantGuard tenantGuard,
             SecurityProperties securityProperties
     ) {
         this.idGenerator = idGenerator;
-        this.apiKeyRepository = apiKeyRepository;
+        this.apiKeyMapper = apiKeyMapper;
         this.passwordEncoder = passwordEncoder;
         this.tenantGuard = tenantGuard;
         this.securityProperties = securityProperties;
@@ -61,15 +61,17 @@ public class ApiKeyService {
         e.setName(name);
         e.setKeyHash(passwordEncoder.encode(secret));
         e.setStatus(AccountsConstants.STATUS_ACTIVE);
-        apiKeyRepository.save(e);
+        apiKeyMapper.insert(e);
 
         return new CreatedApiKey(id, name, key);
     }
 
     public ApiKeyAuthResult authenticate(String apiKey) {
         Parsed parsed = parse(apiKey);
-        ApiKeyEntity e = apiKeyRepository.findById(parsed.id)
-                .orElseThrow(() -> new ApiKeyAuthException(OpenApiErrorCode.API_KEY_INVALID));
+        ApiKeyEntity e = apiKeyMapper.findById(parsed.id);
+        if (e == null) {
+            throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_INVALID);
+        }
 
         if (!AccountsConstants.STATUS_ACTIVE.equals(e.getStatus())) {
             throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_DISABLED);
@@ -86,7 +88,7 @@ public class ApiKeyService {
 
     public List<ApiKeyInfo> list(long tenantId) {
         tenantGuard.requireCurrentTenant(tenantId);
-        return apiKeyRepository.findAllByTenantIdOrderByCreatedAtDesc(tenantId).stream()
+        return apiKeyMapper.findAllByTenantIdOrderByCreatedAtDesc(tenantId).stream()
                 .map(e -> new ApiKeyInfo(e.getId(), e.getName(), e.getStatus(), e.getLastUsedAt(), e.getCreatedAt()))
                 .toList();
     }
@@ -94,14 +96,16 @@ public class ApiKeyService {
     @Transactional
     public ApiKeyInfo disable(long tenantId, long apiKeyId) {
         tenantGuard.requireCurrentTenant(tenantId);
-        ApiKeyEntity e = apiKeyRepository.findById(apiKeyId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "API Key 不存在"));
+        ApiKeyEntity e = apiKeyMapper.findById(apiKeyId);
+        if (e == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "API Key 不存在");
+        }
         if (!tenantIdEquals(e.getTenantId(), tenantId)) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "API Key 不存在");
         }
         if (!AccountsConstants.STATUS_DISABLED.equals(e.getStatus())) {
             e.setStatus(AccountsConstants.STATUS_DISABLED);
-            apiKeyRepository.save(e);
+            apiKeyMapper.update(e);
         }
         return new ApiKeyInfo(e.getId(), e.getName(), e.getStatus(), e.getLastUsedAt(), e.getCreatedAt());
     }
@@ -109,14 +113,16 @@ public class ApiKeyService {
     @Transactional
     public ApiKeyInfo enable(long tenantId, long apiKeyId) {
         tenantGuard.requireCurrentTenant(tenantId);
-        ApiKeyEntity e = apiKeyRepository.findById(apiKeyId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "API Key 不存在"));
+        ApiKeyEntity e = apiKeyMapper.findById(apiKeyId);
+        if (e == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "API Key 不存在");
+        }
         if (!tenantIdEquals(e.getTenantId(), tenantId)) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "API Key 不存在");
         }
         if (!AccountsConstants.STATUS_ACTIVE.equals(e.getStatus())) {
             e.setStatus(AccountsConstants.STATUS_ACTIVE);
-            apiKeyRepository.save(e);
+            apiKeyMapper.update(e);
         }
         return new ApiKeyInfo(e.getId(), e.getName(), e.getStatus(), e.getLastUsedAt(), e.getCreatedAt());
     }
@@ -124,8 +130,10 @@ public class ApiKeyService {
     @Transactional
     public CreatedApiKey rotate(long tenantId, long apiKeyId) {
         tenantGuard.requireCurrentTenant(tenantId);
-        ApiKeyEntity e = apiKeyRepository.findById(apiKeyId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "API Key 不存在"));
+        ApiKeyEntity e = apiKeyMapper.findById(apiKeyId);
+        if (e == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "API Key 不存在");
+        }
         if (!tenantIdEquals(e.getTenantId(), tenantId)) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "API Key 不存在");
         }
@@ -134,7 +142,7 @@ public class ApiKeyService {
         String key = API_KEY_PREFIX + "_" + e.getId() + "_" + secret;
         e.setKeyHash(passwordEncoder.encode(secret));
         e.setStatus(AccountsConstants.STATUS_ACTIVE);
-        apiKeyRepository.save(e);
+        apiKeyMapper.update(e);
 
         return new CreatedApiKey(e.getId(), e.getName(), key);
     }
@@ -227,7 +235,7 @@ public class ApiKeyService {
         }
         try {
             e.setLastUsedAt(now);
-            apiKeyRepository.save(e);
+            apiKeyMapper.update(e);
         } catch (Exception ex) {
             // best-effort：避免影响主链路鉴权
             log.debug("update api_key last_used_at failed: id={}, err={}", e.getId(), ex.getMessage());

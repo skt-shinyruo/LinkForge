@@ -1,6 +1,8 @@
 package com.linkforge;
 
 import com.linkforge.LinkForgeApplication;
+import com.linkforge.shortlink.infrastructure.persistence.entity.ShortLinkEntity;
+import com.linkforge.shortlink.infrastructure.persistence.mapper.ShortLinkCommandMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -8,14 +10,16 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+
+import java.time.Duration;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -34,7 +38,10 @@ class ArchivedLinkRedirectIntegrationTest {
 
     @Container
     static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.2.4-alpine")
-            .withExposedPorts(6379);
+            .withExposedPorts(6379)
+            .waitingFor(Wait.forLogMessage(".*Ready to accept connections.*\\n", 1)
+                    .withStartupTimeout(Duration.ofSeconds(120)))
+            .withStartupAttempts(3);
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry r) {
@@ -59,63 +66,39 @@ class ArchivedLinkRedirectIntegrationTest {
     MockMvc mockMvc;
 
     @Autowired
-    JdbcTemplate jdbcTemplate;
+    ShortLinkCommandMapper shortLinkCommandMapper;
+
+    private String code;
 
     @BeforeEach
     void setUp() {
-        jdbcTemplate.execute("DROP TABLE IF EXISTS short_links");
-        jdbcTemplate.execute(
-                """
-                        CREATE TABLE short_links (
-                          id BIGINT PRIMARY KEY,
-                          tenant_id BIGINT NOT NULL,
-                          code VARCHAR(32) NOT NULL,
-                          original_url TEXT NOT NULL,
-                          note VARCHAR(512) NULL,
-                          enabled TINYINT(1) NOT NULL,
-                          expires_at DATETIME NULL,
-                          archived_at DATETIME NULL,
-                          redirect_status_code INT NULL,
-                          preview_enabled TINYINT(1) NOT NULL,
-                          unavailable_landing_url TEXT NULL,
-                          query_forward_mode VARCHAR(16) NULL,
-                          query_forward_allowlist VARCHAR(1024) NULL,
-                          created_by BIGINT NOT NULL,
-                          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-                        )
-                        """
-        );
-
         // 归档短链：Edge 侧应视为不可用（表现为 404 not found）
-        jdbcTemplate.update(
-                """
-                        INSERT INTO short_links (
-                          id, tenant_id, code, original_url, note, enabled, expires_at, archived_at,
-                          redirect_status_code, preview_enabled, unavailable_landing_url, query_forward_mode, query_forward_allowlist,
-                          created_by
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                1L,
-                1L,
-                "abc",
-                "https://example.com",
-                null,
-                1,
-                null,
-                java.sql.Timestamp.valueOf("2026-02-20 00:00:00"),
-                null,
-                0,
-                null,
-                null,
-                null,
-                1L
-        );
+        long suffix = System.nanoTime();
+        code = "archived" + Long.toUnsignedString(suffix);
+
+        ShortLinkEntity link = new ShortLinkEntity();
+        long id = suffix & Long.MAX_VALUE;
+        link.setId(id <= 0 ? 1L : id);
+        link.setTenantId(1L);
+        link.setCode(code);
+        link.setOriginalUrl("https://example.com");
+        link.setNote(null);
+        link.setEnabled(true);
+        link.setExpiresAt(null);
+        link.setArchivedAt(java.time.LocalDateTime.of(2026, 2, 20, 0, 0));
+        link.setRedirectStatusCode(null);
+        link.setPreviewEnabled(false);
+        link.setUnavailableLandingUrl(null);
+        link.setQueryForwardMode(null);
+        link.setQueryForwardAllowlist(null);
+        link.setCreatedBy(1L);
+
+        shortLinkCommandMapper.insert(link);
     }
 
     @Test
     void should_return_404_html_when_link_archived() throws Exception {
-        mockMvc.perform(get("/r/abc").header(HttpHeaders.ACCEPT, "text/html"))
+        mockMvc.perform(get("/r/" + code).header(HttpHeaders.ACCEPT, "text/html"))
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML));
     }

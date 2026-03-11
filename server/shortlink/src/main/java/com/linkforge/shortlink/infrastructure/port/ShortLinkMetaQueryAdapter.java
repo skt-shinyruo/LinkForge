@@ -3,7 +3,7 @@ package com.linkforge.shortlink.infrastructure.port;
 import com.linkforge.contract.redirect.LinkMeta;
 import com.linkforge.contract.redirect.LinkMetaQueryPort;
 import com.linkforge.shortlink.infrastructure.persistence.entity.ShortLinkEntity;
-import com.linkforge.shortlink.infrastructure.persistence.repo.ShortLinkRepository;
+import com.linkforge.shortlink.infrastructure.persistence.mapper.ShortLinkQueryMapper;
 import org.springframework.stereotype.Component;
 
 import java.util.Optional;
@@ -11,10 +11,10 @@ import java.util.Optional;
 @Component
 public class ShortLinkMetaQueryAdapter implements LinkMetaQueryPort {
 
-    private final ShortLinkRepository shortLinkRepository;
+    private final ShortLinkQueryMapper shortLinkQueryMapper;
 
-    public ShortLinkMetaQueryAdapter(ShortLinkRepository shortLinkRepository) {
-        this.shortLinkRepository = shortLinkRepository;
+    public ShortLinkMetaQueryAdapter(ShortLinkQueryMapper shortLinkQueryMapper) {
+        this.shortLinkQueryMapper = shortLinkQueryMapper;
     }
 
     @Override
@@ -22,8 +22,8 @@ public class ShortLinkMetaQueryAdapter implements LinkMetaQueryPort {
         if (code == null || code.isBlank()) {
             return Optional.empty();
         }
-        return shortLinkRepository.findByCodeAndArchivedAtIsNull(code.trim())
-                .map(ShortLinkMetaQueryAdapter::toMeta);
+        ShortLinkEntity e = shortLinkQueryMapper.findActiveByCode(code.trim());
+        return e == null ? Optional.empty() : Optional.of(toMeta(e));
     }
 
     @Override
@@ -31,8 +31,8 @@ public class ShortLinkMetaQueryAdapter implements LinkMetaQueryPort {
         if (tenantId <= 0 || linkId <= 0) {
             return Optional.empty();
         }
-        return shortLinkRepository.findByTenantIdAndId(tenantId, linkId)
-                .map(ShortLinkMetaQueryAdapter::toMeta);
+        ShortLinkEntity e = shortLinkQueryMapper.findByTenantIdAndId(tenantId, linkId);
+        return e == null ? Optional.empty() : Optional.of(toMeta(e));
     }
 
     private static LinkMeta toMeta(ShortLinkEntity e) {
@@ -51,4 +51,3 @@ public class ShortLinkMetaQueryAdapter implements LinkMetaQueryPort {
         );
     }
 }
-

@@ -259,3 +259,14 @@ controller 继续接收 `page` / `size` 参数，但会自行构造 `PageQuery`�
 - `analytics` 批处理 SQL 的幂等性与更新顺序必须保持
 - 去掉 JPA 后，`created_at` / `updated_at` 等数据库默认字段的回填行为要通过真实 DB 验证
 - 当前工作区已有用户未提交变更：`README.md`、`docs/architecture.md`；本迁移不应覆盖这些文件上的用户修改
+
+## Completion
+
+**Status:** 完成（2026-03-11）
+
+### Verification
+
+- `cd server && mvn test -Dmaven.repo.local=../.m2/repository` ✅
+- `cd server && mvn -Pit test -Dmaven.repo.local=../.m2/repository` ✅
+- `cd server && mvn -pl app -am package -Dmaven.repo.local=../.m2/repository` ✅
+- `rg` 关键字扫描（`JdbcTemplate` / `JpaRepository` / `@Entity` / `@EntityScan` / `@EnableJpaRepositories` / `Pageable` / JPA 相关依赖）无匹配 ✅

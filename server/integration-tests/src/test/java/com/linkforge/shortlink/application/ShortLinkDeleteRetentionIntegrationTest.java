@@ -1,23 +1,31 @@
 package com.linkforge.shortlink.application;
 
 import com.linkforge.LinkForgeApplication;
+import com.linkforge.analytics.infrastructure.persistence.AnalyticsQueryRepository;
+import com.linkforge.analytics.infrastructure.persistence.mapper.LinkStatsDailyMapper;
+import com.linkforge.analytics.infrastructure.persistence.mapper.LinkStatsDailyUpsertRow;
+import com.linkforge.analytics.infrastructure.persistence.mapper.LinkStatsDimDailyMapper;
+import com.linkforge.analytics.infrastructure.persistence.mapper.LinkStatsDimDailyUpsertRow;
+import com.linkforge.analytics.infrastructure.persistence.mapper.LinkVisitEventInsertRow;
+import com.linkforge.analytics.infrastructure.persistence.mapper.LinkVisitEventMapper;
 import com.linkforge.foundation.security.AuthPrincipal;
+import com.linkforge.shortlink.infrastructure.persistence.mapper.ShortLinkQueryMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.sql.Date;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -41,7 +49,10 @@ class ShortLinkDeleteRetentionIntegrationTest {
 
     @Container
     static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.2.4-alpine")
-            .withExposedPorts(6379);
+            .withExposedPorts(6379)
+            .waitingFor(Wait.forLogMessage(".*Ready to accept connections.*\\n", 1)
+                    .withStartupTimeout(Duration.ofSeconds(120)))
+            .withStartupAttempts(3);
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry r) {
@@ -65,7 +76,19 @@ class ShortLinkDeleteRetentionIntegrationTest {
     ShortLinkService shortLinkService;
 
     @Autowired
-    JdbcTemplate jdbcTemplate;
+    ShortLinkQueryMapper shortLinkQueryMapper;
+
+    @Autowired
+    AnalyticsQueryRepository analyticsQueryRepository;
+
+    @Autowired
+    LinkStatsDailyMapper linkStatsDailyMapper;
+
+    @Autowired
+    LinkStatsDimDailyMapper linkStatsDimDailyMapper;
+
+    @Autowired
+    LinkVisitEventMapper linkVisitEventMapper;
 
     private static final long TENANT_ID = 1L;
     private static final long USER_ID = 1L;
@@ -102,61 +125,45 @@ class ShortLinkDeleteRetentionIntegrationTest {
         long linkId = created.id();
 
         LocalDate day = LocalDate.of(2026, 1, 1);
-        jdbcTemplate.update(
-                "INSERT INTO link_stats_daily (link_id, tenant_id, day, pv, uv) VALUES (?, ?, ?, ?, ?)",
-                linkId, TENANT_ID, Date.valueOf(day), 10L, 5L
-        );
-        jdbcTemplate.update(
-                """
-                        INSERT INTO link_stats_dim_daily
-                        (tenant_id, link_id, day, dim_type, dim_value, pv, uv)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                        """,
-                TENANT_ID, linkId, Date.valueOf(day), "referer_domain", "example.com", 3L, 2L
-        );
-        jdbcTemplate.update(
-                """
-                        INSERT INTO link_visit_events
-                        (id, tenant_id, link_id, occurred_at, request_id)
-                        VALUES (?, ?, ?, ?, ?)
-                        """,
-                900_000_001L, TENANT_ID, linkId, LocalDateTime.of(2026, 1, 1, 0, 0), "req-1"
-        );
+        LinkStatsDailyUpsertRow daily = new LinkStatsDailyUpsertRow();
+        daily.setLinkId(linkId);
+        daily.setTenantId(TENANT_ID);
+        daily.setDay(day);
+        daily.setPv(10L);
+        daily.setUv(5L);
+        linkStatsDailyMapper.batchUpsert(List.of(daily));
+
+        LinkStatsDimDailyUpsertRow dim = new LinkStatsDimDailyUpsertRow();
+        dim.setTenantId(TENANT_ID);
+        dim.setLinkId(linkId);
+        dim.setDay(day);
+        dim.setDimType("referer_domain");
+        dim.setDimValue("example.com");
+        dim.setPv(3L);
+        dim.setUv(2L);
+        linkStatsDimDailyMapper.batchUpsert(List.of(dim));
+
+        LinkVisitEventInsertRow e = new LinkVisitEventInsertRow();
+        e.setId(900_000_001L);
+        e.setTenantId(TENANT_ID);
+        e.setLinkId(linkId);
+        e.setOccurredAt(LocalDateTime.of(2026, 1, 1, 0, 0));
+        e.setRequestId("req-1");
+        linkVisitEventMapper.batchInsertIgnore(List.of(e));
 
         shortLinkService.archive(TENANT_ID, linkId);
         shortLinkService.delete(TENANT_ID, linkId);
 
-        Integer shortLinks = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM short_links WHERE tenant_id = ? AND id = ?",
-                Integer.class,
-                TENANT_ID,
-                linkId
-        );
-        assertThat(shortLinks).isEqualTo(0);
+        assertThat(shortLinkQueryMapper.findByTenantIdAndId(TENANT_ID, linkId)).isNull();
 
-        Integer daily = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM link_stats_daily WHERE tenant_id = ? AND link_id = ?",
-                Integer.class,
+        assertThat(analyticsQueryRepository.linkDaily(TENANT_ID, linkId, day, day)).hasSize(1);
+        assertThat(analyticsQueryRepository.linkDimRows(TENANT_ID, linkId, day, day, "referer_domain", 10)).hasSize(1);
+        assertThat(analyticsQueryRepository.linkEvents(
                 TENANT_ID,
-                linkId
-        );
-        assertThat(daily).isEqualTo(1);
-
-        Integer dimDaily = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM link_stats_dim_daily WHERE tenant_id = ? AND link_id = ?",
-                Integer.class,
-                TENANT_ID,
-                linkId
-        );
-        assertThat(dimDaily).isEqualTo(1);
-
-        Integer events = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM link_visit_events WHERE tenant_id = ? AND link_id = ?",
-                Integer.class,
-                TENANT_ID,
-                linkId
-        );
-        assertThat(events).isEqualTo(1);
+                linkId,
+                day.atStartOfDay(),
+                day.plusDays(1).atStartOfDay(),
+                10
+        )).hasSize(1);
     }
 }
-

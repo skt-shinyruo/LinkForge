@@ -14,10 +14,8 @@ import com.linkforge.foundation.config.RedirectProperties;
 import com.linkforge.foundation.config.SecurityProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Import;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 /**
  * LinkForge backend monolith entrypoint.
@@ -41,8 +39,6 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
         AnalyticsProperties.class,
         EdgeProperties.class
 })
-@EnableJpaRepositories(basePackages = "com.linkforge")
-@EntityScan(basePackages = "com.linkforge")
 public class LinkForgeApplication {
 
     public static void main(String[] args) {

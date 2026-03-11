@@ -1,18 +1,17 @@
 package com.linkforge.shortlink.interfaces.web;
 
 import com.linkforge.contract.api.ApiResponse;
+import com.linkforge.foundation.persistence.PageQuery;
+import com.linkforge.foundation.persistence.PageResult;
 import com.linkforge.foundation.security.AuthContext;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.web.RequestId;
 import com.linkforge.shortlink.application.ShortLinkService;
 import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
+import com.linkforge.shortlink.application.query.ShortLinkSearchQuery;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -61,9 +60,12 @@ public class OpenApiShortLinkController {
             @RequestParam(defaultValue = "20") int size
     ) {
         AuthPrincipal p = AuthContext.requirePrincipal();
-        Pageable pageable = PageRequest.of(Math.max(page, 0), Math.min(size, 100), Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<LinkDto> r = shortLinkService.search(p.getTenantId(), false, enabled, keyword, null, pageable);
-        return ApiResponse.ok(new ShortLinkController.PageResponse<>(r.getContent(), r.getTotalElements(), r.getNumber(), r.getSize()), RequestId.get());
+        PageResult<LinkDto> result = shortLinkService.search(
+                p.getTenantId(),
+                new ShortLinkSearchQuery(false, enabled, keyword, null),
+                PageQuery.of(page, size, 100)
+        );
+        return ApiResponse.ok(ShortLinkController.toPageResponse(result), RequestId.get());
     }
 
     public record CreateLinkRequest(

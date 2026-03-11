@@ -11,14 +11,16 @@ import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+
+import java.time.Duration;
 
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -38,7 +40,10 @@ class RedirectNegativeCacheIntegrationTest {
 
     @Container
     static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.2.4-alpine")
-            .withExposedPorts(6379);
+            .withExposedPorts(6379)
+            .waitingFor(Wait.forLogMessage(".*Ready to accept connections.*\\n", 1)
+                    .withStartupTimeout(Duration.ofSeconds(120)))
+            .withStartupAttempts(3);
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry r) {
@@ -64,9 +69,6 @@ class RedirectNegativeCacheIntegrationTest {
     MockMvc mockMvc;
 
     @Autowired
-    JdbcTemplate jdbcTemplate;
-
-    @Autowired
     StringRedisTemplate redis;
 
     @SpyBean
@@ -74,42 +76,20 @@ class RedirectNegativeCacheIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        jdbcTemplate.execute("DROP TABLE IF EXISTS short_links");
-        jdbcTemplate.execute(
-                """
-                        CREATE TABLE short_links (
-                          id BIGINT PRIMARY KEY,
-                          tenant_id BIGINT NOT NULL,
-                          code VARCHAR(32) NOT NULL,
-                          original_url TEXT NOT NULL,
-                          note VARCHAR(512) NULL,
-                          enabled TINYINT(1) NOT NULL,
-                          expires_at DATETIME NULL,
-                          archived_at DATETIME NULL,
-                          redirect_status_code INT NULL,
-                          preview_enabled TINYINT(1) NOT NULL,
-                          unavailable_landing_url TEXT NULL,
-                          query_forward_mode VARCHAR(16) NULL,
-                          query_forward_allowlist VARCHAR(1024) NULL,
-                          created_by BIGINT NOT NULL,
-                          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-                        )
-                        """
-        );
-
         // 避免测试间缓存 key 干扰
         redis.getConnectionFactory().getConnection().serverCommands().flushAll();
     }
 
     @Test
     void not_found_should_be_negative_cached_to_reduce_db_lookups() throws Exception {
-        mockMvc.perform(get("/r/missing").header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE))
+        String code = "missing" + Long.toUnsignedString(System.nanoTime());
+
+        mockMvc.perform(get("/r/" + code).header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE))
                 .andExpect(status().isNotFound());
 
-        mockMvc.perform(get("/r/missing").header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE))
+        mockMvc.perform(get("/r/" + code).header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE))
                 .andExpect(status().isNotFound());
 
-        verify(linkMetaQueryPort, times(1)).findActiveByCode("missing");
+        verify(linkMetaQueryPort, times(1)).findActiveByCode(code);
     }
 }

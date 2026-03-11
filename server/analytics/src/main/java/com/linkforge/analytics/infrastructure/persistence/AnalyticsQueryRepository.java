@@ -1,9 +1,12 @@
 package com.linkforge.analytics.infrastructure.persistence;
 
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.linkforge.analytics.infrastructure.persistence.mapper.AnalyticsDailyStatRow;
+import com.linkforge.analytics.infrastructure.persistence.mapper.AnalyticsDimensionRow;
+import com.linkforge.analytics.infrastructure.persistence.mapper.AnalyticsQueryMapper;
+import com.linkforge.analytics.infrastructure.persistence.mapper.AnalyticsTopLinkAggRow;
+import com.linkforge.analytics.infrastructure.persistence.mapper.AnalyticsVisitEventRow;
 import org.springframework.stereotype.Repository;
 
-import java.sql.Date;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -11,168 +14,78 @@ import java.util.List;
 @Repository
 public class AnalyticsQueryRepository {
 
-    private final JdbcTemplate jdbcTemplate;
+    private final AnalyticsQueryMapper queryMapper;
 
-    private static final String TOP_LINKS_SQL_ORDER_BY_PV = """
-            SELECT s.link_id AS link_id, SUM(s.pv) AS pv, SUM(s.uv) AS uv
-            FROM link_stats_daily s
-            WHERE s.tenant_id = ?
-              AND s.day >= ?
-              AND s.day <= ?
-            GROUP BY s.link_id
-            ORDER BY pv DESC, uv DESC, s.link_id ASC
-            LIMIT ?
-            """;
-
-    private static final String TOP_LINKS_SQL_ORDER_BY_UV = """
-            SELECT s.link_id AS link_id, SUM(s.pv) AS pv, SUM(s.uv) AS uv
-            FROM link_stats_daily s
-            WHERE s.tenant_id = ?
-              AND s.day >= ?
-              AND s.day <= ?
-            GROUP BY s.link_id
-            ORDER BY uv DESC, pv DESC, s.link_id ASC
-            LIMIT ?
-            """;
-
-    public AnalyticsQueryRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = jdbcTemplate;
+    public AnalyticsQueryRepository(AnalyticsQueryMapper queryMapper) {
+        this.queryMapper = queryMapper;
     }
 
     public List<DailyStatRow> linkDaily(long tenantId, long linkId, LocalDate from, LocalDate to) {
-        return jdbcTemplate.query(
-                """
-                        SELECT day, pv, uv
-                        FROM link_stats_daily
-                        WHERE tenant_id = ?
-                          AND link_id = ?
-                          AND day >= ?
-                          AND day <= ?
-                        ORDER BY day ASC
-                        """,
-                (rs, rowNum) -> new DailyStatRow(
-                        rs.getDate("day").toLocalDate(),
-                        rs.getLong("pv"),
-                        rs.getLong("uv")
-                ),
-                tenantId, linkId, Date.valueOf(from), Date.valueOf(to)
-        );
+        return safeList(queryMapper.linkDaily(tenantId, linkId, from, to)).stream()
+                .map(r -> new DailyStatRow(r.getDay(), safeLong(r.getPv()), safeLong(r.getUv())))
+                .toList();
     }
 
     public List<DailyStatRow> tenantDaily(long tenantId, LocalDate from, LocalDate to) {
-        return jdbcTemplate.query(
-                """
-                        SELECT day, SUM(pv) AS pv, SUM(uv) AS uv
-                        FROM link_stats_daily
-                        WHERE tenant_id = ?
-                          AND day >= ?
-                          AND day <= ?
-                        GROUP BY day
-                        ORDER BY day ASC
-                        """,
-                (rs, rowNum) -> new DailyStatRow(
-                        rs.getDate("day").toLocalDate(),
-                        rs.getLong("pv"),
-                        rs.getLong("uv")
-                ),
-                tenantId, Date.valueOf(from), Date.valueOf(to)
-        );
+        return safeList(queryMapper.tenantDaily(tenantId, from, to)).stream()
+                .map(r -> new DailyStatRow(r.getDay(), safeLong(r.getPv()), safeLong(r.getUv())))
+                .toList();
     }
 
     public List<TopLinkAggRow> topLinksOrderByPv(long tenantId, LocalDate from, LocalDate to, int limit) {
-        return jdbcTemplate.query(
-                TOP_LINKS_SQL_ORDER_BY_PV,
-                (rs, rowNum) -> new TopLinkAggRow(
-                        rs.getLong("link_id"),
-                        rs.getLong("pv"),
-                        rs.getLong("uv")
-                ),
-                tenantId, Date.valueOf(from), Date.valueOf(to), limit
-        );
+        return safeList(queryMapper.topLinksOrderByPv(tenantId, from, to, limit)).stream()
+                .map(r -> new TopLinkAggRow(safeLong(r.getLinkId()), safeLong(r.getPv()), safeLong(r.getUv())))
+                .toList();
     }
 
     public List<TopLinkAggRow> topLinksOrderByUv(long tenantId, LocalDate from, LocalDate to, int limit) {
-        return jdbcTemplate.query(
-                TOP_LINKS_SQL_ORDER_BY_UV,
-                (rs, rowNum) -> new TopLinkAggRow(
-                        rs.getLong("link_id"),
-                        rs.getLong("pv"),
-                        rs.getLong("uv")
-                ),
-                tenantId, Date.valueOf(from), Date.valueOf(to), limit
-        );
+        return safeList(queryMapper.topLinksOrderByUv(tenantId, from, to, limit)).stream()
+                .map(r -> new TopLinkAggRow(safeLong(r.getLinkId()), safeLong(r.getPv()), safeLong(r.getUv())))
+                .toList();
     }
 
     public Long linkDimTotalPv(long tenantId, long linkId, LocalDate from, LocalDate to, String dimType) {
-        return jdbcTemplate.queryForObject(
-                """
-                        SELECT COALESCE(SUM(pv), 0) AS total_pv
-                        FROM link_stats_dim_daily
-                        WHERE tenant_id = ?
-                          AND link_id = ?
-                          AND day >= ?
-                          AND day <= ?
-                          AND dim_type = ?
-                        """,
-                Long.class,
-                tenantId, linkId, Date.valueOf(from), Date.valueOf(to), dimType
-        );
+        return queryMapper.linkDimTotalPv(tenantId, linkId, from, to, dimType);
     }
 
     public List<DimensionRow> linkDimRows(long tenantId, long linkId, LocalDate from, LocalDate to, String dimType, int limit) {
-        return jdbcTemplate.query(
-                """
-                        SELECT dim_value, SUM(pv) AS pv, SUM(uv) AS uv
-                        FROM link_stats_dim_daily
-                        WHERE tenant_id = ?
-                          AND link_id = ?
-                          AND day >= ?
-                          AND day <= ?
-                          AND dim_type = ?
-                        GROUP BY dim_value
-                        ORDER BY pv DESC, uv DESC, dim_value ASC
-                        LIMIT ?
-                        """,
-                (rs, rowNum) -> new DimensionRow(
-                        rs.getString("dim_value"),
-                        rs.getLong("pv"),
-                        rs.getLong("uv")
-                ),
-                tenantId, linkId, Date.valueOf(from), Date.valueOf(to), dimType, limit
-        );
+        return safeList(queryMapper.linkDimRows(tenantId, linkId, from, to, dimType, limit)).stream()
+                .map(r -> new DimensionRow(r.getValue(), safeLong(r.getPv()), safeLong(r.getUv())))
+                .toList();
     }
 
     public List<VisitEventRow> linkEvents(long tenantId, long linkId, LocalDateTime from, LocalDateTime to, int limit) {
-        return jdbcTemplate.query(
-                """
-                        SELECT occurred_at, request_id, ip_hash,
-                               ua_raw, ua_family, os_family, device_type,
-                               referer_domain, language,
-                               utm_source, utm_medium, utm_campaign
-                        FROM link_visit_events
-                        WHERE tenant_id = ?
-                          AND link_id = ?
-                          AND occurred_at >= ?
-                          AND occurred_at <= ?
-                        ORDER BY occurred_at DESC, id DESC
-                        LIMIT ?
-                        """,
-                (rs, rowNum) -> new VisitEventRow(
-                        rs.getObject("occurred_at", LocalDateTime.class),
-                        rs.getString("request_id"),
-                        rs.getString("ip_hash"),
-                        rs.getString("ua_raw"),
-                        rs.getString("ua_family"),
-                        rs.getString("os_family"),
-                        rs.getString("device_type"),
-                        rs.getString("referer_domain"),
-                        rs.getString("language"),
-                        rs.getString("utm_source"),
-                        rs.getString("utm_medium"),
-                        rs.getString("utm_campaign")
-                ),
-                tenantId, linkId, from, to, limit
+        return safeList(queryMapper.linkEvents(tenantId, linkId, from, to, limit)).stream()
+                .map(AnalyticsQueryRepository::toVisitEventRow)
+                .toList();
+    }
+
+    private static VisitEventRow toVisitEventRow(AnalyticsVisitEventRow r) {
+        if (r == null) {
+            return new VisitEventRow(null, null, null, null, null, null, null, null, null, null, null, null);
+        }
+        return new VisitEventRow(
+                r.getOccurredAt(),
+                r.getRequestId(),
+                r.getIpHash(),
+                r.getUserAgentRaw(),
+                r.getUserAgentFamily(),
+                r.getOsFamily(),
+                r.getDeviceType(),
+                r.getRefererDomain(),
+                r.getLanguage(),
+                r.getUtmSource(),
+                r.getUtmMedium(),
+                r.getUtmCampaign()
         );
+    }
+
+    private static long safeLong(Long value) {
+        return value == null ? 0L : value;
+    }
+
+    private static <T> List<T> safeList(List<T> list) {
+        return list == null ? List.of() : list;
     }
 
     public record DailyStatRow(LocalDate day, long pv, long uv) {
@@ -200,4 +113,3 @@ public class AnalyticsQueryRepository {
     ) {
     }
 }
-

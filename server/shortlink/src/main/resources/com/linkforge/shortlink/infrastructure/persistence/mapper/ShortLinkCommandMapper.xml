@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.linkforge.shortlink.infrastructure.persistence.mapper.ShortLinkCommandMapper">
+
+    <insert id="insert" parameterType="com.linkforge.shortlink.infrastructure.persistence.entity.ShortLinkEntity">
+        INSERT INTO short_links (
+            id,
+            tenant_id,
+            code,
+            original_url,
+            note,
+            enabled,
+            expires_at,
+            archived_at,
+            redirect_status_code,
+            preview_enabled,
+            unavailable_landing_url,
+            query_forward_mode,
+            query_forward_allowlist,
+            created_by
+        ) VALUES (
+            #{id},
+            #{tenantId},
+            #{code},
+            #{originalUrl},
+            #{note},
+            #{enabled},
+            #{expiresAt},
+            #{archivedAt},
+            #{redirectStatusCode},
+            #{previewEnabled},
+            #{unavailableLandingUrl},
+            #{queryForwardMode},
+            #{queryForwardAllowlist},
+            #{createdBy}
+        )
+    </insert>
+
+    <update id="update" parameterType="com.linkforge.shortlink.infrastructure.persistence.entity.ShortLinkEntity">
+        UPDATE short_links
+        SET original_url = #{originalUrl},
+            note = #{note},
+            enabled = #{enabled},
+            expires_at = #{expiresAt},
+            archived_at = #{archivedAt},
+            redirect_status_code = #{redirectStatusCode},
+            preview_enabled = #{previewEnabled},
+            unavailable_landing_url = #{unavailableLandingUrl},
+            query_forward_mode = #{queryForwardMode},
+            query_forward_allowlist = #{queryForwardAllowlist}
+        WHERE tenant_id = #{tenantId}
+          AND id = #{id}
+    </update>
+
+    <delete id="deleteByTenantIdAndId">
+        DELETE FROM short_links
+        WHERE tenant_id = #{param1}
+          AND id = #{param2}
+    </delete>
+</mapper>
+

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.linkforge.accounts.infrastructure.persistence.mapper.UserMapper">
+
+    <resultMap id="UserResultMap" type="com.linkforge.accounts.infrastructure.persistence.entity.UserEntity">
+        <id property="id" column="id"/>
+        <result property="tenantId" column="tenant_id"/>
+        <result property="email" column="email"/>
+        <result property="passwordHash" column="password_hash"/>
+        <result property="status" column="status"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="userColumns">
+        id, tenant_id, email, password_hash, status, created_at, updated_at
+    </sql>
+
+    <insert id="insert" parameterType="com.linkforge.accounts.infrastructure.persistence.entity.UserEntity">
+        INSERT INTO users (
+            id,
+            tenant_id,
+            email,
+            password_hash,
+            status
+        ) VALUES (
+            #{id},
+            #{tenantId},
+            #{email},
+            #{passwordHash},
+            #{status}
+        )
+    </insert>
+
+    <select id="findById" resultMap="UserResultMap">
+        SELECT
+        <include refid="userColumns"/>
+        FROM users
+        WHERE id = #{param1}
+    </select>
+
+    <select id="findFirstByEmail" resultMap="UserResultMap">
+        SELECT
+        <include refid="userColumns"/>
+        FROM users
+        WHERE email = #{param1}
+        LIMIT 1
+    </select>
+
+    <select id="findAllByTenantIdOrderByCreatedAtDesc" resultMap="UserResultMap">
+        SELECT
+        <include refid="userColumns"/>
+        FROM users
+        WHERE tenant_id = #{param1}
+        ORDER BY created_at DESC
+    </select>
+
+    <update id="update" parameterType="com.linkforge.accounts.infrastructure.persistence.entity.UserEntity">
+        UPDATE users
+        SET tenant_id = #{tenantId},
+            email = #{email},
+            password_hash = #{passwordHash},
+            status = #{status}
+        WHERE id = #{id}
+    </update>
+</mapper>

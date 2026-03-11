@@ -3,19 +3,18 @@ package com.linkforge.shortlink.interfaces.web;
 import com.linkforge.contract.api.ApiResponse;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
+import com.linkforge.foundation.persistence.PageQuery;
+import com.linkforge.foundation.persistence.PageResult;
 import com.linkforge.foundation.security.AuthContext;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.web.RequestId;
 import com.linkforge.shortlink.application.ShortLinkService;
 import com.linkforge.shortlink.application.ShortLinkService.ImportResult;
 import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
+import com.linkforge.shortlink.application.query.ShortLinkSearchQuery;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -75,10 +74,13 @@ public class ShortLinkController {
             @RequestParam(defaultValue = "20") int size
     ) {
         AuthPrincipal p = AuthContext.requirePrincipal();
-        Pageable pageable = PageRequest.of(Math.max(page, 0), Math.min(size, 100), Sort.by(Sort.Direction.DESC, "createdAt"));
         boolean archivedFlag = archived != null && archived;
-        Page<LinkDto> r = shortLinkService.search(p.getTenantId(), archivedFlag, enabled, keyword, tag, pageable);
-        return ApiResponse.ok(new PageResponse<>(r.getContent(), r.getTotalElements(), r.getNumber(), r.getSize()), RequestId.get());
+        PageResult<LinkDto> result = shortLinkService.search(
+                p.getTenantId(),
+                new ShortLinkSearchQuery(archivedFlag, enabled, keyword, tag),
+                PageQuery.of(page, size, 100)
+        );
+        return ApiResponse.ok(toPageResponse(result), RequestId.get());
     }
 
     @GetMapping("/{id}")
@@ -160,11 +162,14 @@ public class ShortLinkController {
             @RequestParam(defaultValue = "200") int size
     ) throws IOException {
         AuthPrincipal p = AuthContext.requirePrincipal();
-        Pageable pageable = PageRequest.of(Math.max(page, 0), Math.min(size, 1000), Sort.by(Sort.Direction.DESC, "createdAt"));
 
         response.setHeader(HttpHeaders.CONTENT_TYPE, "text/csv; charset=utf-8");
         response.setHeader(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"links.csv\"");
-        shortLinkService.exportCsv(p.getTenantId(), pageable, response.getOutputStream());
+        shortLinkService.exportCsv(p.getTenantId(), PageQuery.of(page, size, 1000), response.getOutputStream());
+    }
+
+    static <T> PageResponse<T> toPageResponse(PageResult<T> result) {
+        return new PageResponse<>(result.items(), result.total(), result.page(), result.size());
     }
 
     public record PageResponse<T>(java.util.List<T> items, long total, int page, int size) {

@@ -1,8 +1,11 @@
 package com.linkforge.shortlink.infrastructure.outbox;
 
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.linkforge.shortlink.infrastructure.persistence.mapper.LinkCacheOutboxMapper;
+import com.linkforge.shortlink.infrastructure.persistence.mapper.LinkCacheOutboxPendingRow;
+import com.linkforge.shortlink.infrastructure.persistence.mapper.LinkCacheOutboxStatsRow;
 import org.springframework.stereotype.Repository;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -19,10 +22,10 @@ import java.util.List;
 @Repository
 public class LinkCacheOutboxRepository {
 
-    private final JdbcTemplate jdbcTemplate;
+    private final LinkCacheOutboxMapper outboxMapper;
 
-    public LinkCacheOutboxRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = jdbcTemplate;
+    public LinkCacheOutboxRepository(LinkCacheOutboxMapper outboxMapper) {
+        this.outboxMapper = outboxMapper;
     }
 
     public record PendingItem(String code, int attempts) {
@@ -36,54 +39,31 @@ public class LinkCacheOutboxRepository {
             return;
         }
         String c = code.trim();
-        jdbcTemplate.update(
-                """
-                        INSERT INTO link_cache_outbox (code, status, available_at, attempts, last_error, processed_at)
-                        VALUES (?, 'PENDING', NOW(), 0, NULL, NULL)
-                        ON DUPLICATE KEY UPDATE
-                          status = 'PENDING',
-                          available_at = NOW(),
-                          attempts = 0,
-                          last_error = NULL,
-                          processed_at = NULL
-                        """,
-                c
-        );
+        outboxMapper.enqueueRefresh(c);
     }
 
     public List<PendingItem> listPending(int limit) {
         int n = Math.max(1, Math.min(limit, 1000));
-        return jdbcTemplate.query(
-                """
-                        SELECT code, attempts
-                        FROM link_cache_outbox
-                        WHERE status = 'PENDING'
-                          AND available_at <= NOW()
-                        ORDER BY available_at ASC
-                        LIMIT ?
-                        """,
-                (rs, rowNum) -> new PendingItem(
-                        rs.getString("code"),
-                        rs.getInt("attempts")
-                ),
-                n
-        );
+        List<LinkCacheOutboxPendingRow> rows = outboxMapper.listPending(n);
+        if (rows == null || rows.isEmpty()) {
+            return List.of();
+        }
+        List<PendingItem> out = new ArrayList<>(rows.size());
+        for (LinkCacheOutboxPendingRow r : rows) {
+            if (r == null || r.getCode() == null) {
+                continue;
+            }
+            int attempts = r.getAttempts() == null ? 0 : r.getAttempts();
+            out.add(new PendingItem(r.getCode(), attempts));
+        }
+        return out;
     }
 
     public void markDone(String code) {
         if (code == null || code.isBlank()) {
             return;
         }
-        jdbcTemplate.update(
-                """
-                        UPDATE link_cache_outbox
-                        SET status = 'DONE',
-                            processed_at = NOW(),
-                            last_error = NULL
-                        WHERE code = ?
-                        """,
-                code.trim()
-        );
+        outboxMapper.markDone(code.trim());
     }
 
     public void markRetry(String code, int attempts, String lastError, long delaySeconds) {
@@ -93,21 +73,7 @@ public class LinkCacheOutboxRepository {
         int nextAttempts = Math.max(attempts, 1);
         long delay = Math.max(1, Math.min(delaySeconds, 3600));
         String err = lastError == null ? null : truncate(lastError, 512);
-        jdbcTemplate.update(
-                """
-                        UPDATE link_cache_outbox
-                        SET status = 'PENDING',
-                            attempts = ?,
-                            last_error = ?,
-                            processed_at = NULL,
-                            available_at = DATE_ADD(NOW(), INTERVAL ? SECOND)
-                        WHERE code = ?
-                        """,
-                nextAttempts,
-                err,
-                delay,
-                code.trim()
-        );
+        outboxMapper.markRetry(code.trim(), nextAttempts, err, delay);
     }
 
     public int deleteDoneOlderThanDays(int retentionDays, int limit) {
@@ -116,44 +82,26 @@ public class LinkCacheOutboxRepository {
             return 0;
         }
         int n = Math.max(1, Math.min(limit, 50_000));
-        return jdbcTemplate.update(
-                """
-                        DELETE FROM link_cache_outbox
-                        WHERE status = 'DONE'
-                          AND processed_at IS NOT NULL
-                          AND processed_at < DATE_SUB(NOW(), INTERVAL ? DAY)
-                        LIMIT ?
-                        """,
-                days,
-                n
-        );
+        return outboxMapper.deleteDoneOlderThanDays(days, n);
     }
 
     public OutboxStats loadStats() {
-        return jdbcTemplate.queryForObject(
-                """
-                        SELECT
-                          COALESCE(SUM(status = 'PENDING'), 0) AS pending_total,
-                          COALESCE(SUM(status = 'PENDING' AND available_at <= NOW()), 0) AS pending_ready,
-                          COALESCE(
-                            GREATEST(
-                              0,
-                              TIMESTAMPDIFF(
-                                SECOND,
-                                MIN(CASE WHEN status = 'PENDING' THEN available_at END),
-                                NOW()
-                              )
-                            ),
-                            0
-                          ) AS pending_lag_seconds
-                        FROM link_cache_outbox
-                        """,
-                (rs, rowNum) -> new OutboxStats(
-                        rs.getLong("pending_total"),
-                        rs.getLong("pending_ready"),
-                        rs.getLong("pending_lag_seconds")
-                )
+        LinkCacheOutboxStatsRow row = outboxMapper.loadStats();
+        if (row == null) {
+            return new OutboxStats(0, 0, 0);
+        }
+        return new OutboxStats(
+                safeLong(row.getPendingTotal()),
+                safeLong(row.getPendingReady()),
+                safeLong(row.getPendingLagSeconds())
         );
+    }
+
+    public String findStatusByCode(String code) {
+        if (code == null || code.isBlank()) {
+            return null;
+        }
+        return outboxMapper.findStatusByCode(code.trim());
     }
 
     private static String truncate(String s, int maxLen) {
@@ -164,5 +112,9 @@ public class LinkCacheOutboxRepository {
             return s;
         }
         return s.substring(0, maxLen);
+    }
+
+    private static long safeLong(Long value) {
+        return value == null ? 0L : value;
     }
 }

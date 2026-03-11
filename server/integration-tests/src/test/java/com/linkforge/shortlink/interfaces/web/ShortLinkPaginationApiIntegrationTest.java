@@ -1,0 +1,244 @@
+package com.linkforge.shortlink.interfaces.web;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkforge.LinkForgeApplication;
+import com.linkforge.foundation.persistence.PageQuery;
+import com.linkforge.shortlink.application.ShortLinkService;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.web.servlet.MockMvc;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.containers.wait.strategy.Wait;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+
+import java.lang.reflect.Method;
+import java.time.Duration;
+import java.util.Arrays;
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@Testcontainers
+@SpringBootTest(
+        classes = LinkForgeApplication.class,
+        webEnvironment = SpringBootTest.WebEnvironment.MOCK,
+        properties = "app.scheduling.enabled=false"
+)
+@AutoConfigureMockMvc
+class ShortLinkPaginationApiIntegrationTest {
+
+    @Container
+    static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.0.36")
+            .withDatabaseName("linkforge")
+            .withUsername("linkforge")
+            .withPassword("linkforge");
+
+    @Container
+    static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.2.4-alpine")
+            .withExposedPorts(6379)
+            .waitingFor(Wait.forLogMessage(".*Ready to accept connections.*\\n", 1)
+                    .withStartupTimeout(Duration.ofSeconds(120)))
+            .withStartupAttempts(3);
+
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", MYSQL::getJdbcUrl);
+        registry.add("spring.datasource.username", MYSQL::getUsername);
+        registry.add("spring.datasource.password", MYSQL::getPassword);
+
+        registry.add("spring.data.redis.host", REDIS::getHost);
+        registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
+
+        registry.add("app.security.jwt.secret", () -> "test-secret-please-change-but-long-enough-32-bytes");
+        registry.add("app.analytics.salt", () -> "test-analytics-salt");
+        registry.add("app.analytics.dimensions.enabled", () -> "false");
+        registry.add("app.analytics.events.enabled", () -> "false");
+        registry.add("app.analytics.events.sample-rate", () -> "1");
+    }
+
+    @Autowired
+    MockMvc mockMvc;
+
+    @Autowired
+    ObjectMapper objectMapper;
+
+    @Test
+    void listEndpoints_shouldPreservePageResponseShape() throws Exception {
+        RegisteredPrincipal principal = registerTenantAdmin();
+        String apiKey = createApiKey(principal.token());
+
+        JsonNode first = createLink(principal.token(), "https://example.com/pagination/a", "page-a");
+        JsonNode second = createLink(principal.token(), "https://example.com/pagination/b", "page-b");
+        String firstIdentity = linkIdentity(first.get("data"));
+        String secondIdentity = linkIdentity(second.get("data"));
+
+        JsonNode jwtList = getJson(
+                get("/api/v1/links")
+                        .header("Authorization", "Bearer " + principal.token())
+                        .param("page", "1")
+                        .param("size", "1")
+        );
+        assertThat(jwtList.get("code").asInt()).isEqualTo(0);
+        assertThat(jwtList.get("requestId").asText()).isNotBlank();
+        JsonNode jwtData = jwtList.get("data");
+        assertThat(jwtData.get("items")).hasSize(1);
+        assertThat(jwtData.get("total").asLong()).isEqualTo(2L);
+        assertThat(jwtData.get("page").asInt()).isEqualTo(1);
+        assertThat(jwtData.get("size").asInt()).isEqualTo(1);
+        assertThat(linkIdentity(jwtData.get("items").get(0))).isIn(firstIdentity, secondIdentity);
+
+        JsonNode openList = getJson(
+                get("/api/v1/open/links")
+                        .header("X-API-Key", apiKey)
+                        .param("page", "-3")
+                        .param("size", "200")
+        );
+        assertThat(openList.get("code").asInt()).isEqualTo(0);
+        assertThat(openList.get("requestId").asText()).isNotBlank();
+        JsonNode openData = openList.get("data");
+        assertThat(openData.get("items")).hasSize(2);
+        assertThat(openData.get("total").asLong()).isEqualTo(2L);
+        assertThat(openData.get("page").asInt()).isEqualTo(0);
+        assertThat(openData.get("size").asInt()).isEqualTo(100);
+        assertThat(List.of(
+                linkIdentity(openData.get("items").get(0)),
+                linkIdentity(openData.get("items").get(1))
+        )).containsExactlyInAnyOrder(firstIdentity, secondIdentity);
+    }
+
+    @Test
+    void listEndpoints_shouldNormalizeNonPositiveSize() throws Exception {
+        RegisteredPrincipal principal = registerTenantAdmin();
+        String apiKey = createApiKey(principal.token());
+        createLink(principal.token(), "https://example.com/pagination/zero-size", "page-zero");
+
+        JsonNode jwtList = getJson(
+                get("/api/v1/links")
+                        .header("Authorization", "Bearer " + principal.token())
+                        .param("page", "0")
+                        .param("size", "0")
+        );
+        assertThat(jwtList.get("code").asInt()).isEqualTo(0);
+        JsonNode jwtData = jwtList.get("data");
+        assertThat(jwtData.get("items")).hasSize(1);
+        assertThat(jwtData.get("total").asLong()).isEqualTo(1L);
+        assertThat(jwtData.get("page").asInt()).isEqualTo(0);
+        assertThat(jwtData.get("size").asInt()).isEqualTo(1);
+
+        JsonNode openList = getJson(
+                get("/api/v1/open/links")
+                        .header("X-API-Key", apiKey)
+                        .param("page", "0")
+                        .param("size", "-7")
+        );
+        assertThat(openList.get("code").asInt()).isEqualTo(0);
+        JsonNode openData = openList.get("data");
+        assertThat(openData.get("items")).hasSize(1);
+        assertThat(openData.get("total").asLong()).isEqualTo(1L);
+        assertThat(openData.get("page").asInt()).isEqualTo(0);
+        assertThat(openData.get("size").asInt()).isEqualTo(1);
+    }
+
+    @Test
+    void pageQuery_shouldEnforceConstructionInvariants() {
+        assertThat(new PageQuery(-3, 0)).isEqualTo(new PageQuery(0, 1));
+        assertThat(new PageQuery(2, -7)).isEqualTo(new PageQuery(2, 1));
+        assertThat(PageQuery.of(-5, 500, 100)).isEqualTo(new PageQuery(0, 100));
+    }
+
+    @Test
+    void pagingContracts_shouldNotExposeSpringDataTypes() {
+        assertNoSpringDataPagingLeak(ShortLinkController.class, "list", "exportCsv");
+        assertNoSpringDataPagingLeak(OpenApiShortLinkController.class, "list");
+        assertNoSpringDataPagingLeak(ShortLinkService.class, "search", "exportCsv");
+    }
+
+    private void assertNoSpringDataPagingLeak(Class<?> type, String... methodNames) {
+        assertThat(Arrays.stream(type.getDeclaredMethods())
+                .filter(method -> Arrays.asList(methodNames).contains(method.getName()))
+                .toList()
+        )
+                .isNotEmpty()
+                .allSatisfy(this::assertNoSpringDataPagingLeak);
+    }
+
+    private void assertNoSpringDataPagingLeak(Method method) {
+        assertThat(method.getReturnType().getPackageName())
+                .as("return type of %s", method)
+                .doesNotStartWith("org.springframework.data.domain");
+        assertThat(method.getParameterTypes())
+                .as("parameter types of %s", method)
+                .allSatisfy(parameterType -> assertThat(parameterType.getPackageName())
+                        .doesNotStartWith("org.springframework.data.domain"));
+    }
+
+    private RegisteredPrincipal registerTenantAdmin() throws Exception {
+        String suffix = Long.toUnsignedString(System.nanoTime());
+        JsonNode registerBody = objectMapper.createObjectNode()
+                .put("tenantName", "tenant-" + suffix)
+                .put("email", "admin-" + suffix + "@example.com")
+                .put("password", "password123");
+        JsonNode register = postJson("/api/v1/auth/register", registerBody, null, null);
+        assertThat(register.get("code").asInt()).isEqualTo(0);
+        return new RegisteredPrincipal(
+                register.get("data").get("token").asText(),
+                register.get("data").get("user").get("tenantId").asLong()
+        );
+    }
+
+    private String createApiKey(String token) throws Exception {
+        JsonNode createKeyBody = objectMapper.createObjectNode().put("name", "pagination-key");
+        JsonNode response = postJson("/api/v1/api-keys", createKeyBody, token, null);
+        assertThat(response.get("code").asInt()).isEqualTo(0);
+        return response.get("data").get("apiKey").asText();
+    }
+
+    private JsonNode createLink(String token, String originalUrl, String note) throws Exception {
+        JsonNode createLinkBody = objectMapper.createObjectNode()
+                .put("originalUrl", originalUrl)
+                .put("note", note);
+        JsonNode response = postJson("/api/v1/links", createLinkBody, token, null);
+        assertThat(response.get("code").asInt()).isEqualTo(0);
+        return response;
+    }
+
+    private String linkIdentity(JsonNode link) {
+        return link.get("id").asLong() + ":" + link.get("code").asText();
+    }
+
+    private JsonNode postJson(String path, JsonNode body, String bearerToken, String apiKey) throws Exception {
+        var request = post(path)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(body));
+        if (bearerToken != null) {
+            request.header("Authorization", "Bearer " + bearerToken);
+        }
+        if (apiKey != null) {
+            request.header("X-API-Key", apiKey);
+        }
+        return getJson(request);
+    }
+
+    private JsonNode getJson(org.springframework.test.web.servlet.RequestBuilder request) throws Exception {
+        String content = mockMvc.perform(request)
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return objectMapper.readTree(content);
+    }
+
+    private record RegisteredPrincipal(String token, long tenantId) {
+    }
+}

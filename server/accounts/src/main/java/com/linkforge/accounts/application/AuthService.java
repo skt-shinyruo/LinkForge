@@ -6,9 +6,9 @@ import com.linkforge.accounts.infrastructure.persistence.entity.TenantEntity;
 import com.linkforge.accounts.infrastructure.persistence.entity.UserEntity;
 import com.linkforge.accounts.infrastructure.persistence.entity.UserRoleEntity;
 import com.linkforge.accounts.infrastructure.persistence.entity.UserRoleId;
-import com.linkforge.accounts.infrastructure.persistence.repo.TenantRepository;
-import com.linkforge.accounts.infrastructure.persistence.repo.UserRepository;
-import com.linkforge.accounts.infrastructure.persistence.repo.UserRoleRepository;
+import com.linkforge.accounts.infrastructure.persistence.mapper.TenantMapper;
+import com.linkforge.accounts.infrastructure.persistence.mapper.UserMapper;
+import com.linkforge.accounts.infrastructure.persistence.mapper.UserRoleMapper;
 import com.linkforge.accounts.infrastructure.security.JwtService;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
@@ -27,40 +27,40 @@ import java.util.stream.Collectors;
 public class AuthService {
 
     private final SnowflakeIdGenerator idGenerator;
-    private final TenantRepository tenantRepository;
-    private final UserRepository userRepository;
-    private final UserRoleRepository userRoleRepository;
+    private final TenantMapper tenantMapper;
+    private final UserMapper userMapper;
+    private final UserRoleMapper userRoleMapper;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
 
     public AuthService(
             SnowflakeIdGenerator idGenerator,
-            TenantRepository tenantRepository,
-            UserRepository userRepository,
-            UserRoleRepository userRoleRepository,
+            TenantMapper tenantMapper,
+            UserMapper userMapper,
+            UserRoleMapper userRoleMapper,
             PasswordEncoder passwordEncoder,
             JwtService jwtService
     ) {
         this.idGenerator = idGenerator;
-        this.tenantRepository = tenantRepository;
-        this.userRepository = userRepository;
-        this.userRoleRepository = userRoleRepository;
+        this.tenantMapper = tenantMapper;
+        this.userMapper = userMapper;
+        this.userRoleMapper = userRoleMapper;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
     }
 
     @Transactional
     public AuthResult register(String tenantName, String email, String rawPassword) {
-        userRepository.findFirstByEmail(email).ifPresent(u -> {
+        if (userMapper.findFirstByEmail(email) != null) {
             throw new BusinessException(AccountsErrorCode.EMAIL_ALREADY_EXISTS);
-        });
+        }
 
         long tenantId = idGenerator.nextId();
         TenantEntity t = new TenantEntity();
         t.setId(tenantId);
         t.setName(tenantName);
         t.setStatus(AccountsConstants.STATUS_ACTIVE);
-        tenantRepository.save(t);
+        tenantMapper.insert(t);
 
         long userId = idGenerator.nextId();
         UserEntity u = new UserEntity();
@@ -70,13 +70,13 @@ public class AuthService {
         u.setPasswordHash(passwordEncoder.encode(rawPassword));
         u.setStatus(AccountsConstants.STATUS_ACTIVE);
         try {
-            userRepository.save(u);
+            userMapper.insert(u);
         } catch (DataIntegrityViolationException e) {
             // 并发注册或绕过应用层校验时，以 DB 约束为准，返回一致的业务错误码
             throw new BusinessException(AccountsErrorCode.EMAIL_ALREADY_EXISTS);
         }
 
-        userRoleRepository.save(new UserRoleEntity(new UserRoleId(userId, Roles.TENANT_ADMIN)));
+        userRoleMapper.insert(new UserRoleEntity(new UserRoleId(userId, Roles.TENANT_ADMIN)));
 
         Set<String> roles = Set.of(Roles.TENANT_ADMIN);
         String token = jwtService.issueToken(userId, tenantId, email, roles);
@@ -84,11 +84,15 @@ public class AuthService {
     }
 
     public AuthResult login(String email, String rawPassword) {
-        UserEntity u = userRepository.findFirstByEmail(email)
-                .orElseThrow(() -> new BusinessException(AccountsErrorCode.INVALID_CREDENTIALS));
+        UserEntity u = userMapper.findFirstByEmail(email);
+        if (u == null) {
+            throw new BusinessException(AccountsErrorCode.INVALID_CREDENTIALS);
+        }
 
-        TenantEntity t = tenantRepository.findById(u.getTenantId())
-                .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_ERROR, "租户不存在"));
+        TenantEntity t = tenantMapper.findById(u.getTenantId());
+        if (t == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "租户不存在");
+        }
 
         if (!AccountsConstants.STATUS_ACTIVE.equals(t.getStatus())) {
             throw new BusinessException(AccountsErrorCode.TENANT_DISABLED);
@@ -100,7 +104,7 @@ public class AuthService {
             throw new BusinessException(AccountsErrorCode.INVALID_CREDENTIALS);
         }
 
-        Set<String> roles = userRoleRepository.findAllByUserId(u.getId()).stream()
+        Set<String> roles = userRoleMapper.findAllByUserId(u.getId()).stream()
                 .map(r -> r.getId().getRoleCode())
                 .collect(Collectors.toUnmodifiableSet());
 

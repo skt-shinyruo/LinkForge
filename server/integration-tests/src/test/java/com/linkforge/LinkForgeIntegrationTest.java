@@ -2,12 +2,14 @@ package com.linkforge;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkforge.app.config.MybatisConfig;
 import com.linkforge.analytics.application.job.AnalyticsDimensionFlushJob;
 import com.linkforge.analytics.application.job.AnalyticsEventIngestJob;
 import com.linkforge.analytics.application.job.AnalyticsFlushJob;
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.contract.accounts.AccountsErrorCode;
 import com.linkforge.contract.openapi.OpenApiErrorCode;
+import org.mybatis.spring.annotation.MapperScan;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -15,14 +17,18 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.connection.stream.StreamRecords;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.core.annotation.AnnotationUtils;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -34,10 +40,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@Testcontainers
-@SpringBootTest(classes = LinkForgeApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@AutoConfigureMockMvc
-class LinkForgeIntegrationTest {
+abstract class LinkForgeIntegrationTestSupport {
 
     @Container
     static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.0.36")
@@ -47,7 +50,10 @@ class LinkForgeIntegrationTest {
 
     @Container
     static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.2.4-alpine")
-            .withExposedPorts(6379);
+            .withExposedPorts(6379)
+            .waitingFor(Wait.forLogMessage(".*Ready to accept connections.*\\n", 1)
+                    .withStartupTimeout(Duration.ofSeconds(120)))
+            .withStartupAttempts(3);
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry r) {
@@ -72,6 +78,15 @@ class LinkForgeIntegrationTest {
 
         r.add("APP_ANALYTICS_FLUSH_DELAY_MS", () -> "9999999");
     }
+}
+
+@Testcontainers
+@SpringBootTest(classes = LinkForgeApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@AutoConfigureMockMvc
+class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
+
+    @Autowired
+    ConfigurableApplicationContext applicationContext;
 
     @Autowired
     MockMvc mockMvc;
@@ -90,6 +105,41 @@ class LinkForgeIntegrationTest {
 
     @Autowired
     StringRedisTemplate redis;
+
+    @Test
+    void applicationStarts_withMyBatisBootstrap_and_withoutExplicitJpaHooks() {
+        assertThat(applicationContext).isNotNull();
+        assertThat(applicationContext.isActive()).isTrue();
+        assertThat(applicationContext.containsBean("sqlSessionFactory"))
+                .as("MyBatis SqlSessionFactory bean should be registered")
+                .isTrue();
+        String enableJpaRepositories = "org.springframework.data.jpa.repository.config." + "Enable" + "JpaRepositories";
+        assertThat(hasAnnotation(LinkForgeApplication.class, enableJpaRepositories))
+                .as("JPA repositories should not be explicitly enabled")
+                .isFalse();
+        String entityScan = "org.springframework.boot.autoconfigure.domain." + "Entity" + "Scan";
+        assertThat(hasAnnotation(LinkForgeApplication.class, entityScan))
+                .as("JPA entity scan should not be explicitly enabled")
+                .isFalse();
+        assertThat(AnnotationUtils.findAnnotation(MybatisConfig.class, MapperScan.class))
+                .as("Task 1 bootstrap should not declare empty mapper scan packages")
+                .isNull();
+    }
+
+    private static boolean hasAnnotation(Class<?> target, String annotationClassName) {
+        if (target == null || annotationClassName == null || annotationClassName.isBlank()) {
+            return false;
+        }
+        for (java.lang.annotation.Annotation ann : target.getAnnotations()) {
+            if (ann == null || ann.annotationType() == null) {
+                continue;
+            }
+            if (annotationClassName.equals(ann.annotationType().getName())) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     @Test
     void endToEnd_register_login_create_stats_and_openapi() throws Exception {

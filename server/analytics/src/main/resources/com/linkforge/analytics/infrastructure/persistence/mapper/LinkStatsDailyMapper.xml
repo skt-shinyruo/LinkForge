@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.linkforge.analytics.infrastructure.persistence.mapper.LinkStatsDailyMapper">
+
+    <insert id="batchUpsert">
+        INSERT INTO link_stats_daily (link_id, tenant_id, day, pv, uv, updated_at)
+        VALUES
+        <foreach collection="list" item="r" separator=",">
+            (#{r.linkId}, #{r.tenantId}, #{r.day}, #{r.pv}, #{r.uv}, NOW())
+        </foreach>
+        ON DUPLICATE KEY UPDATE pv = VALUES(pv), uv = VALUES(uv), updated_at = NOW()
+    </insert>
+</mapper>
+

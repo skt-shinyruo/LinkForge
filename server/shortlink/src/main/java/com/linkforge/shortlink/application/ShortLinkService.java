@@ -7,24 +7,26 @@ import com.linkforge.contract.redirect.LinkMeta;
 import com.linkforge.contract.shortlink.ShortLinkErrorCode;
 import com.linkforge.foundation.config.CoreProperties;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
-import com.linkforge.foundation.tx.AfterCommit;
+import com.linkforge.foundation.persistence.PageQuery;
+import com.linkforge.foundation.persistence.PageResult;
 import com.linkforge.foundation.security.TenantGuard;
+import com.linkforge.foundation.tx.AfterCommit;
 import com.linkforge.foundation.util.Base62;
+import com.linkforge.shortlink.application.query.ShortLinkSearchQuery;
 import com.linkforge.shortlink.infrastructure.outbox.LinkCacheOutboxRepository;
-import com.linkforge.shortlink.infrastructure.persistence.entity.LinkTagEntity;
-import com.linkforge.shortlink.infrastructure.persistence.entity.LinkTagId;
 import com.linkforge.shortlink.infrastructure.persistence.entity.ShortLinkEntity;
 import com.linkforge.shortlink.infrastructure.persistence.entity.TagEntity;
-import com.linkforge.shortlink.infrastructure.persistence.repo.LinkTagRepository;
-import com.linkforge.shortlink.infrastructure.persistence.repo.ShortLinkRepository;
-import com.linkforge.shortlink.infrastructure.persistence.repo.TagRepository;
+import com.linkforge.shortlink.infrastructure.persistence.mapper.LinkTagMapper;
+import com.linkforge.shortlink.infrastructure.persistence.mapper.LinkTagNameRow;
+import com.linkforge.shortlink.infrastructure.persistence.mapper.ShortLinkCommandMapper;
+import com.linkforge.shortlink.infrastructure.persistence.mapper.ShortLinkQueryMapper;
+import com.linkforge.shortlink.infrastructure.persistence.mapper.ShortLinkSearchParam;
+import com.linkforge.shortlink.infrastructure.persistence.mapper.TagMapper;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVPrinter;
 import org.apache.commons.csv.CSVRecord;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,9 +51,10 @@ import java.util.stream.Collectors;
 public class ShortLinkService {
 
     private final SnowflakeIdGenerator idGenerator;
-    private final ShortLinkRepository shortLinkRepository;
-    private final TagRepository tagRepository;
-    private final LinkTagRepository linkTagRepository;
+    private final ShortLinkCommandMapper shortLinkCommandMapper;
+    private final ShortLinkQueryMapper shortLinkQueryMapper;
+    private final TagMapper tagMapper;
+    private final LinkTagMapper linkTagMapper;
     private final LinkCachePort linkCache;
     private final LinkCacheOutboxRepository linkCacheOutboxRepository;
     private final CoreProperties coreProperties;
@@ -60,9 +63,10 @@ public class ShortLinkService {
 
     public ShortLinkService(
             SnowflakeIdGenerator idGenerator,
-            ShortLinkRepository shortLinkRepository,
-            TagRepository tagRepository,
-            LinkTagRepository linkTagRepository,
+            ShortLinkCommandMapper shortLinkCommandMapper,
+            ShortLinkQueryMapper shortLinkQueryMapper,
+            TagMapper tagMapper,
+            LinkTagMapper linkTagMapper,
             LinkCachePort linkCache,
             LinkCacheOutboxRepository linkCacheOutboxRepository,
             CoreProperties coreProperties,
@@ -70,9 +74,10 @@ public class ShortLinkService {
             TenantGuard tenantGuard
     ) {
         this.idGenerator = idGenerator;
-        this.shortLinkRepository = shortLinkRepository;
-        this.tagRepository = tagRepository;
-        this.linkTagRepository = linkTagRepository;
+        this.shortLinkCommandMapper = shortLinkCommandMapper;
+        this.shortLinkQueryMapper = shortLinkQueryMapper;
+        this.tagMapper = tagMapper;
+        this.linkTagMapper = linkTagMapper;
         this.linkCache = linkCache;
         this.linkCacheOutboxRepository = linkCacheOutboxRepository;
         this.coreProperties = coreProperties;
@@ -112,13 +117,19 @@ public class ShortLinkService {
         e.setCreatedBy(createdBy);
         try {
             // Ensure unique-constraint violations surface within this method (race-safe for custom codes).
-            shortLinkRepository.saveAndFlush(e);
+            shortLinkCommandMapper.insert(e);
         } catch (DataIntegrityViolationException ex) {
             if (customCode != null) {
                 throw new BusinessException(ShortLinkErrorCode.CODE_ALREADY_EXISTS);
             }
             throw ex;
         }
+
+        ShortLinkEntity persisted = shortLinkQueryMapper.findByTenantIdAndId(tenantId, id);
+        if (persisted != null) {
+            e = persisted;
+        }
+
         setTags(tenantId, e.getId(), req.tags());
         linkCacheOutboxRepository.enqueueRefresh(e.getCode());
         LinkMeta meta = toMeta(e);
@@ -126,29 +137,54 @@ public class ShortLinkService {
         return toDto(tenantId, e, loadTagsByLinkId(e.getId()));
     }
 
-    public Page<LinkDto> search(long tenantId, boolean archived, Boolean enabled, String keyword, String tag, Pageable pageable) {
+    public PageResult<LinkDto> search(long tenantId, ShortLinkSearchQuery query, PageQuery pageQuery) {
         tenantGuard.requireCurrentTenant(tenantId);
-        Page<ShortLinkEntity> page = shortLinkRepository.search(tenantId, archived, enabled, normalize(keyword), normalize(tag), pageable);
-        Map<Long, List<String>> tags = loadTagsByLinkIds(page.getContent().stream().map(ShortLinkEntity::getId).toList());
-        return page.map(e -> toDto(tenantId, e, tags.getOrDefault(e.getId(), List.of())));
+        int offset = Math.max(pageQuery.page(), 0) * Math.max(pageQuery.size(), 1);
+        ShortLinkSearchParam param = new ShortLinkSearchParam(
+                tenantId,
+                query.archived(),
+                query.enabled(),
+                normalize(query.keyword()),
+                normalize(query.tag()),
+                offset,
+                pageQuery.size()
+        );
+
+        long total = shortLinkQueryMapper.countSearch(param);
+        if (total <= 0) {
+            return new PageResult<>(List.of(), 0, pageQuery.page(), pageQuery.size());
+        }
+
+        List<ShortLinkEntity> links = shortLinkQueryMapper.listSearch(param);
+        Map<Long, List<String>> tags = loadTagsByLinkIds(links.stream().map(ShortLinkEntity::getId).toList());
+        return new PageResult<>(
+                links.stream().map(e -> toDto(tenantId, e, tags.getOrDefault(e.getId(), List.of()))).toList(),
+                total,
+                pageQuery.page(),
+                pageQuery.size()
+        );
     }
 
     public LinkDto detail(long tenantId, long linkId) {
         tenantGuard.requireCurrentTenant(tenantId);
-        ShortLinkEntity e = shortLinkRepository.findByTenantIdAndId(tenantId, linkId)
-                .orElseThrow(() -> new BusinessException(ShortLinkErrorCode.LINK_NOT_FOUND));
+        ShortLinkEntity e = shortLinkQueryMapper.findByTenantIdAndId(tenantId, linkId);
+        if (e == null) {
+            throw new BusinessException(ShortLinkErrorCode.LINK_NOT_FOUND);
+        }
         return toDto(tenantId, e, loadTagsByLinkId(linkId));
     }
 
     @Transactional
     public LinkDto archive(long tenantId, long linkId) {
         tenantGuard.requireCurrentTenant(tenantId);
-        ShortLinkEntity e = shortLinkRepository.findByTenantIdAndId(tenantId, linkId)
-                .orElseThrow(() -> new BusinessException(ShortLinkErrorCode.LINK_NOT_FOUND));
+        ShortLinkEntity e = shortLinkQueryMapper.findByTenantIdAndId(tenantId, linkId);
+        if (e == null) {
+            throw new BusinessException(ShortLinkErrorCode.LINK_NOT_FOUND);
+        }
 
         if (e.getArchivedAt() == null) {
             e.setArchivedAt(LocalDateTime.now());
-            shortLinkRepository.save(e);
+            shortLinkCommandMapper.update(e);
         }
 
         String code = e.getCode();
@@ -160,12 +196,14 @@ public class ShortLinkService {
     @Transactional
     public LinkDto restore(long tenantId, long linkId) {
         tenantGuard.requireCurrentTenant(tenantId);
-        ShortLinkEntity e = shortLinkRepository.findByTenantIdAndId(tenantId, linkId)
-                .orElseThrow(() -> new BusinessException(ShortLinkErrorCode.LINK_NOT_FOUND));
+        ShortLinkEntity e = shortLinkQueryMapper.findByTenantIdAndId(tenantId, linkId);
+        if (e == null) {
+            throw new BusinessException(ShortLinkErrorCode.LINK_NOT_FOUND);
+        }
 
         if (e.getArchivedAt() != null) {
             e.setArchivedAt(null);
-            shortLinkRepository.save(e);
+            shortLinkCommandMapper.update(e);
         }
 
         String code = e.getCode();
@@ -181,8 +219,10 @@ public class ShortLinkService {
     @Transactional
     public void delete(long tenantId, long linkId) {
         tenantGuard.requireCurrentTenant(tenantId);
-        ShortLinkEntity e = shortLinkRepository.findByTenantIdAndId(tenantId, linkId)
-                .orElseThrow(() -> new BusinessException(ShortLinkErrorCode.LINK_NOT_FOUND));
+        ShortLinkEntity e = shortLinkQueryMapper.findByTenantIdAndId(tenantId, linkId);
+        if (e == null) {
+            throw new BusinessException(ShortLinkErrorCode.LINK_NOT_FOUND);
+        }
 
         if (e.getArchivedAt() == null) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "删除前请先归档（可避免误删）");
@@ -193,16 +233,18 @@ public class ShortLinkService {
         AfterCommit.run(() -> linkCache.tryEvict(code));
 
         // 清理关联（标签）
-        linkTagRepository.deleteAllByIdLinkId(linkId);
+        linkTagMapper.deleteAllByLinkId(linkId);
 
-        shortLinkRepository.delete(e);
+        shortLinkCommandMapper.deleteByTenantIdAndId(tenantId, linkId);
     }
 
     @Transactional
     public LinkDto update(long tenantId, long linkId, UpdateLinkRequest req) {
         tenantGuard.requireCurrentTenant(tenantId);
-        ShortLinkEntity e = shortLinkRepository.findByTenantIdAndId(tenantId, linkId)
-                .orElseThrow(() -> new BusinessException(ShortLinkErrorCode.LINK_NOT_FOUND));
+        ShortLinkEntity e = shortLinkQueryMapper.findByTenantIdAndId(tenantId, linkId);
+        if (e == null) {
+            throw new BusinessException(ShortLinkErrorCode.LINK_NOT_FOUND);
+        }
 
         if (e.getArchivedAt() != null) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "短链已归档，请先恢复后再编辑");
@@ -284,7 +326,7 @@ public class ShortLinkService {
             }
         }
 
-        shortLinkRepository.save(e);
+        shortLinkCommandMapper.update(e);
 
         if (req.tags() != null) {
             setTags(tenantId, linkId, req.tags());
@@ -305,7 +347,7 @@ public class ShortLinkService {
 
     public List<TagDto> listTags(long tenantId) {
         tenantGuard.requireCurrentTenant(tenantId);
-        return tagRepository.findAllByTenantIdOrderByCreatedAtDesc(tenantId).stream()
+        return tagMapper.findAllByTenantIdOrderByCreatedAtDesc(tenantId).stream()
                 .map(t -> new TagDto(t.getId(), t.getName()))
                 .toList();
     }
@@ -320,7 +362,7 @@ public class ShortLinkService {
         if (n.length() > 64) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "标签名过长");
         }
-        TagEntity existing = tagRepository.findByTenantIdAndName(tenantId, n).orElse(null);
+        TagEntity existing = tagMapper.findByTenantIdAndName(tenantId, n);
         if (existing != null) {
             return new TagDto(existing.getId(), existing.getName());
         }
@@ -329,7 +371,7 @@ public class ShortLinkService {
         t.setId(id);
         t.setTenantId(tenantId);
         t.setName(n);
-        tagRepository.save(t);
+        tagMapper.insert(t);
         return new TagDto(t.getId(), t.getName());
     }
 
@@ -387,16 +429,18 @@ public class ShortLinkService {
         return new ImportResult(success, failed, errors);
     }
 
-    public void exportCsv(long tenantId, Pageable pageable, java.io.OutputStream os) {
+    public void exportCsv(long tenantId, PageQuery pageQuery, java.io.OutputStream os) {
         tenantGuard.requireCurrentTenant(tenantId);
-        exportCsv(tenantId, pageable, new OutputStreamWriter(os, StandardCharsets.UTF_8));
+        exportCsv(tenantId, pageQuery, new OutputStreamWriter(os, StandardCharsets.UTF_8));
     }
 
-    public void exportCsv(long tenantId, Pageable pageable, Writer writer) {
+    void exportCsv(long tenantId, PageQuery pageQuery, Writer writer) {
         tenantGuard.requireCurrentTenant(tenantId);
         // MVP：导出按分页拉取；如需全量导出可改为游标/分片
-        Page<ShortLinkEntity> page = shortLinkRepository.search(tenantId, false, null, null, null, pageable);
-        Map<Long, List<String>> tags = loadTagsByLinkIds(page.getContent().stream().map(ShortLinkEntity::getId).toList());
+        int offset = Math.max(pageQuery.page(), 0) * Math.max(pageQuery.size(), 1);
+        ShortLinkSearchParam param = new ShortLinkSearchParam(tenantId, false, null, null, null, offset, pageQuery.size());
+        List<ShortLinkEntity> links = shortLinkQueryMapper.listSearch(param);
+        Map<Long, List<String>> tags = loadTagsByLinkIds(links.stream().map(ShortLinkEntity::getId).toList());
 
         try (CSVPrinter printer = new CSVPrinter(
                 writer,
@@ -404,7 +448,7 @@ public class ShortLinkService {
                         .setHeader("id", "code", "originalUrl", "note", "enabled", "expiresAt", "tags")
                         .build()
         )) {
-            for (ShortLinkEntity e : page.getContent()) {
+            for (ShortLinkEntity e : links) {
                 printer.printRecord(
                         e.getId(),
                         e.getCode(),
@@ -421,7 +465,7 @@ public class ShortLinkService {
     }
 
     private void setTags(long tenantId, long linkId, Set<String> tags) {
-        linkTagRepository.deleteAllByIdLinkId(linkId);
+        linkTagMapper.deleteAllByLinkId(linkId);
         if (tags == null || tags.isEmpty()) {
             return;
         }
@@ -434,7 +478,10 @@ public class ShortLinkService {
 
         Map<String, TagEntity> existing = new HashMap<>();
         for (String tag : normalized) {
-            tagRepository.findByTenantIdAndName(tenantId, tag).ifPresent(t -> existing.put(tag, t));
+            TagEntity t = tagMapper.findByTenantIdAndName(tenantId, tag);
+            if (t != null) {
+                existing.put(tag, t);
+            }
         }
 
         for (String name : normalized) {
@@ -445,16 +492,14 @@ public class ShortLinkService {
                 t.setId(id);
                 t.setTenantId(tenantId);
                 t.setName(name);
-                tagRepository.save(t);
+                tagMapper.insert(t);
             }
-            linkTagRepository.save(new LinkTagEntity(new LinkTagId(linkId, t.getId())));
+            linkTagMapper.insert(linkId, t.getId());
         }
     }
 
     private List<String> loadTagsByLinkId(long linkId) {
-        return linkTagRepository.findAllByLinkIdFetchTag(linkId).stream()
-                .map(lt -> lt.getTag().getName())
-                .toList();
+        return linkTagMapper.findTagNamesByLinkId(linkId);
     }
 
     private Map<Long, List<String>> loadTagsByLinkIds(Collection<Long> linkIds) {
@@ -462,8 +507,12 @@ public class ShortLinkService {
             return Map.of();
         }
         Map<Long, List<String>> map = new HashMap<>();
-        for (LinkTagEntity lt : linkTagRepository.findAllByLinkIdsFetchTag(linkIds)) {
-            map.computeIfAbsent(lt.getId().getLinkId(), k -> new ArrayList<>()).add(lt.getTag().getName());
+        List<LinkTagNameRow> rows = linkTagMapper.findTagNamesByLinkIds(new ArrayList<>(linkIds));
+        for (LinkTagNameRow r : rows) {
+            if (r.getLinkId() == null || r.getTagName() == null) {
+                continue;
+            }
+            map.computeIfAbsent(r.getLinkId(), k -> new ArrayList<>()).add(r.getTagName());
         }
         return map;
     }
@@ -517,7 +566,7 @@ public class ShortLinkService {
     }
 
     private void ensureCodeAvailable(String code) {
-        if (shortLinkRepository.findByCode(code).isPresent()) {
+        if (shortLinkQueryMapper.findByCode(code) != null) {
             throw new BusinessException(ShortLinkErrorCode.CODE_ALREADY_EXISTS);
         }
     }

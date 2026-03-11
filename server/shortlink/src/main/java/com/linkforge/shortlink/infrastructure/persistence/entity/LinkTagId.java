@@ -1,18 +1,12 @@
 package com.linkforge.shortlink.infrastructure.persistence.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Embeddable;
-
 import java.io.Serializable;
 import java.util.Objects;
 
-@Embeddable
 public class LinkTagId implements Serializable {
 
-    @Column(name = "link_id", nullable = false)
     private Long linkId;
 
-    @Column(name = "tag_id", nullable = false)
     private Long tagId;
 
     public LinkTagId() {

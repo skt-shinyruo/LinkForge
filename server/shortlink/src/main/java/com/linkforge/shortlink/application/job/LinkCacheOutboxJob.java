@@ -2,7 +2,7 @@ package com.linkforge.shortlink.application.job;
 
 import com.linkforge.shortlink.infrastructure.outbox.LinkCacheOutboxRepository;
 import com.linkforge.shortlink.infrastructure.persistence.entity.ShortLinkEntity;
-import com.linkforge.shortlink.infrastructure.persistence.repo.ShortLinkRepository;
+import com.linkforge.shortlink.infrastructure.persistence.mapper.ShortLinkQueryMapper;
 import com.linkforge.contract.redirect.LinkCachePort;
 import com.linkforge.contract.redirect.LinkMeta;
 import io.micrometer.core.instrument.Counter;
@@ -22,7 +22,7 @@ public class LinkCacheOutboxJob {
     private static final Logger log = LoggerFactory.getLogger(LinkCacheOutboxJob.class);
 
     private final LinkCacheOutboxRepository outbox;
-    private final ShortLinkRepository shortLinkRepository;
+    private final ShortLinkQueryMapper shortLinkQueryMapper;
     private final LinkCachePort linkCache;
     private final int batchSize;
     private final Counter processedDone;
@@ -31,13 +31,13 @@ public class LinkCacheOutboxJob {
 
     public LinkCacheOutboxJob(
             LinkCacheOutboxRepository outbox,
-            ShortLinkRepository shortLinkRepository,
+            ShortLinkQueryMapper shortLinkQueryMapper,
             LinkCachePort linkCache,
             MeterRegistry meterRegistry,
             @Value("${APP_LINK_CACHE_OUTBOX_BATCH_SIZE:200}") int batchSize
     ) {
         this.outbox = outbox;
-        this.shortLinkRepository = shortLinkRepository;
+        this.shortLinkQueryMapper = shortLinkQueryMapper;
         this.linkCache = linkCache;
         this.batchSize = batchSize;
         this.processedDone = Counter.builder("linkforge.shortlink.cache_outbox.drain.processed")
@@ -74,7 +74,7 @@ public class LinkCacheOutboxJob {
         }
 
         try {
-            ShortLinkEntity e = shortLinkRepository.findByCode(code).orElse(null);
+            ShortLinkEntity e = shortLinkQueryMapper.findByCode(code);
             boolean ok;
             if (e == null || e.getArchivedAt() != null) {
                 ok = linkCache.tryEvict(code);

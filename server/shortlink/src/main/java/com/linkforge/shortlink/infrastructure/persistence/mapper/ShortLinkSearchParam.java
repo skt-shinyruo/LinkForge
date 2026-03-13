@@ -7,7 +7,7 @@ public class ShortLinkSearchParam {
     private final Boolean enabled;
     private final String keyword;
     private final String tag;
-    private final int offset;
+    private final long offset;
     private final int limit;
 
     public ShortLinkSearchParam(
@@ -16,7 +16,7 @@ public class ShortLinkSearchParam {
             Boolean enabled,
             String keyword,
             String tag,
-            int offset,
+            long offset,
             int limit
     ) {
         this.tenantId = tenantId;
@@ -48,7 +48,7 @@ public class ShortLinkSearchParam {
         return tag;
     }
 
-    public int getOffset() {
+    public long getOffset() {
         return offset;
     }
 

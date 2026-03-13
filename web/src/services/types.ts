@@ -6,7 +6,7 @@ export type ApiResponse<T> = {
 };
 
 export type AuthResponse = {
-  token: string;
+  token?: string | null;
   user: {
     id: number;
     tenantId: number;

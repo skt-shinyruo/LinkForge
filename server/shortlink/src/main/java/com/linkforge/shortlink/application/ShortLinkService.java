@@ -28,7 +28,10 @@ import org.apache.commons.csv.CSVPrinter;
 import org.apache.commons.csv.CSVRecord;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -50,6 +53,13 @@ import java.util.stream.Collectors;
 @Service
 public class ShortLinkService {
 
+    /**
+     * OFFSET-based pagination becomes increasingly slow as offset grows (and can previously overflow int).
+     * Hard cap prevents deep pagination causing slow queries / unexpected results.
+     */
+    private static final long MAX_SEARCH_OFFSET = 100_000L;
+    private static final long MAX_EXPORT_OFFSET = 100_000L;
+
     private final SnowflakeIdGenerator idGenerator;
     private final ShortLinkCommandMapper shortLinkCommandMapper;
     private final ShortLinkQueryMapper shortLinkQueryMapper;
@@ -60,6 +70,7 @@ public class ShortLinkService {
     private final CoreProperties coreProperties;
     private final UrlValidator urlValidator;
     private final TenantGuard tenantGuard;
+    private final TransactionTemplate importRowTx;
 
     public ShortLinkService(
             SnowflakeIdGenerator idGenerator,
@@ -71,7 +82,8 @@ public class ShortLinkService {
             LinkCacheOutboxRepository linkCacheOutboxRepository,
             CoreProperties coreProperties,
             UrlValidator urlValidator,
-            TenantGuard tenantGuard
+            TenantGuard tenantGuard,
+            PlatformTransactionManager transactionManager
     ) {
         this.idGenerator = idGenerator;
         this.shortLinkCommandMapper = shortLinkCommandMapper;
@@ -83,6 +95,9 @@ public class ShortLinkService {
         this.coreProperties = coreProperties;
         this.urlValidator = urlValidator;
         this.tenantGuard = tenantGuard;
+        TransactionTemplate tx = new TransactionTemplate(transactionManager);
+        tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.importRowTx = tx;
     }
 
     @Transactional
@@ -139,7 +154,7 @@ public class ShortLinkService {
 
     public PageResult<LinkDto> search(long tenantId, ShortLinkSearchQuery query, PageQuery pageQuery) {
         tenantGuard.requireCurrentTenant(tenantId);
-        int offset = Math.max(pageQuery.page(), 0) * Math.max(pageQuery.size(), 1);
+        long offset = requireOffsetWithin(pageQuery, MAX_SEARCH_OFFSET);
         ShortLinkSearchParam param = new ShortLinkSearchParam(
                 tenantId,
                 query.archived(),
@@ -375,7 +390,6 @@ public class ShortLinkService {
         return new TagDto(t.getId(), t.getName());
     }
 
-    @Transactional
     public ImportResult importCsv(long tenantId, long createdBy, java.io.InputStream inputStream) {
         tenantGuard.requireCurrentTenant(tenantId);
         if (inputStream == null) {
@@ -393,6 +407,7 @@ public class ShortLinkService {
                      .build()
                      .parse(reader)) {
             for (CSVRecord r : parser) {
+                long recordNumber = r.getRecordNumber();
                 try {
                     String originalUrl = r.get("originalUrl");
                     String code = safeGet(r, "code");
@@ -415,11 +430,11 @@ public class ShortLinkService {
                             null,
                             null
                     );
-                    create(tenantId, createdBy, req);
+                    importRowTx.executeWithoutResult(status -> create(tenantId, createdBy, req));
                     success++;
                 } catch (Exception e) {
                     failed++;
-                    errors.add("line " + r.getRecordNumber() + ": " + e.getMessage());
+                    errors.add("line " + recordNumber + ": " + e.getMessage());
                 }
             }
         } catch (IOException e) {
@@ -437,7 +452,7 @@ public class ShortLinkService {
     void exportCsv(long tenantId, PageQuery pageQuery, Writer writer) {
         tenantGuard.requireCurrentTenant(tenantId);
         // MVP：导出按分页拉取；如需全量导出可改为游标/分片
-        int offset = Math.max(pageQuery.page(), 0) * Math.max(pageQuery.size(), 1);
+        long offset = requireOffsetWithin(pageQuery, MAX_EXPORT_OFFSET);
         ShortLinkSearchParam param = new ShortLinkSearchParam(tenantId, false, null, null, null, offset, pageQuery.size());
         List<ShortLinkEntity> links = shortLinkQueryMapper.listSearch(param);
         Map<Long, List<String>> tags = loadTagsByLinkIds(links.stream().map(ShortLinkEntity::getId).toList());
@@ -462,6 +477,24 @@ public class ShortLinkService {
         } catch (IOException e) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "导出失败");
         }
+    }
+
+    private static long requireOffsetWithin(PageQuery pageQuery, long maxOffset) {
+        if (pageQuery == null) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "分页参数不能为空");
+        }
+
+        int page = pageQuery.page();
+        int size = pageQuery.size();
+        long offset = (long) page * (long) size;
+        if (offset > maxOffset) {
+            long maxPage = maxOffset / (long) Math.max(size, 1);
+            throw new BusinessException(
+                    ErrorCode.BAD_REQUEST,
+                    "分页参数过大（page=" + page + ", size=" + size + "），最大允许 page=" + maxPage + "（offset≤" + maxOffset + "）。"
+            );
+        }
+        return offset;
     }
 
     private void setTags(long tenantId, long linkId, Set<String> tags) {

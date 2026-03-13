@@ -1,7 +1,6 @@
 package com.linkforge.redirect.domain.net;
 
 import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.util.Arrays;
 
 /**
@@ -44,34 +43,27 @@ public final class CidrBlock {
             }
         }
 
-        InetAddress addr;
-        try {
-            addr = InetAddress.getByName(ipPart);
-        } catch (UnknownHostException e) {
+        byte[] addrBytes = IpStrings.parseIpLiteralToBytes(ipPart);
+        if (addrBytes == null) {
             throw new IllegalArgumentException("CIDR IP 不合法: " + raw);
         }
 
-        int maxBits = addr.getAddress().length * 8;
+        int maxBits = addrBytes.length * 8;
         int prefixLen = prefix == null ? maxBits : prefix;
         if (prefixLen < 0 || prefixLen > maxBits) {
             throw new IllegalArgumentException("CIDR 前缀长度超范围: " + raw);
         }
 
-        byte[] network = masked(addr.getAddress(), prefixLen);
+        byte[] network = masked(addrBytes, prefixLen);
         return new CidrBlock(network, prefixLen);
     }
 
     public boolean contains(String ip) {
-        if (ip == null || ip.isBlank()) {
+        byte[] bytes = IpStrings.parseIpLiteralToBytes(ip);
+        if (bytes == null || bytes.length != network.length) {
             return false;
         }
-        InetAddress addr;
-        try {
-            addr = InetAddress.getByName(ip.trim());
-        } catch (UnknownHostException e) {
-            return false;
-        }
-        return contains(addr);
+        return Arrays.equals(masked(bytes, prefixLength), network);
     }
 
     public boolean contains(InetAddress addr) {

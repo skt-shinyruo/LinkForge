@@ -42,6 +42,8 @@ public class RedirectErrorResponseWriter {
 
         response.setStatus(httpStatus);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
+        response.setHeader(HttpHeaders.PRAGMA, "no-cache");
 
         if (isHtmlRequest(request)) {
             response.setContentType(MediaType.TEXT_HTML_VALUE);

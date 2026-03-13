@@ -24,6 +24,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -231,7 +232,7 @@ class RedirectExperienceIntegrationTest {
                         "abc",
                         "https://example.com",
                         true,
-                        LocalDateTime.now().minusMinutes(1),
+                        LocalDateTime.now(ZoneOffset.UTC).minusMinutes(1),
                         null,
                         false,
                         null,

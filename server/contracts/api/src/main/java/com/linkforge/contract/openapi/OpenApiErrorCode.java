@@ -27,6 +27,6 @@ public enum OpenApiErrorCode implements AppErrorCode {
 
     @Override
     public int getHttpStatus() {
-        return 401;
+        return code / 100;
     }
 }

@@ -70,14 +70,18 @@ public class VisitRecorderService implements VisitRecorderPort {
 
             Date expireAt = resolveDayExpireAtUtc(day);
             if (expireAt != null) {
-                if (pv != null && pv == 1L) {
-                    redis.expireAt(pvKey, expireAt);
+                // TTL 设置采用“有限重试”策略：首次设置失败时，在下一次访问中仍会再尝试一次，
+                // 避免因 pv>1 / uvAdd=0 / activeAdd=0 导致 key 永久漏 TTL。
+                boolean retryOnce = pv != null && pv == 2L;
+
+                if (pv != null && pv <= 2L) {
+                    expireAtQuietly(pvKey, expireAt);
                 }
-                if (uvAdd != null && uvAdd > 0) {
-                    redis.expireAt(uvKey, expireAt);
+                if ((uvAdd != null && uvAdd > 0) || retryOnce) {
+                    expireAtQuietly(uvKey, expireAt);
                 }
-                if (activeAdd != null && activeAdd > 0) {
-                    redis.expireAt(activeKey, expireAt);
+                if ((activeAdd != null && activeAdd > 0) || retryOnce) {
+                    expireAtQuietly(activeKey, expireAt);
                 }
             }
 
@@ -134,9 +138,20 @@ public class VisitRecorderService implements VisitRecorderPort {
 
             String key = AnalyticsKeys.dimPvHashKey(tenantId, linkId, day, dimType);
             Long v = redis.opsForHash().increment(key, value, 1L);
-            if (expireAt != null && v != null && v == 1L) {
-                redis.expireAt(key, expireAt);
+            if (expireAt != null && v != null && v <= 2L) {
+                expireAtQuietly(key, expireAt);
             }
+        }
+    }
+
+    private void expireAtQuietly(String key, Date expireAt) {
+        if (expireAt == null || key == null || key.isBlank()) {
+            return;
+        }
+        try {
+            redis.expireAt(key, expireAt);
+        } catch (Exception e) {
+            log.debug("expireAt failed: key={}, requestId={}, err={}", key, RequestId.get(), e.getMessage());
         }
     }
 

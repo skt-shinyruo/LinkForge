@@ -32,6 +32,9 @@ public class RedirectRiskControlFilter extends OncePerRequestFilter {
     private static final Logger log = LoggerFactory.getLogger(RedirectRiskControlFilter.class);
 
     public static final String ATTR_VISIT_INFO = "linkforge.visitInfo";
+    private static final int DEFAULT_MAX_TRACKING_VALUE_LEN = 128;
+    private static final int DEFAULT_MAX_UA_LEN = 512;
+    private static final int MAX_UA_LEN_CAP = 2048;
 
     private final RedirectClientIpResolver clientIpResolver;
     private final RedirectRiskControl riskControl;
@@ -52,8 +55,8 @@ public class RedirectRiskControlFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        String uri = request == null ? null : request.getRequestURI();
-        return uri == null || !uri.startsWith("/r/");
+        String path = pathWithinApp(request);
+        return path == null || !path.startsWith("/r/");
     }
 
     @Override
@@ -91,9 +94,11 @@ public class RedirectRiskControlFilter extends OncePerRequestFilter {
 
     private VisitInfo resolveVisitInfo(HttpServletRequest request) {
         String ip = clientIpResolver.resolveClientIp(request);
-        String ua = request == null ? null : request.getHeader("User-Agent");
-        String referer = request == null ? null : request.getHeader("Referer");
-        String acceptLanguage = request == null ? null : request.getHeader("Accept-Language");
+        int maxUaLen = resolveMaxUserAgentLength();
+        String ua = truncateHeader(request == null ? null : request.getHeader("User-Agent"), maxUaLen);
+        // Referer / language only affect analytics dimensions; cap them to avoid overlong headers
+        String referer = truncateHeader(request == null ? null : request.getHeader("Referer"), 2048);
+        String acceptLanguage = truncateHeader(request == null ? null : request.getHeader("Accept-Language"), 256);
         Map<String, String> trackingParams = extractTrackingParams(request);
         return new VisitInfo(ip, ua, referer, acceptLanguage, trackingParams);
     }
@@ -116,12 +121,17 @@ public class RedirectRiskControlFilter extends OncePerRequestFilter {
         }
 
         Map<String, String> out = new LinkedHashMap<>();
+        int maxTrackingValueLen = resolveMaxTrackingValueLength();
+        int trackingScanLen = resolveTrackingScanLength(maxTrackingValueLen);
         for (Map.Entry<String, String[]> entry : params.entrySet()) {
             if (out.size() >= 20) {
                 break;
             }
             String rawName = entry.getKey();
             if (rawName == null || rawName.isBlank()) {
+                continue;
+            }
+            if (rawName.length() > 128) {
                 continue;
             }
             String name = rawName.trim().toLowerCase(Locale.ROOT);
@@ -137,13 +147,93 @@ public class RedirectRiskControlFilter extends OncePerRequestFilter {
             if (v == null) {
                 continue;
             }
-            String value = v.trim();
-            if (value.isBlank()) {
+            String value = cleanInline(v, trackingScanLen);
+            if (value == null || value.isBlank()) {
                 continue;
+            }
+            if (maxTrackingValueLen > 0 && value.length() > maxTrackingValueLen) {
+                value = value.substring(0, maxTrackingValueLen);
             }
             out.put(name, value);
         }
         return out.isEmpty() ? Map.of() : out;
+    }
+
+    private int resolveMaxTrackingValueLength() {
+        int v = DEFAULT_MAX_TRACKING_VALUE_LEN;
+        try {
+            if (analyticsProperties != null
+                    && analyticsProperties.getEvents() != null
+                    && analyticsProperties.getEvents().getMaxTrackingValueLength() > 0) {
+                v = analyticsProperties.getEvents().getMaxTrackingValueLength();
+            }
+        } catch (Exception ignored) {
+            // ignore
+        }
+        // Safety bound: avoid accidentally huge value propagating into memory / logs.
+        if (v <= 0) {
+            return DEFAULT_MAX_TRACKING_VALUE_LEN;
+        }
+        return Math.min(v, 512);
+    }
+
+    private int resolveMaxUserAgentLength() {
+        int v = DEFAULT_MAX_UA_LEN;
+        try {
+            if (analyticsProperties != null
+                    && analyticsProperties.getEvents() != null
+                    && analyticsProperties.getEvents().getMaxUserAgentLength() > 0) {
+                v = analyticsProperties.getEvents().getMaxUserAgentLength();
+            }
+        } catch (Exception ignored) {
+            // ignore
+        }
+        if (v <= 0) {
+            return DEFAULT_MAX_UA_LEN;
+        }
+        return Math.min(v, MAX_UA_LEN_CAP);
+    }
+
+    private static int resolveTrackingScanLength(int maxTrackingValueLen) {
+        int v = maxTrackingValueLen <= 0 ? DEFAULT_MAX_TRACKING_VALUE_LEN : maxTrackingValueLen;
+        long scan = Math.max(v, (long) v * 4);
+        if (scan > 2048) {
+            scan = 2048;
+        }
+        return (int) scan;
+    }
+
+    private static String truncateHeader(String raw, int maxLen) {
+        if (raw == null) {
+            return null;
+        }
+        if (maxLen <= 0) {
+            return raw;
+        }
+        return raw.length() <= maxLen ? raw : raw.substring(0, maxLen);
+    }
+
+    private static String cleanInline(String raw, int maxScanLen) {
+        if (raw == null) {
+            return null;
+        }
+        int limit = raw.length();
+        if (maxScanLen > 0 && maxScanLen < limit) {
+            limit = maxScanLen;
+        }
+        StringBuilder sb = new StringBuilder(Math.max(limit, 0));
+        for (int i = 0; i < limit; i++) {
+            char ch = raw.charAt(i);
+            if (ch == '\n' || ch == '\r' || ch == '\t') {
+                sb.append(' ');
+            } else if (ch < 0x20) {
+                sb.append(' ');
+            } else {
+                sb.append(ch);
+            }
+        }
+        String t = sb.toString().trim();
+        return t.isBlank() ? null : t;
     }
 
     private static boolean matchesAny(String name, List<String> patterns) {
@@ -171,19 +261,34 @@ public class RedirectRiskControlFilter extends OncePerRequestFilter {
     }
 
     private static String extractCode(HttpServletRequest request) {
-        String uri = request == null ? null : request.getRequestURI();
-        if (uri == null) {
+        String path = pathWithinApp(request);
+        if (path == null) {
             return null;
         }
         // 仅用于风控维度，不做业务校验；实际解析仍以 Controller 的 path variable 为准
-        if (!uri.startsWith("/r/")) {
+        if (!path.startsWith("/r/")) {
             return null;
         }
-        String rest = uri.substring("/r/".length());
+        String rest = path.substring("/r/".length());
         if (rest.isBlank()) {
             return null;
         }
         int slash = rest.indexOf('/');
         return slash < 0 ? rest : rest.substring(0, slash);
+    }
+
+    private static String pathWithinApp(HttpServletRequest request) {
+        if (request == null) {
+            return null;
+        }
+        String uri = request.getRequestURI();
+        if (uri == null || uri.isBlank()) {
+            return null;
+        }
+        String ctx = request.getContextPath();
+        if (ctx != null && !ctx.isBlank() && uri.startsWith(ctx)) {
+            return uri.substring(ctx.length());
+        }
+        return uri;
     }
 }

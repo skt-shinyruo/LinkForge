@@ -946,7 +946,7 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(objectMapper.writeValueAsString(openCreateBody))
                 )
-                .andExpect(status().isUnauthorized())
+                .andExpect(status().isForbidden())
                 .andReturn()
                 .getResponse()
                 .getContentAsString();

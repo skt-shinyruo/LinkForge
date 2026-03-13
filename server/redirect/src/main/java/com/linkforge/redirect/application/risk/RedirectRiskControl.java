@@ -113,15 +113,17 @@ public class RedirectRiskControl {
         }
 
         if (ipCodeEnabled && ipCodeMaxRequests > 0 && code != null && !code.isBlank()) {
-            String safeCode = code.trim();
-            String key = "rl:r:ip_code:" + keyPart(ip) + ":" + safeCode + ":" + windowId;
-            try {
-                long c = rateLimiter.increment(key, ttl);
-                if (c > ipCodeMaxRequests) {
-                    return Decision.tooManyRequests("rate_ip_code", "请求过于频繁，请稍后再试", retryAfterSeconds(now, window, windowId));
+            String safeCode = normalizeCodeForKey(code);
+            if (safeCode != null) {
+                String key = "rl:r:ip_code:" + keyPart(ip) + ":" + safeCode + ":" + windowId;
+                try {
+                    long c = rateLimiter.increment(key, ttl);
+                    if (c > ipCodeMaxRequests) {
+                        return Decision.tooManyRequests("rate_ip_code", "请求过于频繁，请稍后再试", retryAfterSeconds(now, window, windowId));
+                    }
+                } catch (Exception e) {
+                    return onRateLimiterError(e);
                 }
-            } catch (Exception e) {
-                return onRateLimiterError(e);
             }
         }
 
@@ -155,6 +157,30 @@ public class RedirectRiskControl {
         }
         // Redis key 允许 ':'，但 IPv6 包含 ':' 会显著增加 key 的可读复杂度，这里做轻度归一化
         return s.trim().replace(':', '_');
+    }
+
+    private static String normalizeCodeForKey(String code) {
+        if (code == null) {
+            return null;
+        }
+        String v = code.trim();
+        if (v.isBlank()) {
+            return null;
+        }
+        // Keep consistent with Redirect short code constraints (max 32, alphanumeric only).
+        if (v.length() > 32) {
+            return null;
+        }
+        for (int i = 0; i < v.length(); i++) {
+            char ch = v.charAt(i);
+            boolean ok = (ch >= '0' && ch <= '9')
+                    || (ch >= 'A' && ch <= 'Z')
+                    || (ch >= 'a' && ch <= 'z');
+            if (!ok) {
+                return null;
+            }
+        }
+        return v;
     }
 
     public record Decision(

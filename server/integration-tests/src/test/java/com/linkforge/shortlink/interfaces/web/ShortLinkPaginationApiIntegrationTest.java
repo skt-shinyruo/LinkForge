@@ -151,6 +151,41 @@ class ShortLinkPaginationApiIntegrationTest {
     }
 
     @Test
+    void listEndpoints_shouldRejectHugePageToAvoidDeepOffsetPagination() throws Exception {
+        RegisteredPrincipal principal = registerTenantAdmin();
+        String apiKey = createApiKey(principal.token());
+        createLink(principal.token(), "https://example.com/pagination/huge-page", "page-huge");
+
+        String huge = String.valueOf(Integer.MAX_VALUE);
+
+        JsonNode jwt = objectMapper.readTree(mockMvc.perform(
+                        get("/api/v1/links")
+                                .header("Authorization", "Bearer " + principal.token())
+                                .param("page", huge)
+                                .param("size", "100")
+                )
+                .andExpect(status().isBadRequest())
+                .andReturn()
+                .getResponse()
+                .getContentAsByteArray());
+        assertThat(jwt.get("code").asInt()).isEqualTo(40000);
+        assertThat(jwt.get("message").asText()).contains("分页参数过大");
+
+        JsonNode open = objectMapper.readTree(mockMvc.perform(
+                        get("/api/v1/open/links")
+                                .header("X-API-Key", apiKey)
+                                .param("page", huge)
+                                .param("size", "100")
+                )
+                .andExpect(status().isBadRequest())
+                .andReturn()
+                .getResponse()
+                .getContentAsByteArray());
+        assertThat(open.get("code").asInt()).isEqualTo(40000);
+        assertThat(open.get("message").asText()).contains("分页参数过大");
+    }
+
+    @Test
     void pageQuery_shouldEnforceConstructionInvariants() {
         assertThat(new PageQuery(-3, 0)).isEqualTo(new PageQuery(0, 1));
         assertThat(new PageQuery(2, -7)).isEqualTo(new PageQuery(2, 1));

@@ -99,6 +99,14 @@ public class SecurityProperties {
          */
         private long lastUsedUpdateIntervalSeconds = 300;
 
+        /**
+         * OpenAPI API Key 鉴权缓存 TTL（秒）。
+         *
+         * <p>说明：缓存命中时避免每次请求的 DB read + BCrypt matches，用于缓解高 QPS 场景下的 CPU/DB 压力。</p>
+         * <p>设为 0 表示关闭缓存（每次请求回源 DB + BCrypt）。</p>
+         */
+        private long authCacheTtlSeconds = 60;
+
         public long getLastUsedUpdateIntervalSeconds() {
             return lastUsedUpdateIntervalSeconds;
         }
@@ -106,6 +114,13 @@ public class SecurityProperties {
         public void setLastUsedUpdateIntervalSeconds(long lastUsedUpdateIntervalSeconds) {
             this.lastUsedUpdateIntervalSeconds = lastUsedUpdateIntervalSeconds;
         }
+
+        public long getAuthCacheTtlSeconds() {
+            return authCacheTtlSeconds;
+        }
+
+        public void setAuthCacheTtlSeconds(long authCacheTtlSeconds) {
+            this.authCacheTtlSeconds = authCacheTtlSeconds;
+        }
     }
 }
-

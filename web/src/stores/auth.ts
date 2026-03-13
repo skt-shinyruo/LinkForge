@@ -48,7 +48,7 @@ export const useAuthStore = defineStore("auth", {
         method: "POST",
         body: JSON.stringify({ email, password }),
       });
-      if (r.code !== 0 || !r.data?.token) {
+      if (r.code !== 0 || !r.data?.user) {
         throw new Error(r.message || "登录失败");
       }
       this.email = r.data.user.email;
@@ -56,8 +56,12 @@ export const useAuthStore = defineStore("auth", {
       this.roles = r.data.user.roles;
 
       if (AUTH_MODE === "bearer") {
-        this.token = r.data.token;
-        setToken(r.data.token);
+        const token = r.data.token;
+        if (!token) {
+          throw new Error(r.message || "登录失败");
+        }
+        this.token = token;
+        setToken(token);
       } else {
         // cookie 模式：不持久化 token（由服务端 Set-Cookie 保持会话）
         this.token = null;

@@ -88,4 +88,27 @@ class VisitDimensionNormalizerTest {
         assertThat(n.userAgentRaw()).hasSize(50);
         assertThat(n.utmCampaign()).hasSize(20);
     }
+
+    @Test
+    void normalize_should_use_safe_defaults_when_max_len_is_non_positive() {
+        String ua = "x".repeat(600);
+        String campaign = "y".repeat(200);
+        VisitContext v = new VisitContext(
+                "1.2.3.4",
+                ua,
+                "https://example.com",
+                "en-US,en;q=0.9",
+                Map.of("utm_campaign", campaign)
+        );
+
+        VisitDimensionNormalizer.Normalized n = VisitDimensionNormalizer.normalize(
+                v,
+                0,
+                0,
+                0
+        );
+
+        assertThat(n.userAgentRaw()).hasSize(512);
+        assertThat(n.utmCampaign()).hasSize(128);
+    }
 }

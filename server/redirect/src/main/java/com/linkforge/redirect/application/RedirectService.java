@@ -10,7 +10,9 @@ import com.linkforge.redirect.application.error.RedirectErrorCode;
 import com.linkforge.foundation.web.VisitInfo;
 import org.springframework.stereotype.Service;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 
 @Service
 public class RedirectService {
@@ -18,15 +20,18 @@ public class RedirectService {
     private final LinkMetaQueryPort linkMetaQuery;
     private final LinkCachePort linkCache;
     private final VisitRecorderPort visitRecorder;
+    private final Clock clock;
 
     public RedirectService(
             LinkMetaQueryPort linkMetaQuery,
             LinkCachePort linkCache,
-            VisitRecorderPort visitRecorder
+            VisitRecorderPort visitRecorder,
+            Clock clock
     ) {
         this.linkMetaQuery = linkMetaQuery;
         this.linkCache = linkCache;
         this.visitRecorder = visitRecorder;
+        this.clock = clock;
     }
 
     /**
@@ -98,14 +103,15 @@ public class RedirectService {
         return v;
     }
 
-    private static boolean isAvailable(LinkMeta meta) {
+    private boolean isAvailable(LinkMeta meta) {
         if (meta == null) {
             return false;
         }
         if (!meta.enabled()) {
             return false;
         }
-        return meta.expiresAt() == null || meta.expiresAt().isAfter(LocalDateTime.now());
+        LocalDateTime nowUtc = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
+        return meta.expiresAt() == null || meta.expiresAt().isAfter(nowUtc);
     }
 
     private static VisitContext toVisitContext(VisitInfo v) {

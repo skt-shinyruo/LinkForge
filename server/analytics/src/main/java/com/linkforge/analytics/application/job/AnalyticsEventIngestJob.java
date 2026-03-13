@@ -9,6 +9,7 @@ import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Range;
 import org.springframework.data.redis.connection.stream.Consumer;
 import org.springframework.data.redis.connection.stream.MapRecord;
@@ -19,6 +20,7 @@ import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.connection.stream.PendingMessage;
 import org.springframework.data.redis.connection.stream.PendingMessages;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.connection.stream.StreamRecords;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -27,6 +29,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -43,6 +46,18 @@ public class AnalyticsEventIngestJob {
 
     private static final String GROUP = "lf-visit-ingest";
     private static final Pattern NON_SAFE = Pattern.compile("[^a-zA-Z0-9._:-]");
+    private static final long DLQ_MAX_LEN = 10_000L;
+    private static final String DLQ_SUFFIX = ":dlq";
+
+    private static final int MAX_REQUEST_ID_LEN = 64;
+    private static final int MAX_IP_HASH_LEN = 64;
+    private static final int MAX_UA_RAW_LEN = 512;
+    private static final int MAX_UA_FAMILY_LEN = 64;
+    private static final int MAX_OS_FAMILY_LEN = 64;
+    private static final int MAX_DEVICE_TYPE_LEN = 32;
+    private static final int MAX_REFERER_DOMAIN_LEN = 255;
+    private static final int MAX_LANGUAGE_LEN = 32;
+    private static final int MAX_UTM_VALUE_LEN = 128;
 
     private final StringRedisTemplate redis;
     private final LinkVisitEventMapper visitEventMapper;
@@ -174,14 +189,16 @@ public class AnalyticsEventIngestJob {
         }
     }
 
-    private void ingestRecords(String streamKey, List<MapRecord<String, Object, Object>> records) {
+    record IngestItem(RecordId recordId, LinkVisitEventInsertRow row) {
+    }
+
+    void ingestRecords(String streamKey, List<MapRecord<String, Object, Object>> records) {
         if (records == null || records.isEmpty()) {
             return;
         }
 
-        List<LinkVisitEventInsertRow> batch = new ArrayList<>(records.size());
+        List<IngestItem> items = new ArrayList<>(records.size());
         List<RecordId> ackAlways = new ArrayList<>(Math.min(records.size(), 200));
-        List<RecordId> ackAfterWrite = new ArrayList<>(Math.min(records.size(), 200));
 
         for (MapRecord<String, Object, Object> r : records) {
             if (r == null || r.getId() == null || r.getValue() == null) {
@@ -205,7 +222,7 @@ public class AnalyticsEventIngestJob {
             }
 
             String requestId = trimToNull(v.get("requestId"));
-            if (requestId == null) {
+            if (requestId == null || requestId.length() > MAX_REQUEST_ID_LEN) {
                 ackAlways.add(r.getId());
                 continue;
             }
@@ -218,29 +235,33 @@ public class AnalyticsEventIngestJob {
             row.setLinkId(linkId);
             row.setOccurredAt(occurredAt);
             row.setRequestId(requestId);
-            row.setIpHash(trimToNull(v.get("ipHash")));
-            row.setUaRaw(trimToNull(v.get("uaRaw")));
-            row.setUaFamily(trimToNull(v.get("uaFamily")));
-            row.setOsFamily(trimToNull(v.get("osFamily")));
-            row.setDeviceType(trimToNull(v.get("deviceType")));
-            row.setRefererDomain(trimToNull(v.get("refererDomain")));
-            row.setLanguage(trimToNull(v.get("language")));
-            row.setUtmSource(trimToNull(v.get("utmSource")));
-            row.setUtmMedium(trimToNull(v.get("utmMedium")));
-            row.setUtmCampaign(trimToNull(v.get("utmCampaign")));
-            batch.add(row);
-            ackAfterWrite.add(r.getId());
+            row.setIpHash(truncate(trimToNull(v.get("ipHash")), MAX_IP_HASH_LEN));
+            row.setUaRaw(truncate(trimToNull(v.get("uaRaw")), MAX_UA_RAW_LEN));
+            row.setUaFamily(truncate(trimToNull(v.get("uaFamily")), MAX_UA_FAMILY_LEN));
+            row.setOsFamily(truncate(trimToNull(v.get("osFamily")), MAX_OS_FAMILY_LEN));
+            row.setDeviceType(truncate(trimToNull(v.get("deviceType")), MAX_DEVICE_TYPE_LEN));
+            row.setRefererDomain(truncate(trimToNull(v.get("refererDomain")), MAX_REFERER_DOMAIN_LEN));
+            row.setLanguage(truncate(trimToNull(v.get("language")), MAX_LANGUAGE_LEN));
+            row.setUtmSource(truncate(trimToNull(v.get("utmSource")), MAX_UTM_VALUE_LEN));
+            row.setUtmMedium(truncate(trimToNull(v.get("utmMedium")), MAX_UTM_VALUE_LEN));
+            row.setUtmCampaign(truncate(trimToNull(v.get("utmCampaign")), MAX_UTM_VALUE_LEN));
+            items.add(new IngestItem(r.getId(), row));
         }
 
-        if (batch.isEmpty()) {
+        if (items.isEmpty()) {
             acknowledge(streamKey, ackAlways);
             return;
         }
 
         try {
-            visitEventMapper.batchInsertIgnore(batch);
+            visitEventMapper.batchInsertIgnore(items.stream().map(IngestItem::row).toList());
+        } catch (DataIntegrityViolationException e) {
+            log.warn("ingest visit events failed (data integrity): size={}, err={}", items.size(), e.getMessage());
+            acknowledge(streamKey, ackAlways);
+            isolatePoisonAndAck(streamKey, items);
+            return;
         } catch (DataAccessException e) {
-            log.warn("ingest visit events failed: size={}, err={}", batch.size(), e.getMessage());
+            log.warn("ingest visit events failed: size={}, err={}", items.size(), e.getMessage());
             acknowledge(streamKey, ackAlways);
             return;
         }
@@ -248,7 +269,61 @@ public class AnalyticsEventIngestJob {
         if (!ackAlways.isEmpty()) {
             acknowledge(streamKey, ackAlways);
         }
-        acknowledge(streamKey, ackAfterWrite);
+        acknowledge(streamKey, items.stream().map(IngestItem::recordId).toList());
+    }
+
+    private void isolatePoisonAndAck(String streamKey, List<IngestItem> items) {
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+
+        List<RecordId> ackIds = new ArrayList<>(items.size());
+        for (IngestItem item : items) {
+            if (item == null || item.recordId() == null || item.row() == null) {
+                continue;
+            }
+            try {
+                // Fallback to per-row insert: isolate the poison record so the stream does not get stuck pending.
+                visitEventMapper.batchInsertIgnore(List.of(item.row()));
+                ackIds.add(item.recordId());
+            } catch (DataIntegrityViolationException e) {
+                deadLetter(streamKey, item, e);
+                ackIds.add(item.recordId());
+            } catch (DataAccessException e) {
+                // Likely DB transient/fatal issue: keep pending for retry and avoid tight per-row loop.
+                log.debug("ingest visit event row failed: streamId={}, err={}", item.recordId(), e.getMessage());
+                break;
+            }
+        }
+
+        if (!ackIds.isEmpty()) {
+            acknowledge(streamKey, ackIds);
+        }
+    }
+
+    private void deadLetter(String streamKey, IngestItem item, Exception e) {
+        if (redis == null || streamKey == null || streamKey.isBlank() || item == null || item.row() == null) {
+            return;
+        }
+        String dlqKey = streamKey + DLQ_SUFFIX;
+
+        LinkVisitEventInsertRow row = item.row();
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("ts", String.valueOf(System.currentTimeMillis()));
+        fields.put("streamId", item.recordId() == null ? "" : item.recordId().toString());
+        fields.put("tenantId", row.getTenantId() == null ? "" : String.valueOf(row.getTenantId()));
+        fields.put("linkId", row.getLinkId() == null ? "" : String.valueOf(row.getLinkId()));
+        fields.put("requestId", truncate(row.getRequestId(), MAX_REQUEST_ID_LEN));
+        fields.put("reason", "data_integrity");
+        fields.put("err", truncate(e == null ? null : e.getMessage(), 200));
+
+        try {
+            redis.opsForStream().add(StreamRecords.newRecord().in(dlqKey).ofStrings(fields));
+            redis.opsForStream().trim(dlqKey, DLQ_MAX_LEN, true);
+        } catch (Exception ex) {
+            // best-effort: never break ingestion on DLQ failure
+            log.debug("dead-letter write failed: streamId={}, err={}", item.recordId(), ex.getMessage());
+        }
     }
 
     private void acknowledge(String streamKey, List<RecordId> ackIds) {
@@ -322,5 +397,15 @@ public class AnalyticsEventIngestJob {
         }
         String t = v.trim();
         return t.isBlank() ? null : t;
+    }
+
+    private static String truncate(String v, int maxLen) {
+        if (v == null) {
+            return null;
+        }
+        if (maxLen <= 0) {
+            return v;
+        }
+        return v.length() <= maxLen ? v : v.substring(0, maxLen);
     }
 }

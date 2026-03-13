@@ -15,6 +15,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
@@ -22,6 +23,8 @@ import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;
@@ -272,6 +275,33 @@ class ShortLinkCacheAfterCommitIntegrationTest {
         linkCacheOutboxJob.drain();
 
         assertThat(redis.opsForValue().get(key)).isNull();
+    }
+
+    @Test
+    void importCsv_inExistingTx_shouldNotAccumulateAfterCommitSynchronizations() {
+        TransactionTemplate outer = new TransactionTemplate(transactionManager);
+        outer.executeWithoutResult(status -> {
+            assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isTrue();
+            int before = TransactionSynchronizationManager.getSynchronizations().size();
+
+            String csv = """
+                    originalUrl,code,expiresAt,note,tags
+                    https://example.com/a,,,,
+                    https://example.com/b,,,,
+                    """;
+            ShortLinkService.ImportResult r = shortLinkService.importCsv(
+                    TENANT_ID,
+                    USER_ID,
+                    new ByteArrayInputStream(csv.getBytes(StandardCharsets.UTF_8))
+            );
+            assertThat(r.success()).isEqualTo(2);
+            assertThat(r.failed()).isEqualTo(0);
+
+            int after = TransactionSynchronizationManager.getSynchronizations().size();
+            assertThat(after - before).isEqualTo(0);
+
+            status.setRollbackOnly();
+        });
     }
 
     private static String key(String code) {

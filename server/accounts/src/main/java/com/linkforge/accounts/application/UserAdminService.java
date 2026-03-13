@@ -17,6 +17,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,6 +25,11 @@ import java.util.Set;
 
 @Service
 public class UserAdminService {
+
+    private static final Set<String> USER_ROLE_WHITELIST = Set.of(
+            Roles.TENANT_ADMIN,
+            Roles.USER
+    );
 
     private final SnowflakeIdGenerator idGenerator;
     private final UserMapper userMapper;
@@ -73,6 +79,8 @@ public class UserAdminService {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "请求不能为空");
         }
 
+        Set<String> roles = normalizeAndValidateRoles(req.roles());
+
         // MVP：为了简化登录（email 不需要选择租户），仍然约束全局唯一
         if (userMapper.findFirstByEmail(req.email()) != null) {
             throw new BusinessException(AccountsErrorCode.EMAIL_ALREADY_EXISTS);
@@ -92,7 +100,6 @@ public class UserAdminService {
             throw new BusinessException(AccountsErrorCode.EMAIL_ALREADY_EXISTS);
         }
 
-        Set<String> roles = req.roles() == null || req.roles().isEmpty() ? Set.of(Roles.USER) : req.roles();
         for (String role : roles) {
             userRoleMapper.insert(new UserRoleEntity(new UserRoleId(userId, role)));
         }
@@ -185,5 +192,25 @@ public class UserAdminService {
     }
 
     public record UserDto(long id, long tenantId, String email, String status, Set<String> roles) {
+    }
+
+    private static Set<String> normalizeAndValidateRoles(Set<String> roles) {
+        if (roles == null || roles.isEmpty()) {
+            return Set.of(Roles.USER);
+        }
+
+        Set<String> normalized = new HashSet<>();
+        for (String role : roles) {
+            if (role == null || role.isBlank()) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "roles 不能包含空值");
+            }
+            String r = role.trim();
+            if (!USER_ROLE_WHITELIST.contains(r)) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "未知角色: " + r);
+            }
+            normalized.add(r);
+        }
+
+        return normalized.isEmpty() ? Set.of(Roles.USER) : Set.copyOf(normalized);
     }
 }

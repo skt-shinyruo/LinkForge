@@ -7,7 +7,6 @@ import com.linkforge.foundation.config.EdgeProperties;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -18,6 +17,18 @@ import java.util.List;
  */
 @Component
 public class RedirectClientIpResolver {
+
+    /**
+     * 防御性限制：X-Forwarded-For 头部若异常过长，直接忽略（返回 remoteAddr）。
+     *
+     * <p>原因：XFF 可被客户端伪造，超长值会导致 split/substring 产生大量对象，形成 DoS 面。</p>
+     */
+    private static final int MAX_XFF_HEADER_LEN = 1024;
+
+    /**
+     * 防御性限制：最多解析 XFF 中的 N 个 token（从右往左），避免异常长链路导致 CPU/内存放大。
+     */
+    private static final int MAX_XFF_TOKENS = 20;
 
     private final List<CidrBlock> trustedProxies;
 
@@ -54,25 +65,36 @@ public class RedirectClientIpResolver {
         if (xffRaw == null || xffRaw.isBlank()) {
             return remote;
         }
-
-        String[] parts = xffRaw.split(",");
-        List<String> ips = new ArrayList<>(parts.length);
-        for (String p : parts) {
-            String ip = IpStrings.cleanIpToken(p);
-            if (IpStrings.isValidIp(ip)) {
-                ips.add(ip);
-            }
-        }
-        if (ips.isEmpty()) {
+        if (xffRaw.length() > MAX_XFF_HEADER_LEN) {
             return remote;
         }
 
-        // 从右到左剔除可信代理，取第一个“非可信代理”作为客户端 IP
-        for (int i = ips.size() - 1; i >= 0; i--) {
-            String ip = ips.get(i);
-            if (!CidrBlocks.containsAny(trustedProxies, ip)) {
-                return ip;
+        // 从右往左解析，避免 split 造成大量临时对象
+        int tokens = 0;
+        int endExclusive = xffRaw.length();
+        for (int i = xffRaw.length() - 1; i >= -1; i--) {
+            boolean isSeparator = i < 0 || xffRaw.charAt(i) == ',';
+            if (!isSeparator) {
+                continue;
             }
+
+            int startInclusive = i + 1;
+            if (startInclusive < endExclusive) {
+                String token = xffRaw.substring(startInclusive, endExclusive);
+                String ip = IpStrings.cleanIpToken(token);
+                if (IpStrings.isValidIp(ip)) {
+                    // 从右到左剔除可信代理，取第一个“非可信代理”作为客户端 IP
+                    if (!CidrBlocks.containsAny(trustedProxies, ip)) {
+                        return ip;
+                    }
+                }
+
+                tokens++;
+                if (tokens >= MAX_XFF_TOKENS) {
+                    break;
+                }
+            }
+            endExclusive = i;
         }
         return remote;
     }

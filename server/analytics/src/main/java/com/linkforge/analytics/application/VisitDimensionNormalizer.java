@@ -16,17 +16,27 @@ final class VisitDimensionNormalizer {
     static final int DEFAULT_MAX_UA_RAW_LEN = 512;
     static final int DEFAULT_MAX_TRACKING_VALUE_LEN = 128;
 
+    private static final int ABS_MAX_DIM_VALUE_LEN = 512;
+    private static final int ABS_MAX_UA_RAW_LEN = 2048;
+    private static final int ABS_MAX_TRACKING_VALUE_LEN = 512;
+    private static final int ABS_MAX_REFERER_LEN = 2048;
+    private static final int ABS_MAX_ACCEPT_LANGUAGE_LEN = 256;
+
     private VisitDimensionNormalizer() {
     }
 
     static Normalized normalize(VisitContext visitContext, int maxDimValueLen, int maxUaRawLen, int maxTrackingValueLen) {
-        String refererDomain = normalizeRefererDomain(visitContext == null ? null : visitContext.referer(), maxDimValueLen);
+        int safeMaxDimValueLen = normalizeMaxLen(maxDimValueLen, DEFAULT_MAX_DIM_VALUE_LEN, ABS_MAX_DIM_VALUE_LEN);
+        int safeMaxUaRawLen = normalizeMaxLen(maxUaRawLen, DEFAULT_MAX_UA_RAW_LEN, ABS_MAX_UA_RAW_LEN);
+        int safeMaxTrackingValueLen = normalizeMaxLen(maxTrackingValueLen, DEFAULT_MAX_TRACKING_VALUE_LEN, ABS_MAX_TRACKING_VALUE_LEN);
+
+        String refererDomain = normalizeRefererDomain(visitContext == null ? null : visitContext.referer(), safeMaxDimValueLen);
         String language = normalizePrimaryLanguage(visitContext == null ? null : visitContext.acceptLanguage(), 32);
 
-        String uaRaw = truncate(cleanInline(visitContext == null ? null : visitContext.userAgent()), maxUaRawLen);
+        String uaRaw = truncate(cleanInline(visitContext == null ? null : visitContext.userAgent(), safeMaxUaRawLen), safeMaxUaRawLen);
         UaInfo ua = parseUserAgent(uaRaw);
 
-        Tracking t = extractTracking(visitContext == null ? null : visitContext.trackingParams(), maxTrackingValueLen);
+        Tracking t = extractTracking(visitContext == null ? null : visitContext.trackingParams(), safeMaxTrackingValueLen);
 
         return new Normalized(
                 refererDomain,
@@ -42,7 +52,7 @@ final class VisitDimensionNormalizer {
     }
 
     static String normalizeRefererDomain(String referer, int maxLen) {
-        String r = trimToNull(referer);
+        String r = truncate(referer, ABS_MAX_REFERER_LEN);
         if (r == null) {
             // 浏览器/策略可能不带 Referer：统一记为 direct（更符合运营语义）
             return "direct";
@@ -60,16 +70,21 @@ final class VisitDimensionNormalizer {
     }
 
     static String normalizePrimaryLanguage(String acceptLanguage, int maxLen) {
-        String raw = trimToNull(acceptLanguage);
+        String raw = truncate(acceptLanguage, ABS_MAX_ACCEPT_LANGUAGE_LEN);
         if (raw == null) {
             return "unknown";
         }
         // 例如：zh-CN,zh;q=0.9,en;q=0.8 → zh-cn
-        String first = raw.split(",", 2)[0];
-        if (first == null) {
-            return "unknown";
+        String first = raw;
+        int comma = raw.indexOf(',');
+        if (comma >= 0) {
+            first = raw.substring(0, comma);
         }
-        String token = first.split(";", 2)[0];
+        String token = first;
+        int semi = first.indexOf(';');
+        if (semi >= 0) {
+            token = first.substring(0, semi);
+        }
         String t = trimToNull(token);
         if (t == null) {
             return "unknown";
@@ -177,7 +192,8 @@ final class VisitDimensionNormalizer {
     }
 
     static String sanitizeTrackingValue(String raw, int maxLen) {
-        String s = truncate(cleanInline(raw), maxLen);
+        int safeMax = normalizeMaxLen(maxLen, DEFAULT_MAX_TRACKING_VALUE_LEN, ABS_MAX_TRACKING_VALUE_LEN);
+        String s = truncate(cleanInline(raw, safeMax), safeMax);
         if (s == null) {
             return null;
         }
@@ -195,12 +211,16 @@ final class VisitDimensionNormalizer {
         return hasAlnum ? s : null;
     }
 
-    private static String cleanInline(String v) {
+    private static String cleanInline(String v, int maxScanLen) {
         if (v == null) {
             return null;
         }
-        StringBuilder sb = new StringBuilder(v.length());
-        for (int i = 0; i < v.length(); i++) {
+        int limit = v.length();
+        if (maxScanLen > 0 && maxScanLen < limit) {
+            limit = maxScanLen;
+        }
+        StringBuilder sb = new StringBuilder(Math.max(limit, 0));
+        for (int i = 0; i < limit; i++) {
             char ch = v.charAt(i);
             if (ch == '\n' || ch == '\r' || ch == '\t') {
                 sb.append(' ');
@@ -231,6 +251,14 @@ final class VisitDimensionNormalizer {
             return t;
         }
         return t.length() <= maxLen ? t : t.substring(0, maxLen);
+    }
+
+    private static int normalizeMaxLen(int v, int dft, int cap) {
+        int out = v <= 0 ? dft : v;
+        if (cap > 0 && out > cap) {
+            out = cap;
+        }
+        return out;
     }
 
     private static boolean containsAny(String haystack, String... needles) {

@@ -22,7 +22,9 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
+import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.Map;
 
 @RestController
@@ -31,14 +33,28 @@ public class RedirectController {
 
     private static final Logger log = LoggerFactory.getLogger(RedirectController.class);
 
+    // Defensive: preview confirm href should not blow up due to param explosion.
+    private static final int MAX_CONFIRM_PARAMS = 50;
+    private static final int MAX_CONFIRM_VALUES_PER_PARAM = 5;
+    private static final int MAX_CONFIRM_PARAM_NAME_LEN = 128;
+    private static final int MAX_CONFIRM_VALUE_LEN = 256;
+    private static final int MAX_CONFIRM_HREF_LEN = 4096;
+
     private final RedirectService redirectService;
     private final RedirectProperties redirectProperties;
     private final RedirectUrlBuilder redirectUrlBuilder;
+    private final Clock clock;
 
-    public RedirectController(RedirectService redirectService, RedirectProperties redirectProperties, RedirectUrlBuilder redirectUrlBuilder) {
+    public RedirectController(
+            RedirectService redirectService,
+            RedirectProperties redirectProperties,
+            RedirectUrlBuilder redirectUrlBuilder,
+            Clock clock
+    ) {
         this.redirectService = redirectService;
         this.redirectProperties = redirectProperties;
         this.redirectUrlBuilder = redirectUrlBuilder;
+        this.clock = clock;
     }
 
     @GetMapping("/{code}")
@@ -157,14 +173,17 @@ public class RedirectController {
         return global == 301 ? 301 : 302;
     }
 
-    private static UnavailableReason unavailableReason(LinkMeta meta) {
+    private UnavailableReason unavailableReason(LinkMeta meta) {
         if (meta == null) {
             return UnavailableReason.NOT_FOUND;
         }
         if (!meta.enabled()) {
             return UnavailableReason.DISABLED;
         }
-        if (meta.expiresAt() != null && meta.expiresAt().isBefore(LocalDateTime.now())) {
+        LocalDateTime nowUtc = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
+        // Keep consistent with RedirectService availability:
+        // available iff expiresAt == null OR expiresAt is strictly after nowUtc.
+        if (meta.expiresAt() != null && !meta.expiresAt().isAfter(nowUtc)) {
             return UnavailableReason.EXPIRED;
         }
         return null;
@@ -275,31 +294,60 @@ public class RedirectController {
         }
 
         UriComponentsBuilder b = UriComponentsBuilder.fromPath(path);
+        int added = 0;
         if (request != null) {
             Map<String, String[]> params = request.getParameterMap();
             if (params != null) {
+                outer:
                 for (Map.Entry<String, String[]> entry : params.entrySet()) {
+                    if (added >= MAX_CONFIRM_PARAMS) {
+                        break;
+                    }
                     String name = entry.getKey();
-                    if (name == null || name.isBlank() || "__lf_confirm".equals(name)) {
+                    if (name == null || name.isBlank()) {
+                        continue;
+                    }
+                    if ("__lf_confirm".equals(name) || "__lf_preview".equals(name)) {
+                        continue;
+                    }
+                    if (name.length() > MAX_CONFIRM_PARAM_NAME_LEN) {
                         continue;
                     }
                     String[] values = entry.getValue();
                     if (values == null || values.length == 0) {
                         b.queryParam(name);
+                        added++;
                         continue;
                     }
+                    int valuesAdded = 0;
                     for (String v : values) {
+                        if (added >= MAX_CONFIRM_PARAMS) {
+                            break outer;
+                        }
+                        if (valuesAdded >= MAX_CONFIRM_VALUES_PER_PARAM) {
+                            break;
+                        }
                         if (v == null) {
                             b.queryParam(name);
                         } else {
-                            b.queryParam(name, v);
+                            String value = v;
+                            if (value.length() > MAX_CONFIRM_VALUE_LEN) {
+                                value = value.substring(0, MAX_CONFIRM_VALUE_LEN);
+                            }
+                            b.queryParam(name, value);
                         }
+                        added++;
+                        valuesAdded++;
                     }
                 }
             }
         }
         b.queryParam("__lf_confirm", "1");
-        return b.build().toUriString();
+        String href = b.build().toUriString();
+        if (href.length() > MAX_CONFIRM_HREF_LEN) {
+            return UriComponentsBuilder.fromPath(path).queryParam("__lf_confirm", "1").build().toUriString();
+        }
+        return href;
     }
 
     private String renderUnavailableHtml(String title, String message, String code) {

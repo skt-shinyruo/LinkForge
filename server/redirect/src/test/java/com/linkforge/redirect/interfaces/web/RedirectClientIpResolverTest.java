@@ -53,4 +53,25 @@ class RedirectClientIpResolverTest {
 
         assertThat(r.resolveClientIp(req)).isEqualTo("1.2.3.4");
     }
+
+    @Test
+    void should_ignore_xff_when_header_too_long_even_if_remote_trusted() {
+        EdgeProperties p = new EdgeProperties();
+        p.setTrustedProxies(List.of("10.0.0.0/8"));
+
+        RedirectClientIpResolver r = new RedirectClientIpResolver(p);
+
+        MockHttpServletRequest req = new MockHttpServletRequest();
+        req.setRemoteAddr("10.0.0.5");
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("1.2.3.4");
+        for (int i = 0; i < 300; i++) {
+            sb.append(", 10.0.0.1");
+        }
+        req.addHeader("X-Forwarded-For", sb.toString());
+
+        // defensive behavior: treat suspiciously-long XFF as untrusted and fall back to remoteAddr
+        assertThat(r.resolveClientIp(req)).isEqualTo("10.0.0.5");
+    }
 }

@@ -37,14 +37,14 @@ public class AuthController {
     public ApiResponse<AuthResponse> register(@Valid @RequestBody RegisterRequest req, HttpServletResponse response) {
         AuthService.AuthResult r = authService.register(req.tenantName(), req.email(), req.password());
         setJwtCookieIfEnabled(response, r.token());
-        return ApiResponse.ok(AuthResponse.from(r.token(), r.principal()), RequestId.get());
+        return ApiResponse.ok(AuthResponse.from(exposeTokenToBodyIfNeeded(r.token()), r.principal()), RequestId.get());
     }
 
     @PostMapping("/login")
     public ApiResponse<AuthResponse> login(@Valid @RequestBody LoginRequest req, HttpServletResponse response) {
         AuthService.AuthResult r = authService.login(req.email(), req.password());
         setJwtCookieIfEnabled(response, r.token());
-        return ApiResponse.ok(AuthResponse.from(r.token(), r.principal()), RequestId.get());
+        return ApiResponse.ok(AuthResponse.from(exposeTokenToBodyIfNeeded(r.token()), r.principal()), RequestId.get());
     }
 
     /**
@@ -115,6 +115,15 @@ public class AuthController {
         }
         String t = v.trim();
         return t.isBlank() ? dft : t;
+    }
+
+    private String exposeTokenToBodyIfNeeded(String token) {
+        if (securityProperties != null
+                && securityProperties.getJwt() != null
+                && securityProperties.getJwt().isCookieEnabled()) {
+            return null;
+        }
+        return token;
     }
 
     public record RegisterRequest(

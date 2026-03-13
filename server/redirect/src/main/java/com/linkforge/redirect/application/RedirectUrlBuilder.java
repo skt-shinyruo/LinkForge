@@ -23,6 +23,8 @@ import java.util.Set;
 public class RedirectUrlBuilder {
 
     private final RedirectProperties redirectProperties;
+    private static final int MAX_APPENDED_QUERY_LEN = 2048;
+    private static final int MAX_FINAL_URL_LEN = 4096;
 
     public RedirectUrlBuilder(RedirectProperties redirectProperties) {
         this.redirectProperties = redirectProperties;
@@ -57,6 +59,7 @@ public class RedirectUrlBuilder {
         }
 
         StringBuilder appendRaw = new StringBuilder();
+        outer:
         for (Map.Entry<String, String[]> entry : requestParams.entrySet()) {
             String name = entry.getKey();
             if (name == null || name.isBlank()) {
@@ -74,7 +77,12 @@ public class RedirectUrlBuilder {
             }
             String[] values = entry.getValue();
             if (values == null || values.length == 0) {
+                int beforeLen = appendRaw.length();
                 appendRawParam(appendRaw, name, null);
+                if (appendRaw.length() > MAX_APPENDED_QUERY_LEN) {
+                    appendRaw.setLength(beforeLen);
+                    break outer;
+                }
                 continue;
             }
             List<String> safeValues = new ArrayList<>();
@@ -84,16 +92,30 @@ public class RedirectUrlBuilder {
                 }
             }
             if (safeValues.isEmpty()) {
+                int beforeLen = appendRaw.length();
                 appendRawParam(appendRaw, name, null);
+                if (appendRaw.length() > MAX_APPENDED_QUERY_LEN) {
+                    appendRaw.setLength(beforeLen);
+                    break outer;
+                }
             } else {
                 for (String v : safeValues) {
+                    int beforeLen = appendRaw.length();
                     appendRawParam(appendRaw, name, v);
+                    if (appendRaw.length() > MAX_APPENDED_QUERY_LEN) {
+                        appendRaw.setLength(beforeLen);
+                        break outer;
+                    }
                 }
             }
         }
 
         try {
-            return appendQueryParams(originalUrl, appendRaw.toString());
+            String out = appendQueryParams(originalUrl, appendRaw.toString());
+            if (out != null && out.length() > MAX_FINAL_URL_LEN) {
+                return originalUrl;
+            }
+            return out;
         } catch (Exception e) {
             return originalUrl;
         }
@@ -144,28 +166,34 @@ public class RedirectUrlBuilder {
             return originalUrl;
         }
 
-        URI uri = URI.create(originalUrl.trim());
+        // IMPORTANT: avoid rebuilding URI from raw components here.
+        // `new URI(..., query, ...)` will treat `%` as illegal and escape it to `%25`,
+        // causing existing raw-encoded sequences (e.g. `%2B`) to be double-encoded.
+        //
+        // We keep the original URL string and insert merged query before the fragment part.
+        String url = originalUrl.trim();
 
-        String existing = uri.getRawQuery();
-        String merged;
-        if (existing == null || existing.isBlank()) {
-            merged = rawAppendQuery;
-        } else {
-            merged = existing + "&" + rawAppendQuery;
+        int hashIdx = url.indexOf('#');
+        String fragment = "";
+        String beforeFragment = url;
+        if (hashIdx >= 0) {
+            fragment = url.substring(hashIdx);
+            beforeFragment = url.substring(0, hashIdx);
         }
 
-        try {
-            URI out = new URI(
-                    uri.getScheme(),
-                    uri.getRawAuthority(),
-                    uri.getRawPath(),
-                    merged,
-                    uri.getRawFragment()
-            );
-            return out.toString();
-        } catch (Exception e) {
-            return originalUrl;
+        int qIdx = beforeFragment.indexOf('?');
+        if (qIdx < 0) {
+            return beforeFragment + "?" + rawAppendQuery + fragment;
         }
+
+        String existingQuery = beforeFragment.substring(qIdx + 1);
+        if (existingQuery.isBlank()) {
+            return beforeFragment.substring(0, qIdx + 1) + rawAppendQuery + fragment;
+        }
+        if (existingQuery.endsWith("&")) {
+            return beforeFragment + rawAppendQuery + fragment;
+        }
+        return beforeFragment + "&" + rawAppendQuery + fragment;
     }
 
     private static String decodeQueryComponent(String raw) {

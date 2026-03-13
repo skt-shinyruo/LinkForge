@@ -60,4 +60,10 @@
             last_used_at = #{lastUsedAt}
         WHERE id = #{id}
     </update>
+
+    <update id="updateLastUsedAt">
+        UPDATE api_keys
+        SET last_used_at = #{param2}
+        WHERE id = #{param1}
+    </update>
 </mapper>

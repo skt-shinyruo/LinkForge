@@ -54,6 +54,7 @@ app:
       cookie-same-site: ${JWT_COOKIE_SAMESITE:Lax}
     api-key:
       last-used-update-interval-seconds: ${API_KEY_LAST_USED_UPDATE_INTERVAL_SECONDS:300}
+      auth-cache-ttl-seconds: ${API_KEY_AUTH_CACHE_TTL_SECONDS:60}
   shortlink:
     code-length-min: 6
   redirect:

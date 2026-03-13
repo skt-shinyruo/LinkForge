@@ -55,14 +55,37 @@ public class SecurityConfig {
             repo.setCookiePath("/");
             // SPA（双提交 cookie）模式：使用“原始 token”而不是 XOR 掩码，保证 cookie 值可直接作为 header 发送
             CsrfTokenRequestAttributeHandler requestHandler = new CsrfTokenRequestAttributeHandler();
+            AntPathRequestMatcher openApiMatcher = new AntPathRequestMatcher("/api/v1/open/**");
             http.csrf(csrf -> csrf
                     .csrfTokenRepository(repo)
                     .csrfTokenRequestHandler(requestHandler)
-                    // OpenAPI 客户端走 header 认证（X-API-Key），不依赖 Cookie，不需要 CSRF
-                    .ignoringRequestMatchers(new AntPathRequestMatcher("/api/v1/open/**"))
+                    // OpenAPI 客户端走 header 认证（X-API-Key），不依赖 Cookie，不需要 CSRF。
+                    // 但当 OpenAPI 路由被 cookie/JWT 调用时，仍应受 CSRF 保护。
+                    .ignoringRequestMatchers((HttpServletRequest req) -> {
+                        if (req == null) {
+                            return false;
+                        }
+                        if (!openApiMatcher.matches(req)) {
+                            return false;
+                        }
+                        String apiKey = req.getHeader("X-API-Key");
+                        return apiKey != null && !apiKey.isBlank();
+                    })
                     // 显式 header 认证（Bearer/API Key）不属于浏览器自动附带的 Cookie 场景
-                    .ignoringRequestMatchers((HttpServletRequest req) -> req.getHeader("Authorization") != null)
-                    .ignoringRequestMatchers((HttpServletRequest req) -> req.getHeader("X-API-Key") != null)
+                    .ignoringRequestMatchers((HttpServletRequest req) -> {
+                        if (req == null) {
+                            return false;
+                        }
+                        String auth = req.getHeader("Authorization");
+                        if (auth == null || auth.isBlank()) {
+                            return false;
+                        }
+                        if (!auth.startsWith("Bearer ")) {
+                            return false;
+                        }
+                        String token = auth.substring("Bearer ".length()).trim();
+                        return !token.isBlank();
+                    })
             );
         } else {
             http.csrf(csrf -> csrf.disable());

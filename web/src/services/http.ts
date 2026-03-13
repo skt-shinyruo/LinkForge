@@ -95,7 +95,13 @@ let csrfInitPromise: Promise<void> | null = null;
 
 async function ensureCsrfCookie(): Promise<void> {
   if (!csrfInitPromise) {
-    csrfInitPromise = fetch(CSRF_ENDPOINT, { method: "GET", credentials: "include" }).then(() => {});
+    csrfInitPromise = fetch(CSRF_ENDPOINT, { method: "GET", credentials: "include" })
+      .then(() => {})
+      .catch((err) => {
+        // 若首次初始化失败（网络/临时错误），不要把失败永久缓存住；允许后续重试。
+        csrfInitPromise = null;
+        throw err;
+      });
   }
   await csrfInitPromise;
 }
@@ -110,7 +116,12 @@ async function attachCsrfHeaderIfNeeded(headers: Headers, method: string): Promi
 
   let token = getCookie(CSRF_COOKIE_NAME);
   if (!token) {
-    await ensureCsrfCookie();
+    try {
+      await ensureCsrfCookie();
+    } catch {
+      // best-effort：让请求继续走到服务端，由服务端按 CSRF 规则拒绝（或放行）
+      return;
+    }
     token = getCookie(CSRF_COOKIE_NAME);
   }
   if (token) {
@@ -128,14 +139,34 @@ export async function apiFetch<T>(
   const resp = await authFetch(path, { ...options, headers });
 
   const text = await resp.text();
-  const data = text ? (JSON.parse(text) as ApiResponse<T>) : ({} as ApiResponse<T>);
+  let data: ApiResponse<T> | null = null;
+  let parseOk = false;
+  if (text) {
+    try {
+      data = JSON.parse(text) as ApiResponse<T>;
+      parseOk = true;
+    } catch {
+      data = null;
+    }
+  } else {
+    data = {} as ApiResponse<T>;
+    parseOk = true;
+  }
 
   // 统一把非 2xx 当作异常，但保留服务端返回的业务 code/message 以便展示
   if (!resp.ok) {
-    const msg = data?.message || `HTTP ${resp.status}`;
+    const msg =
+      (parseOk ? data?.message : null) ||
+      `${resp.status} ${resp.statusText || ""}`.trim() ||
+      `HTTP ${resp.status}`;
     const err = new Error(msg) as Error & { response?: ApiResponse<T> };
-    err.response = data;
+    err.response =
+      (parseOk ? data : null) || ({ code: resp.status * 100, message: msg } as ApiResponse<T>);
     throw err;
+  }
+
+  if (!parseOk || data == null) {
+    throw new Error(`Invalid JSON response (HTTP ${resp.status})`);
   }
 
   return data;

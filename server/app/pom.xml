@@ -39,15 +39,30 @@
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-shortlink</artifactId>
+            <artifactId>linkforge-shortlink-interfaces</artifactId>
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-redirect</artifactId>
+            <artifactId>linkforge-shortlink-infrastructure</artifactId>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-analytics</artifactId>
+            <artifactId>linkforge-redirect-interfaces</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-redirect-infrastructure</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-analytics-interfaces</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-analytics-infrastructure</artifactId>
+            <scope>runtime</scope>
         </dependency>
 
         <!-- web -->

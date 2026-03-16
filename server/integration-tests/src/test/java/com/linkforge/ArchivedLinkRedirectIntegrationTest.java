@@ -1,13 +1,19 @@
 package com.linkforge;
 
 import com.linkforge.LinkForgeApplication;
-import com.linkforge.shortlink.infrastructure.persistence.entity.ShortLinkEntity;
-import com.linkforge.shortlink.infrastructure.persistence.mapper.ShortLinkCommandMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkforge.contract.shortlink.ShortLinkEventTypes;
+import com.linkforge.contract.shortlink.ShortLinkPublicSnapshot;
+import com.linkforge.contract.shortlink.event.ShortLinkArchivedV1;
+import com.linkforge.contract.shortlink.event.ShortLinkCreatedV1;
+import com.linkforge.foundation.eventing.IntegrationEventStore;
+import com.linkforge.redirect.infrastructure.projection.ShortLinkEventProjectorJob;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -19,14 +25,20 @@ import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.Instant;
 import java.time.Duration;
+import java.util.List;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @Testcontainers
-@SpringBootTest(classes = LinkForgeApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(
+        classes = LinkForgeApplication.class,
+        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "app.scheduling.enabled=false"
+)
 @AutoConfigureMockMvc
 class ArchivedLinkRedirectIntegrationTest {
 
@@ -66,34 +78,86 @@ class ArchivedLinkRedirectIntegrationTest {
     MockMvc mockMvc;
 
     @Autowired
-    ShortLinkCommandMapper shortLinkCommandMapper;
+    StringRedisTemplate redis;
+
+    @Autowired
+    IntegrationEventStore eventStore;
+
+    @Autowired
+    ObjectMapper objectMapper;
+
+    @Autowired
+    ShortLinkEventProjectorJob projectorJob;
 
     private String code;
+    private long linkId;
 
     @BeforeEach
     void setUp() {
-        // 归档短链：Edge 侧应视为不可用（表现为 404 not found）
+        redis.getConnectionFactory().getConnection().serverCommands().flushAll();
+
         long suffix = System.nanoTime();
+        linkId = (suffix & Long.MAX_VALUE) <= 0 ? 1L : (suffix & Long.MAX_VALUE);
         code = "archived" + Long.toUnsignedString(suffix);
 
-        ShortLinkEntity link = new ShortLinkEntity();
-        long id = suffix & Long.MAX_VALUE;
-        link.setId(id <= 0 ? 1L : id);
-        link.setTenantId(1L);
-        link.setCode(code);
-        link.setOriginalUrl("https://example.com");
-        link.setNote(null);
-        link.setEnabled(true);
-        link.setExpiresAt(null);
-        link.setArchivedAt(java.time.LocalDateTime.of(2026, 2, 20, 0, 0));
-        link.setRedirectStatusCode(null);
-        link.setPreviewEnabled(false);
-        link.setUnavailableLandingUrl(null);
-        link.setQueryForwardMode(null);
-        link.setQueryForwardAllowlist(null);
-        link.setCreatedBy(1L);
+        Instant t1 = Instant.now();
+        ShortLinkPublicSnapshot createdSnapshot = new ShortLinkPublicSnapshot(
+                1L,
+                linkId,
+                code,
+                "https://example.com",
+                true,
+                null,
+                null,
+                false,
+                null,
+                null,
+                List.of(),
+                null
+        );
+        String createdEventId = "it-created-" + code;
+        ShortLinkCreatedV1 created = new ShortLinkCreatedV1(createdEventId, t1, 1L, linkId, code, createdSnapshot);
 
-        shortLinkCommandMapper.insert(link);
+        Instant t2 = t1.plusSeconds(1);
+        ShortLinkPublicSnapshot archivedSnapshot = new ShortLinkPublicSnapshot(
+                1L,
+                linkId,
+                code,
+                "https://example.com",
+                true,
+                null,
+                null,
+                false,
+                null,
+                null,
+                List.of(),
+                t2
+        );
+        String archivedEventId = "it-archived-" + code;
+        ShortLinkArchivedV1 archived = new ShortLinkArchivedV1(archivedEventId, t2, 1L, linkId, code, archivedSnapshot);
+
+        eventStore.append(
+                createdEventId,
+                "shortlink",
+                ShortLinkEventTypes.SHORT_LINK_CREATED_V1,
+                1L,
+                "shortlink",
+                linkId,
+                t1,
+                toJson(created)
+        );
+        eventStore.append(
+                archivedEventId,
+                "shortlink",
+                ShortLinkEventTypes.SHORT_LINK_ARCHIVED_V1,
+                1L,
+                "shortlink",
+                linkId,
+                t2,
+                toJson(archived)
+        );
+
+        projectorJob.drain();
     }
 
     @Test
@@ -101,5 +165,13 @@ class ArchivedLinkRedirectIntegrationTest {
         mockMvc.perform(get("/r/" + code).header(HttpHeaders.ACCEPT, "text/html"))
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML));
+    }
+
+    private String toJson(Object payload) {
+        try {
+            return objectMapper.writeValueAsString(payload);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
     }
 }

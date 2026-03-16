@@ -1,7 +1,7 @@
 package com.linkforge;
 
 import com.linkforge.LinkForgeApplication;
-import com.linkforge.contract.redirect.LinkMetaQueryPort;
+import com.linkforge.redirect.infrastructure.projection.RedirectLinkProjectionMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,7 +28,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @Testcontainers
-@SpringBootTest(classes = LinkForgeApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(
+        classes = LinkForgeApplication.class,
+        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "app.scheduling.enabled=false"
+)
 @AutoConfigureMockMvc
 class RedirectNegativeCacheIntegrationTest {
 
@@ -72,7 +76,7 @@ class RedirectNegativeCacheIntegrationTest {
     StringRedisTemplate redis;
 
     @SpyBean
-    LinkMetaQueryPort linkMetaQueryPort;
+    RedirectLinkProjectionMapper projectionMapper;
 
     @BeforeEach
     void setUp() {
@@ -90,6 +94,6 @@ class RedirectNegativeCacheIntegrationTest {
         mockMvc.perform(get("/r/" + code).header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE))
                 .andExpect(status().isNotFound());
 
-        verify(linkMetaQueryPort, times(1)).findActiveByCode(code);
+        verify(projectionMapper, times(1)).findByCode(code);
     }
 }

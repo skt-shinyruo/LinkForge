@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.linkforge.foundation.eventing.mapper.IntegrationEventMapper">
+
+    <!-- Explicit constructor mapping: avoids relying on underscore-to-camel for record components like occurredAtUtc -->
+    <resultMap id="IntegrationEventRowResultMap" type="com.linkforge.foundation.eventing.IntegrationEventRow">
+        <constructor>
+            <!-- MyBatis type alias: 'long' -> java.lang.Long, '_long' -> primitive long -->
+            <idArg column="seq" javaType="_long"/>
+            <arg column="event_id" javaType="java.lang.String"/>
+            <arg column="producer" javaType="java.lang.String"/>
+            <arg column="event_type" javaType="java.lang.String"/>
+            <arg column="tenant_id" javaType="java.lang.Long"/>
+            <arg column="aggregate_type" javaType="java.lang.String"/>
+            <arg column="aggregate_id" javaType="java.lang.Long"/>
+            <arg column="occurred_at" javaType="java.time.Instant"/>
+            <arg column="payload_json" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <select id="loadMaxSeq" resultType="long">
+        SELECT COALESCE(MAX(seq), 0)
+        FROM integration_events
+    </select>
+
+    <select id="listAfterSeq" resultMap="IntegrationEventRowResultMap">
+        SELECT
+            seq,
+            event_id,
+            producer,
+            event_type,
+            tenant_id,
+            aggregate_type,
+            aggregate_id,
+            occurred_at,
+            payload_json
+        FROM integration_events
+        WHERE seq &gt; #{lastSeqExclusive}
+        ORDER BY seq ASC
+        LIMIT #{limit}
+    </select>
+
+    <insert id="insert">
+        INSERT INTO integration_events (
+            event_id,
+            producer,
+            event_type,
+            tenant_id,
+            aggregate_type,
+            aggregate_id,
+            occurred_at,
+            payload_json
+        ) VALUES (
+            #{eventId},
+            #{producer},
+            #{eventType},
+            #{tenantId},
+            #{aggregateType},
+            #{aggregateId},
+            #{occurredAtUtc},
+            #{payloadJson}
+        )
+    </insert>
+</mapper>

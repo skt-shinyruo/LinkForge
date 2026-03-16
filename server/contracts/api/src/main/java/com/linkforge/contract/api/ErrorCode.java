@@ -8,6 +8,7 @@ public enum ErrorCode implements AppErrorCode {
     FORBIDDEN(40300, "无权限"),
     NOT_FOUND(40400, "资源不存在"),
     TOO_MANY_REQUESTS(42900, "请求过于频繁"),
+    SERVICE_UNAVAILABLE(50300, "服务不可用"),
     INTERNAL_ERROR(50000, "服务内部错误");
 
     private final int code;

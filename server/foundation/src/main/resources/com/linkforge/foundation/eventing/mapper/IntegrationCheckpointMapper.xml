@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.linkforge.foundation.eventing.mapper.IntegrationCheckpointMapper">
+
+    <select id="findLastSeq" resultType="java.lang.Long">
+        SELECT last_seq
+        FROM integration_consumer_checkpoint
+        WHERE consumer = #{consumer}
+        LIMIT 1
+    </select>
+
+    <insert id="insert">
+        INSERT INTO integration_consumer_checkpoint (consumer, last_seq)
+        VALUES (#{consumer}, #{lastSeq})
+    </insert>
+
+    <update id="update">
+        UPDATE integration_consumer_checkpoint
+        SET last_seq = #{lastSeq}
+        WHERE consumer = #{consumer}
+    </update>
+</mapper>
+

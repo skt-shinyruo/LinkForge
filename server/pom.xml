@@ -24,6 +24,7 @@
         <module>contracts/api</module>
         <module>contracts/redirect</module>
         <module>contracts/analytics</module>
+        <module>contracts/shortlink</module>
         <module>accounts</module>
         <module>shortlink</module>
         <module>redirect</module>
@@ -73,6 +74,11 @@
             </dependency>
             <dependency>
                 <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-contract-shortlink</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
                 <artifactId>linkforge-accounts</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -83,12 +89,72 @@
             </dependency>
             <dependency>
                 <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-shortlink-domain</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-shortlink-application</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-shortlink-infrastructure</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-shortlink-interfaces</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
                 <artifactId>linkforge-redirect</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-redirect-domain</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-redirect-application</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-redirect-infrastructure</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-redirect-interfaces</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
                 <artifactId>linkforge-analytics</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-analytics-domain</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-analytics-application</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-analytics-infrastructure</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-analytics-interfaces</artifactId>
                 <version>${project.version}</version>
             </dependency>
 

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.linkforge.foundation.eventing.mapper.IntegrationDeadLetterMapper">
+
+    <insert id="upsertFailure">
+        INSERT INTO integration_consumer_dead_letter (
+            consumer,
+            seq,
+            event_id,
+            producer,
+            event_type,
+            occurred_at,
+            payload_json,
+            attempts,
+            last_error
+        ) VALUES (
+            #{consumer},
+            #{seq},
+            #{eventId},
+            #{producer},
+            #{eventType},
+            #{occurredAtUtc},
+            #{payloadJson},
+            #{attempts},
+            #{lastError}
+        )
+        ON DUPLICATE KEY UPDATE
+            attempts = #{attempts},
+            last_error = #{lastError}
+    </insert>
+</mapper>
+

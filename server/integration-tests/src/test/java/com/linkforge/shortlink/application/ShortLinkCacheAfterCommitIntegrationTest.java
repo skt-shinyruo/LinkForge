@@ -1,9 +1,10 @@
 package com.linkforge.shortlink.application;
 
 import com.linkforge.LinkForgeApplication;
+import com.linkforge.foundation.eventing.IntegrationEventStore;
 import com.linkforge.foundation.security.AuthPrincipal;
-import com.linkforge.shortlink.application.job.LinkCacheOutboxJob;
-import com.linkforge.shortlink.infrastructure.outbox.LinkCacheOutboxRepository;
+import com.linkforge.redirect.application.RedirectService;
+import com.linkforge.redirect.infrastructure.projection.ShortLinkEventProjectorJob;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -78,13 +79,16 @@ class ShortLinkCacheAfterCommitIntegrationTest {
     StringRedisTemplate redis;
 
     @Autowired
-    LinkCacheOutboxRepository linkCacheOutboxRepository;
+    IntegrationEventStore integrationEventStore;
+
+    @Autowired
+    ShortLinkEventProjectorJob redirectProjector;
+
+    @Autowired
+    RedirectService redirectService;
 
     @Autowired
     PlatformTransactionManager transactionManager;
-
-    @Autowired
-    LinkCacheOutboxJob linkCacheOutboxJob;
 
     private static final long TENANT_ID = 1L;
     private static final long USER_ID = 1L;
@@ -103,7 +107,8 @@ class ShortLinkCacheAfterCommitIntegrationTest {
     }
 
     @Test
-    void create_rollback_shouldNotWriteRedisCache() {
+    void create_rollback_shouldNotAppendEventOrWriteRedisCache() {
+        long maxSeqBefore = integrationEventStore.loadMaxSeq();
         TransactionTemplate tx = new TransactionTemplate(transactionManager);
 
         String code = tx.execute(status -> {
@@ -122,20 +127,20 @@ class ShortLinkCacheAfterCommitIntegrationTest {
             );
             ShortLinkService.LinkDto dto = shortLinkService.create(TENANT_ID, USER_ID, req);
 
-            // BEFORE_COMMIT: cache write should not be visible yet
+            // BEFORE_COMMIT: nothing should be visible yet (event + projection + cache are transactional / async)
             assertThat(redis.opsForValue().get(key(dto.code()))).isNull();
 
             status.setRollbackOnly();
             return dto.code();
         });
 
-        // ROLLBACK: cache write should never happen
+        // ROLLBACK: no event appended and no cache written
         assertThat(redis.opsForValue().get(key(code))).isNull();
-        assertThat(linkCacheOutboxRepository.findStatusByCode(code)).isNull();
+        assertThat(integrationEventStore.loadMaxSeq()).isEqualTo(maxSeqBefore);
     }
 
     @Test
-    void update_rollback_shouldNotEvictOrOverwriteRedisCache() {
+    void update_rollback_shouldNotAppendEventOrChangeRedisCache() {
         ShortLinkService.CreateLinkRequest createReq = new ShortLinkService.CreateLinkRequest(
                 "https://example.com/old",
                 "note",
@@ -152,8 +157,11 @@ class ShortLinkCacheAfterCommitIntegrationTest {
         ShortLinkService.LinkDto created = shortLinkService.create(TENANT_ID, USER_ID, createReq);
         String key = key(created.code());
 
+        redirectProjector.drain();
         String before = redis.opsForValue().get(key);
         assertThat(before).isNotNull();
+
+        long maxSeqBefore = integrationEventStore.loadMaxSeq();
 
         TransactionTemplate tx = new TransactionTemplate(transactionManager);
         tx.executeWithoutResult(status -> {
@@ -174,18 +182,20 @@ class ShortLinkCacheAfterCommitIntegrationTest {
             );
             shortLinkService.update(TENANT_ID, created.id(), updateReq);
 
-            // BEFORE_COMMIT: cache should remain unchanged
+            // BEFORE_COMMIT: projector not run, cache should remain unchanged
             assertThat(redis.opsForValue().get(key)).isEqualTo(before);
 
             status.setRollbackOnly();
         });
 
-        // ROLLBACK: cache should still remain unchanged
+        // ROLLBACK: no event appended, projector drains nothing, cache still unchanged
+        assertThat(integrationEventStore.loadMaxSeq()).isEqualTo(maxSeqBefore);
+        redirectProjector.drain();
         assertThat(redis.opsForValue().get(key)).isEqualTo(before);
     }
 
     @Test
-    void archive_commit_shouldEvictRedisCacheAfterCommit() {
+    void archive_commit_shouldEvictRedisCacheAfterProjectorDrain() {
         ShortLinkService.CreateLinkRequest createReq = new ShortLinkService.CreateLinkRequest(
                 "https://example.com",
                 "note",
@@ -202,15 +212,16 @@ class ShortLinkCacheAfterCommitIntegrationTest {
         ShortLinkService.LinkDto created = shortLinkService.create(TENANT_ID, USER_ID, createReq);
         String key = key(created.code());
 
+        redirectProjector.drain();
         assertThat(redis.opsForValue().get(key)).isNotNull();
 
         shortLinkService.archive(TENANT_ID, created.id());
-
+        redirectProjector.drain();
         assertThat(redis.opsForValue().get(key)).isNull();
     }
 
     @Test
-    void create_commit_outboxJob_shouldRefreshCacheWhenMissing() {
+    void resolve_shouldRepopulateCacheWhenMissing() {
         ShortLinkService.CreateLinkRequest req = new ShortLinkService.CreateLinkRequest(
                 "https://example.com",
                 "note",
@@ -228,53 +239,14 @@ class ShortLinkCacheAfterCommitIntegrationTest {
         String code = created.code();
         String key = key(code);
 
-        // outbox should be persisted in DB transaction
-        String status = linkCacheOutboxRepository.findStatusByCode(code);
-        assertThat(status).isEqualTo("PENDING");
+        redirectProjector.drain();
+        assertThat(redis.opsForValue().get(key)).isNotNull();
 
-        // simulate: commit happened but cache update was lost (crash before afterCommit)
         redis.delete(key);
         assertThat(redis.opsForValue().get(key)).isNull();
 
-        linkCacheOutboxJob.drain();
-
+        assertThat(redirectService.resolve(code).code()).isEqualTo(code);
         assertThat(redis.opsForValue().get(key)).isNotNull();
-        String statusAfter = linkCacheOutboxRepository.findStatusByCode(code);
-        assertThat(statusAfter).isEqualTo("DONE");
-    }
-
-    @Test
-    void archive_commit_outboxJob_shouldEvictStaleCache() {
-        ShortLinkService.CreateLinkRequest createReq = new ShortLinkService.CreateLinkRequest(
-                "https://example.com",
-                "note",
-                null,
-                null,
-                null,
-                Set.of(),
-                null,
-                null,
-                null,
-                null,
-                null
-        );
-        ShortLinkService.LinkDto created = shortLinkService.create(TENANT_ID, USER_ID, createReq);
-        String code = created.code();
-        String key = key(code);
-
-        String raw = redis.opsForValue().get(key);
-        assertThat(raw).isNotNull();
-
-        shortLinkService.archive(TENANT_ID, created.id());
-        assertThat(redis.opsForValue().get(key)).isNull();
-
-        // simulate: stale cache was (wrongly) written back after archive
-        redis.opsForValue().set(key, raw);
-        assertThat(redis.opsForValue().get(key)).isNotNull();
-
-        linkCacheOutboxJob.drain();
-
-        assertThat(redis.opsForValue().get(key)).isNull();
     }
 
     @Test

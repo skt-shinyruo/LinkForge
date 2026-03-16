@@ -2,7 +2,7 @@ package com.linkforge.shortlink.application;
 
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.foundation.security.AuthPrincipal;
-import com.linkforge.shortlink.infrastructure.outbox.LinkCacheOutboxRepository;
+import com.linkforge.redirect.infrastructure.projection.ShortLinkEventProjectorJob;
 import com.linkforge.shortlink.infrastructure.persistence.entity.ShortLinkEntity;
 import com.linkforge.shortlink.infrastructure.persistence.mapper.ShortLinkQueryMapper;
 import org.junit.jupiter.api.AfterEach;
@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -75,7 +76,10 @@ class ShortLinkCodeCaseSensitivityIntegrationTest {
     ShortLinkQueryMapper shortLinkQueryMapper;
 
     @Autowired
-    LinkCacheOutboxRepository linkCacheOutboxRepository;
+    ShortLinkEventProjectorJob redirectProjector;
+
+    @Autowired
+    StringRedisTemplate redis;
 
     private static final long TENANT_ID = 1L;
     private static final long USER_ID = 1L;
@@ -94,7 +98,7 @@ class ShortLinkCodeCaseSensitivityIntegrationTest {
     }
 
     @Test
-    void customCode_shouldBeCaseSensitive_andOutboxShouldNotCollapse() {
+    void customCode_shouldBeCaseSensitive_andProjectionShouldNotCollapse() {
         ShortLinkService.CreateLinkRequest req1 = new ShortLinkService.CreateLinkRequest(
                 "https://example.com/a",
                 null,
@@ -137,10 +141,12 @@ class ShortLinkCodeCaseSensitivityIntegrationTest {
         assertThat(linkB.getCode()).isEqualTo("abcdef");
         assertThat(linkA.getId()).isNotEqualTo(linkB.getId());
 
-        assertThat(linkCacheOutboxRepository.findStatusByCode("Abcdef")).isEqualTo("PENDING");
-        assertThat(linkCacheOutboxRepository.findStatusByCode("abcdef")).isEqualTo("PENDING");
-        assertThat(linkCacheOutboxRepository.listPending(1000))
-                .extracting(LinkCacheOutboxRepository.PendingItem::code)
-                .contains("Abcdef", "abcdef");
+        redirectProjector.drain();
+        assertThat(redis.opsForValue().get(key("Abcdef"))).isNotNull();
+        assertThat(redis.opsForValue().get(key("abcdef"))).isNotNull();
+    }
+
+    private static String key(String code) {
+        return "link:code:" + code;
     }
 }

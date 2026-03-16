@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.linkforge.analytics.infrastructure.persistence.mapper.AnalyticsQueryMapper">
+
+    <resultMap id="DailyStatRowResultMap" type="com.linkforge.analytics.infrastructure.persistence.mapper.AnalyticsDailyStatRow">
+        <result property="day" column="day"/>
+        <result property="pv" column="pv"/>
+        <result property="uv" column="uv"/>
+    </resultMap>
+
+    <resultMap id="TopLinkRowResultMap" type="com.linkforge.analytics.infrastructure.persistence.mapper.AnalyticsTopLinkRow">
+        <result property="linkId" column="link_id"/>
+        <result property="code" column="code"/>
+        <result property="originalUrl" column="original_url"/>
+        <result property="deleted" column="deleted"/>
+        <result property="pv" column="pv"/>
+        <result property="uv" column="uv"/>
+    </resultMap>
+
+    <resultMap id="DimensionRowResultMap" type="com.linkforge.analytics.infrastructure.persistence.mapper.AnalyticsDimensionRow">
+        <result property="value" column="dim_value"/>
+        <result property="pv" column="pv"/>
+        <result property="uv" column="uv"/>
+    </resultMap>
+
+    <resultMap id="VisitEventRowResultMap" type="com.linkforge.analytics.infrastructure.persistence.mapper.AnalyticsVisitEventRow">
+        <result property="occurredAt" column="occurred_at"/>
+        <result property="requestId" column="request_id"/>
+        <result property="ipHash" column="ip_hash"/>
+        <result property="userAgentRaw" column="ua_raw"/>
+        <result property="userAgentFamily" column="ua_family"/>
+        <result property="osFamily" column="os_family"/>
+        <result property="deviceType" column="device_type"/>
+        <result property="refererDomain" column="referer_domain"/>
+        <result property="language" column="language"/>
+        <result property="utmSource" column="utm_source"/>
+        <result property="utmMedium" column="utm_medium"/>
+        <result property="utmCampaign" column="utm_campaign"/>
+    </resultMap>
+
+    <select id="linkDaily" resultMap="DailyStatRowResultMap">
+        SELECT day, pv, uv
+        FROM link_stats_daily
+        WHERE tenant_id = #{param1}
+          AND link_id = #{param2}
+          AND day &gt;= #{param3}
+          AND day &lt;= #{param4}
+        ORDER BY day ASC
+    </select>
+
+    <select id="tenantDaily" resultMap="DailyStatRowResultMap">
+        SELECT day, SUM(pv) AS pv, SUM(uv) AS uv
+        FROM link_stats_daily
+        WHERE tenant_id = #{param1}
+          AND day &gt;= #{param2}
+          AND day &lt;= #{param3}
+        GROUP BY day
+        ORDER BY day ASC
+    </select>
+
+    <select id="topLinksOrderByPv" resultMap="TopLinkRowResultMap">
+        SELECT
+            agg.link_id AS link_id,
+            agg.pv AS pv,
+            agg.uv AS uv,
+            c.code AS code,
+            c.original_url AS original_url,
+            c.deleted AS deleted
+        FROM (
+            SELECT s.link_id AS link_id, SUM(s.pv) AS pv, SUM(s.uv) AS uv
+            FROM link_stats_daily s
+            WHERE s.tenant_id = #{param1}
+              AND s.day &gt;= #{param2}
+              AND s.day &lt;= #{param3}
+            GROUP BY s.link_id
+            ORDER BY pv DESC, uv DESC, s.link_id ASC
+            LIMIT #{param4}
+        ) agg
+        LEFT JOIN analytics_link_catalog c
+            ON c.tenant_id = #{param1}
+            AND c.link_id = agg.link_id
+        ORDER BY agg.pv DESC, agg.uv DESC, agg.link_id ASC
+    </select>
+
+    <select id="topLinksOrderByUv" resultMap="TopLinkRowResultMap">
+        SELECT
+            agg.link_id AS link_id,
+            agg.pv AS pv,
+            agg.uv AS uv,
+            c.code AS code,
+            c.original_url AS original_url,
+            c.deleted AS deleted
+        FROM (
+            SELECT s.link_id AS link_id, SUM(s.pv) AS pv, SUM(s.uv) AS uv
+            FROM link_stats_daily s
+            WHERE s.tenant_id = #{param1}
+              AND s.day &gt;= #{param2}
+              AND s.day &lt;= #{param3}
+            GROUP BY s.link_id
+            ORDER BY uv DESC, pv DESC, s.link_id ASC
+            LIMIT #{param4}
+        ) agg
+        LEFT JOIN analytics_link_catalog c
+            ON c.tenant_id = #{param1}
+            AND c.link_id = agg.link_id
+        ORDER BY agg.uv DESC, agg.pv DESC, agg.link_id ASC
+    </select>
+
+    <select id="linkDimTotalPv" resultType="long">
+        SELECT COALESCE(SUM(pv), 0) AS total_pv
+        FROM link_stats_dim_daily
+        WHERE tenant_id = #{param1}
+          AND link_id = #{param2}
+          AND day &gt;= #{param3}
+          AND day &lt;= #{param4}
+          AND dim_type = #{param5}
+    </select>
+
+    <select id="linkDimRows" resultMap="DimensionRowResultMap">
+        SELECT dim_value, SUM(pv) AS pv, SUM(uv) AS uv
+        FROM link_stats_dim_daily
+        WHERE tenant_id = #{param1}
+          AND link_id = #{param2}
+          AND day &gt;= #{param3}
+          AND day &lt;= #{param4}
+          AND dim_type = #{param5}
+        GROUP BY dim_value
+        ORDER BY pv DESC, uv DESC, dim_value ASC
+        LIMIT #{param6}
+    </select>
+
+    <select id="linkEvents" resultMap="VisitEventRowResultMap">
+        SELECT occurred_at, request_id, ip_hash,
+               ua_raw, ua_family, os_family, device_type,
+               referer_domain, language,
+               utm_source, utm_medium, utm_campaign
+        FROM link_visit_events
+        WHERE tenant_id = #{param1}
+          AND link_id = #{param2}
+          AND occurred_at &gt;= #{param3}
+          AND occurred_at &lt;= #{param4}
+        ORDER BY occurred_at DESC, id DESC
+        LIMIT #{param5}
+    </select>
+</mapper>

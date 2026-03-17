@@ -122,19 +122,20 @@ public class AnalyticsFlushJob {
             String pvRaw = pvValues == null || i >= pvValues.size() ? null : pvValues.get(i);
             Long uvRaw = uvValues == null || i >= uvValues.size() ? null : uvValues.get(i);
 
-            // flush 侧不允许“缺失 key -> 兜底 0 -> 覆盖写库”导致的统计回退/写回 0 数据破坏
             long pv = safeLong(pvRaw, -1L);
-            long uv = safeLong(uvRaw, -1L);
-            if (pv <= 0 || uv <= 0) {
+            if (pv <= 0) {
                 skipped++;
                 continue;
             }
+            // 由于落库使用单调 upsert（GREATEST），uv 缺失/为 0 不再导致统计回退，可安全写入 pv。
+            long uv = safeLong(uvRaw, 0L);
+
             LinkStatsDailyUpsertRow row = new LinkStatsDailyUpsertRow();
             row.setLinkId(p.linkId);
             row.setTenantId(p.tenantId);
             row.setDay(day);
             row.setPv(pv);
-            row.setUv(uv);
+            row.setUv(Math.max(uv, 0L));
             batch.add(row);
         }
 

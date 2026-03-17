@@ -1,6 +1,7 @@
 package com.linkforge.shortlink.infrastructure.persistence.mapper;
 
 import com.linkforge.shortlink.domain.HttpUrl;
+import com.linkforge.shortlink.domain.CreatedByType;
 import com.linkforge.shortlink.domain.QueryForwardAllowlist;
 import com.linkforge.shortlink.domain.QueryForwardMode;
 import com.linkforge.shortlink.domain.ShortCode;
@@ -37,6 +38,7 @@ public final class ShortLinkEntityMapper {
                     e.getUnavailableLandingUrl() == null ? null : HttpUrl.of(e.getUnavailableLandingUrl()),
                     QueryForwardMode.parseNullable(e.getQueryForwardMode()),
                     QueryForwardAllowlist.parseSerialized(e.getQueryForwardAllowlist()),
+                    CreatedByType.parseOrDefault(e.getCreatedByType(), CreatedByType.USER),
                     e.getCreatedBy() == null ? 0L : e.getCreatedBy(),
                     e.getCreatedAt(),
                     e.getUpdatedAt()
@@ -64,6 +66,7 @@ public final class ShortLinkEntityMapper {
         e.setUnavailableLandingUrl(link.unavailableLandingUrl() == null ? null : link.unavailableLandingUrl().value());
         e.setQueryForwardMode(link.queryForwardMode() == null ? null : link.queryForwardMode().name());
         e.setQueryForwardAllowlist(link.queryForwardAllowlist() == null ? null : link.queryForwardAllowlist().serializeOrNull());
+        e.setCreatedByType(link.createdByType() == null ? null : link.createdByType().name());
         e.setCreatedBy(link.createdBy());
         e.setCreatedAt(link.createdAtUtc());
         e.setUpdatedAt(link.updatedAtUtc());
@@ -74,4 +77,3 @@ public final class ShortLinkEntityMapper {
         return v == null ? 0L : v;
     }
 }
-

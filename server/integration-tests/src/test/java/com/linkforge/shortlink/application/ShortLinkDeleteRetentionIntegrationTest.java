@@ -121,7 +121,7 @@ class ShortLinkDeleteRetentionIntegrationTest {
                 null,
                 null
         );
-        ShortLinkService.LinkDto created = shortLinkService.create(TENANT_ID, USER_ID, req);
+        ShortLinkService.LinkDto created = shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), req);
         long linkId = created.id();
 
         LocalDate day = LocalDate.of(2026, 1, 1);

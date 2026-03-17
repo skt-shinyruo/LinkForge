@@ -33,6 +33,7 @@ public class ShortLink {
     private QueryForwardAllowlist queryForwardAllowlist;
 
     private final long createdBy;
+    private final CreatedByType createdByType;
     private LocalDateTime createdAtUtc;
     private LocalDateTime updatedAtUtc;
 
@@ -50,6 +51,7 @@ public class ShortLink {
             HttpUrl unavailableLandingUrl,
             QueryForwardMode queryForwardMode,
             QueryForwardAllowlist queryForwardAllowlist,
+            CreatedByType createdByType,
             long createdBy,
             LocalDateTime createdAtUtc,
             LocalDateTime updatedAtUtc
@@ -80,6 +82,7 @@ public class ShortLink {
         this.queryForwardMode = queryForwardMode;
         this.queryForwardAllowlist = queryForwardAllowlist == null ? QueryForwardAllowlist.empty() : queryForwardAllowlist;
         this.createdBy = createdBy;
+        this.createdByType = createdByType == null ? CreatedByType.USER : createdByType;
         this.createdAtUtc = createdAtUtc;
         this.updatedAtUtc = updatedAtUtc;
     }
@@ -97,6 +100,7 @@ public class ShortLink {
             HttpUrl unavailableLandingUrl,
             QueryForwardMode queryForwardMode,
             QueryForwardAllowlist queryForwardAllowlist,
+            CreatedByType createdByType,
             long createdBy
     ) {
         boolean en = enabled == null || enabled;
@@ -115,6 +119,7 @@ public class ShortLink {
                 unavailableLandingUrl,
                 queryForwardMode,
                 queryForwardAllowlist,
+                createdByType,
                 createdBy,
                 null,
                 null
@@ -135,6 +140,7 @@ public class ShortLink {
             HttpUrl unavailableLandingUrl,
             QueryForwardMode queryForwardMode,
             QueryForwardAllowlist queryForwardAllowlist,
+            CreatedByType createdByType,
             long createdBy,
             LocalDateTime createdAtUtc,
             LocalDateTime updatedAtUtc
@@ -153,6 +159,7 @@ public class ShortLink {
                 unavailableLandingUrl,
                 queryForwardMode,
                 queryForwardAllowlist,
+                createdByType,
                 createdBy,
                 createdAtUtc,
                 updatedAtUtc
@@ -213,6 +220,10 @@ public class ShortLink {
 
     public long createdBy() {
         return createdBy;
+    }
+
+    public CreatedByType createdByType() {
+        return createdByType;
     }
 
     public LocalDateTime createdAtUtc() {
@@ -331,4 +342,3 @@ public class ShortLink {
         return note;
     }
 }
-

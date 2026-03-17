@@ -1,32 +1,35 @@
 package com.linkforge.app.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linkforge.accounts.application.ApiKeyService;
+import com.linkforge.accounts.application.AccountStatusService;
 import com.linkforge.accounts.infrastructure.security.JwtService;
 import com.linkforge.app.api.error.ApiErrorResponseWriter;
-import com.linkforge.contract.openapi.OpenApiErrorCode;
+import com.linkforge.contract.accounts.AccountsErrorCode;
+import com.linkforge.contract.api.BusinessException;
 import com.linkforge.foundation.config.SecurityProperties;
+import com.linkforge.foundation.security.AuthPrincipal;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
-import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.context.SecurityContextHolder;
 
-import jakarta.servlet.FilterChain;
-import jakarta.servlet.http.Cookie;
-import jakarta.servlet.http.HttpServletResponse;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-class ApiCompositeAuthenticationFilterTest {
+class JwtAuthenticationFilterTest {
 
     @AfterEach
     void tearDown() {
@@ -34,74 +37,18 @@ class ApiCompositeAuthenticationFilterTest {
     }
 
     @Test
-    void openApiKeyDisabled_shouldReturnForbidden() throws Exception {
-        JwtService jwtService = mock(JwtService.class);
-        ApiKeyService apiKeyService = mock(ApiKeyService.class);
-        ApiErrorResponseWriter writer = new ApiErrorResponseWriter(new ObjectMapper());
-        SecurityProperties securityProperties = new SecurityProperties();
-
-        ApiCompositeAuthenticationFilter filter = new ApiCompositeAuthenticationFilter(
-                jwtService,
-                apiKeyService,
-                writer,
-                securityProperties
-        );
-
-        when(apiKeyService.authenticate("lfk_123_secret"))
-                .thenThrow(new ApiKeyService.ApiKeyAuthException(OpenApiErrorCode.API_KEY_DISABLED));
-
-        MockHttpServletRequest req = new MockHttpServletRequest("GET", "/api/v1/open/ping");
-        req.addHeader("X-API-Key", "lfk_123_secret");
-        MockHttpServletResponse resp = new MockHttpServletResponse();
-
-        filter.doFilter(req, resp, new MockFilterChain());
-
-        assertThat(resp.getStatus()).isEqualTo(403);
-        assertThat(resp.getContentType()).startsWith("application/json");
-        assertThat(resp.getContentAsString()).contains("\"code\":40310");
-    }
-
-    @Test
-    void openApiRoute_withContextPath_shouldStillRequireApiKey() throws Exception {
-        JwtService jwtService = mock(JwtService.class);
-        ApiKeyService apiKeyService = mock(ApiKeyService.class);
-        ApiErrorResponseWriter writer = new ApiErrorResponseWriter(new ObjectMapper());
-        SecurityProperties securityProperties = new SecurityProperties();
-
-        ApiCompositeAuthenticationFilter filter = new ApiCompositeAuthenticationFilter(
-                jwtService,
-                apiKeyService,
-                writer,
-                securityProperties
-        );
-
-        when(apiKeyService.authenticate("lfk_123_secret"))
-                .thenThrow(new ApiKeyService.ApiKeyAuthException(OpenApiErrorCode.API_KEY_DISABLED));
-
-        MockHttpServletRequest req = new MockHttpServletRequest("GET", "/x/api/v1/open/ping");
-        req.setContextPath("/x");
-        req.addHeader("X-API-Key", "lfk_123_secret");
-        MockHttpServletResponse resp = new MockHttpServletResponse();
-
-        filter.doFilter(req, resp, new MockFilterChain());
-
-        assertThat(resp.getStatus()).isEqualTo(403);
-        assertThat(resp.getContentAsString()).contains("\"code\":40310");
-    }
-
-    @Test
     void invalidCookieJwt_shouldNotShortCircuitPermitAllEndpoints() throws Exception {
         JwtService jwtService = mock(JwtService.class);
-        ApiKeyService apiKeyService = mock(ApiKeyService.class);
+        AccountStatusService accountStatusService = mock(AccountStatusService.class);
         ApiErrorResponseWriter writer = new ApiErrorResponseWriter(new ObjectMapper());
 
         SecurityProperties securityProperties = new SecurityProperties();
         securityProperties.getJwt().setCookieEnabled(true);
         securityProperties.getJwt().setCookieName("lf_token");
 
-        ApiCompositeAuthenticationFilter filter = new ApiCompositeAuthenticationFilter(
+        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(
                 jwtService,
-                apiKeyService,
+                accountStatusService,
                 writer,
                 securityProperties
         );
@@ -129,13 +76,14 @@ class ApiCompositeAuthenticationFilterTest {
     @Test
     void invalidBearerJwt_shouldReturnUnauthorized() throws Exception {
         JwtService jwtService = mock(JwtService.class);
-        ApiKeyService apiKeyService = mock(ApiKeyService.class);
+        AccountStatusService accountStatusService = mock(AccountStatusService.class);
         ApiErrorResponseWriter writer = new ApiErrorResponseWriter(new ObjectMapper());
+
         SecurityProperties securityProperties = new SecurityProperties();
 
-        ApiCompositeAuthenticationFilter filter = new ApiCompositeAuthenticationFilter(
+        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(
                 jwtService,
-                apiKeyService,
+                accountStatusService,
                 writer,
                 securityProperties
         );
@@ -159,13 +107,13 @@ class ApiCompositeAuthenticationFilterTest {
     @Test
     void oversizedBearerJwt_shouldReturnUnauthorized_withoutParsing() throws Exception {
         JwtService jwtService = mock(JwtService.class);
-        ApiKeyService apiKeyService = mock(ApiKeyService.class);
+        AccountStatusService accountStatusService = mock(AccountStatusService.class);
         ApiErrorResponseWriter writer = new ApiErrorResponseWriter(new ObjectMapper());
         SecurityProperties securityProperties = new SecurityProperties();
 
-        ApiCompositeAuthenticationFilter filter = new ApiCompositeAuthenticationFilter(
+        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(
                 jwtService,
-                apiKeyService,
+                accountStatusService,
                 writer,
                 securityProperties
         );
@@ -187,16 +135,16 @@ class ApiCompositeAuthenticationFilterTest {
     @Test
     void oversizedCookieJwt_shouldClearCookie_andContinueChain_withoutParsing() throws Exception {
         JwtService jwtService = mock(JwtService.class);
-        ApiKeyService apiKeyService = mock(ApiKeyService.class);
+        AccountStatusService accountStatusService = mock(AccountStatusService.class);
         ApiErrorResponseWriter writer = new ApiErrorResponseWriter(new ObjectMapper());
 
         SecurityProperties securityProperties = new SecurityProperties();
         securityProperties.getJwt().setCookieEnabled(true);
         securityProperties.getJwt().setCookieName("lf_token");
 
-        ApiCompositeAuthenticationFilter filter = new ApiCompositeAuthenticationFilter(
+        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(
                 jwtService,
-                apiKeyService,
+                accountStatusService,
                 writer,
                 securityProperties
         );
@@ -218,5 +166,40 @@ class ApiCompositeAuthenticationFilterTest {
         assertThat(resp.getHeaders(HttpHeaders.SET_COOKIE))
                 .anyMatch(v -> v != null && v.startsWith("lf_token=") && v.contains("Max-Age=0"));
         verify(jwtService, never()).parseToken(anyString());
+    }
+
+    @Test
+    void disabledUser_shouldReturnForbidden() throws Exception {
+        JwtService jwtService = mock(JwtService.class);
+        AccountStatusService accountStatusService = mock(AccountStatusService.class);
+        ApiErrorResponseWriter writer = new ApiErrorResponseWriter(new ObjectMapper());
+        SecurityProperties securityProperties = new SecurityProperties();
+
+        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(
+                jwtService,
+                accountStatusService,
+                writer,
+                securityProperties
+        );
+
+        when(jwtService.parseToken("good"))
+                .thenReturn(new AuthPrincipal(1L, 1L, "user@example.com", Set.of("USER")));
+        doThrow(new BusinessException(AccountsErrorCode.USER_DISABLED))
+                .when(accountStatusService)
+                .requireActiveUserAndTenant(1L, 1L);
+
+        MockHttpServletRequest req = new MockHttpServletRequest("GET", "/api/v1/me");
+        req.addHeader("Authorization", "Bearer good");
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+
+        AtomicBoolean chainCalled = new AtomicBoolean(false);
+        FilterChain chain = (r, s) -> chainCalled.set(true);
+
+        filter.doFilter(req, resp, chain);
+
+        assertThat(chainCalled.get()).isFalse();
+        assertThat(resp.getStatus()).isEqualTo(403);
+        assertThat(resp.getContentType()).startsWith("application/json");
+        assertThat(resp.getContentAsString()).contains("\"code\":40302");
     }
 }

@@ -5,6 +5,7 @@ import com.linkforge.contract.shortlink.ShortLinkErrorCode;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.security.TenantGuard;
 import com.linkforge.foundation.util.Base62;
+import com.linkforge.shortlink.application.ShortLinkService.CreatedBy;
 import com.linkforge.shortlink.application.ShortLinkService.CreateLinkRequest;
 import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
@@ -23,6 +24,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 
 @Component
@@ -58,8 +61,11 @@ public class CreateShortLinkCommandHandler {
     }
 
     @Transactional
-    public LinkDto handle(long tenantId, long createdBy, CreateLinkRequest req) {
+    public LinkDto handle(long tenantId, CreatedBy createdBy, CreateLinkRequest req) {
         tenantGuard.requireCurrentTenant(tenantId);
+        if (createdBy == null || createdBy.id() <= 0 || createdBy.type() == null) {
+            throw new BusinessException(com.linkforge.contract.api.ErrorCode.UNAUTHORIZED, "createdBy 无效");
+        }
         if (req == null) {
             throw new BusinessException(com.linkforge.contract.api.ErrorCode.BAD_REQUEST, "CreateLinkRequest 不能为空");
         }
@@ -79,6 +85,9 @@ public class CreateShortLinkCommandHandler {
 
         ShortLink link;
         try {
+            LocalDateTime expiresAtUtc = req.expiresAt() == null
+                    ? null
+                    : req.expiresAt().atOffset(ZoneOffset.UTC).toLocalDateTime();
             link = ShortLink.create(
                     id,
                     tenantId,
@@ -86,13 +95,14 @@ public class CreateShortLinkCommandHandler {
                     HttpUrl.of(req.originalUrl()),
                     req.note(),
                     req.enabled(),
-                    req.expiresAt(),
+                    expiresAtUtc,
                     req.redirectStatusCode(),
                     req.previewEnabled(),
                     parseOptionalHttpUrl(req.unavailableLandingUrl()),
                     QueryForwardMode.parseNullable(req.queryForwardMode()),
                     QueryForwardAllowlist.fromRaw(req.queryForwardAllowlist()),
-                    createdBy
+                    createdBy.type(),
+                    createdBy.id()
             );
         } catch (ShortLinkDomainException ex) {
             throw ShortLinkDomainExceptions.translate(ex);
@@ -144,4 +154,3 @@ public class CreateShortLinkCommandHandler {
         return t.isBlank() ? null : t;
     }
 }
-

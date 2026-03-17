@@ -87,7 +87,7 @@ async function createLink() {
   try {
     const allowlist = parseAllowlist(newQueryForwardAllowlist.value);
     const tags = parseTags(newTags.value);
-    const expiresAt = normalizeDateTimeLocal(newExpiresAt.value);
+    const expiresAt = dateTimeLocalToInstantString(newExpiresAt.value);
     const r: ApiResponse<LinkDto> = await apiFetch<LinkDto>("/api/v1/links", {
       method: "POST",
       body: JSON.stringify({
@@ -156,7 +156,7 @@ function startEdit(link: LinkDto) {
   editingId.value = link.id;
   editOriginalUrl.value = link.originalUrl || "";
   editNote.value = link.note || "";
-  editExpiresAt.value = toDateTimeLocalInput(link.expiresAt);
+  editExpiresAt.value = instantStringToDateTimeLocalInput(link.expiresAt);
   editTags.value = (link.tags || []).join(",");
   editEnabled.value = !!link.enabled;
   editRedirectStatusCode.value =
@@ -185,7 +185,7 @@ async function saveEdit() {
     }
 
     const allowlist = parseAllowlist(editQueryForwardAllowlist.value) || [];
-    const expiresAt = normalizeDateTimeLocal(editExpiresAt.value);
+    const expiresAt = dateTimeLocalToInstantString(editExpiresAt.value);
     const tags = parseTags(editTags.value);
     const payload: any = {
       originalUrl,
@@ -255,24 +255,42 @@ function parseTags(raw: string): string[] {
   return Array.from(new Set(parts)).slice(0, 20);
 }
 
-function normalizeDateTimeLocal(raw: string): string | undefined {
+function dateTimeLocalToInstantString(raw: string): string | undefined {
   const s = raw?.trim();
   if (!s) {
     return undefined;
   }
-  // datetime-local 通常是 yyyy-MM-ddTHH:mm（无秒），后端 LocalDateTime 更稳妥用带秒格式
-  if (s.length === 16) {
-    return `${s}:00`;
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) {
+    return undefined;
   }
-  return s;
+  return d.toISOString();
 }
 
-function toDateTimeLocalInput(v?: string | null): string {
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+function instantStringToDateTimeLocalInput(v?: string | null): string {
   if (!v) {
     return "";
   }
-  // 把 yyyy-MM-ddTHH:mm:ss(...) 转回 yyyy-MM-ddTHH:mm，适配 <input type="datetime-local">
-  return v.length >= 16 ? v.slice(0, 16) : v;
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) {
+    return "";
+  }
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+function formatInstantLocal(v?: string | null): string {
+  if (!v) {
+    return "-";
+  }
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) {
+    return String(v);
+  }
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
 function policySummary(link: LinkDto): string {
@@ -508,7 +526,10 @@ onMounted(load);
         </button>
         <button class="btn secondary" @click="exportCsv">导出 CSV</button>
       </div>
-      <p class="sub">CSV Header：originalUrl, code(可选), expiresAt(可选), note(可选), tags(可选, 逗号分隔)</p>
+      <p class="sub">
+        CSV Header：originalUrl, code(可选), expiresAt(可选，推荐 ISO-8601 Instant，如 2026-03-16T12:34:56Z；兼容旧 LocalDateTime，将按 UTC 解析),
+        note(可选), tags(可选, 逗号分隔)
+      </p>
     </section>
 
     <section class="card">
@@ -563,13 +584,13 @@ onMounted(load);
                   <span v-for="t in it.tags" :key="t" class="tag">{{ t }}</span>
                 </div>
               </td>
-              <td class="mono">{{ it.expiresAt ? it.expiresAt : "-" }}</td>
+              <td class="mono">{{ formatInstantLocal(it.expiresAt) }}</td>
               <td class="mono">{{ policySummary(it) }}</td>
               <td>
                 <span :class="it.archivedAt ? 'muted' : it.enabled ? 'ok' : 'bad'">
                   {{ statusLabel(it) }}
                 </span>
-                <div v-if="it.archivedAt" class="sub">archivedAt: {{ it.archivedAt }}</div>
+                <div v-if="it.archivedAt" class="sub">archivedAt: {{ formatInstantLocal(it.archivedAt) }}</div>
               </td>
               <td class="actions-col">
                 <button class="btn small secondary" :disabled="!!it.archivedAt" @click="startEdit(it)">

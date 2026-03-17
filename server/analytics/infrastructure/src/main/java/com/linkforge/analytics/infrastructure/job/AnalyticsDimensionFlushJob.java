@@ -8,9 +8,11 @@ import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -134,7 +136,7 @@ public class AnalyticsDimensionFlushJob {
         }
     }
 
-    private void flushActiveMembers(LocalDate day, AnalyticsProperties.Dimensions cfg, List<String> members) {
+    void flushActiveMembers(LocalDate day, AnalyticsProperties.Dimensions cfg, List<String> members) {
         long startNs = System.nanoTime();
         List<MemberParts> parts = new ArrayList<>(members.size());
         for (String m : members) {
@@ -155,6 +157,7 @@ public class AnalyticsDimensionFlushJob {
         List<LinkStatsDimDailyUpsertRow> batch = new ArrayList<>(800);
         long flushedRows = 0;
         ScanOptions hscan = ScanOptions.scanOptions().count(1000).build();
+        int uvPipelineBatchSize = 200;
 
         for (MemberParts p : parts) {
             for (String rawType : types) {
@@ -165,6 +168,9 @@ public class AnalyticsDimensionFlushJob {
                 String key = AnalyticsKeys.dimPvHashKey(p.tenantId, p.linkId, day, dimType);
 
                 try (Cursor<Map.Entry<Object, Object>> cursor = redis.opsForHash().scan(key, hscan)) {
+                    List<String> dimValues = new ArrayList<>(uvPipelineBatchSize);
+                    List<Long> dimPvs = new ArrayList<>(uvPipelineBatchSize);
+
                     while (cursor.hasNext()) {
                         Map.Entry<Object, Object> e = cursor.next();
                         String dimValue = e.getKey() == null ? null : String.valueOf(e.getKey());
@@ -175,20 +181,30 @@ public class AnalyticsDimensionFlushJob {
                         if (pv <= 0) {
                             continue;
                         }
-                        LinkStatsDimDailyUpsertRow row = new LinkStatsDimDailyUpsertRow();
-                        row.setTenantId(p.tenantId);
-                        row.setLinkId(p.linkId);
-                        row.setDay(day);
-                        row.setDimType(dimType);
-                        row.setDimValue(dimValue);
-                        row.setPv(pv);
-                        row.setUv(0L);
-                        batch.add(row);
+                        dimValues.add(dimValue);
+                        dimPvs.add(pv);
+
+                        if (dimValues.size() >= uvPipelineBatchSize) {
+                            appendRowsWithUv(batch, p, day, dimType, dimValues, dimPvs);
+                            if (batch.size() >= 500) {
+                                flushedRows += batch.size();
+                                flushBatch(batch);
+                                batch.clear();
+                            }
+                            dimValues.clear();
+                            dimPvs.clear();
+                        }
+                    }
+
+                    if (!dimValues.isEmpty()) {
+                        appendRowsWithUv(batch, p, day, dimType, dimValues, dimPvs);
                         if (batch.size() >= 500) {
                             flushedRows += batch.size();
                             flushBatch(batch);
                             batch.clear();
                         }
+                        dimValues.clear();
+                        dimPvs.clear();
                     }
                 } catch (Exception ex) {
                     log.debug("scan dim hash failed: key={}, err={}", key, ex.getMessage());
@@ -205,6 +221,70 @@ public class AnalyticsDimensionFlushJob {
             long latencyMs = (System.nanoTime() - startNs) / 1_000_000;
             log.info("flush dim batch ok: day={}, links={}, rows={}, latencyMs={}", day, parts.size(), flushedRows, latencyMs);
         }
+    }
+
+    private void appendRowsWithUv(
+            List<LinkStatsDimDailyUpsertRow> batch,
+            MemberParts p,
+            LocalDate day,
+            String dimType,
+            List<String> dimValues,
+            List<Long> dimPvs
+    ) {
+        if (dimValues == null || dimValues.isEmpty()) {
+            return;
+        }
+        List<String> uvKeys = dimValues.stream()
+                .map(v -> AnalyticsKeys.dimUvHllKey(p.tenantId, p.linkId, day, dimType, v))
+                .toList();
+        List<Long> uvs = pfCountPipeline(uvKeys);
+
+        for (int i = 0; i < dimValues.size(); i++) {
+            long pv = dimPvs == null || i >= dimPvs.size() || dimPvs.get(i) == null ? 0L : dimPvs.get(i);
+            if (pv <= 0) {
+                continue;
+            }
+
+            Long uvRaw = uvs == null || i >= uvs.size() ? null : uvs.get(i);
+            long uv = safeLong(uvRaw, 0L);
+
+            LinkStatsDimDailyUpsertRow row = new LinkStatsDimDailyUpsertRow();
+            row.setTenantId(p.tenantId);
+            row.setLinkId(p.linkId);
+            row.setDay(day);
+            row.setDimType(dimType);
+            row.setDimValue(dimValues.get(i));
+            row.setPv(pv);
+            row.setUv(Math.max(uv, 0L));
+            batch.add(row);
+        }
+    }
+
+    private List<Long> pfCountPipeline(List<String> keys) {
+        if (keys == null || keys.isEmpty()) {
+            return List.of();
+        }
+        RedisSerializer<String> serializer = redis.getStringSerializer();
+        byte[] dummyKey = serializer.serialize("stats:__dummy__:never");
+        List<Object> raw = redis.executePipelined((RedisCallback<Object>) connection -> {
+            for (String k : keys) {
+                byte[] kk = (k == null || k.isBlank()) ? null : serializer.serialize(k);
+                if (kk == null || kk.length == 0) {
+                    connection.pfCount(dummyKey);
+                } else {
+                    connection.pfCount(kk);
+                }
+            }
+            return null;
+        });
+        if (raw == null || raw.isEmpty()) {
+            return List.of();
+        }
+        List<Long> out = new ArrayList<>(raw.size());
+        for (Object o : raw) {
+            out.add(o instanceof Long l ? l : null);
+        }
+        return out;
     }
 
     private void flushBatch(List<LinkStatsDimDailyUpsertRow> batch) {

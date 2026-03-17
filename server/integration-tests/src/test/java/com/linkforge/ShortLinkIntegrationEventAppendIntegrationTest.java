@@ -102,7 +102,7 @@ class ShortLinkIntegrationEventAppendIntegrationTest {
                 null,
                 null
         );
-        ShortLinkService.LinkDto dto = shortLinkService.create(TENANT_ID, USER_ID, req);
+        ShortLinkService.LinkDto dto = shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), req);
 
         Integer count = jdbcTemplate.queryForObject(
                 """
@@ -124,4 +124,3 @@ class ShortLinkIntegrationEventAppendIntegrationTest {
         assertThat(count).isEqualTo(1);
     }
 }
-

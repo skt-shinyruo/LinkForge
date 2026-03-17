@@ -8,12 +8,23 @@ public class AuthPrincipal {
     private final long tenantId;
     private final String email;
     private final Set<String> roles;
+    /**
+     * Non-null only when authenticated via OpenAPI API key.
+     *
+     * <p>Note: keep nullable for backward compatibility with existing JWT/cookie flows.</p>
+     */
+    private final Long apiKeyId;
 
     public AuthPrincipal(long userId, long tenantId, String email, Set<String> roles) {
+        this(userId, tenantId, email, roles, null);
+    }
+
+    public AuthPrincipal(long userId, long tenantId, String email, Set<String> roles, Long apiKeyId) {
         this.userId = userId;
         this.tenantId = tenantId;
         this.email = email;
         this.roles = roles;
+        this.apiKeyId = apiKeyId;
     }
 
     public long getUserId() {
@@ -30,5 +41,9 @@ public class AuthPrincipal {
 
     public Set<String> getRoles() {
         return roles;
+    }
+
+    public Long getApiKeyId() {
+        return apiKeyId;
     }
 }

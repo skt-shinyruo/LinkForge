@@ -15,6 +15,7 @@ import com.linkforge.foundation.eventing.IntegrationEventStore;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -83,22 +84,39 @@ public class ShortLinkCatalogProjectorJob {
             return 0;
         }
 
+        int processed = 0;
         for (IntegrationEventRow e : events) {
             if (e == null) {
                 continue;
             }
-            tx.executeWithoutResult(status -> {
-                try {
-                    apply(e);
-                } catch (Exception ex) {
-                    // Poison isolation: record the failure and advance checkpoint so the consumer does not get stuck.
-                    deadLetter.upsertFailure(CONSUMER, e, 1, truncate(ex.getMessage(), 512));
-                } finally {
-                    checkpoints.update(CONSUMER, e.seq());
-                }
-            });
+            try {
+                tx.executeWithoutResult(status -> {
+                    try {
+                        apply(e);
+                        checkpoints.update(CONSUMER, e.seq());
+                    } catch (DataAccessException ex) {
+                        // Transient: do NOT advance checkpoint; stop processing so it retries next run.
+                        throw ex;
+                    } catch (Exception ex) {
+                        // Poison isolation: record the failure and advance checkpoint so the consumer does not get stuck.
+                        deadLetter.upsertFailure(CONSUMER, e, 1, truncate(ex.getMessage(), 512));
+                        checkpoints.update(CONSUMER, e.seq());
+                    }
+                });
+                processed++;
+            } catch (DataAccessException ex) {
+                log.debug(
+                        "analytics catalog projector transient failure: consumer={}, seq={}, eventId={}, eventType={}, err={}",
+                        CONSUMER,
+                        e.seq(),
+                        e.eventId(),
+                        e.eventType(),
+                        ex.getMessage()
+                );
+                return processed;
+            }
         }
-        return events.size();
+        return processed;
     }
 
     private void apply(IntegrationEventRow row) throws Exception {
@@ -128,6 +146,12 @@ public class ShortLinkCatalogProjectorJob {
     private void upsert(ShortLinkPublicSnapshot snapshot) {
         if (snapshot == null) {
             throw new IllegalArgumentException("shortlink snapshot is null");
+        }
+        if (snapshot.code() == null || snapshot.code().isBlank()) {
+            throw new IllegalArgumentException("shortlink snapshot/code is blank");
+        }
+        if (snapshot.originalUrl() == null || snapshot.originalUrl().isBlank()) {
+            throw new IllegalArgumentException("shortlink snapshot/originalUrl is blank");
         }
 
         AnalyticsLinkCatalogRow row = new AnalyticsLinkCatalogRow();

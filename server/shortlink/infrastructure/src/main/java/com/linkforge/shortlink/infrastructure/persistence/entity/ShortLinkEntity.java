@@ -48,6 +48,8 @@ public class ShortLinkEntity {
      */
     private String queryForwardAllowlist;
 
+    private String createdByType;
+
     private Long createdBy;
 
     private LocalDateTime createdAt;
@@ -156,6 +158,14 @@ public class ShortLinkEntity {
 
     public void setQueryForwardAllowlist(String queryForwardAllowlist) {
         this.queryForwardAllowlist = queryForwardAllowlist;
+    }
+
+    public String getCreatedByType() {
+        return createdByType;
+    }
+
+    public void setCreatedByType(String createdByType) {
+        this.createdByType = createdByType;
     }
 
     public Long getCreatedBy() {

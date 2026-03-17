@@ -125,7 +125,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
                     null,
                     null
             );
-            ShortLinkService.LinkDto dto = shortLinkService.create(TENANT_ID, USER_ID, req);
+            ShortLinkService.LinkDto dto = shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), req);
 
             // BEFORE_COMMIT: nothing should be visible yet (event + projection + cache are transactional / async)
             assertThat(redis.opsForValue().get(key(dto.code()))).isNull();
@@ -154,7 +154,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
                 null,
                 null
         );
-        ShortLinkService.LinkDto created = shortLinkService.create(TENANT_ID, USER_ID, createReq);
+        ShortLinkService.LinkDto created = shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), createReq);
         String key = key(created.code());
 
         redirectProjector.drain();
@@ -209,7 +209,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
                 null,
                 null
         );
-        ShortLinkService.LinkDto created = shortLinkService.create(TENANT_ID, USER_ID, createReq);
+        ShortLinkService.LinkDto created = shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), createReq);
         String key = key(created.code());
 
         redirectProjector.drain();
@@ -235,7 +235,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
                 null,
                 null
         );
-        ShortLinkService.LinkDto created = shortLinkService.create(TENANT_ID, USER_ID, req);
+        ShortLinkService.LinkDto created = shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), req);
         String code = created.code();
         String key = key(code);
 
@@ -263,7 +263,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
                     """;
             ShortLinkService.ImportResult r = shortLinkService.importCsv(
                     TENANT_ID,
-                    USER_ID,
+                    ShortLinkService.CreatedBy.user(USER_ID),
                     new ByteArrayInputStream(csv.getBytes(StandardCharsets.UTF_8))
             );
             assertThat(r.success()).isEqualTo(2);

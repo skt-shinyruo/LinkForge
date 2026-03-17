@@ -6,6 +6,9 @@ import com.linkforge.shortlink.domain.QueryForwardMode;
 import com.linkforge.shortlink.domain.ShortLink;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 
 @Component
@@ -29,15 +32,15 @@ public class ShortLinkDtoMapper {
                 link.originalUrl().value(),
                 link.note(),
                 link.enabled(),
-                link.expiresAtUtc(),
-                link.archivedAtUtc(),
+                toInstantUtc(link.expiresAtUtc()),
+                toInstantUtc(link.archivedAtUtc()),
                 link.redirectStatusCode(),
                 link.previewEnabled(),
                 link.unavailableLandingUrl() == null ? null : link.unavailableLandingUrl().value(),
                 toModeString(link.queryForwardMode()),
                 link.queryForwardAllowlist() == null ? List.of() : link.queryForwardAllowlist().values(),
                 tags == null ? List.of() : tags,
-                link.createdAtUtc()
+                toInstantUtc(link.createdAtUtc())
         );
     }
 
@@ -55,5 +58,8 @@ public class ShortLinkDtoMapper {
     private static String toModeString(QueryForwardMode mode) {
         return mode == null ? null : mode.name();
     }
-}
 
+    private static Instant toInstantUtc(LocalDateTime utcLocalDateTime) {
+        return utcLocalDateTime == null ? null : utcLocalDateTime.toInstant(ZoneOffset.UTC);
+    }
+}

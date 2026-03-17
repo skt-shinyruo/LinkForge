@@ -9,6 +9,7 @@ import com.linkforge.foundation.security.AuthContext;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.web.RequestId;
 import com.linkforge.shortlink.application.ShortLinkService;
+import com.linkforge.shortlink.application.ShortLinkService.CreatedBy;
 import com.linkforge.shortlink.application.ShortLinkService.ImportResult;
 import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
 import com.linkforge.shortlink.application.query.ShortLinkSearchQuery;
@@ -47,9 +48,10 @@ public class ShortLinkController {
     public ApiResponse<LinkDto> create(@Valid @RequestBody CreateLinkRequest req) {
         writeGuard.requireWriteEnabled();
         AuthPrincipal p = AuthContext.requirePrincipal();
+        CreatedBy createdBy = CreatedBy.user(p.getUserId());
         LinkDto dto = shortLinkService.create(
                 p.getTenantId(),
-                p.getUserId(),
+                createdBy,
                 new ShortLinkService.CreateLinkRequest(
                         req.originalUrl(),
                         req.note(),
@@ -155,7 +157,7 @@ public class ShortLinkController {
         }
         ImportResult r;
         try {
-            r = shortLinkService.importCsv(p.getTenantId(), p.getUserId(), file.getInputStream());
+            r = shortLinkService.importCsv(p.getTenantId(), CreatedBy.user(p.getUserId()), file.getInputStream());
         } catch (IOException e) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "文件读取失败");
         }
@@ -189,7 +191,7 @@ public class ShortLinkController {
             String originalUrl,
             @Size(max = 512, message = "备注过长")
             String note,
-            java.time.LocalDateTime expiresAt,
+            java.time.Instant expiresAt,
             Boolean enabled,
             @Size(max = 32, message = "自定义短码过长")
             String customCode,
@@ -209,7 +211,7 @@ public class ShortLinkController {
             String originalUrl,
             @Size(max = 512, message = "备注过长")
             String note,
-            java.time.LocalDateTime expiresAt,
+            java.time.Instant expiresAt,
             Boolean clearExpiresAt,
             Boolean enabled,
             java.util.Set<String> tags,

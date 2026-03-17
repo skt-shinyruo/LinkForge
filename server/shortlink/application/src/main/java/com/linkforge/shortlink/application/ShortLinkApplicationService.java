@@ -62,7 +62,7 @@ public class ShortLinkApplicationService implements ShortLinkService {
     }
 
     @Override
-    public LinkDto create(long tenantId, long createdBy, CreateLinkRequest req) {
+    public LinkDto create(long tenantId, CreatedBy createdBy, CreateLinkRequest req) {
         return createHandler.handle(tenantId, createdBy, req);
     }
 
@@ -107,7 +107,7 @@ public class ShortLinkApplicationService implements ShortLinkService {
     }
 
     @Override
-    public ImportResult importCsv(long tenantId, long createdBy, InputStream inputStream) {
+    public ImportResult importCsv(long tenantId, CreatedBy createdBy, InputStream inputStream) {
         return importCsvHandler.handle(tenantId, createdBy, inputStream);
     }
 
@@ -116,4 +116,3 @@ public class ShortLinkApplicationService implements ShortLinkService {
         exportCsvHandler.handle(tenantId, pageQuery, os);
     }
 }
-

@@ -126,8 +126,8 @@ class ShortLinkCodeCaseSensitivityIntegrationTest {
                 null
         );
 
-        ShortLinkService.LinkDto a = shortLinkService.create(TENANT_ID, USER_ID, req1);
-        ShortLinkService.LinkDto b = shortLinkService.create(TENANT_ID, USER_ID, req2);
+        ShortLinkService.LinkDto a = shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), req1);
+        ShortLinkService.LinkDto b = shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), req2);
 
         assertThat(a.code()).isEqualTo("Abcdef");
         assertThat(b.code()).isEqualTo("abcdef");

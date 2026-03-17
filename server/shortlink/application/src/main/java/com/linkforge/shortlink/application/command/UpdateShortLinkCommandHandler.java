@@ -20,6 +20,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 
 @Component
@@ -86,7 +88,8 @@ public class UpdateShortLinkCommandHandler {
         if (Boolean.TRUE.equals(req.clearExpiresAt())) {
             link.clearExpiresAtUtc();
         } else if (req.expiresAt() != null) {
-            link.setExpiresAtUtc(req.expiresAt());
+            LocalDateTime expiresAtUtc = req.expiresAt().atOffset(ZoneOffset.UTC).toLocalDateTime();
+            link.setExpiresAtUtc(expiresAtUtc);
         }
 
         if (Boolean.TRUE.equals(req.clearRedirectStatusCode())) {
@@ -160,4 +163,3 @@ public class UpdateShortLinkCommandHandler {
         return t.isBlank() ? null : t;
     }
 }
-

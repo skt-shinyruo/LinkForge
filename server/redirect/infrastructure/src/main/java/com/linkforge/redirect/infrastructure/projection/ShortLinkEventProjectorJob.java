@@ -80,6 +80,7 @@ public class ShortLinkEventProjectorJob {
             try {
                 ProjectAction action = projectOne(event);
                 applyCacheSideEffects(action);
+                checkpoint(event.seq());
             } catch (PoisonEventException ex) {
                 deadLetterAndSkip(event, ex.getMessage());
             } catch (Exception ex) {
@@ -100,52 +101,48 @@ public class ShortLinkEventProjectorJob {
     private ProjectAction projectOne(IntegrationEventRow event) {
         String eventType = event.eventType();
         if (eventType == null || eventType.isBlank()) {
-            return tx.execute(status -> {
-                checkpoints.update(CONSUMER, event.seq());
-                return ProjectAction.none();
-            });
+            return ProjectAction.none();
         }
 
         if (!eventType.startsWith("shortlink.")) {
-            return tx.execute(status -> {
-                checkpoints.update(CONSUMER, event.seq());
-                return ProjectAction.none();
-            });
+            return ProjectAction.none();
         }
 
         try {
             return switch (eventType) {
                 case ShortLinkEventTypes.SHORT_LINK_CREATED_V1 ->
-                        upsertAndCheckpoint(event, read(event.payloadJson(), ShortLinkCreatedV1.class).snapshot());
+                        upsert(event, read(event.payloadJson(), ShortLinkCreatedV1.class).snapshot());
                 case ShortLinkEventTypes.SHORT_LINK_UPDATED_V1 ->
-                        upsertAndCheckpoint(event, read(event.payloadJson(), ShortLinkUpdatedV1.class).snapshot());
+                        upsert(event, read(event.payloadJson(), ShortLinkUpdatedV1.class).snapshot());
                 case ShortLinkEventTypes.SHORT_LINK_RESTORED_V1 ->
-                        upsertAndCheckpoint(event, read(event.payloadJson(), ShortLinkRestoredV1.class).snapshot());
+                        upsert(event, read(event.payloadJson(), ShortLinkRestoredV1.class).snapshot());
                 case ShortLinkEventTypes.SHORT_LINK_ARCHIVED_V1 ->
-                        deleteAndCheckpoint(event, read(event.payloadJson(), ShortLinkArchivedV1.class).code());
+                        delete(event, read(event.payloadJson(), ShortLinkArchivedV1.class).code());
                 case ShortLinkEventTypes.SHORT_LINK_DELETED_V1 ->
-                        deleteAndCheckpoint(event, read(event.payloadJson(), ShortLinkDeletedV1.class).code());
-                default -> throw new PoisonEventException("unknown shortlink event_type: " + eventType);
+                        delete(event, read(event.payloadJson(), ShortLinkDeletedV1.class).code());
+                default -> ProjectAction.none();
             };
         } catch (JsonProcessingException ex) {
             throw new PoisonEventException("invalid payload_json: " + ex.getOriginalMessage(), ex);
         }
     }
 
-    private ProjectAction upsertAndCheckpoint(IntegrationEventRow event, ShortLinkPublicSnapshot snapshot) {
+    private ProjectAction upsert(IntegrationEventRow event, ShortLinkPublicSnapshot snapshot) {
         if (snapshot == null || snapshot.code() == null || snapshot.code().isBlank()) {
             throw new PoisonEventException("snapshot/code is required");
+        }
+        if (snapshot.originalUrl() == null || snapshot.originalUrl().isBlank()) {
+            throw new PoisonEventException("snapshot/originalUrl is required");
         }
 
         RedirectLinkProjection row = toRow(snapshot);
         return tx.execute(status -> {
             projectionMapper.upsert(row);
-            checkpoints.update(CONSUMER, event.seq());
             return ProjectAction.put(row);
         });
     }
 
-    private ProjectAction deleteAndCheckpoint(IntegrationEventRow event, String code) {
+    private ProjectAction delete(IntegrationEventRow event, String code) {
         if (code == null || code.isBlank()) {
             throw new PoisonEventException("code is required");
         }
@@ -153,9 +150,12 @@ public class ShortLinkEventProjectorJob {
         String normalized = code.trim();
         return tx.execute(status -> {
             projectionMapper.deleteByCode(normalized);
-            checkpoints.update(CONSUMER, event.seq());
             return ProjectAction.evict(normalized);
         });
+    }
+
+    private void checkpoint(long seq) {
+        tx.executeWithoutResult(status -> checkpoints.update(CONSUMER, seq));
     }
 
     private void deadLetterAndSkip(IntegrationEventRow event, String lastError) {
@@ -170,14 +170,21 @@ public class ShortLinkEventProjectorJob {
             return;
         }
         if (action.evictCode != null) {
-            linkCache.tryEvict(action.evictCode);
+            tryCache("evict", action.evictCode, linkCache.tryEvict(action.evictCode));
         }
         if (action.putRow != null) {
             LinkMeta meta = RedirectLinkProjectionQueryService.toMeta(action.putRow);
             // overwrite negative cache sentinel if any
-            linkCache.tryEvict(meta.code());
-            linkCache.tryPut(meta);
+            tryCache("evict", meta.code(), linkCache.tryEvict(meta.code()));
+            tryCache("put", meta.code(), linkCache.tryPut(meta));
         }
+    }
+
+    private static void tryCache(String op, String code, boolean ok) {
+        if (ok) {
+            return;
+        }
+        throw new CacheSideEffectException("cache " + op + " failed: code=" + code);
     }
 
     private <T> T read(String json, Class<T> type) throws JsonProcessingException {
@@ -256,5 +263,10 @@ public class ShortLinkEventProjectorJob {
             super(message, cause);
         }
     }
-}
 
+    private static final class CacheSideEffectException extends RuntimeException {
+        private CacheSideEffectException(String message) {
+            super(message);
+        }
+    }
+}

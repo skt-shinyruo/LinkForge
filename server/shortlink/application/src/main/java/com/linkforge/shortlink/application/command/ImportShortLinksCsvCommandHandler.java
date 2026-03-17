@@ -3,6 +3,7 @@ package com.linkforge.shortlink.application.command;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.security.TenantGuard;
+import com.linkforge.shortlink.application.ShortLinkService.CreatedBy;
 import com.linkforge.shortlink.application.ShortLinkService.CreateLinkRequest;
 import com.linkforge.shortlink.application.ShortLinkService.ImportResult;
 import org.apache.commons.csv.CSVFormat;
@@ -18,7 +19,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -44,7 +48,7 @@ public class ImportShortLinksCsvCommandHandler {
         this.importRowTx = tx;
     }
 
-    public ImportResult handle(long tenantId, long createdBy, InputStream inputStream) {
+    public ImportResult handle(long tenantId, CreatedBy createdBy, InputStream inputStream) {
         tenantGuard.requireCurrentTenant(tenantId);
         if (inputStream == null) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "CSV 输入流不能为空");
@@ -70,7 +74,7 @@ public class ImportShortLinksCsvCommandHandler {
                     String note = safeGet(r, "note");
                     String tags = safeGet(r, "tags");
 
-                    LocalDateTime exp = parseDateTime(expiresAt);
+                    Instant exp = parseExpiresAt(expiresAt);
                     Set<String> tagSet = splitTags(tags);
                     CreateLinkRequest req = new CreateLinkRequest(
                             originalUrl,
@@ -107,17 +111,25 @@ public class ImportShortLinksCsvCommandHandler {
         }
     }
 
-    private static LocalDateTime parseDateTime(String raw) {
+    private static Instant parseExpiresAt(String raw) {
         String s = normalizeNullable(raw);
         if (s == null) {
             return null;
         }
         try {
-            return LocalDateTime.parse(s);
+            // 1) Preferred: ISO-8601 Instant/OffsetDateTime, e.g. 2026-03-10T12:00:00Z or 2026-03-10T12:00:00+08:00
+            return OffsetDateTime.parse(s).toInstant();
+        } catch (DateTimeParseException ignored) {
+            // fallthrough to legacy format
+        }
+        try {
+            // 2) Legacy: ISO-8601 LocalDateTime, treated as UTC (historical behavior for MySQL DATETIME fields).
+            LocalDateTime utc = LocalDateTime.parse(s);
+            return utc.toInstant(ZoneOffset.UTC);
         } catch (DateTimeParseException e) {
             throw new BusinessException(
                     ErrorCode.BAD_REQUEST,
-                    "expiresAt 格式错误（需 ISO-8601 LocalDateTime，例如 2026-03-10T12:00:00）"
+                    "expiresAt 格式错误（需 ISO-8601 Instant，例如 2026-03-10T12:00:00Z 或 2026-03-10T12:00:00+08:00；或 legacy LocalDateTime 例如 2026-03-10T12:00:00，按 UTC 处理）"
             );
         }
     }
@@ -146,4 +158,3 @@ public class ImportShortLinksCsvCommandHandler {
         return t.isBlank() ? null : t;
     }
 }
-

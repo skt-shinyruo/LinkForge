@@ -9,7 +9,6 @@ import com.linkforge.shortlink.application.ShortLinkService.TagDto;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -31,14 +30,12 @@ public class TagController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('TENANT_ADMIN')")
     public ApiResponse<List<TagDto>> list() {
         AuthPrincipal p = AuthContext.requirePrincipal();
         return ApiResponse.ok(shortLinkService.listTags(p.getTenantId()), RequestId.get());
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('TENANT_ADMIN')")
     public ApiResponse<TagDto> create(@Valid @RequestBody CreateTagRequest req) {
         writeGuard.requireWriteEnabled();
         AuthPrincipal p = AuthContext.requirePrincipal();

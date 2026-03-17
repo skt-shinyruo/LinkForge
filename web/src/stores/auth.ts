@@ -26,6 +26,21 @@ export const useAuthStore = defineStore("auth", {
 
       if (AUTH_MODE === "bearer") {
         this.token = getToken();
+        if (!this.token) {
+          return;
+        }
+        // bearer 模式：token 已存在时，刷新后需要通过 /me 回填用户信息
+        try {
+          const r: ApiResponse<any> = await apiFetch<any>("/api/v1/me");
+          if (r.code !== 0 || !r.data) {
+            return;
+          }
+          this.email = r.data.email;
+          this.tenantId = r.data.tenantId;
+          this.roles = Array.isArray(r.data.roles) ? r.data.roles : [];
+        } catch {
+          // ignore
+        }
         return;
       }
 

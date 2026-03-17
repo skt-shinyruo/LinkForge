@@ -104,7 +104,7 @@ public class VisitRecorderService implements VisitRecorderPort {
             );
 
             if (dimsEnabled) {
-                recordDimensions(tenantId, linkId, day, n, expireAt);
+                recordDimensions(tenantId, linkId, day, n, visitor, expireAt);
             }
             if (eventsEnabled) {
                 recordVisitEvent(tenantId, linkId, visitContext, n);
@@ -121,7 +121,14 @@ public class VisitRecorderService implements VisitRecorderPort {
         }
     }
 
-    private void recordDimensions(long tenantId, long linkId, LocalDate day, VisitDimensionNormalizer.Normalized n, Date expireAt) {
+    private void recordDimensions(
+            long tenantId,
+            long linkId,
+            LocalDate day,
+            VisitDimensionNormalizer.Normalized n,
+            String visitor,
+            Date expireAt
+    ) {
         AnalyticsProperties.Dimensions cfg = analyticsProperties == null ? null : analyticsProperties.getDimensions();
         List<String> types = cfg == null ? null : cfg.getTypes();
         if (types == null || types.isEmpty()) {
@@ -138,10 +145,22 @@ public class VisitRecorderService implements VisitRecorderPort {
                 continue;
             }
 
-            String key = AnalyticsKeys.dimPvHashKey(tenantId, linkId, day, dimType);
-            Long v = redis.opsForHash().increment(key, value, 1L);
-            if (expireAt != null && v != null && v <= 2L) {
-                expireAtQuietly(key, expireAt);
+            String pvKey = AnalyticsKeys.dimPvHashKey(tenantId, linkId, day, dimType);
+            Long pv = redis.opsForHash().increment(pvKey, value, 1L);
+
+            String uvKey = AnalyticsKeys.dimUvHllKey(tenantId, linkId, day, dimType, value);
+            Long uvAdd = visitor == null || visitor.isBlank()
+                    ? null
+                    : redis.opsForHyperLogLog().add(uvKey, visitor);
+
+            if (expireAt != null && pv != null && pv <= 2L) {
+                expireAtQuietly(pvKey, expireAt);
+            }
+            if (expireAt != null) {
+                boolean retryOnce = pv != null && pv == 2L;
+                if ((uvAdd != null && uvAdd > 0) || retryOnce) {
+                    expireAtQuietly(uvKey, expireAt);
+                }
             }
         }
     }

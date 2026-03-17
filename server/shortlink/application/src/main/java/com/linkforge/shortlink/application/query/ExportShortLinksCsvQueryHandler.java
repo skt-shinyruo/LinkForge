@@ -17,6 +17,8 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 
@@ -67,7 +69,7 @@ public class ExportShortLinksCsvQueryHandler {
                         e.originalUrl().value(),
                         e.note(),
                         e.enabled(),
-                        e.expiresAtUtc(),
+                        formatExpiresAtUtc(e.expiresAtUtc()),
                         String.join(",", tags.getOrDefault(e.id(), List.of()))
                 );
             }
@@ -75,5 +77,11 @@ public class ExportShortLinksCsvQueryHandler {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "导出失败");
         }
     }
-}
 
+    private static String formatExpiresAtUtc(LocalDateTime expiresAtUtc) {
+        if (expiresAtUtc == null) {
+            return "";
+        }
+        return expiresAtUtc.toInstant(ZoneOffset.UTC).toString();
+    }
+}

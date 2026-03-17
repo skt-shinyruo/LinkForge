@@ -3,16 +3,17 @@ package com.linkforge.shortlink.application;
 import com.linkforge.foundation.persistence.PageQuery;
 import com.linkforge.foundation.persistence.PageResult;
 import com.linkforge.shortlink.application.query.ShortLinkSearchQuery;
+import com.linkforge.shortlink.domain.CreatedByType;
 
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 
 public interface ShortLinkService {
 
-    LinkDto create(long tenantId, long createdBy, CreateLinkRequest req);
+    LinkDto create(long tenantId, CreatedBy createdBy, CreateLinkRequest req);
 
     PageResult<LinkDto> search(long tenantId, ShortLinkSearchQuery query, PageQuery pageQuery);
 
@@ -30,14 +31,24 @@ public interface ShortLinkService {
 
     TagDto createTag(long tenantId, String name);
 
-    ImportResult importCsv(long tenantId, long createdBy, InputStream inputStream);
+    ImportResult importCsv(long tenantId, CreatedBy createdBy, InputStream inputStream);
 
     void exportCsv(long tenantId, PageQuery pageQuery, OutputStream os);
+
+    record CreatedBy(long id, CreatedByType type) {
+        public static CreatedBy user(long userId) {
+            return new CreatedBy(userId, CreatedByType.USER);
+        }
+
+        public static CreatedBy apiKey(long apiKeyId) {
+            return new CreatedBy(apiKeyId, CreatedByType.API_KEY);
+        }
+    }
 
     record CreateLinkRequest(
             String originalUrl,
             String note,
-            LocalDateTime expiresAt,
+            Instant expiresAt,
             Boolean enabled,
             String customCode,
             Set<String> tags,
@@ -52,7 +63,7 @@ public interface ShortLinkService {
     record UpdateLinkRequest(
             String originalUrl,
             String note,
-            LocalDateTime expiresAt,
+            Instant expiresAt,
             Boolean clearExpiresAt,
             Boolean enabled,
             Set<String> tags,
@@ -74,15 +85,15 @@ public interface ShortLinkService {
             String originalUrl,
             String note,
             boolean enabled,
-            LocalDateTime expiresAt,
-            LocalDateTime archivedAt,
+            Instant expiresAt,
+            Instant archivedAt,
             Integer redirectStatusCode,
             boolean previewEnabled,
             String unavailableLandingUrl,
             String queryForwardMode,
             List<String> queryForwardAllowlist,
             List<String> tags,
-            LocalDateTime createdAt
+            Instant createdAt
     ) {
     }
 
@@ -92,4 +103,3 @@ public interface ShortLinkService {
     record ImportResult(int success, int failed, List<String> errors) {
     }
 }
-

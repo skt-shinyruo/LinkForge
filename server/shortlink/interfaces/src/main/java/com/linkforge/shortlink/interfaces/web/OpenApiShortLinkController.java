@@ -1,12 +1,15 @@
 package com.linkforge.shortlink.interfaces.web;
 
 import com.linkforge.contract.api.ApiResponse;
+import com.linkforge.contract.api.BusinessException;
+import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.persistence.PageQuery;
 import com.linkforge.foundation.persistence.PageResult;
 import com.linkforge.foundation.security.AuthContext;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.web.RequestId;
 import com.linkforge.shortlink.application.ShortLinkService;
+import com.linkforge.shortlink.application.ShortLinkService.CreatedBy;
 import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
 import com.linkforge.shortlink.application.query.ShortLinkSearchQuery;
 import jakarta.validation.Valid;
@@ -35,9 +38,13 @@ public class OpenApiShortLinkController {
     public ApiResponse<LinkDto> create(@Valid @RequestBody CreateLinkRequest req) {
         writeGuard.requireWriteEnabled();
         AuthPrincipal p = AuthContext.requirePrincipal();
+        Long apiKeyId = p.getApiKeyId();
+        if (apiKeyId == null || apiKeyId <= 0) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED);
+        }
         LinkDto dto = shortLinkService.create(
                 p.getTenantId(),
-                0L,
+                CreatedBy.apiKey(apiKeyId),
                 new ShortLinkService.CreateLinkRequest(
                         req.originalUrl(),
                         req.note(),
@@ -77,7 +84,7 @@ public class OpenApiShortLinkController {
             String originalUrl,
             @Size(max = 512, message = "备注过长")
             String note,
-            java.time.LocalDateTime expiresAt,
+            java.time.Instant expiresAt,
             Boolean enabled,
             @Size(max = 32, message = "自定义短码过长")
             String customCode,

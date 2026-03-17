@@ -1,17 +1,23 @@
 package com.linkforge.analytics.infrastructure;
 
+import com.linkforge.analytics.application.VisitorFingerprint;
+import com.linkforge.contract.analytics.AnalyticsKeys;
 import com.linkforge.contract.analytics.VisitContext;
 import com.linkforge.foundation.config.AnalyticsProperties;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.HyperLogLogOperations;
 import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.Date;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -67,5 +73,66 @@ class VisitRecorderServiceTest {
         verify(redis, times(2)).expireAt(eq(pvKey), any(Date.class));
         verify(redis, times(2)).expireAt(eq(uvKey), any(Date.class));
         verify(redis, times(2)).expireAt(eq(activeKey), any(Date.class));
+    }
+
+    @Test
+    void recordVisit_when_dimensions_enabled_should_pfadd_dim_uv_hll_using_same_visitor_fingerprint() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        AnalyticsProperties properties = new AnalyticsProperties();
+        properties.setSalt("salt-test");
+        properties.setRedisKeyTtlDays(7);
+        properties.getDimensions().setEnabled(true);
+        properties.getDimensions().setTypes(java.util.List.of("referer_domain"));
+
+        @SuppressWarnings("unchecked")
+        ValueOperations<String, String> valueOps = mock(ValueOperations.class);
+        when(redis.opsForValue()).thenReturn(valueOps);
+        when(valueOps.increment(anyString())).thenReturn(1L);
+
+        @SuppressWarnings("unchecked")
+        HyperLogLogOperations<String, String> hllOps = mock(HyperLogLogOperations.class);
+        when(redis.opsForHyperLogLog()).thenReturn(hllOps);
+        when(hllOps.add(anyString(), any(String[].class))).thenReturn(1L);
+
+        @SuppressWarnings("unchecked")
+        SetOperations<String, String> setOps = mock(SetOperations.class);
+        when(redis.opsForSet()).thenReturn(setOps);
+        when(setOps.add(anyString(), any(String[].class))).thenReturn(1L);
+
+        @SuppressWarnings("unchecked")
+        HashOperations<String, Object, Object> hashOps = mock(HashOperations.class);
+        when(redis.opsForHash()).thenReturn(hashOps);
+        when(hashOps.increment(anyString(), any(), eq(1L))).thenReturn(1L);
+
+        when(redis.expireAt(anyString(), any(Date.class))).thenReturn(true);
+
+        VisitRecorderService service = new VisitRecorderService(redis, properties);
+        VisitContext visitContext = new VisitContext(
+                "1.2.3.4",
+                "ua-test",
+                "https://Example.COM/p",
+                "zh-CN,zh;q=0.9",
+                Map.of()
+        );
+
+        long tenantId = 1L;
+        long linkId = 2L;
+
+        LocalDate day = LocalDate.now(ZoneOffset.UTC);
+        String visitor = VisitorFingerprint.fingerprint(day, visitContext, properties.getSalt());
+        String expectedDimUvKey = AnalyticsKeys.dimUvHllKey(tenantId, linkId, day, "referer_domain", "example.com");
+
+        service.recordVisit(tenantId, linkId, visitContext);
+
+        ArgumentCaptor<String> hllKeyCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String[]> hllValuesCaptor = ArgumentCaptor.forClass(String[].class);
+        verify(hllOps, times(2)).add(hllKeyCaptor.capture(), hllValuesCaptor.capture());
+
+        assertThat(hllKeyCaptor.getAllValues())
+                .anyMatch(k -> k != null && k.equals(expectedDimUvKey));
+
+        assertThat(hllValuesCaptor.getAllValues())
+                .hasSize(2)
+                .allSatisfy(v -> assertThat(v).containsExactly(visitor));
     }
 }

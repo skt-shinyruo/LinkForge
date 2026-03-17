@@ -13,6 +13,7 @@ import com.linkforge.foundation.eventing.IntegrationEventRow;
 import com.linkforge.foundation.eventing.IntegrationEventStore;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.dao.TransientDataAccessResourceException;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionStatus;
@@ -26,6 +27,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.times;
@@ -210,6 +212,73 @@ class ShortLinkCatalogProjectorJobTest {
         assertThat(processed).isEqualTo(1);
         assertThat(checkpoints.lastSeq).isEqualTo(10L);
         verify(deadLetter).upsertFailure(anyString(), any(IntegrationEventRow.class), anyInt(), anyString());
+    }
+
+    @Test
+    void projectOnce_should_not_advance_checkpoint_on_transient_db_error() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
+        IntegrationEventStore store = mock(IntegrationEventStore.class);
+        InMemoryCheckpointRepo checkpoints = new InMemoryCheckpointRepo();
+        IntegrationDeadLetterRepository deadLetter = mock(IntegrationDeadLetterRepository.class);
+        AnalyticsLinkCatalogMapper catalogMapper = mock(AnalyticsLinkCatalogMapper.class);
+        PlatformTransactionManager txManager = new PlatformTransactionManager() {
+            @Override
+            public TransactionStatus getTransaction(TransactionDefinition definition) {
+                return new SimpleTransactionStatus();
+            }
+
+            @Override
+            public void commit(TransactionStatus status) {
+                // no-op
+            }
+
+            @Override
+            public void rollback(TransactionStatus status) {
+                // no-op
+            }
+        };
+
+        long tenantId = 1L;
+        long linkId = 10L;
+        String code = "Abc123";
+        String url = "https://example.com/a";
+        Instant now = Instant.parse("2026-03-16T00:00:00Z");
+
+        ShortLinkPublicSnapshot createdSnap = new ShortLinkPublicSnapshot(
+                tenantId, linkId, code, url, true, null, null, false,
+                null, null, List.of(), null
+        );
+        ShortLinkCreatedV1 created = new ShortLinkCreatedV1("e1", now, tenantId, linkId, code, createdSnap);
+
+        IntegrationEventRow row = new IntegrationEventRow(
+                10L,
+                "e1",
+                "shortlink",
+                ShortLinkEventTypes.SHORT_LINK_CREATED_V1,
+                tenantId,
+                "shortlink",
+                linkId,
+                now,
+                objectMapper.writeValueAsString(created)
+        );
+
+        when(store.listAfterSeq(0L, 200)).thenReturn(List.of(row));
+        when(catalogMapper.upsert(any())).thenThrow(new TransientDataAccessResourceException("db down"));
+
+        ShortLinkCatalogProjectorJob job = new ShortLinkCatalogProjectorJob(
+                store,
+                checkpoints,
+                deadLetter,
+                catalogMapper,
+                objectMapper,
+                txManager
+        );
+
+        int processed = job.projectOnce();
+
+        assertThat(processed).isEqualTo(0);
+        assertThat(checkpoints.lastSeq).isEqualTo(0L);
+        verify(deadLetter, never()).upsertFailure(anyString(), any(IntegrationEventRow.class), anyInt(), anyString());
     }
 
     private static final class InMemoryCheckpointRepo implements IntegrationCheckpointRepository {

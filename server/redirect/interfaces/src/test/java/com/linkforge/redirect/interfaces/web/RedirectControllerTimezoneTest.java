@@ -7,7 +7,6 @@ import com.linkforge.contract.redirect.LinkMetaSourcePort;
 import com.linkforge.foundation.config.RedirectProperties;
 import com.linkforge.redirect.application.RedirectService;
 import com.linkforge.redirect.application.RedirectUrlBuilder;
-import com.linkforge.redirect.application.projection.LinkMetaProjectionPort;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -81,7 +80,6 @@ class RedirectControllerTimezoneTest {
                         return true;
                     }
                 },
-                (LinkMetaProjectionPort) code -> Optional.of(meta),
                 (LinkMetaSourcePort) code -> Optional.of(meta),
                 recorder,
                 Clock.systemUTC()

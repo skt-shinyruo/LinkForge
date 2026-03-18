@@ -1,5 +1,6 @@
-package com.linkforge.foundation.eventing;
+package com.linkforge.foundation.runtime.eventing;
 
+import com.linkforge.foundation.eventing.IntegrationCheckpointRepository;
 import com.linkforge.foundation.eventing.mapper.IntegrationCheckpointMapper;
 import org.springframework.stereotype.Repository;
 
@@ -27,4 +28,3 @@ public class MybatisIntegrationCheckpointRepository implements IntegrationCheckp
         mapper.update(consumer, lastSeq);
     }
 }
-

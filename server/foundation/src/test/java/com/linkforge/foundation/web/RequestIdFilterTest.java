@@ -1,5 +1,6 @@
-package com.linkforge.foundation.web;
+package com.linkforge.foundation.runtime.web;
 
+import com.linkforge.foundation.web.RequestId;
 import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -80,4 +81,3 @@ class RequestIdFilterTest {
         assertThat(response.getHeader(RequestIdFilter.HEADER_REQUEST_ID)).isEqualTo(rid);
     }
 }
-

@@ -1,5 +1,7 @@
-package com.linkforge.foundation.eventing;
+package com.linkforge.foundation.runtime.eventing;
 
+import com.linkforge.foundation.eventing.IntegrationEventRow;
+import com.linkforge.foundation.eventing.IntegrationEventStore;
 import com.linkforge.foundation.eventing.mapper.IntegrationEventMapper;
 import org.springframework.stereotype.Repository;
 
@@ -39,4 +41,3 @@ public class MybatisIntegrationEventStore implements IntegrationEventStore {
         mapper.insert(eventId, producer, eventType, tenantId, aggregateType, aggregateId, occurredAtUtc, payloadJson);
     }
 }
-

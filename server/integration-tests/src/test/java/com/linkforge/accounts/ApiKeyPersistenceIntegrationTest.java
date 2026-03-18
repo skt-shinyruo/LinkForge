@@ -8,6 +8,8 @@ import com.linkforge.accounts.domain.Roles;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ApplicationContext;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -27,12 +29,61 @@ class ApiKeyPersistenceIntegrationTest extends AccountsPersistenceIntegrationTes
     @Autowired
     ApiKeyService apiKeyService;
 
+    @Autowired
+    ApplicationContext applicationContext;
+
+    @Autowired
+    StringRedisTemplate redis;
+
     @Test
-    void apiKeyService_shouldUseMapperPersistence() {
-        assertConstructorUsesMapperTypes(
+    void apiKeyService_shouldUseApplicationPorts_andPortBeansShouldUseAdapters() {
+        assertConstructorUsesTypes(
                 ApiKeyService.class,
-                "com.linkforge.accounts.infrastructure.persistence.mapper.ApiKeyMapper"
+                "com.linkforge.accounts.application.port.AccountsApiKeyStore",
+                "com.linkforge.accounts.application.port.AccountsPasswordHasher",
+                "com.linkforge.accounts.application.port.ApiKeyAuthCache"
         );
+        assertPortBean(
+                applicationContext,
+                "com.linkforge.accounts.application.port.AccountsApiKeyStore",
+                "com.linkforge.accounts.infrastructure.persistence.AccountsApiKeyStoreMybatisAdapter"
+        );
+        assertPortBean(
+                applicationContext,
+                "com.linkforge.accounts.application.port.AccountsPasswordHasher",
+                "com.linkforge.accounts.infrastructure.security.SpringAccountsPasswordHasher"
+        );
+        assertPortBean(
+                applicationContext,
+                "com.linkforge.accounts.application.port.ApiKeyAuthCache",
+                "com.linkforge.accounts.infrastructure.cache.RedisApiKeyAuthCache"
+        );
+    }
+
+    @Test
+    void apiKeyAuthCache_shouldPersistSerializedPayloads_ttl_andThrottleTokens() {
+        Object cache = applicationContext.getBean(loadClass("com.linkforge.accounts.application.port.ApiKeyAuthCache"));
+
+        invoke(cache, "putActive", 301L, 41L, "digest-1", 60L);
+        assertThat(redis.opsForValue().get("auth:api_key:301")).isEqualTo("v1|41|active|digest-1");
+        assertThat(redis.getExpire("auth:api_key:301")).isPositive();
+        assertThat(invoke(cache, "read", 301L).toString()).contains("tenantId=41", "status=active", "secretDigest=digest-1");
+
+        invoke(cache, "putDisabled", 301L, 41L, 60L);
+        assertThat(redis.opsForValue().get("auth:api_key:301")).isEqualTo("v1|41|disabled|");
+        assertThat(invoke(cache, "read", 301L).toString()).contains("tenantId=41", "status=disabled");
+
+        Object firstAcquire = invoke(cache, "tryAcquireLastUsedToken", 301L, 300L);
+        Object secondAcquire = invoke(cache, "tryAcquireLastUsedToken", 301L, 300L);
+        assertThat(firstAcquire.toString()).isEqualTo("ACQUIRED");
+        assertThat(secondAcquire.toString()).isEqualTo("NOT_ACQUIRED");
+        assertThat(redis.getExpire("auth:api_key:last_used:301")).isPositive();
+
+        invoke(cache, "releaseLastUsedToken", 301L);
+        assertThat(redis.opsForValue().get("auth:api_key:last_used:301")).isNull();
+
+        invoke(cache, "evict", 301L);
+        assertThat(redis.opsForValue().get("auth:api_key:301")).isNull();
     }
 
     @Test

@@ -1,4 +1,4 @@
-package com.linkforge.foundation.web;
+package com.linkforge.foundation.runtime.web;
 
 import com.linkforge.foundation.config.CorsProperties;
 import org.springframework.context.annotation.Bean;
@@ -25,7 +25,6 @@ public class CorsConfig {
         }
 
         if (allowedOrigins == null || allowedOrigins.isEmpty()) {
-            // 默认放开本地开发；生产环境建议收敛到具体域名并配合网关/反代
             cfg.setAllowedOriginPatterns(List.of("*"));
             cfg.setAllowCredentials(false);
         } else {

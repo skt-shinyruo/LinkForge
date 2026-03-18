@@ -1,12 +1,10 @@
-package com.linkforge.foundation.security;
+package com.linkforge.foundation.runtime.security;
 
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
+import com.linkforge.foundation.security.AuthContext;
 import org.springframework.stereotype.Component;
 
-/**
- * 多租户护栏：确保服务层使用的 tenantId 与当前认证主体一致，避免误把 client 入参 tenantId 透传导致越权。
- */
 @Component
 public class TenantGuard {
 

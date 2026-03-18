@@ -1,5 +1,7 @@
-package com.linkforge.foundation.eventing;
+package com.linkforge.foundation.runtime.eventing;
 
+import com.linkforge.foundation.eventing.IntegrationDeadLetterRepository;
+import com.linkforge.foundation.eventing.IntegrationEventRow;
 import com.linkforge.foundation.eventing.mapper.IntegrationDeadLetterMapper;
 import org.springframework.stereotype.Repository;
 
@@ -27,4 +29,3 @@ public class MybatisIntegrationDeadLetterRepository implements IntegrationDeadLe
         );
     }
 }
-

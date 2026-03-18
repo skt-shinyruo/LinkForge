@@ -3,7 +3,7 @@ package com.linkforge.shortlink.application.command;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.shortlink.ShortLinkErrorCode;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
-import com.linkforge.foundation.security.TenantGuard;
+import com.linkforge.foundation.runtime.security.TenantGuard;
 import com.linkforge.foundation.tx.AfterCommit;
 import com.linkforge.foundation.util.Base62;
 import com.linkforge.shortlink.application.ShortLinkService.CreatedBy;

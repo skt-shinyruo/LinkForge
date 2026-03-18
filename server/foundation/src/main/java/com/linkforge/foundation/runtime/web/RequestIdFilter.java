@@ -1,5 +1,6 @@
-package com.linkforge.foundation.web;
+package com.linkforge.foundation.runtime.web;
 
+import com.linkforge.foundation.web.RequestId;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -27,14 +28,14 @@ public class RequestIdFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain
     ) throws ServletException, IOException {
-        String rid = sanitizeRequestId(request == null ? null : request.getHeader(HEADER_REQUEST_ID));
-        if (rid == null) {
-            rid = newRequestId();
+        String requestId = sanitizeRequestId(request == null ? null : request.getHeader(HEADER_REQUEST_ID));
+        if (requestId == null) {
+            requestId = newRequestId();
         }
 
-        RequestId.set(rid);
-        MDC.put("requestId", rid);
-        response.setHeader(HEADER_REQUEST_ID, rid);
+        RequestId.set(requestId);
+        MDC.put("requestId", requestId);
+        response.setHeader(HEADER_REQUEST_ID, requestId);
 
         try {
             filterChain.doFilter(request, response);
@@ -48,15 +49,15 @@ public class RequestIdFilter extends OncePerRequestFilter {
         if (raw == null) {
             return null;
         }
-        String t = raw.trim();
-        if (t.isBlank()) {
+        String trimmed = raw.trim();
+        if (trimmed.isBlank()) {
             return null;
         }
-        if (t.length() > MAX_REQUEST_ID_LENGTH) {
+        if (trimmed.length() > MAX_REQUEST_ID_LENGTH) {
             return null;
         }
-        for (int i = 0; i < t.length(); i++) {
-            char ch = t.charAt(i);
+        for (int i = 0; i < trimmed.length(); i++) {
+            char ch = trimmed.charAt(i);
             boolean ok = (ch >= '0' && ch <= '9')
                     || (ch >= 'A' && ch <= 'Z')
                     || (ch >= 'a' && ch <= 'z')
@@ -67,7 +68,7 @@ public class RequestIdFilter extends OncePerRequestFilter {
                 return null;
             }
         }
-        return t;
+        return trimmed;
     }
 
     private static String newRequestId() {

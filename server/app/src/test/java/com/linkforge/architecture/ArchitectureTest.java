@@ -87,6 +87,20 @@ class ArchitectureTest {
     }
 
     @Test
+    void accounts_application_should_not_depend_on_redis_or_security_crypto() {
+        ArchRule rule = noClasses()
+                .that()
+                .resideInAnyPackage("com.linkforge.accounts.application..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAnyPackage(
+                        "org.springframework.data.redis..",
+                        "org.springframework.security.crypto.."
+                );
+        rule.check(CLASSES);
+    }
+
+    @Test
     void application_and_domain_should_not_depend_on_web_or_servlet() {
         ArchRule rule = noClasses()
                 .that()

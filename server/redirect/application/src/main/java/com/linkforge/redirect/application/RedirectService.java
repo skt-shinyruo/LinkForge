@@ -7,7 +7,6 @@ import com.linkforge.contract.redirect.LinkMeta;
 import com.linkforge.contract.redirect.LinkMetaSourcePort;
 import com.linkforge.redirect.application.error.RedirectBusinessException;
 import com.linkforge.redirect.application.error.RedirectErrorCode;
-import com.linkforge.redirect.application.projection.LinkMetaProjectionPort;
 import com.linkforge.foundation.web.VisitInfo;
 import org.springframework.stereotype.Service;
 
@@ -19,20 +18,17 @@ import java.time.ZoneOffset;
 public class RedirectService {
 
     private final LinkCachePort linkCache;
-    private final LinkMetaProjectionPort linkMetaProjection;
     private final LinkMetaSourcePort linkMetaSource;
     private final VisitRecorderPort visitRecorder;
     private final Clock clock;
 
     public RedirectService(
             LinkCachePort linkCache,
-            LinkMetaProjectionPort linkMetaProjection,
             LinkMetaSourcePort linkMetaSource,
             VisitRecorderPort visitRecorder,
             Clock clock
     ) {
         this.linkCache = linkCache;
-        this.linkMetaProjection = linkMetaProjection;
         this.linkMetaSource = linkMetaSource;
         this.visitRecorder = visitRecorder;
         this.clock = clock;

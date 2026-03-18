@@ -1,7 +1,7 @@
 package com.linkforge.shortlink.application;
 
 import com.linkforge.foundation.persistence.PageQuery;
-import com.linkforge.foundation.security.TenantGuard;
+import com.linkforge.foundation.runtime.security.TenantGuard;
 import com.linkforge.shortlink.application.command.CreateShortLinkCommandHandler;
 import com.linkforge.shortlink.application.command.ImportShortLinksCsvCommandHandler;
 import com.linkforge.shortlink.application.port.LinkTagRepository;

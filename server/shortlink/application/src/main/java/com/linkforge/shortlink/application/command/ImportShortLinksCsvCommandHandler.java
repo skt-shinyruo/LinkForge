@@ -2,7 +2,7 @@ package com.linkforge.shortlink.application.command;
 
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
-import com.linkforge.foundation.security.TenantGuard;
+import com.linkforge.foundation.runtime.security.TenantGuard;
 import com.linkforge.shortlink.application.ShortLinkService.CreatedBy;
 import com.linkforge.shortlink.application.ShortLinkService.CreateLinkRequest;
 import com.linkforge.shortlink.application.ShortLinkService.ImportResult;

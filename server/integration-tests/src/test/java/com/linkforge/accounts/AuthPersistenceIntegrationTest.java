@@ -14,6 +14,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.annotation.DirtiesContext;
@@ -55,6 +56,9 @@ class AuthPersistenceIntegrationTest extends AccountsPersistenceIntegrationTestS
     @Autowired
     ApplicationContext applicationContext;
 
+    @Autowired
+    StringRedisTemplate redis;
+
     @Test
     void accountsServices_shouldDependOnApplicationPorts_andPortBeansShouldUseAdapters() {
         assertConstructorUsesTypes(
@@ -62,12 +66,14 @@ class AuthPersistenceIntegrationTest extends AccountsPersistenceIntegrationTestS
                 "com.linkforge.accounts.application.port.AccountsTenantStore",
                 "com.linkforge.accounts.application.port.AccountsUserStore",
                 "com.linkforge.accounts.application.port.AccountsUserRoleStore",
+                "com.linkforge.accounts.application.port.AccountsPasswordHasher",
                 "com.linkforge.accounts.application.port.AccountsTokenIssuer"
         );
         assertConstructorUsesTypes(
                 UserAdminService.class,
                 "com.linkforge.accounts.application.port.AccountsUserStore",
-                "com.linkforge.accounts.application.port.AccountsUserRoleStore"
+                "com.linkforge.accounts.application.port.AccountsUserRoleStore",
+                "com.linkforge.accounts.application.port.AccountsPasswordHasher"
         );
         assertPortBean(
                 applicationContext,
@@ -94,6 +100,21 @@ class AuthPersistenceIntegrationTest extends AccountsPersistenceIntegrationTestS
                 "com.linkforge.accounts.application.port.AccountsTokenIssuer",
                 "com.linkforge.accounts.infrastructure.security.AccountsJwtTokenIssuer"
         );
+        assertPortBean(
+                applicationContext,
+                "com.linkforge.accounts.application.port.AccountsPasswordHasher",
+                "com.linkforge.accounts.infrastructure.security.SpringAccountsPasswordHasher"
+        );
+        assertPortBean(
+                applicationContext,
+                "com.linkforge.accounts.application.port.AccountStatusCache",
+                "com.linkforge.accounts.infrastructure.cache.RedisAccountStatusCache"
+        );
+        assertPortBean(
+                applicationContext,
+                "com.linkforge.accounts.application.port.ApiKeyAuthCache",
+                "com.linkforge.accounts.infrastructure.cache.RedisApiKeyAuthCache"
+        );
 
         assertRepositoryClassRemoved("com.linkforge.accounts.infrastructure.persistence.repo.TenantRepository");
         assertRepositoryClassRemoved("com.linkforge.accounts.infrastructure.persistence.repo.UserRepository");
@@ -105,6 +126,21 @@ class AuthPersistenceIntegrationTest extends AccountsPersistenceIntegrationTestS
         assertHasNoJakartaPersistenceAnnotations(UserRoleEntity.class);
         assertHasNoJakartaPersistenceAnnotations(UserRoleId.class);
         assertHasNoJakartaPersistenceAnnotations(ApiKeyEntity.class);
+    }
+
+    @Test
+    void accountStatusCache_shouldPersistTenantAndUserStatus_withExpectedKeysAndTtl() {
+        var cache = applicationContext.getBean(loadClass("com.linkforge.accounts.application.port.AccountStatusCache"));
+
+        invoke(cache, "writeTenantStatus", 101L, "active", Duration.ofSeconds(30));
+        invoke(cache, "writeUserStatus", 202L, "disabled", Duration.ofSeconds(30));
+
+        assertThat(redis.opsForValue().get("auth:tenant_status:101")).isEqualTo("active");
+        assertThat(redis.opsForValue().get("auth:user_status:202")).isEqualTo("disabled");
+        assertThat(redis.getExpire("auth:tenant_status:101")).isPositive();
+        assertThat(redis.getExpire("auth:user_status:202")).isPositive();
+        assertThat(invoke(cache, "readTenantStatus", 101L)).isEqualTo("active");
+        assertThat(invoke(cache, "readUserStatus", 202L)).isEqualTo("disabled");
     }
 
     @Test
@@ -244,7 +280,23 @@ abstract class AccountsPersistenceIntegrationTestSupport {
                 .isAssignableTo(loadClass(adapterTypeName));
     }
 
-    private static Class<?> loadClass(String className) {
+    protected static Object invoke(Object target, String methodName, Object... args) {
+        try {
+            Class<?>[] argTypes = Arrays.stream(args)
+                    .map(arg -> arg == null ? Object.class : arg.getClass())
+                    .toArray(Class<?>[]::new);
+            return Arrays.stream(target.getClass().getMethods())
+                    .filter(method -> method.getName().equals(methodName))
+                    .filter(method -> method.getParameterCount() == argTypes.length)
+                    .findFirst()
+                    .orElseThrow()
+                    .invoke(target, args);
+        } catch (Exception e) {
+            throw new AssertionError("Failed to invoke method " + methodName + " on " + target.getClass().getName(), e);
+        }
+    }
+
+    protected static Class<?> loadClass(String className) {
         try {
             return Class.forName(className);
         } catch (ClassNotFoundException e) {

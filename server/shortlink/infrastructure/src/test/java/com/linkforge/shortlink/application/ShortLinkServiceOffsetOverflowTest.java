@@ -3,7 +3,7 @@ package com.linkforge.shortlink.application;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.persistence.PageQuery;
-import com.linkforge.foundation.security.TenantGuard;
+import com.linkforge.foundation.runtime.security.TenantGuard;
 import com.linkforge.shortlink.application.query.ShortLinkSearchQuery;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
 import com.linkforge.shortlink.application.port.LinkTagRepository;

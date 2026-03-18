@@ -3,7 +3,7 @@ package com.linkforge.redirect.interfaces.web.error;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkforge.redirect.application.error.RedirectErrorCode;
 import com.linkforge.foundation.web.RequestId;
-import com.linkforge.foundation.web.RequestIdFilter;
+import com.linkforge.foundation.runtime.web.RequestIdFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpHeaders;

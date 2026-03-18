@@ -3,7 +3,7 @@ package com.linkforge.shortlink.application.command;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
-import com.linkforge.foundation.security.TenantGuard;
+import com.linkforge.foundation.runtime.security.TenantGuard;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
 import com.linkforge.shortlink.application.port.TagRepository;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -96,4 +96,3 @@ public class SetLinkTagsCommandHandler {
         return t.isBlank() ? null : t;
     }
 }
-

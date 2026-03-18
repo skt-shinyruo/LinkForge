@@ -1,19 +1,17 @@
 package com.linkforge.accounts.application;
 
 import com.linkforge.accounts.application.port.AccountsApiKeyStore;
+import com.linkforge.accounts.application.port.AccountsPasswordHasher;
+import com.linkforge.accounts.application.port.ApiKeyAuthCache;
 import com.linkforge.accounts.domain.AccountsConstants;
 import com.linkforge.contract.openapi.OpenApiErrorCode;
 import com.linkforge.foundation.config.SecurityProperties;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.security.TenantGuard;
 import org.junit.jupiter.api.Test;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.ValueOperations;
-import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.lang.reflect.Constructor;
 import java.util.Arrays;
-import java.time.Duration;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Base64;
@@ -21,7 +19,6 @@ import java.util.Base64;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -42,13 +39,23 @@ class ApiKeyServiceTest {
     }
 
     @Test
+    void constructor_shouldDependOnApplicationPorts_insteadOfSpringRedisOrPasswordEncoder() {
+        Constructor<?> constructor = ApiKeyService.class.getDeclaredConstructors()[0];
+
+        assertThat(Arrays.stream(constructor.getParameterTypes()).map(Class::getName))
+                .contains(
+                        "com.linkforge.accounts.application.port.AccountsPasswordHasher",
+                        "com.linkforge.accounts.application.port.ApiKeyAuthCache"
+                )
+                .doesNotContain("org.springframework.data.redis.core.StringRedisTemplate")
+                .doesNotContain("org.springframework.security.crypto.password.PasswordEncoder");
+    }
+
+    @Test
     void authenticate_shouldUseRedisAuthCache_andSkipDbAndBcrypt_onCacheHit() {
         AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
-        PasswordEncoder encoder = mock(PasswordEncoder.class);
-        StringRedisTemplate redis = mock(StringRedisTemplate.class);
-        @SuppressWarnings("unchecked")
-        ValueOperations<String, String> valueOps = mock(ValueOperations.class);
-        when(redis.opsForValue()).thenReturn(valueOps);
+        AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
+        ApiKeyAuthCache authCache = mock(ApiKeyAuthCache.class);
 
         SecurityProperties props = new SecurityProperties();
         props.getApiKey().setAuthCacheTtlSeconds(60);
@@ -57,31 +64,28 @@ class ApiKeyServiceTest {
         ApiKeyService service = new ApiKeyService(
                 mock(SnowflakeIdGenerator.class),
                 store,
-                encoder,
+                passwordHasher,
                 mock(TenantGuard.class),
                 props,
-                redis
+                authCache
         );
 
         String digest = sha256Base64Url("secret");
-        when(valueOps.get("auth:api_key:123")).thenReturn("v1|1|active|" + digest);
+        when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, AccountsConstants.STATUS_ACTIVE, digest));
 
         ApiKeyService.ApiKeyAuthResult r = service.authenticate("lfk_123_secret");
         assertThat(r.tenantId()).isEqualTo(1L);
         assertThat(r.apiKeyId()).isEqualTo(123L);
 
         verifyNoInteractions(store);
-        verifyNoInteractions(encoder);
+        verifyNoInteractions(passwordHasher);
     }
 
     @Test
     void authenticate_shouldReject_whenCacheHitButDigestMismatch() {
         AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
-        PasswordEncoder encoder = mock(PasswordEncoder.class);
-        StringRedisTemplate redis = mock(StringRedisTemplate.class);
-        @SuppressWarnings("unchecked")
-        ValueOperations<String, String> valueOps = mock(ValueOperations.class);
-        when(redis.opsForValue()).thenReturn(valueOps);
+        AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
+        ApiKeyAuthCache authCache = mock(ApiKeyAuthCache.class);
 
         SecurityProperties props = new SecurityProperties();
         props.getApiKey().setAuthCacheTtlSeconds(60);
@@ -90,14 +94,14 @@ class ApiKeyServiceTest {
         ApiKeyService service = new ApiKeyService(
                 mock(SnowflakeIdGenerator.class),
                 store,
-                encoder,
+                passwordHasher,
                 mock(TenantGuard.class),
                 props,
-                redis
+                authCache
         );
 
         String wrongDigest = sha256Base64Url("other-secret");
-        when(valueOps.get("auth:api_key:123")).thenReturn("v1|1|active|" + wrongDigest);
+        when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, AccountsConstants.STATUS_ACTIVE, wrongDigest));
 
         assertThatThrownBy(() -> service.authenticate("lfk_123_secret"))
                 .isInstanceOf(ApiKeyService.ApiKeyAuthException.class)
@@ -105,17 +109,14 @@ class ApiKeyServiceTest {
                 .isEqualTo(OpenApiErrorCode.API_KEY_INVALID);
 
         verifyNoInteractions(store);
-        verifyNoInteractions(encoder);
+        verifyNoInteractions(passwordHasher);
     }
 
     @Test
     void authenticate_shouldRejectDisabled_whenCacheHitAndStatusDisabled() {
         AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
-        PasswordEncoder encoder = mock(PasswordEncoder.class);
-        StringRedisTemplate redis = mock(StringRedisTemplate.class);
-        @SuppressWarnings("unchecked")
-        ValueOperations<String, String> valueOps = mock(ValueOperations.class);
-        when(redis.opsForValue()).thenReturn(valueOps);
+        AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
+        ApiKeyAuthCache authCache = mock(ApiKeyAuthCache.class);
 
         SecurityProperties props = new SecurityProperties();
         props.getApiKey().setAuthCacheTtlSeconds(60);
@@ -124,13 +125,13 @@ class ApiKeyServiceTest {
         ApiKeyService service = new ApiKeyService(
                 mock(SnowflakeIdGenerator.class),
                 store,
-                encoder,
+                passwordHasher,
                 mock(TenantGuard.class),
                 props,
-                redis
+                authCache
         );
 
-        when(valueOps.get("auth:api_key:123")).thenReturn("v1|1|disabled|");
+        when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, AccountsConstants.STATUS_DISABLED, ""));
 
         assertThatThrownBy(() -> service.authenticate("lfk_123_secret"))
                 .isInstanceOf(ApiKeyService.ApiKeyAuthException.class)
@@ -138,17 +139,14 @@ class ApiKeyServiceTest {
                 .isEqualTo(OpenApiErrorCode.API_KEY_DISABLED);
 
         verifyNoInteractions(store);
-        verifyNoInteractions(encoder);
+        verifyNoInteractions(passwordHasher);
     }
 
     @Test
     void authenticate_shouldFallbackToDb_andBackfillCache_onCacheMiss() {
         AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
-        PasswordEncoder encoder = mock(PasswordEncoder.class);
-        StringRedisTemplate redis = mock(StringRedisTemplate.class);
-        @SuppressWarnings("unchecked")
-        ValueOperations<String, String> valueOps = mock(ValueOperations.class);
-        when(redis.opsForValue()).thenReturn(valueOps);
+        AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
+        ApiKeyAuthCache authCache = mock(ApiKeyAuthCache.class);
 
         SecurityProperties props = new SecurityProperties();
         props.getApiKey().setLastUsedUpdateIntervalSeconds(0);
@@ -157,10 +155,10 @@ class ApiKeyServiceTest {
         ApiKeyService service = new ApiKeyService(
                 mock(SnowflakeIdGenerator.class),
                 store,
-                encoder,
+                passwordHasher,
                 mock(TenantGuard.class),
                 props,
-                redis
+                authCache
         );
 
         AccountsApiKeyStore.ApiKey apiKey = new AccountsApiKeyStore.ApiKey(
@@ -173,25 +171,22 @@ class ApiKeyServiceTest {
                 null
         );
 
-        when(valueOps.get("auth:api_key:123")).thenReturn(null);
+        when(authCache.read(123L)).thenReturn(null);
         when(store.findById(123L)).thenReturn(apiKey);
-        when(encoder.matches("secret", "hash")).thenReturn(true);
+        when(passwordHasher.matches("secret", "hash")).thenReturn(true);
 
         ApiKeyService.ApiKeyAuthResult r = service.authenticate("lfk_123_secret");
         assertThat(r.tenantId()).isEqualTo(1L);
         assertThat(r.apiKeyId()).isEqualTo(123L);
 
-        verify(valueOps).set(eq("auth:api_key:123"), anyString(), any(Duration.class));
+        verify(authCache).putActive(eq(123L), eq(1L), any(), eq(60L));
     }
 
     @Test
     void authenticate_shouldUpdateLastUsedAtOncePerWindow_usingRedisToken() {
         AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
-        PasswordEncoder encoder = mock(PasswordEncoder.class);
-        StringRedisTemplate redis = mock(StringRedisTemplate.class);
-        @SuppressWarnings("unchecked")
-        ValueOperations<String, String> valueOps = mock(ValueOperations.class);
-        when(redis.opsForValue()).thenReturn(valueOps);
+        AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
+        ApiKeyAuthCache authCache = mock(ApiKeyAuthCache.class);
 
         SecurityProperties props = new SecurityProperties();
         props.getApiKey().setAuthCacheTtlSeconds(60);
@@ -200,16 +195,15 @@ class ApiKeyServiceTest {
         ApiKeyService service = new ApiKeyService(
                 mock(SnowflakeIdGenerator.class),
                 store,
-                encoder,
+                passwordHasher,
                 mock(TenantGuard.class),
                 props,
-                redis
+                authCache
         );
 
         String digest = sha256Base64Url("secret");
-        when(valueOps.get("auth:api_key:123")).thenReturn("v1|1|active|" + digest);
-        when(valueOps.setIfAbsent(eq("auth:api_key:last_used:123"), eq("1"), eq(Duration.ofSeconds(300))))
-                .thenReturn(true);
+        when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, AccountsConstants.STATUS_ACTIVE, digest));
+        when(authCache.tryAcquireLastUsedToken(123L, 300L)).thenReturn(ApiKeyAuthCache.LastUsedTokenResult.ACQUIRED);
 
         service.authenticate("lfk_123_secret");
 
@@ -221,10 +215,10 @@ class ApiKeyServiceTest {
         ApiKeyService service = new ApiKeyService(
                 mock(SnowflakeIdGenerator.class),
                 mock(AccountsApiKeyStore.class),
-                mock(PasswordEncoder.class),
+                mock(AccountsPasswordHasher.class),
                 mock(TenantGuard.class),
                 new SecurityProperties(),
-                null
+                mock(ApiKeyAuthCache.class)
         );
 
         String longKey = "lfk_123_" + "a".repeat(512);
@@ -239,10 +233,10 @@ class ApiKeyServiceTest {
         ApiKeyService service = new ApiKeyService(
                 mock(SnowflakeIdGenerator.class),
                 mock(AccountsApiKeyStore.class),
-                mock(PasswordEncoder.class),
+                mock(AccountsPasswordHasher.class),
                 mock(TenantGuard.class),
                 new SecurityProperties(),
-                null
+                mock(ApiKeyAuthCache.class)
         );
 
         String keyWithHugeSecret = "lfk_123_" + "a".repeat(129);
@@ -258,10 +252,10 @@ class ApiKeyServiceTest {
         ApiKeyService service = new ApiKeyService(
                 mock(SnowflakeIdGenerator.class),
                 store,
-                mock(PasswordEncoder.class),
+                mock(AccountsPasswordHasher.class),
                 mock(TenantGuard.class),
                 new SecurityProperties(),
-                null
+                mock(ApiKeyAuthCache.class)
         );
 
         AccountsApiKeyStore.ApiKey existing = new AccountsApiKeyStore.ApiKey(
@@ -287,10 +281,10 @@ class ApiKeyServiceTest {
         ApiKeyService service = new ApiKeyService(
                 mock(SnowflakeIdGenerator.class),
                 store,
-                mock(PasswordEncoder.class),
+                mock(AccountsPasswordHasher.class),
                 mock(TenantGuard.class),
                 new SecurityProperties(),
-                null
+                mock(ApiKeyAuthCache.class)
         );
 
         AccountsApiKeyStore.ApiKey existing = new AccountsApiKeyStore.ApiKey(

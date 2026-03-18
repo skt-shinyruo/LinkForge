@@ -1,6 +1,8 @@
 package com.linkforge.accounts.application;
 
 import com.linkforge.accounts.application.port.AccountsApiKeyStore;
+import com.linkforge.accounts.application.port.AccountsPasswordHasher;
+import com.linkforge.accounts.application.port.ApiKeyAuthCache;
 import com.linkforge.accounts.domain.AccountsConstants;
 import com.linkforge.contract.api.AppErrorCode;
 import com.linkforge.contract.api.BusinessException;
@@ -11,8 +13,6 @@ import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.security.TenantGuard;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,7 +20,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.List;
@@ -41,32 +40,30 @@ public class ApiKeyService {
         }
     });
 
-    private static final String AUTH_CACHE_KEY_PREFIX = "auth:api_key:";
-    private static final String LAST_USED_TOKEN_KEY_PREFIX = "auth:api_key:last_used:";
     private static final int MAX_API_KEY_LEN = 256;
     private static final int MAX_API_KEY_SECRET_LEN = 128;
 
     private final SnowflakeIdGenerator idGenerator;
     private final AccountsApiKeyStore apiKeyStore;
-    private final PasswordEncoder passwordEncoder;
+    private final AccountsPasswordHasher passwordHasher;
     private final TenantGuard tenantGuard;
     private final SecurityProperties securityProperties;
-    private final StringRedisTemplate redis;
+    private final ApiKeyAuthCache authCache;
 
     public ApiKeyService(
             SnowflakeIdGenerator idGenerator,
             AccountsApiKeyStore apiKeyStore,
-            PasswordEncoder passwordEncoder,
+            AccountsPasswordHasher passwordHasher,
             TenantGuard tenantGuard,
             SecurityProperties securityProperties,
-            StringRedisTemplate redis
+            ApiKeyAuthCache authCache
     ) {
         this.idGenerator = idGenerator;
         this.apiKeyStore = apiKeyStore;
-        this.passwordEncoder = passwordEncoder;
+        this.passwordHasher = passwordHasher;
         this.tenantGuard = tenantGuard;
         this.securityProperties = securityProperties;
-        this.redis = redis;
+        this.authCache = authCache;
     }
 
     @Transactional
@@ -80,7 +77,7 @@ public class ApiKeyService {
                 id,
                 tenantId,
                 name,
-                passwordEncoder.encode(secret),
+                passwordHasher.encode(secret),
                 AccountsConstants.STATUS_ACTIVE,
                 null,
                 null
@@ -88,7 +85,7 @@ public class ApiKeyService {
         apiKeyStore.insert(apiKey);
 
         String digest = sha256Base64Url(secret);
-        tryPutAuthCacheActive(id, tenantId, digest);
+        authCache.putActive(id, tenantId, digest, authCacheTtlSeconds());
 
         return new CreatedApiKey(id, name, key);
     }
@@ -97,16 +94,16 @@ public class ApiKeyService {
         Parsed parsed = parse(apiKey);
         String secretDigest = sha256Base64Url(parsed.secret);
 
-        AuthCacheEntry cached = readAuthCache(parsed.id);
+        ApiKeyAuthCache.Entry cached = authCache.read(parsed.id);
         if (cached != null) {
-            if (!AccountsConstants.STATUS_ACTIVE.equals(cached.status)) {
+            if (!AccountsConstants.STATUS_ACTIVE.equals(cached.status())) {
                 throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_DISABLED);
             }
-            if (!constantTimeEquals(secretDigest, cached.secretDigest)) {
+            if (!constantTimeEquals(secretDigest, cached.secretDigest())) {
                 throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_INVALID);
             }
             tryUpdateLastUsedAtThrottled(parsed.id, null, false);
-            return new ApiKeyAuthResult(cached.tenantId, parsed.id);
+            return new ApiKeyAuthResult(cached.tenantId(), parsed.id);
         }
 
         AccountsApiKeyStore.ApiKey apiKeyRecord = apiKeyStore.findById(parsed.id);
@@ -115,14 +112,14 @@ public class ApiKeyService {
         }
 
         if (!AccountsConstants.STATUS_ACTIVE.equals(apiKeyRecord.status())) {
-            tryPutAuthCacheDisabled(parsed.id, apiKeyRecord.tenantId());
+            authCache.putDisabled(parsed.id, apiKeyRecord.tenantId() == null ? 0L : apiKeyRecord.tenantId(), authCacheTtlSeconds());
             throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_DISABLED);
         }
-        if (!passwordEncoder.matches(parsed.secret, apiKeyRecord.keyHash())) {
+        if (!passwordHasher.matches(parsed.secret, apiKeyRecord.keyHash())) {
             throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_INVALID);
         }
 
-        tryPutAuthCacheActive(parsed.id, apiKeyRecord.tenantId(), secretDigest);
+        authCache.putActive(parsed.id, apiKeyRecord.tenantId() == null ? 0L : apiKeyRecord.tenantId(), secretDigest, authCacheTtlSeconds());
         tryUpdateLastUsedAtThrottled(parsed.id, apiKeyRecord.lastUsedAt(), true);
 
         return new ApiKeyAuthResult(apiKeyRecord.tenantId(), apiKeyRecord.id());
@@ -149,7 +146,7 @@ public class ApiKeyService {
             apiKey = withStatus(apiKey, AccountsConstants.STATUS_DISABLED);
             apiKeyStore.update(apiKey);
         }
-        tryPutAuthCacheDisabled(apiKeyId, apiKey.tenantId());
+        authCache.putDisabled(apiKeyId, apiKey.tenantId() == null ? 0L : apiKey.tenantId(), authCacheTtlSeconds());
         return new ApiKeyInfo(apiKey.id(), apiKey.name(), apiKey.status(), apiKey.lastUsedAt(), apiKey.createdAt());
     }
 
@@ -167,7 +164,7 @@ public class ApiKeyService {
             apiKey = withStatus(apiKey, AccountsConstants.STATUS_ACTIVE);
             apiKeyStore.update(apiKey);
         }
-        evictAuthCache(apiKeyId);
+        authCache.evict(apiKeyId);
         return new ApiKeyInfo(apiKey.id(), apiKey.name(), apiKey.status(), apiKey.lastUsedAt(), apiKey.createdAt());
     }
 
@@ -184,10 +181,10 @@ public class ApiKeyService {
 
         String secret = randomSecret();
         String key = API_KEY_PREFIX + "_" + apiKey.id() + "_" + secret;
-        apiKeyStore.update(withKeyHashAndStatus(apiKey, passwordEncoder.encode(secret), AccountsConstants.STATUS_ACTIVE));
+        apiKeyStore.update(withKeyHashAndStatus(apiKey, passwordHasher.encode(secret), AccountsConstants.STATUS_ACTIVE));
 
         String digest = sha256Base64Url(secret);
-        tryPutAuthCacheActive(apiKeyId, apiKey.tenantId(), digest);
+        authCache.putActive(apiKeyId, apiKey.tenantId() == null ? 0L : apiKey.tenantId(), digest, authCacheTtlSeconds());
 
         return new CreatedApiKey(apiKey.id(), apiKey.name(), key);
     }
@@ -277,26 +274,18 @@ public class ApiKeyService {
 
         LocalDateTime now = LocalDateTime.now();
 
-        if (redis != null) {
-            String tokenKey = lastUsedTokenKey(apiKeyId);
+        ApiKeyAuthCache.LastUsedTokenResult tokenResult = authCache.tryAcquireLastUsedToken(apiKeyId, intervalSeconds);
+        if (tokenResult == ApiKeyAuthCache.LastUsedTokenResult.ACQUIRED) {
             try {
-                Boolean acquired = redis.opsForValue()
-                        .setIfAbsent(tokenKey, "1", Duration.ofSeconds(intervalSeconds));
-                if (Boolean.TRUE.equals(acquired)) {
-                    try {
-                        apiKeyStore.updateLastUsedAt(apiKeyId, now);
-                    } catch (Exception ex) {
-                        try {
-                            redis.delete(tokenKey);
-                        } catch (Exception ignore) {
-                        }
-                        log.debug("update api_key last_used_at failed: id={}, err={}", apiKeyId, ex.getMessage());
-                    }
-                }
-                return;
+                apiKeyStore.updateLastUsedAt(apiKeyId, now);
             } catch (Exception ex) {
-                log.debug("last_used_at throttle token read/write failed: id={}, err={}", apiKeyId, ex.getMessage());
+                authCache.releaseLastUsedToken(apiKeyId);
+                log.debug("update api_key last_used_at failed: id={}, err={}", apiKeyId, ex.getMessage());
             }
+            return;
+        }
+        if (tokenResult == ApiKeyAuthCache.LastUsedTokenResult.NOT_ACQUIRED) {
+            return;
         }
 
         if (lastUsedAtHint == null && !allowWriteWhenHintMissing) {
@@ -345,116 +334,6 @@ public class ApiKeyService {
         );
     }
 
-    private record AuthCacheEntry(long tenantId, String status, String secretDigest) {
-        private static AuthCacheEntry tryParse(String raw) {
-            if (raw == null || raw.isBlank()) {
-                return null;
-            }
-            String[] parts = raw.split("\\|", 4);
-            if (parts.length != 4) {
-                return null;
-            }
-            if (!"v1".equals(parts[0])) {
-                return null;
-            }
-            long tenantId;
-            try {
-                tenantId = Long.parseLong(parts[1]);
-            } catch (NumberFormatException e) {
-                return null;
-            }
-            String status = parts[2];
-            String digest = parts[3];
-            return new AuthCacheEntry(tenantId, status, digest);
-        }
-
-        private String format() {
-            return "v1|" + tenantId + "|" + (status == null ? "" : status) + "|" + (secretDigest == null ? "" : secretDigest);
-        }
-    }
-
-    private AuthCacheEntry readAuthCache(long apiKeyId) {
-        if (redis == null) {
-            return null;
-        }
-        long ttlSeconds = authCacheTtlSeconds();
-        if (ttlSeconds <= 0) {
-            return null;
-        }
-        String key = authCacheKey(apiKeyId);
-        String raw;
-        try {
-            raw = redis.opsForValue().get(key);
-        } catch (Exception e) {
-            log.debug("api key auth cache read failed: id={}, err={}", apiKeyId, e.getMessage());
-            return null;
-        }
-        if (raw == null || raw.isBlank()) {
-            return null;
-        }
-        AuthCacheEntry parsed = AuthCacheEntry.tryParse(raw);
-        if (parsed != null) {
-            return parsed;
-        }
-        try {
-            redis.delete(key);
-        } catch (Exception ignore) {
-        }
-        return null;
-    }
-
-    private void tryPutAuthCacheActive(long apiKeyId, Long tenantId, String secretDigest) {
-        if (redis == null) {
-            return;
-        }
-        if (tenantId == null) {
-            return;
-        }
-        long ttlSeconds = authCacheTtlSeconds();
-        if (ttlSeconds <= 0) {
-            return;
-        }
-        if (secretDigest == null || secretDigest.isBlank()) {
-            return;
-        }
-        AuthCacheEntry entry = new AuthCacheEntry(tenantId, AccountsConstants.STATUS_ACTIVE, secretDigest);
-        try {
-            redis.opsForValue().set(authCacheKey(apiKeyId), entry.format(), Duration.ofSeconds(ttlSeconds));
-        } catch (Exception e) {
-            log.debug("api key auth cache write failed: id={}, err={}", apiKeyId, e.getMessage());
-        }
-    }
-
-    private void tryPutAuthCacheDisabled(long apiKeyId, Long tenantId) {
-        if (redis == null) {
-            return;
-        }
-        if (tenantId == null) {
-            return;
-        }
-        long ttlSeconds = authCacheTtlSeconds();
-        if (ttlSeconds <= 0) {
-            return;
-        }
-        AuthCacheEntry entry = new AuthCacheEntry(tenantId, AccountsConstants.STATUS_DISABLED, "");
-        try {
-            redis.opsForValue().set(authCacheKey(apiKeyId), entry.format(), Duration.ofSeconds(ttlSeconds));
-        } catch (Exception e) {
-            log.debug("api key auth cache write(disabled) failed: id={}, err={}", apiKeyId, e.getMessage());
-        }
-    }
-
-    private void evictAuthCache(long apiKeyId) {
-        if (redis == null) {
-            return;
-        }
-        try {
-            redis.delete(authCacheKey(apiKeyId));
-        } catch (Exception e) {
-            log.debug("api key auth cache evict failed: id={}, err={}", apiKeyId, e.getMessage());
-        }
-    }
-
     private static String sha256Base64Url(String input) {
         if (input == null) {
             return "";
@@ -491,13 +370,5 @@ public class ApiKeyService {
             ttlSeconds = 0;
         }
         return ttlSeconds;
-    }
-
-    private static String authCacheKey(long apiKeyId) {
-        return AUTH_CACHE_KEY_PREFIX + apiKeyId;
-    }
-
-    private static String lastUsedTokenKey(long apiKeyId) {
-        return LAST_USED_TOKEN_KEY_PREFIX + apiKeyId;
     }
 }

@@ -1,5 +1,6 @@
 package com.linkforge.accounts.application;
 
+import com.linkforge.accounts.application.port.AccountsPasswordHasher;
 import com.linkforge.accounts.application.port.AccountsUserRoleStore;
 import com.linkforge.accounts.application.port.AccountsUserStore;
 import com.linkforge.accounts.domain.AccountsConstants;
@@ -10,7 +11,6 @@ import com.linkforge.contract.accounts.AccountsErrorCode;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.security.TenantGuard;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,20 +30,20 @@ public class UserAdminService {
     private final SnowflakeIdGenerator idGenerator;
     private final AccountsUserStore userStore;
     private final AccountsUserRoleStore userRoleStore;
-    private final PasswordEncoder passwordEncoder;
+    private final AccountsPasswordHasher passwordHasher;
     private final TenantGuard tenantGuard;
 
     public UserAdminService(
             SnowflakeIdGenerator idGenerator,
             AccountsUserStore userStore,
             AccountsUserRoleStore userRoleStore,
-            PasswordEncoder passwordEncoder,
+            AccountsPasswordHasher passwordHasher,
             TenantGuard tenantGuard
     ) {
         this.idGenerator = idGenerator;
         this.userStore = userStore;
         this.userRoleStore = userRoleStore;
-        this.passwordEncoder = passwordEncoder;
+        this.passwordHasher = passwordHasher;
         this.tenantGuard = tenantGuard;
     }
 
@@ -86,7 +86,7 @@ public class UserAdminService {
                 userId,
                 tenantId,
                 req.email(),
-                passwordEncoder.encode(req.password()),
+                passwordHasher.encode(req.password()),
                 AccountsConstants.STATUS_ACTIVE,
                 null,
                 null
@@ -141,7 +141,7 @@ public class UserAdminService {
                 user.id(),
                 user.tenantId(),
                 user.email(),
-                passwordEncoder.encode(newPassword),
+                passwordHasher.encode(newPassword),
                 user.status(),
                 user.createdAt(),
                 user.updatedAt()

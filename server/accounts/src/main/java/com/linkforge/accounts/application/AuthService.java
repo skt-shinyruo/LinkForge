@@ -1,6 +1,7 @@
 package com.linkforge.accounts.application;
 
 import com.linkforge.accounts.application.port.AccountsTenantStore;
+import com.linkforge.accounts.application.port.AccountsPasswordHasher;
 import com.linkforge.accounts.application.port.AccountsTokenIssuer;
 import com.linkforge.accounts.application.port.AccountsUserRoleStore;
 import com.linkforge.accounts.application.port.AccountsUserStore;
@@ -12,7 +13,6 @@ import com.linkforge.contract.accounts.AccountsErrorCode;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.security.AuthPrincipal;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,7 +26,7 @@ public class AuthService {
     private final AccountsTenantStore tenantStore;
     private final AccountsUserStore userStore;
     private final AccountsUserRoleStore userRoleStore;
-    private final PasswordEncoder passwordEncoder;
+    private final AccountsPasswordHasher passwordHasher;
     private final AccountsTokenIssuer tokenIssuer;
 
     public AuthService(
@@ -34,14 +34,14 @@ public class AuthService {
             AccountsTenantStore tenantStore,
             AccountsUserStore userStore,
             AccountsUserRoleStore userRoleStore,
-            PasswordEncoder passwordEncoder,
+            AccountsPasswordHasher passwordHasher,
             AccountsTokenIssuer tokenIssuer
     ) {
         this.idGenerator = idGenerator;
         this.tenantStore = tenantStore;
         this.userStore = userStore;
         this.userRoleStore = userRoleStore;
-        this.passwordEncoder = passwordEncoder;
+        this.passwordHasher = passwordHasher;
         this.tokenIssuer = tokenIssuer;
     }
 
@@ -65,7 +65,7 @@ public class AuthService {
                 userId,
                 tenantId,
                 email,
-                passwordEncoder.encode(rawPassword),
+                passwordHasher.encode(rawPassword),
                 AccountsConstants.STATUS_ACTIVE,
                 null,
                 null
@@ -100,7 +100,7 @@ public class AuthService {
         if (!AccountsConstants.STATUS_ACTIVE.equals(user.status())) {
             throw new BusinessException(AccountsErrorCode.USER_DISABLED);
         }
-        if (!passwordEncoder.matches(rawPassword, user.passwordHash())) {
+        if (!passwordHasher.matches(rawPassword, user.passwordHash())) {
             throw new BusinessException(AccountsErrorCode.INVALID_CREDENTIALS);
         }
 

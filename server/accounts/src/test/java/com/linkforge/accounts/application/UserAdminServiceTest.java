@@ -1,5 +1,6 @@
 package com.linkforge.accounts.application;
 
+import com.linkforge.accounts.application.port.AccountsPasswordHasher;
 import com.linkforge.accounts.application.port.AccountsUserRoleStore;
 import com.linkforge.accounts.application.port.AccountsUserStore;
 import com.linkforge.contract.api.BusinessException;
@@ -7,8 +8,9 @@ import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.security.TenantGuard;
 import org.junit.jupiter.api.Test;
-import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.lang.reflect.Constructor;
+import java.util.Arrays;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -22,18 +24,27 @@ import static org.mockito.Mockito.verifyNoInteractions;
 class UserAdminServiceTest {
 
     @Test
+    void constructor_shouldDependOnApplicationPorts_insteadOfPasswordEncoder() {
+        Constructor<?> constructor = UserAdminService.class.getDeclaredConstructors()[0];
+
+        assertThat(Arrays.stream(constructor.getParameterTypes()).map(Class::getName))
+                .contains("com.linkforge.accounts.application.port.AccountsPasswordHasher")
+                .doesNotContain("org.springframework.security.crypto.password.PasswordEncoder");
+    }
+
+    @Test
     void create_shouldRejectUnknownRoleCodes() {
         SnowflakeIdGenerator idGenerator = mock(SnowflakeIdGenerator.class);
         AccountsUserStore userStore = mock(AccountsUserStore.class);
         AccountsUserRoleStore userRoleStore = mock(AccountsUserRoleStore.class);
-        PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
+        AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
         TenantGuard tenantGuard = mock(TenantGuard.class);
 
         UserAdminService service = new UserAdminService(
                 idGenerator,
                 userStore,
                 userRoleStore,
-                passwordEncoder,
+                passwordHasher,
                 tenantGuard
         );
 

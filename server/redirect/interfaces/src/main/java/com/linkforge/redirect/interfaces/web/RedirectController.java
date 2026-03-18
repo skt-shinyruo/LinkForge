@@ -22,9 +22,6 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
-import java.time.Clock;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.Map;
 
 @RestController
@@ -33,28 +30,24 @@ public class RedirectController {
 
     private static final Logger log = LoggerFactory.getLogger(RedirectController.class);
 
-    // Defensive: preview confirm href should not blow up due to param explosion.
-    private static final int MAX_CONFIRM_PARAMS = 50;
-    private static final int MAX_CONFIRM_VALUES_PER_PARAM = 5;
-    private static final int MAX_CONFIRM_PARAM_NAME_LEN = 128;
-    private static final int MAX_CONFIRM_VALUE_LEN = 256;
-    private static final int MAX_CONFIRM_HREF_LEN = 4096;
-
     private final RedirectService redirectService;
     private final RedirectProperties redirectProperties;
     private final RedirectUrlBuilder redirectUrlBuilder;
-    private final Clock clock;
+    private final RedirectAvailabilityPolicy availabilityPolicy;
+    private final RedirectHtmlPageRenderer htmlPageRenderer;
 
     public RedirectController(
             RedirectService redirectService,
             RedirectProperties redirectProperties,
             RedirectUrlBuilder redirectUrlBuilder,
-            Clock clock
+            RedirectAvailabilityPolicy availabilityPolicy,
+            RedirectHtmlPageRenderer htmlPageRenderer
     ) {
         this.redirectService = redirectService;
         this.redirectProperties = redirectProperties;
         this.redirectUrlBuilder = redirectUrlBuilder;
-        this.clock = clock;
+        this.availabilityPolicy = availabilityPolicy;
+        this.htmlPageRenderer = htmlPageRenderer;
     }
 
     @GetMapping("/{code}")
@@ -77,10 +70,10 @@ public class RedirectController {
 
             LinkMeta meta = redirectService.resolve(code);
 
-            UnavailableReason unavailable = unavailableReason(meta);
+            RedirectAvailabilityPolicy.UnavailableReason unavailable = availabilityPolicy.unavailableReason(meta);
             if (unavailable != null) {
                 if (html) {
-                    ResponseEntity<?> resp = handleUnavailableHtml(code, meta, unavailable);
+                    ResponseEntity<?> resp = htmlPageRenderer.renderUnavailable(code, meta, unavailable);
                     logUnavailable(startNs, code, unavailable, visitInfo);
                     return resp;
                 }
@@ -90,10 +83,7 @@ public class RedirectController {
 
             // 预览页：仅浏览器请求展示，且未确认时不写统计
             if (html && meta.previewEnabled() && !confirmed) {
-                ResponseEntity<String> resp = ResponseEntity.ok()
-                        .contentType(MediaType.TEXT_HTML)
-                        .header(HttpHeaders.CACHE_CONTROL, "no-store")
-                        .body(renderPreviewHtml(meta, request));
+                ResponseEntity<String> resp = htmlPageRenderer.renderPreview(meta, request);
                 logPreview(startNs, code, meta, visitInfo);
                 return resp;
             }
@@ -122,8 +112,7 @@ public class RedirectController {
         } catch (RedirectBusinessException e) {
             long latencyMs = (System.nanoTime() - startNs) / 1_000_000;
             if (isHtmlRequest(request) && e.getErrorCode() == RedirectErrorCode.LINK_NOT_FOUND) {
-                // 浏览器体验：短码不存在时返回 404 HTML 或跳转至全局落地页
-                ResponseEntity<?> resp = handleNotFoundHtml(code);
+                ResponseEntity<?> resp = htmlPageRenderer.renderNotFound(code);
                 log.info(
                         "redirect not found (html): code={}, latencyMs={}, requestId={}, ip={}",
                         code,
@@ -173,263 +162,7 @@ public class RedirectController {
         return global == 301 ? 301 : 302;
     }
 
-    private UnavailableReason unavailableReason(LinkMeta meta) {
-        if (meta == null) {
-            return UnavailableReason.NOT_FOUND;
-        }
-        if (!meta.enabled()) {
-            return UnavailableReason.DISABLED;
-        }
-        LocalDateTime nowUtc = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
-        // Keep consistent with RedirectService availability:
-        // available iff expiresAt == null OR expiresAt is strictly after nowUtc.
-        if (meta.expiresAt() != null && !meta.expiresAt().isAfter(nowUtc)) {
-            return UnavailableReason.EXPIRED;
-        }
-        return null;
-    }
-
-    private ResponseEntity<?> handleNotFoundHtml(String code) {
-        String landing = trimToNull(redirectProperties.getNotFoundLandingUrl());
-        if (isHttpUrl(landing)) {
-            return ResponseEntity.status(HttpStatus.FOUND)
-                    .location(URI.create(landing))
-                    .header(HttpHeaders.CACHE_CONTROL, "no-store")
-                    .build();
-        }
-        return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .contentType(MediaType.TEXT_HTML)
-                .header(HttpHeaders.CACHE_CONTROL, "no-store")
-                .body(renderUnavailableHtml("短链不存在", "你访问的短链不存在或已被删除。", code));
-    }
-
-    private ResponseEntity<?> handleUnavailableHtml(String code, LinkMeta meta, UnavailableReason reason) {
-        if (reason == UnavailableReason.NOT_FOUND) {
-            return handleNotFoundHtml(code);
-        }
-
-        // gone（禁用/过期）：优先按链接配置落地页，其次全局落地页，否则内置 410 HTML
-        String perLink = meta == null ? null : trimToNull(meta.unavailableLandingUrl());
-        if (isHttpUrl(perLink)) {
-            return ResponseEntity.status(HttpStatus.FOUND)
-                    .location(URI.create(perLink))
-                    .header(HttpHeaders.CACHE_CONTROL, "no-store")
-                    .build();
-        }
-        String landing = trimToNull(redirectProperties.getGoneLandingUrl());
-        if (isHttpUrl(landing)) {
-            return ResponseEntity.status(HttpStatus.FOUND)
-                    .location(URI.create(landing))
-                    .header(HttpHeaders.CACHE_CONTROL, "no-store")
-                    .build();
-        }
-
-        String title = reason == UnavailableReason.DISABLED ? "短链已禁用" : "短链已过期";
-        String msg = reason == UnavailableReason.DISABLED
-                ? "该短链已被禁用，请联系链接发布方获取最新链接。"
-                : "该短链已过期，请联系链接发布方获取最新链接。";
-        return ResponseEntity.status(HttpStatus.GONE)
-                .contentType(MediaType.TEXT_HTML)
-                .header(HttpHeaders.CACHE_CONTROL, "no-store")
-                .body(renderUnavailableHtml(title, msg, code));
-    }
-
-    private String renderPreviewHtml(LinkMeta meta, HttpServletRequest request) {
-        String host = null;
-        try {
-            host = URI.create(meta.originalUrl()).getHost();
-        } catch (Exception ignored) {
-        }
-
-        String confirmHref = buildConfirmHref(request);
-        String title = "即将跳转";
-        String msg = host == null ? "即将跳转到目标站点，是否继续？" : ("即将跳转到站点：" + host);
-
-        return """
-                <!doctype html>
-                <html lang="zh-CN">
-                <head>
-                  <meta charset="utf-8" />
-                  <meta name="viewport" content="width=device-width, initial-scale=1" />
-                  <meta name="robots" content="noindex,nofollow" />
-                  <title>%s</title>
-                  <style>
-                    body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,"Noto Sans",sans-serif; margin:0; background:#fafafa; color:#111; }
-                    .wrap { max-width: 720px; margin: 48px auto; padding: 0 16px; }
-                    .card { background:#fff; border:1px solid #eee; border-radius: 12px; padding: 20px; }
-                    .sub { color:#666; margin-top: 8px; }
-                    a.btn { display:inline-block; background:#111; color:#fff; padding: 10px 14px; border-radius: 10px; text-decoration:none; }
-                    a.btn.secondary { background:#444; }
-                    .row { display:flex; gap: 10px; align-items:center; margin-top: 16px; flex-wrap: wrap; }
-                    .mono { font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace; font-size: 12px; }
-                  </style>
-                </head>
-                <body>
-                  <div class="wrap">
-                    <div class="card">
-                      <h1>%s</h1>
-                      <div class="sub">%s</div>
-                      <div class="row">
-                        <a class="btn" href="%s" rel="noreferrer">继续访问</a>
-                        <a class="btn secondary" href="javascript:history.back()">返回</a>
-                      </div>
-                      <div class="sub mono" style="margin-top:14px;">requestId: %s</div>
-                    </div>
-                  </div>
-                </body>
-                </html>
-                """.formatted(
-                escapeHtml(title),
-                escapeHtml(title),
-                escapeHtml(msg),
-                escapeHtml(confirmHref),
-                escapeHtml(RequestId.get())
-        );
-    }
-
-    private static String buildConfirmHref(HttpServletRequest request) {
-        String path = request == null ? null : request.getRequestURI();
-        if (path == null || path.isBlank()) {
-            path = "/";
-        }
-
-        UriComponentsBuilder b = UriComponentsBuilder.fromPath(path);
-        int added = 0;
-        if (request != null) {
-            Map<String, String[]> params = request.getParameterMap();
-            if (params != null) {
-                outer:
-                for (Map.Entry<String, String[]> entry : params.entrySet()) {
-                    if (added >= MAX_CONFIRM_PARAMS) {
-                        break;
-                    }
-                    String name = entry.getKey();
-                    if (name == null || name.isBlank()) {
-                        continue;
-                    }
-                    if ("__lf_confirm".equals(name) || "__lf_preview".equals(name)) {
-                        continue;
-                    }
-                    if (name.length() > MAX_CONFIRM_PARAM_NAME_LEN) {
-                        continue;
-                    }
-                    String[] values = entry.getValue();
-                    if (values == null || values.length == 0) {
-                        b.queryParam(name);
-                        added++;
-                        continue;
-                    }
-                    int valuesAdded = 0;
-                    for (String v : values) {
-                        if (added >= MAX_CONFIRM_PARAMS) {
-                            break outer;
-                        }
-                        if (valuesAdded >= MAX_CONFIRM_VALUES_PER_PARAM) {
-                            break;
-                        }
-                        if (v == null) {
-                            b.queryParam(name);
-                        } else {
-                            String value = v;
-                            if (value.length() > MAX_CONFIRM_VALUE_LEN) {
-                                value = value.substring(0, MAX_CONFIRM_VALUE_LEN);
-                            }
-                            b.queryParam(name, value);
-                        }
-                        added++;
-                        valuesAdded++;
-                    }
-                }
-            }
-        }
-        b.queryParam("__lf_confirm", "1");
-        String href = b.build().toUriString();
-        if (href.length() > MAX_CONFIRM_HREF_LEN) {
-            return UriComponentsBuilder.fromPath(path).queryParam("__lf_confirm", "1").build().toUriString();
-        }
-        return href;
-    }
-
-    private String renderUnavailableHtml(String title, String message, String code) {
-        String t = escapeHtml(title);
-        String msg = escapeHtml(message);
-        String c = escapeHtml(code == null ? "" : code);
-        String rid = escapeHtml(RequestId.get());
-        return """
-                <!doctype html>
-                <html lang="zh-CN">
-                <head>
-                  <meta charset="utf-8" />
-                  <meta name="viewport" content="width=device-width, initial-scale=1" />
-                  <meta name="robots" content="noindex,nofollow" />
-                  <title>%s</title>
-                  <style>
-                    body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,"Noto Sans",sans-serif; margin:0; background:#fafafa; color:#111; }
-                    .wrap { max-width: 720px; margin: 48px auto; padding: 0 16px; }
-                    .card { background:#fff; border:1px solid #eee; border-radius: 12px; padding: 20px; }
-                    .sub { color:#666; margin-top: 8px; }
-                    a.btn { display:inline-block; background:#111; color:#fff; padding: 10px 14px; border-radius: 10px; text-decoration:none; }
-                    .mono { font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace; font-size: 12px; }
-                  </style>
-                </head>
-                <body>
-                  <div class="wrap">
-                    <div class="card">
-                      <h1>%s</h1>
-                      <div class="sub">%s</div>
-                      <div class="sub mono" style="margin-top:14px;">code: %s</div>
-                      <div class="sub mono">requestId: %s</div>
-                      <div style="margin-top:16px;">
-                        <a class="btn" href="javascript:history.back()">返回</a>
-                      </div>
-                    </div>
-                  </div>
-                </body>
-                </html>
-                """.formatted(t, t, msg, c, rid);
-    }
-
-    private static String escapeHtml(String s) {
-        if (s == null) {
-            return "";
-        }
-        StringBuilder out = new StringBuilder(s.length() + 16);
-        for (int i = 0; i < s.length(); i++) {
-            char ch = s.charAt(i);
-            switch (ch) {
-                case '<' -> out.append("&lt;");
-                case '>' -> out.append("&gt;");
-                case '&' -> out.append("&amp;");
-                case '"' -> out.append("&quot;");
-                case '\'' -> out.append("&#39;");
-                default -> out.append(ch);
-            }
-        }
-        return out.toString();
-    }
-
-    private static boolean isHttpUrl(String url) {
-        if (url == null || url.isBlank()) {
-            return false;
-        }
-        try {
-            URI u = URI.create(url.trim());
-            String scheme = u.getScheme();
-            return scheme != null && ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme));
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private static String trimToNull(String v) {
-        if (v == null) {
-            return null;
-        }
-        String t = v.trim();
-        return t.isBlank() ? null : t;
-    }
-
-    private void logUnavailable(long startNs, String code, UnavailableReason reason, VisitInfo visitInfo) {
+    private void logUnavailable(long startNs, String code, RedirectAvailabilityPolicy.UnavailableReason reason, VisitInfo visitInfo) {
         long latencyMs = (System.nanoTime() - startNs) / 1_000_000;
         log.info(
                 "redirect unavailable (html): code={}, reason={}, latencyMs={}, requestId={}, ip={}",
@@ -452,19 +185,5 @@ public class RedirectController {
                 RequestId.get(),
                 visitInfo == null ? null : visitInfo.ip()
         );
-    }
-
-    private enum UnavailableReason {
-        NOT_FOUND,
-        DISABLED,
-        EXPIRED;
-
-        RedirectErrorCode toErrorCode() {
-            return switch (this) {
-                case NOT_FOUND -> RedirectErrorCode.LINK_NOT_FOUND;
-                case DISABLED -> RedirectErrorCode.LINK_DISABLED;
-                case EXPIRED -> RedirectErrorCode.LINK_EXPIRED;
-            };
-        }
     }
 }

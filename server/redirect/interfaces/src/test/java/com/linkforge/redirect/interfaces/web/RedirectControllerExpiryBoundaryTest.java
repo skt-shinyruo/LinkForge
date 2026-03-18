@@ -75,7 +75,13 @@ class RedirectControllerExpiryBoundaryTest {
         RedirectProperties props = new RedirectProperties();
         props.setDefaultStatusCode(302);
         RedirectUrlBuilder urlBuilder = new RedirectUrlBuilder(props);
-        RedirectController controller = new RedirectController(redirectService, props, urlBuilder, clock);
+        RedirectController controller = new RedirectController(
+                redirectService,
+                props,
+                urlBuilder,
+                new RedirectAvailabilityPolicy(clock),
+                new RedirectHtmlPageRenderer(props, new RedirectConfirmHrefBuilder())
+        );
 
         assertThatThrownBy(() -> controller.redirect("abc123", null))
                 .isInstanceOf(RedirectBusinessException.class)

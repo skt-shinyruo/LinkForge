@@ -88,7 +88,13 @@ class RedirectControllerTimezoneTest {
         RedirectProperties props = new RedirectProperties();
         props.setDefaultStatusCode(302);
         RedirectUrlBuilder urlBuilder = new RedirectUrlBuilder(props);
-        RedirectController controller = new RedirectController(redirectService, props, urlBuilder, Clock.systemUTC());
+        RedirectController controller = new RedirectController(
+                redirectService,
+                props,
+                urlBuilder,
+                new RedirectAvailabilityPolicy(Clock.systemUTC()),
+                new RedirectHtmlPageRenderer(props, new RedirectConfirmHrefBuilder())
+        );
 
         ResponseEntity<?> resp = controller.redirect("abc123", null);
 

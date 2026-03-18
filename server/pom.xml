@@ -19,7 +19,6 @@
     <description>LinkForge backend modular monolith (Maven reactor)</description>
 
     <modules>
-        <module>shared-kernel</module>
         <module>foundation</module>
         <module>contracts/api</module>
         <module>contracts/redirect</module>
@@ -47,11 +46,6 @@
     <dependencyManagement>
         <dependencies>
             <!-- internal modules -->
-            <dependency>
-                <groupId>com.linkforge</groupId>
-                <artifactId>linkforge-shared-kernel</artifactId>
-                <version>${project.version}</version>
-            </dependency>
             <dependency>
                 <groupId>com.linkforge</groupId>
                 <artifactId>linkforge-foundation</artifactId>

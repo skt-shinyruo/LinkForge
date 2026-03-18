@@ -1,8 +1,7 @@
 package com.linkforge.accounts.application;
 
+import com.linkforge.accounts.application.port.AccountsApiKeyStore;
 import com.linkforge.accounts.domain.AccountsConstants;
-import com.linkforge.accounts.infrastructure.persistence.entity.ApiKeyEntity;
-import com.linkforge.accounts.infrastructure.persistence.mapper.ApiKeyMapper;
 import com.linkforge.contract.openapi.OpenApiErrorCode;
 import com.linkforge.foundation.config.SecurityProperties;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
@@ -23,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -32,17 +32,18 @@ import static org.mockito.Mockito.when;
 class ApiKeyServiceTest {
 
     @Test
-    void constructor_shouldDependOnApiKeyMapperInsteadOfSpringDataRepository() {
+    void constructor_shouldDependOnApiKeyPortInsteadOfInfrastructureMapper() {
         Constructor<?> constructor = ApiKeyService.class.getDeclaredConstructors()[0];
 
         assertThat(Arrays.stream(constructor.getParameterTypes()).map(Class::getName))
-                .contains("com.linkforge.accounts.infrastructure.persistence.mapper.ApiKeyMapper")
+                .contains("com.linkforge.accounts.application.port.AccountsApiKeyStore")
+                .doesNotContain("com.linkforge.accounts.infrastructure.persistence.mapper.ApiKeyMapper")
                 .doesNotContain("com.linkforge.accounts.infrastructure.persistence.repo.ApiKeyRepository");
     }
 
     @Test
     void authenticate_shouldUseRedisAuthCache_andSkipDbAndBcrypt_onCacheHit() {
-        ApiKeyMapper mapper = mock(ApiKeyMapper.class);
+        AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
         PasswordEncoder encoder = mock(PasswordEncoder.class);
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         @SuppressWarnings("unchecked")
@@ -55,7 +56,7 @@ class ApiKeyServiceTest {
 
         ApiKeyService service = new ApiKeyService(
                 mock(SnowflakeIdGenerator.class),
-                mapper,
+                store,
                 encoder,
                 mock(TenantGuard.class),
                 props,
@@ -69,13 +70,13 @@ class ApiKeyServiceTest {
         assertThat(r.tenantId()).isEqualTo(1L);
         assertThat(r.apiKeyId()).isEqualTo(123L);
 
-        verifyNoInteractions(mapper);
+        verifyNoInteractions(store);
         verifyNoInteractions(encoder);
     }
 
     @Test
     void authenticate_shouldReject_whenCacheHitButDigestMismatch() {
-        ApiKeyMapper mapper = mock(ApiKeyMapper.class);
+        AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
         PasswordEncoder encoder = mock(PasswordEncoder.class);
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         @SuppressWarnings("unchecked")
@@ -88,7 +89,7 @@ class ApiKeyServiceTest {
 
         ApiKeyService service = new ApiKeyService(
                 mock(SnowflakeIdGenerator.class),
-                mapper,
+                store,
                 encoder,
                 mock(TenantGuard.class),
                 props,
@@ -103,13 +104,13 @@ class ApiKeyServiceTest {
                 .extracting(ex -> ((ApiKeyService.ApiKeyAuthException) ex).errorCode())
                 .isEqualTo(OpenApiErrorCode.API_KEY_INVALID);
 
-        verifyNoInteractions(mapper);
+        verifyNoInteractions(store);
         verifyNoInteractions(encoder);
     }
 
     @Test
     void authenticate_shouldRejectDisabled_whenCacheHitAndStatusDisabled() {
-        ApiKeyMapper mapper = mock(ApiKeyMapper.class);
+        AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
         PasswordEncoder encoder = mock(PasswordEncoder.class);
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         @SuppressWarnings("unchecked")
@@ -122,7 +123,7 @@ class ApiKeyServiceTest {
 
         ApiKeyService service = new ApiKeyService(
                 mock(SnowflakeIdGenerator.class),
-                mapper,
+                store,
                 encoder,
                 mock(TenantGuard.class),
                 props,
@@ -136,13 +137,13 @@ class ApiKeyServiceTest {
                 .extracting(ex -> ((ApiKeyService.ApiKeyAuthException) ex).errorCode())
                 .isEqualTo(OpenApiErrorCode.API_KEY_DISABLED);
 
-        verifyNoInteractions(mapper);
+        verifyNoInteractions(store);
         verifyNoInteractions(encoder);
     }
 
     @Test
     void authenticate_shouldFallbackToDb_andBackfillCache_onCacheMiss() {
-        ApiKeyMapper mapper = mock(ApiKeyMapper.class);
+        AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
         PasswordEncoder encoder = mock(PasswordEncoder.class);
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         @SuppressWarnings("unchecked")
@@ -155,22 +156,25 @@ class ApiKeyServiceTest {
 
         ApiKeyService service = new ApiKeyService(
                 mock(SnowflakeIdGenerator.class),
-                mapper,
+                store,
                 encoder,
                 mock(TenantGuard.class),
                 props,
                 redis
         );
 
-        ApiKeyEntity e = new ApiKeyEntity();
-        e.setId(123L);
-        e.setTenantId(1L);
-        e.setStatus(AccountsConstants.STATUS_ACTIVE);
-        e.setKeyHash("hash");
-        e.setLastUsedAt(null);
+        AccountsApiKeyStore.ApiKey apiKey = new AccountsApiKeyStore.ApiKey(
+                123L,
+                1L,
+                "test-key",
+                "hash",
+                AccountsConstants.STATUS_ACTIVE,
+                null,
+                null
+        );
 
         when(valueOps.get("auth:api_key:123")).thenReturn(null);
-        when(mapper.findById(123L)).thenReturn(e);
+        when(store.findById(123L)).thenReturn(apiKey);
         when(encoder.matches("secret", "hash")).thenReturn(true);
 
         ApiKeyService.ApiKeyAuthResult r = service.authenticate("lfk_123_secret");
@@ -182,7 +186,7 @@ class ApiKeyServiceTest {
 
     @Test
     void authenticate_shouldUpdateLastUsedAtOncePerWindow_usingRedisToken() {
-        ApiKeyMapper mapper = mock(ApiKeyMapper.class);
+        AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
         PasswordEncoder encoder = mock(PasswordEncoder.class);
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         @SuppressWarnings("unchecked")
@@ -195,7 +199,7 @@ class ApiKeyServiceTest {
 
         ApiKeyService service = new ApiKeyService(
                 mock(SnowflakeIdGenerator.class),
-                mapper,
+                store,
                 encoder,
                 mock(TenantGuard.class),
                 props,
@@ -209,14 +213,14 @@ class ApiKeyServiceTest {
 
         service.authenticate("lfk_123_secret");
 
-        verify(mapper).updateLastUsedAt(eq(123L), any());
+        verify(store).updateLastUsedAt(eq(123L), any());
     }
 
     @Test
     void authenticate_shouldReject_whenApiKeyHeaderIsTooLong() {
         ApiKeyService service = new ApiKeyService(
                 mock(SnowflakeIdGenerator.class),
-                mock(ApiKeyMapper.class),
+                mock(AccountsApiKeyStore.class),
                 mock(PasswordEncoder.class),
                 mock(TenantGuard.class),
                 new SecurityProperties(),
@@ -234,7 +238,7 @@ class ApiKeyServiceTest {
     void authenticate_shouldReject_whenApiKeySecretIsTooLong() {
         ApiKeyService service = new ApiKeyService(
                 mock(SnowflakeIdGenerator.class),
-                mock(ApiKeyMapper.class),
+                mock(AccountsApiKeyStore.class),
                 mock(PasswordEncoder.class),
                 mock(TenantGuard.class),
                 new SecurityProperties(),
@@ -246,6 +250,64 @@ class ApiKeyServiceTest {
                 .isInstanceOf(ApiKeyService.ApiKeyAuthException.class)
                 .extracting(ex -> ((ApiKeyService.ApiKeyAuthException) ex).errorCode())
                 .isEqualTo(OpenApiErrorCode.API_KEY_INVALID);
+    }
+
+    @Test
+    void disable_shouldReturnDisabledStatusInApiKeyInfo() {
+        AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
+        ApiKeyService service = new ApiKeyService(
+                mock(SnowflakeIdGenerator.class),
+                store,
+                mock(PasswordEncoder.class),
+                mock(TenantGuard.class),
+                new SecurityProperties(),
+                null
+        );
+
+        AccountsApiKeyStore.ApiKey existing = new AccountsApiKeyStore.ApiKey(
+                123L,
+                1L,
+                "test-key",
+                "hash",
+                AccountsConstants.STATUS_ACTIVE,
+                null,
+                null
+        );
+        when(store.findById(123L)).thenReturn(existing);
+
+        ApiKeyService.ApiKeyInfo info = service.disable(1L, 123L);
+
+        assertThat(info.status()).isEqualTo(AccountsConstants.STATUS_DISABLED);
+        verify(store).update(argThat(apiKey -> AccountsConstants.STATUS_DISABLED.equals(apiKey.status())));
+    }
+
+    @Test
+    void enable_shouldReturnActiveStatusInApiKeyInfo() {
+        AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
+        ApiKeyService service = new ApiKeyService(
+                mock(SnowflakeIdGenerator.class),
+                store,
+                mock(PasswordEncoder.class),
+                mock(TenantGuard.class),
+                new SecurityProperties(),
+                null
+        );
+
+        AccountsApiKeyStore.ApiKey existing = new AccountsApiKeyStore.ApiKey(
+                123L,
+                1L,
+                "test-key",
+                "hash",
+                AccountsConstants.STATUS_DISABLED,
+                null,
+                null
+        );
+        when(store.findById(123L)).thenReturn(existing);
+
+        ApiKeyService.ApiKeyInfo info = service.enable(1L, 123L);
+
+        assertThat(info.status()).isEqualTo(AccountsConstants.STATUS_ACTIVE);
+        verify(store).update(argThat(apiKey -> AccountsConstants.STATUS_ACTIVE.equals(apiKey.status())));
     }
 
     private static String sha256Base64Url(String input) {

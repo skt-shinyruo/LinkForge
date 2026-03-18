@@ -3,9 +3,11 @@ package com.linkforge.shortlink.application.command;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.shortlink.ShortLinkErrorCode;
 import com.linkforge.foundation.security.TenantGuard;
+import com.linkforge.foundation.tx.AfterCommit;
 import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
+import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
 import com.linkforge.shortlink.application.port.ShortLinkEventPublisher;
 import com.linkforge.shortlink.application.port.ShortLinkRepository;
 import com.linkforge.shortlink.domain.ShortLink;
@@ -21,6 +23,7 @@ public class RestoreShortLinkCommandHandler {
     private final ShortLinkRepository shortLinkRepository;
     private final ShortLinkEventPublisher eventPublisher;
     private final LinkTagRepository linkTagRepository;
+    private final RedirectCacheSyncPort redirectCacheSync;
     private final ShortLinkDtoMapper dtoMapper;
     private final TenantGuard tenantGuard;
     private final Clock clock;
@@ -29,6 +32,7 @@ public class RestoreShortLinkCommandHandler {
             ShortLinkRepository shortLinkRepository,
             ShortLinkEventPublisher eventPublisher,
             LinkTagRepository linkTagRepository,
+            RedirectCacheSyncPort redirectCacheSync,
             ShortLinkDtoMapper dtoMapper,
             TenantGuard tenantGuard,
             Clock clock
@@ -36,6 +40,7 @@ public class RestoreShortLinkCommandHandler {
         this.shortLinkRepository = shortLinkRepository;
         this.eventPublisher = eventPublisher;
         this.linkTagRepository = linkTagRepository;
+        this.redirectCacheSync = redirectCacheSync;
         this.dtoMapper = dtoMapper;
         this.tenantGuard = tenantGuard;
         this.clock = clock;
@@ -56,10 +61,10 @@ public class RestoreShortLinkCommandHandler {
 
         if (restored) {
             eventPublisher.restored(link, clock.instant());
+            AfterCommit.run(() -> redirectCacheSync.evict(link.code().value()));
         }
 
         List<String> tags = linkTagRepository.findTagNamesByLinkId(linkId);
         return dtoMapper.toDto(link, tags);
     }
 }
-

@@ -1,15 +1,14 @@
 package com.linkforge.accounts.application;
 
+import com.linkforge.accounts.application.port.AccountsApiKeyStore;
 import com.linkforge.accounts.domain.AccountsConstants;
-import com.linkforge.accounts.infrastructure.persistence.entity.ApiKeyEntity;
-import com.linkforge.accounts.infrastructure.persistence.mapper.ApiKeyMapper;
 import com.linkforge.contract.api.AppErrorCode;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.contract.openapi.OpenApiErrorCode;
-import com.linkforge.foundation.security.TenantGuard;
 import com.linkforge.foundation.config.SecurityProperties;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
+import com.linkforge.foundation.security.TenantGuard;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -18,9 +17,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
-import java.security.SecureRandom;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Base64;
@@ -48,7 +47,7 @@ public class ApiKeyService {
     private static final int MAX_API_KEY_SECRET_LEN = 128;
 
     private final SnowflakeIdGenerator idGenerator;
-    private final ApiKeyMapper apiKeyMapper;
+    private final AccountsApiKeyStore apiKeyStore;
     private final PasswordEncoder passwordEncoder;
     private final TenantGuard tenantGuard;
     private final SecurityProperties securityProperties;
@@ -56,14 +55,14 @@ public class ApiKeyService {
 
     public ApiKeyService(
             SnowflakeIdGenerator idGenerator,
-            ApiKeyMapper apiKeyMapper,
+            AccountsApiKeyStore apiKeyStore,
             PasswordEncoder passwordEncoder,
             TenantGuard tenantGuard,
             SecurityProperties securityProperties,
             StringRedisTemplate redis
     ) {
         this.idGenerator = idGenerator;
-        this.apiKeyMapper = apiKeyMapper;
+        this.apiKeyStore = apiKeyStore;
         this.passwordEncoder = passwordEncoder;
         this.tenantGuard = tenantGuard;
         this.securityProperties = securityProperties;
@@ -77,15 +76,17 @@ public class ApiKeyService {
         String secret = randomSecret();
         String key = API_KEY_PREFIX + "_" + id + "_" + secret;
 
-        ApiKeyEntity e = new ApiKeyEntity();
-        e.setId(id);
-        e.setTenantId(tenantId);
-        e.setName(name);
-        e.setKeyHash(passwordEncoder.encode(secret));
-        e.setStatus(AccountsConstants.STATUS_ACTIVE);
-        apiKeyMapper.insert(e);
+        AccountsApiKeyStore.ApiKey apiKey = new AccountsApiKeyStore.ApiKey(
+                id,
+                tenantId,
+                name,
+                passwordEncoder.encode(secret),
+                AccountsConstants.STATUS_ACTIVE,
+                null,
+                null
+        );
+        apiKeyStore.insert(apiKey);
 
-        // Pre-warm Redis auth cache to avoid first-call DB read + BCrypt in OpenAPI hot path.
         String digest = sha256Base64Url(secret);
         tryPutAuthCacheActive(id, tenantId, digest);
 
@@ -96,7 +97,6 @@ public class ApiKeyService {
         Parsed parsed = parse(apiKey);
         String secretDigest = sha256Base64Url(parsed.secret);
 
-        // 1) Redis auth cache: avoid per-request DB read + BCrypt in OpenAPI hot path
         AuthCacheEntry cached = readAuthCache(parsed.id);
         if (cached != null) {
             if (!AccountsConstants.STATUS_ACTIVE.equals(cached.status)) {
@@ -105,100 +105,91 @@ public class ApiKeyService {
             if (!constantTimeEquals(secretDigest, cached.secretDigest)) {
                 throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_INVALID);
             }
-
-            // OpenAPI 高调用路径：last_used_at 采用节流写回，避免 DB 写热点
             tryUpdateLastUsedAtThrottled(parsed.id, null, false);
-
             return new ApiKeyAuthResult(cached.tenantId, parsed.id);
         }
 
-        // 2) DB fallback: validate and backfill cache
-        ApiKeyEntity e = apiKeyMapper.findById(parsed.id);
-        if (e == null) {
+        AccountsApiKeyStore.ApiKey apiKeyRecord = apiKeyStore.findById(parsed.id);
+        if (apiKeyRecord == null) {
             throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_INVALID);
         }
 
-        if (!AccountsConstants.STATUS_ACTIVE.equals(e.getStatus())) {
-            tryPutAuthCacheDisabled(parsed.id, e.getTenantId());
+        if (!AccountsConstants.STATUS_ACTIVE.equals(apiKeyRecord.status())) {
+            tryPutAuthCacheDisabled(parsed.id, apiKeyRecord.tenantId());
             throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_DISABLED);
         }
-        if (!passwordEncoder.matches(parsed.secret, e.getKeyHash())) {
+        if (!passwordEncoder.matches(parsed.secret, apiKeyRecord.keyHash())) {
             throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_INVALID);
         }
 
-        tryPutAuthCacheActive(parsed.id, e.getTenantId(), secretDigest);
+        tryPutAuthCacheActive(parsed.id, apiKeyRecord.tenantId(), secretDigest);
+        tryUpdateLastUsedAtThrottled(parsed.id, apiKeyRecord.lastUsedAt(), true);
 
-        // OpenAPI 高调用路径：last_used_at 采用节流写回，避免 DB 写热点
-        tryUpdateLastUsedAtThrottled(parsed.id, e.getLastUsedAt(), true);
-
-        return new ApiKeyAuthResult(e.getTenantId(), e.getId());
+        return new ApiKeyAuthResult(apiKeyRecord.tenantId(), apiKeyRecord.id());
     }
 
     public List<ApiKeyInfo> list(long tenantId) {
         tenantGuard.requireCurrentTenant(tenantId);
-        return apiKeyMapper.findAllByTenantIdOrderByCreatedAtDesc(tenantId).stream()
-                .map(e -> new ApiKeyInfo(e.getId(), e.getName(), e.getStatus(), e.getLastUsedAt(), e.getCreatedAt()))
+        return apiKeyStore.findAllByTenantIdOrderByCreatedAtDesc(tenantId).stream()
+                .map(e -> new ApiKeyInfo(e.id(), e.name(), e.status(), e.lastUsedAt(), e.createdAt()))
                 .toList();
     }
 
     @Transactional
     public ApiKeyInfo disable(long tenantId, long apiKeyId) {
         tenantGuard.requireCurrentTenant(tenantId);
-        ApiKeyEntity e = apiKeyMapper.findById(apiKeyId);
-        if (e == null) {
+        AccountsApiKeyStore.ApiKey apiKey = apiKeyStore.findById(apiKeyId);
+        if (apiKey == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "API Key 不存在");
         }
-        if (!tenantIdEquals(e.getTenantId(), tenantId)) {
+        if (!tenantIdEquals(apiKey.tenantId(), tenantId)) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "API Key 不存在");
         }
-        if (!AccountsConstants.STATUS_DISABLED.equals(e.getStatus())) {
-            e.setStatus(AccountsConstants.STATUS_DISABLED);
-            apiKeyMapper.update(e);
+        if (!AccountsConstants.STATUS_DISABLED.equals(apiKey.status())) {
+            apiKey = withStatus(apiKey, AccountsConstants.STATUS_DISABLED);
+            apiKeyStore.update(apiKey);
         }
-        tryPutAuthCacheDisabled(apiKeyId, e.getTenantId());
-        return new ApiKeyInfo(e.getId(), e.getName(), e.getStatus(), e.getLastUsedAt(), e.getCreatedAt());
+        tryPutAuthCacheDisabled(apiKeyId, apiKey.tenantId());
+        return new ApiKeyInfo(apiKey.id(), apiKey.name(), apiKey.status(), apiKey.lastUsedAt(), apiKey.createdAt());
     }
 
     @Transactional
     public ApiKeyInfo enable(long tenantId, long apiKeyId) {
         tenantGuard.requireCurrentTenant(tenantId);
-        ApiKeyEntity e = apiKeyMapper.findById(apiKeyId);
-        if (e == null) {
+        AccountsApiKeyStore.ApiKey apiKey = apiKeyStore.findById(apiKeyId);
+        if (apiKey == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "API Key 不存在");
         }
-        if (!tenantIdEquals(e.getTenantId(), tenantId)) {
+        if (!tenantIdEquals(apiKey.tenantId(), tenantId)) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "API Key 不存在");
         }
-        if (!AccountsConstants.STATUS_ACTIVE.equals(e.getStatus())) {
-            e.setStatus(AccountsConstants.STATUS_ACTIVE);
-            apiKeyMapper.update(e);
+        if (!AccountsConstants.STATUS_ACTIVE.equals(apiKey.status())) {
+            apiKey = withStatus(apiKey, AccountsConstants.STATUS_ACTIVE);
+            apiKeyStore.update(apiKey);
         }
         evictAuthCache(apiKeyId);
-        return new ApiKeyInfo(e.getId(), e.getName(), e.getStatus(), e.getLastUsedAt(), e.getCreatedAt());
+        return new ApiKeyInfo(apiKey.id(), apiKey.name(), apiKey.status(), apiKey.lastUsedAt(), apiKey.createdAt());
     }
 
     @Transactional
     public CreatedApiKey rotate(long tenantId, long apiKeyId) {
         tenantGuard.requireCurrentTenant(tenantId);
-        ApiKeyEntity e = apiKeyMapper.findById(apiKeyId);
-        if (e == null) {
+        AccountsApiKeyStore.ApiKey apiKey = apiKeyStore.findById(apiKeyId);
+        if (apiKey == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "API Key 不存在");
         }
-        if (!tenantIdEquals(e.getTenantId(), tenantId)) {
+        if (!tenantIdEquals(apiKey.tenantId(), tenantId)) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "API Key 不存在");
         }
 
         String secret = randomSecret();
-        String key = API_KEY_PREFIX + "_" + e.getId() + "_" + secret;
-        e.setKeyHash(passwordEncoder.encode(secret));
-        e.setStatus(AccountsConstants.STATUS_ACTIVE);
-        apiKeyMapper.update(e);
+        String key = API_KEY_PREFIX + "_" + apiKey.id() + "_" + secret;
+        apiKeyStore.update(withKeyHashAndStatus(apiKey, passwordEncoder.encode(secret), AccountsConstants.STATUS_ACTIVE));
 
-        // Rotate should take effect across instances immediately: overwrite Redis cache with new digest.
         String digest = sha256Base64Url(secret);
-        tryPutAuthCacheActive(apiKeyId, e.getTenantId(), digest);
+        tryPutAuthCacheActive(apiKeyId, apiKey.tenantId(), digest);
 
-        return new CreatedApiKey(e.getId(), e.getName(), key);
+        return new CreatedApiKey(apiKey.id(), apiKey.name(), key);
     }
 
     public record CreatedApiKey(long id, String name, String apiKey) {
@@ -269,13 +260,6 @@ public class ApiKeyService {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(buf);
     }
 
-    private void tryUpdateLastUsedAtThrottled(ApiKeyEntity e) {
-        if (e == null || e.getId() == null) {
-            return;
-        }
-        tryUpdateLastUsedAtThrottled(e.getId(), e.getLastUsedAt(), true);
-    }
-
     private void tryUpdateLastUsedAtThrottled(long apiKeyId, LocalDateTime lastUsedAtHint, boolean allowWriteWhenHintMissing) {
         long intervalSeconds = 300;
         try {
@@ -283,7 +267,6 @@ public class ApiKeyService {
                 intervalSeconds = securityProperties.getApiKey().getLastUsedUpdateIntervalSeconds();
             }
         } catch (Exception ignore) {
-            // ignore
         }
         if (intervalSeconds < 0) {
             intervalSeconds = 0;
@@ -294,7 +277,6 @@ public class ApiKeyService {
 
         LocalDateTime now = LocalDateTime.now();
 
-        // Prefer Redis distributed throttle: cross-instance write reduction without DB read.
         if (redis != null) {
             String tokenKey = lastUsedTokenKey(apiKeyId);
             try {
@@ -302,43 +284,65 @@ public class ApiKeyService {
                         .setIfAbsent(tokenKey, "1", Duration.ofSeconds(intervalSeconds));
                 if (Boolean.TRUE.equals(acquired)) {
                     try {
-                        apiKeyMapper.updateLastUsedAt(apiKeyId, now);
+                        apiKeyStore.updateLastUsedAt(apiKeyId, now);
                     } catch (Exception ex) {
-                        // best-effort：避免影响主链路鉴权；失败时尝试释放 token 以便更快重试
                         try {
                             redis.delete(tokenKey);
                         } catch (Exception ignore) {
-                            // ignore
                         }
                         log.debug("update api_key last_used_at failed: id={}, err={}", apiKeyId, ex.getMessage());
                     }
                 }
                 return;
             } catch (Exception ex) {
-                // Redis 异常：降级到 DB-hint 节流（若可用）
                 log.debug("last_used_at throttle token read/write failed: id={}, err={}", apiKeyId, ex.getMessage());
             }
         }
 
         if (lastUsedAtHint == null && !allowWriteWhenHintMissing) {
-            // Cache-hit + Redis unavailable: avoid write amplification / DB hot spot.
             return;
         }
 
-        // Fallback: use DB last_used_at hint (only available when we already read the entity)
         if (lastUsedAtHint != null && !lastUsedAtHint.plusSeconds(intervalSeconds).isBefore(now)) {
             return;
         }
         try {
-            apiKeyMapper.updateLastUsedAt(apiKeyId, now);
+            apiKeyStore.updateLastUsedAt(apiKeyId, now);
         } catch (Exception ex) {
-            // best-effort：避免影响主链路鉴权
             log.debug("update api_key last_used_at failed: id={}, err={}", apiKeyId, ex.getMessage());
         }
     }
 
     private static boolean tenantIdEquals(Long actual, long expected) {
         return actual != null && actual == expected;
+    }
+
+    private static AccountsApiKeyStore.ApiKey withStatus(AccountsApiKeyStore.ApiKey apiKey, String status) {
+        return new AccountsApiKeyStore.ApiKey(
+                apiKey.id(),
+                apiKey.tenantId(),
+                apiKey.name(),
+                apiKey.keyHash(),
+                status,
+                apiKey.lastUsedAt(),
+                apiKey.createdAt()
+        );
+    }
+
+    private static AccountsApiKeyStore.ApiKey withKeyHashAndStatus(
+            AccountsApiKeyStore.ApiKey apiKey,
+            String keyHash,
+            String status
+    ) {
+        return new AccountsApiKeyStore.ApiKey(
+                apiKey.id(),
+                apiKey.tenantId(),
+                apiKey.name(),
+                keyHash,
+                status,
+                apiKey.lastUsedAt(),
+                apiKey.createdAt()
+        );
     }
 
     private record AuthCacheEntry(long tenantId, String status, String secretDigest) {
@@ -382,7 +386,6 @@ public class ApiKeyService {
         try {
             raw = redis.opsForValue().get(key);
         } catch (Exception e) {
-            // 缓存异常：降级为未命中，让主链路回源
             log.debug("api key auth cache read failed: id={}, err={}", apiKeyId, e.getMessage());
             return null;
         }
@@ -393,11 +396,9 @@ public class ApiKeyService {
         if (parsed != null) {
             return parsed;
         }
-        // Cache corruption: best-effort clean up.
         try {
             redis.delete(key);
         } catch (Exception ignore) {
-            // ignore
         }
         return null;
     }
@@ -485,7 +486,6 @@ public class ApiKeyService {
                 ttlSeconds = securityProperties.getApiKey().getAuthCacheTtlSeconds();
             }
         } catch (Exception ignore) {
-            // ignore
         }
         if (ttlSeconds < 0) {
             ttlSeconds = 0;

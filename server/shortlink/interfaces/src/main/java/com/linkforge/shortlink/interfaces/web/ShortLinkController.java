@@ -13,9 +13,10 @@ import com.linkforge.shortlink.application.ShortLinkService.CreatedBy;
 import com.linkforge.shortlink.application.ShortLinkService.ImportResult;
 import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
 import com.linkforge.shortlink.application.query.ShortLinkSearchQuery;
+import com.linkforge.shortlink.interfaces.web.dto.ShortLinkCreateHttpRequest;
+import com.linkforge.shortlink.interfaces.web.dto.ShortLinkPageHttpResponse;
+import com.linkforge.shortlink.interfaces.web.dto.ShortLinkUpdateHttpRequest;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -45,32 +46,20 @@ public class ShortLinkController {
     }
 
     @PostMapping
-    public ApiResponse<LinkDto> create(@Valid @RequestBody CreateLinkRequest req) {
+    public ApiResponse<LinkDto> create(@Valid @RequestBody ShortLinkCreateHttpRequest req) {
         writeGuard.requireWriteEnabled();
         AuthPrincipal p = AuthContext.requirePrincipal();
         CreatedBy createdBy = CreatedBy.user(p.getUserId());
         LinkDto dto = shortLinkService.create(
                 p.getTenantId(),
                 createdBy,
-                new ShortLinkService.CreateLinkRequest(
-                        req.originalUrl(),
-                        req.note(),
-                        req.expiresAt(),
-                        req.enabled(),
-                        req.customCode(),
-                        req.tags(),
-                        req.redirectStatusCode(),
-                        req.previewEnabled(),
-                        req.unavailableLandingUrl(),
-                        req.queryForwardMode(),
-                        req.queryForwardAllowlist()
-                )
+                ShortLinkHttpMapper.toCreateRequest(req)
         );
         return ApiResponse.ok(dto, RequestId.get());
     }
 
     @GetMapping
-    public ApiResponse<PageResponse<LinkDto>> list(
+    public ApiResponse<ShortLinkPageHttpResponse<LinkDto>> list(
             @RequestParam(required = false) Boolean archived,
             @RequestParam(required = false) Boolean enabled,
             @RequestParam(required = false) String keyword,
@@ -85,7 +74,7 @@ public class ShortLinkController {
                 new ShortLinkSearchQuery(archivedFlag, enabled, keyword, tag),
                 PageQuery.of(page, size, 100)
         );
-        return ApiResponse.ok(toPageResponse(result), RequestId.get());
+        return ApiResponse.ok(ShortLinkHttpMapper.toPageResponse(result), RequestId.get());
     }
 
     @GetMapping("/{id}")
@@ -95,28 +84,14 @@ public class ShortLinkController {
     }
 
     @PutMapping("/{id}")
-    public ApiResponse<LinkDto> update(@PathVariable("id") long id, @Valid @RequestBody UpdateLinkRequest req) {
+    public ApiResponse<LinkDto> update(@PathVariable("id") long id, @Valid @RequestBody ShortLinkUpdateHttpRequest req) {
         writeGuard.requireWriteEnabled();
         AuthPrincipal p = AuthContext.requirePrincipal();
         return ApiResponse.ok(
                 shortLinkService.update(
                         p.getTenantId(),
                         id,
-                        new ShortLinkService.UpdateLinkRequest(
-                                req.originalUrl(),
-                                req.note(),
-                                req.expiresAt(),
-                                req.clearExpiresAt(),
-                                req.enabled(),
-                                req.tags(),
-                                req.redirectStatusCode(),
-                                req.clearRedirectStatusCode(),
-                                req.previewEnabled(),
-                                req.unavailableLandingUrl(),
-                                req.queryForwardMode(),
-                                req.clearQueryForwardMode(),
-                                req.queryForwardAllowlist()
-                        )
+                        ShortLinkHttpMapper.toUpdateRequest(req)
                 ),
                 RequestId.get()
         );
@@ -178,52 +153,4 @@ public class ShortLinkController {
         shortLinkService.exportCsv(p.getTenantId(), PageQuery.of(page, size, 1000), response.getOutputStream());
     }
 
-    static <T> PageResponse<T> toPageResponse(PageResult<T> result) {
-        return new PageResponse<>(result.items(), result.total(), result.page(), result.size());
-    }
-
-    public record PageResponse<T>(java.util.List<T> items, long total, int page, int size) {
-    }
-
-    public record CreateLinkRequest(
-            @NotBlank(message = "originalUrl 不能为空")
-            @Size(max = 2048, message = "URL 过长")
-            String originalUrl,
-            @Size(max = 512, message = "备注过长")
-            String note,
-            java.time.Instant expiresAt,
-            Boolean enabled,
-            @Size(max = 32, message = "自定义短码过长")
-            String customCode,
-            java.util.Set<String> tags,
-            Integer redirectStatusCode,
-            Boolean previewEnabled,
-            @Size(max = 2048, message = "落地页 URL 过长")
-            String unavailableLandingUrl,
-            @Size(max = 16, message = "queryForwardMode 过长")
-            String queryForwardMode,
-            java.util.List<@Size(max = 64, message = "queryForwardAllowlist 项过长") String> queryForwardAllowlist
-    ) {
-    }
-
-    public record UpdateLinkRequest(
-            @Size(max = 2048, message = "URL 过长")
-            String originalUrl,
-            @Size(max = 512, message = "备注过长")
-            String note,
-            java.time.Instant expiresAt,
-            Boolean clearExpiresAt,
-            Boolean enabled,
-            java.util.Set<String> tags,
-            Integer redirectStatusCode,
-            Boolean clearRedirectStatusCode,
-            Boolean previewEnabled,
-            @Size(max = 2048, message = "落地页 URL 过长")
-            String unavailableLandingUrl,
-            @Size(max = 16, message = "queryForwardMode 过长")
-            String queryForwardMode,
-            Boolean clearQueryForwardMode,
-            java.util.List<@Size(max = 64, message = "queryForwardAllowlist 项过长") String> queryForwardAllowlist
-    ) {
-    }
 }

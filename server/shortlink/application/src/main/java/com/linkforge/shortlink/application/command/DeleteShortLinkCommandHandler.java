@@ -3,7 +3,9 @@ package com.linkforge.shortlink.application.command;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.shortlink.ShortLinkErrorCode;
 import com.linkforge.foundation.security.TenantGuard;
+import com.linkforge.foundation.tx.AfterCommit;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
+import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
 import com.linkforge.shortlink.application.port.ShortLinkEventPublisher;
 import com.linkforge.shortlink.application.port.ShortLinkRepository;
 import com.linkforge.shortlink.application.support.ShortLinkDomainExceptions;
@@ -20,6 +22,7 @@ public class DeleteShortLinkCommandHandler {
     private final ShortLinkRepository shortLinkRepository;
     private final LinkTagRepository linkTagRepository;
     private final ShortLinkEventPublisher eventPublisher;
+    private final RedirectCacheSyncPort redirectCacheSync;
     private final TenantGuard tenantGuard;
     private final Clock clock;
 
@@ -27,12 +30,14 @@ public class DeleteShortLinkCommandHandler {
             ShortLinkRepository shortLinkRepository,
             LinkTagRepository linkTagRepository,
             ShortLinkEventPublisher eventPublisher,
+            RedirectCacheSyncPort redirectCacheSync,
             TenantGuard tenantGuard,
             Clock clock
     ) {
         this.shortLinkRepository = shortLinkRepository;
         this.linkTagRepository = linkTagRepository;
         this.eventPublisher = eventPublisher;
+        this.redirectCacheSync = redirectCacheSync;
         this.tenantGuard = tenantGuard;
         this.clock = clock;
     }
@@ -52,6 +57,6 @@ public class DeleteShortLinkCommandHandler {
         eventPublisher.deleted(link, clock.instant());
         linkTagRepository.deleteAllByLinkId(linkId);
         shortLinkRepository.deleteByTenantIdAndId(tenantId, linkId);
+        AfterCommit.run(() -> redirectCacheSync.evict(link.code().value()));
     }
 }
-

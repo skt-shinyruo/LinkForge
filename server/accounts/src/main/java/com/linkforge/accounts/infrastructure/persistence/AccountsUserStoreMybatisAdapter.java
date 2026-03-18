@@ -1,0 +1,80 @@
+package com.linkforge.accounts.infrastructure.persistence;
+
+import com.linkforge.accounts.application.port.AccountsUserStore;
+import com.linkforge.accounts.infrastructure.persistence.entity.UserEntity;
+import com.linkforge.accounts.infrastructure.persistence.mapper.UserMapper;
+import org.springframework.stereotype.Component;
+
+import java.util.List;
+
+@Component
+public class AccountsUserStoreMybatisAdapter implements AccountsUserStore {
+
+    private final UserMapper userMapper;
+
+    public AccountsUserStoreMybatisAdapter(UserMapper userMapper) {
+        this.userMapper = userMapper;
+    }
+
+    @Override
+    public void insert(UserData user) {
+        if (user == null) {
+            return;
+        }
+        userMapper.insert(toEntity(user));
+    }
+
+    @Override
+    public UserData findById(Long userId) {
+        return toUser(userMapper.findById(userId));
+    }
+
+    @Override
+    public UserData findFirstByEmail(String email) {
+        return toUser(userMapper.findFirstByEmail(email));
+    }
+
+    @Override
+    public List<UserData> findAllByTenantIdOrderByCreatedAtDesc(Long tenantId) {
+        List<UserEntity> list = userMapper.findAllByTenantIdOrderByCreatedAtDesc(tenantId);
+        if (list == null || list.isEmpty()) {
+            return List.of();
+        }
+        return list.stream().map(AccountsUserStoreMybatisAdapter::toUser).toList();
+    }
+
+    @Override
+    public void update(UserData user) {
+        if (user == null) {
+            return;
+        }
+        userMapper.update(toEntity(user));
+    }
+
+    private static UserEntity toEntity(UserData user) {
+        UserEntity entity = new UserEntity();
+        entity.setId(user.id());
+        entity.setTenantId(user.tenantId());
+        entity.setEmail(user.email());
+        entity.setPasswordHash(user.passwordHash());
+        entity.setStatus(user.status());
+        entity.setCreatedAt(user.createdAt());
+        entity.setUpdatedAt(user.updatedAt());
+        return entity;
+    }
+
+    private static UserData toUser(UserEntity entity) {
+        if (entity == null) {
+            return null;
+        }
+        return new UserData(
+                entity.getId(),
+                entity.getTenantId(),
+                entity.getEmail(),
+                entity.getPasswordHash(),
+                entity.getStatus(),
+                entity.getCreatedAt(),
+                entity.getUpdatedAt()
+        );
+    }
+}

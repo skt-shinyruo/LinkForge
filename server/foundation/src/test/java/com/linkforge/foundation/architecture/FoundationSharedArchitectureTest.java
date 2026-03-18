@@ -11,12 +11,11 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 class FoundationSharedArchitectureTest {
 
     /**
-     * In the pre-monolith multi-module layout, this test lived in the "platform-shared" module, so the
-     * classpath only contained shared classes and importing {@code com.linkforge} was safe.
+     * Foundation is the in-repo technical library shared inside the modular monolith.
      *
-     * <p>After merging into a single Maven module, importing {@code com.linkforge} would pull in the
-     * whole monolith (API/Edge/runtime), causing false positives. Keep the guardrail by narrowing the
-     * scan scope to the shared-only packages.
+     * <p>We intentionally narrow the scan scope to the library-only packages instead of importing the
+     * whole `com.linkforge` namespace, because application/runtime modules live in the same repository
+     * and would create false positives.
      */
     private static final JavaClasses CLASSES = new ClassFileImporter()
             .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
@@ -44,16 +43,16 @@ class FoundationSharedArchitectureTest {
     private static final String SPRING_CONTROLLER_ADVICE = "org.springframework.web.bind.annotation.ControllerAdvice";
 
     /**
-     * Guardrail: platform-shared is a core SSOT library and must not become an implicit runtime module.
-     * <p>
-     * Rationale: if platform defines runtime beans, both API and Edge can be affected implicitly via
-     * component scanning, making boundaries blurry and changes risky.
+     * Guardrail: foundation library packages must not become an implicit runtime module.
+     *
+     * <p>If these shared packages start defining runtime beans, unrelated application modules can pick
+     * them up via component scanning and module boundaries become accidental instead of explicit.
      *
      * <p>Important: detect by annotation <em>type names</em> (strings), so the test keeps compiling even
-     * after we slim down platform dependencies in later tasks.
+     * if foundation stays lean and avoids direct runtime-framework dependencies.
      */
     @Test
-    void foundation_shared_should_not_define_runtime_spring_beans() {
+    void foundation_library_packages_should_not_define_runtime_spring_beans() {
         ArchRule rule = noClasses()
                 .that()
                 .resideInAnyPackage(SHARED_PACKAGES)
@@ -78,7 +77,7 @@ class FoundationSharedArchitectureTest {
     }
 
     @Test
-    void foundation_shared_should_not_depend_on_web_or_redis_packages() {
+    void foundation_library_packages_should_not_depend_on_web_or_redis_packages() {
         ArchRule rule = noClasses()
                 .that()
                 .resideInAnyPackage(SHARED_PACKAGES)

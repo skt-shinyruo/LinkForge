@@ -7,7 +7,6 @@ WORKDIR /app
 
 # Copy Maven reactor modules (keep it explicit for better layer caching)
 COPY pom.xml /app/pom.xml
-COPY shared-kernel /app/shared-kernel
 COPY foundation /app/foundation
 COPY contracts /app/contracts
 COPY accounts /app/accounts

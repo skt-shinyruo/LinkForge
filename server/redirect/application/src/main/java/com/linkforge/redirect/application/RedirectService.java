@@ -4,9 +4,10 @@ import com.linkforge.contract.analytics.VisitContext;
 import com.linkforge.contract.analytics.VisitRecorderPort;
 import com.linkforge.contract.redirect.LinkCachePort;
 import com.linkforge.contract.redirect.LinkMeta;
-import com.linkforge.redirect.application.projection.LinkMetaProjectionPort;
+import com.linkforge.contract.redirect.LinkMetaSourcePort;
 import com.linkforge.redirect.application.error.RedirectBusinessException;
 import com.linkforge.redirect.application.error.RedirectErrorCode;
+import com.linkforge.redirect.application.projection.LinkMetaProjectionPort;
 import com.linkforge.foundation.web.VisitInfo;
 import org.springframework.stereotype.Service;
 
@@ -19,17 +20,20 @@ public class RedirectService {
 
     private final LinkCachePort linkCache;
     private final LinkMetaProjectionPort linkMetaProjection;
+    private final LinkMetaSourcePort linkMetaSource;
     private final VisitRecorderPort visitRecorder;
     private final Clock clock;
 
     public RedirectService(
             LinkCachePort linkCache,
             LinkMetaProjectionPort linkMetaProjection,
+            LinkMetaSourcePort linkMetaSource,
             VisitRecorderPort visitRecorder,
             Clock clock
     ) {
         this.linkCache = linkCache;
         this.linkMetaProjection = linkMetaProjection;
+        this.linkMetaSource = linkMetaSource;
         this.visitRecorder = visitRecorder;
         this.clock = clock;
     }
@@ -67,15 +71,15 @@ public class RedirectService {
             return cached.meta();
         }
 
-        LinkMeta meta = linkMetaProjection.findByCode(normalized).orElse(null);
-        if (meta == null) {
-            // 负缓存：避免随机短码扫描导致缓存穿透，把 MySQL 回源打穿
-            linkCache.markNotFound(normalized);
-            throw new RedirectBusinessException(RedirectErrorCode.LINK_NOT_FOUND);
+        LinkMeta meta = linkMetaSource.findByCode(normalized).orElse(null);
+        if (meta != null) {
+            linkCache.tryPut(meta);
+            return meta;
         }
 
-        linkCache.tryPut(meta);
-        return meta;
+        // Monolith correctness uses the authoritative source. Projectors remain warm/recovery infrastructure.
+        linkCache.markNotFound(normalized);
+        throw new RedirectBusinessException(RedirectErrorCode.LINK_NOT_FOUND);
     }
 
     private static String normalizeAndValidateCode(String code) {

@@ -1,24 +1,20 @@
 package com.linkforge.accounts.application;
 
+import com.linkforge.accounts.application.port.AccountsUserRoleStore;
+import com.linkforge.accounts.application.port.AccountsUserStore;
 import com.linkforge.accounts.domain.AccountsConstants;
 import com.linkforge.accounts.domain.Roles;
-import com.linkforge.accounts.infrastructure.persistence.entity.UserEntity;
-import com.linkforge.accounts.infrastructure.persistence.entity.UserRoleEntity;
-import com.linkforge.accounts.infrastructure.persistence.entity.UserRoleId;
-import com.linkforge.accounts.infrastructure.persistence.mapper.UserMapper;
-import com.linkforge.accounts.infrastructure.persistence.mapper.UserRoleMapper;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.contract.accounts.AccountsErrorCode;
-import com.linkforge.foundation.security.TenantGuard;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
+import com.linkforge.foundation.security.TenantGuard;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -32,42 +28,42 @@ public class UserAdminService {
     );
 
     private final SnowflakeIdGenerator idGenerator;
-    private final UserMapper userMapper;
-    private final UserRoleMapper userRoleMapper;
+    private final AccountsUserStore userStore;
+    private final AccountsUserRoleStore userRoleStore;
     private final PasswordEncoder passwordEncoder;
     private final TenantGuard tenantGuard;
 
     public UserAdminService(
             SnowflakeIdGenerator idGenerator,
-            UserMapper userMapper,
-            UserRoleMapper userRoleMapper,
+            AccountsUserStore userStore,
+            AccountsUserRoleStore userRoleStore,
             PasswordEncoder passwordEncoder,
             TenantGuard tenantGuard
     ) {
         this.idGenerator = idGenerator;
-        this.userMapper = userMapper;
-        this.userRoleMapper = userRoleMapper;
+        this.userStore = userStore;
+        this.userRoleStore = userRoleStore;
         this.passwordEncoder = passwordEncoder;
         this.tenantGuard = tenantGuard;
     }
 
     public List<UserDto> list(long tenantId) {
         tenantGuard.requireCurrentTenant(tenantId);
-        List<UserEntity> users = userMapper.findAllByTenantIdOrderByCreatedAtDesc(tenantId);
+        List<AccountsUserStore.UserData> users = userStore.findAllByTenantIdOrderByCreatedAtDesc(tenantId);
         if (users.isEmpty()) {
             return List.of();
         }
 
-        List<Long> userIds = users.stream().map(UserEntity::getId).toList();
+        List<Long> userIds = users.stream().map(AccountsUserStore.UserData::id).toList();
         Map<Long, Set<String>> rolesByUserId = loadRolesByUserIds(userIds);
 
         return users.stream()
                 .map(u -> new UserDto(
-                        u.getId(),
-                        u.getTenantId(),
-                        u.getEmail(),
-                        u.getStatus(),
-                        rolesByUserId.getOrDefault(u.getId(), Set.of())
+                        u.id(),
+                        u.tenantId(),
+                        u.email(),
+                        u.status(),
+                        rolesByUserId.getOrDefault(u.id(), Set.of())
                 ))
                 .toList();
     }
@@ -81,66 +77,53 @@ public class UserAdminService {
 
         Set<String> roles = normalizeAndValidateRoles(req.roles());
 
-        // MVP：为了简化登录（email 不需要选择租户），仍然约束全局唯一
-        if (userMapper.findFirstByEmail(req.email()) != null) {
+        if (userStore.findFirstByEmail(req.email()) != null) {
             throw new BusinessException(AccountsErrorCode.EMAIL_ALREADY_EXISTS);
         }
 
         long userId = idGenerator.nextId();
-        UserEntity u = new UserEntity();
-        u.setId(userId);
-        u.setTenantId(tenantId);
-        u.setEmail(req.email());
-        u.setPasswordHash(passwordEncoder.encode(req.password()));
-        u.setStatus(AccountsConstants.STATUS_ACTIVE);
+        AccountsUserStore.UserData user = new AccountsUserStore.UserData(
+                userId,
+                tenantId,
+                req.email(),
+                passwordEncoder.encode(req.password()),
+                AccountsConstants.STATUS_ACTIVE,
+                null,
+                null
+        );
         try {
-            userMapper.insert(u);
+            userStore.insert(user);
         } catch (DataIntegrityViolationException e) {
-            // 并发创建或绕过应用层校验时，以 DB 约束为准，返回一致的业务错误码
             throw new BusinessException(AccountsErrorCode.EMAIL_ALREADY_EXISTS);
         }
 
         for (String role : roles) {
-            userRoleMapper.insert(new UserRoleEntity(new UserRoleId(userId, role)));
+            userRoleStore.insert(new AccountsUserRoleStore.UserRoleData(userId, role));
         }
 
-        return new UserDto(userId, tenantId, u.getEmail(), u.getStatus(), roles);
+        return new UserDto(userId, tenantId, user.email(), user.status(), roles);
     }
 
     @Transactional
     public UserDto disable(long tenantId, long userId) {
         tenantGuard.requireCurrentTenant(tenantId);
-        UserEntity u = userMapper.findById(userId);
-        if (u == null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "用户不存在");
-        }
-        if (!tenantIdEquals(u.getTenantId(), tenantId)) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "用户不存在");
-        }
-        if (!AccountsConstants.STATUS_DISABLED.equals(u.getStatus())) {
-            u.setStatus(AccountsConstants.STATUS_DISABLED);
-            userMapper.update(u);
+        AccountsUserStore.UserData user = requireUserInTenant(tenantId, userId);
+        if (!AccountsConstants.STATUS_DISABLED.equals(user.status())) {
+            userStore.update(withStatus(user, AccountsConstants.STATUS_DISABLED));
         }
         Set<String> roles = loadRolesByUserId(userId);
-        return new UserDto(u.getId(), tenantId, u.getEmail(), u.getStatus(), roles);
+        return new UserDto(user.id(), tenantId, user.email(), AccountsConstants.STATUS_DISABLED, roles);
     }
 
     @Transactional
     public UserDto enable(long tenantId, long userId) {
         tenantGuard.requireCurrentTenant(tenantId);
-        UserEntity u = userMapper.findById(userId);
-        if (u == null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "用户不存在");
-        }
-        if (!tenantIdEquals(u.getTenantId(), tenantId)) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "用户不存在");
-        }
-        if (!AccountsConstants.STATUS_ACTIVE.equals(u.getStatus())) {
-            u.setStatus(AccountsConstants.STATUS_ACTIVE);
-            userMapper.update(u);
+        AccountsUserStore.UserData user = requireUserInTenant(tenantId, userId);
+        if (!AccountsConstants.STATUS_ACTIVE.equals(user.status())) {
+            userStore.update(withStatus(user, AccountsConstants.STATUS_ACTIVE));
         }
         Set<String> roles = loadRolesByUserId(userId);
-        return new UserDto(u.getId(), tenantId, u.getEmail(), u.getStatus(), roles);
+        return new UserDto(user.id(), tenantId, user.email(), AccountsConstants.STATUS_ACTIVE, roles);
     }
 
     @Transactional
@@ -153,39 +136,63 @@ public class UserAdminService {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "密码长度需为 8-64");
         }
 
-        UserEntity u = userMapper.findById(userId);
-        if (u == null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "用户不存在");
-        }
-        if (!tenantIdEquals(u.getTenantId(), tenantId)) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "用户不存在");
-        }
-
-        u.setPasswordHash(passwordEncoder.encode(newPassword));
-        userMapper.update(u);
+        AccountsUserStore.UserData user = requireUserInTenant(tenantId, userId);
+        AccountsUserStore.UserData updated = new AccountsUserStore.UserData(
+                user.id(),
+                user.tenantId(),
+                user.email(),
+                passwordEncoder.encode(newPassword),
+                user.status(),
+                user.createdAt(),
+                user.updatedAt()
+        );
+        userStore.update(updated);
 
         Set<String> roles = loadRolesByUserId(userId);
-        return new UserDto(u.getId(), tenantId, u.getEmail(), u.getStatus(), roles);
+        return new UserDto(user.id(), tenantId, user.email(), user.status(), roles);
     }
 
     private Map<Long, Set<String>> loadRolesByUserIds(List<Long> userIds) {
-        Map<Long, Set<String>> map = new HashMap<>();
-        for (UserRoleEntity r : userRoleMapper.findAllByUserIdIn(userIds)) {
-            map.computeIfAbsent(r.getId().getUserId(), k -> new java.util.HashSet<>())
-                    .add(r.getId().getRoleCode());
+        Map<Long, Set<String>> map = new java.util.HashMap<>();
+        for (AccountsUserRoleStore.UserRoleData r : userRoleStore.findAllByUserIdIn(userIds)) {
+            if (r == null) {
+                continue;
+            }
+            map.computeIfAbsent(r.userId(), k -> new java.util.HashSet<>()).add(r.roleCode());
         }
         return map;
     }
 
     private Set<String> loadRolesByUserId(long userId) {
-        Set<String> roles = userRoleMapper.findAllByUserId(userId).stream()
-                .map(r -> r.getId().getRoleCode())
+        Set<String> roles = userRoleStore.findAllByUserId(userId).stream()
+                .filter(r -> r != null)
+                .map(AccountsUserRoleStore.UserRoleData::roleCode)
                 .collect(java.util.stream.Collectors.toSet());
         return roles.isEmpty() ? Set.of(Roles.USER) : roles;
     }
 
-    private static boolean tenantIdEquals(Long actual, long expected) {
-        return actual != null && actual == expected;
+    private AccountsUserStore.UserData requireUserInTenant(long tenantId, long userId) {
+        AccountsUserStore.UserData user = userStore.findById(userId);
+        if (user == null || !tenantIdEquals(user.tenantId(), tenantId)) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "用户不存在");
+        }
+        return user;
+    }
+
+    private static AccountsUserStore.UserData withStatus(AccountsUserStore.UserData user, String status) {
+        return new AccountsUserStore.UserData(
+                user.id(),
+                user.tenantId(),
+                user.email(),
+                user.passwordHash(),
+                status,
+                user.createdAt(),
+                user.updatedAt()
+        );
+    }
+
+    private static boolean tenantIdEquals(Long actualTenantId, long expectedTenantId) {
+        return actualTenantId != null && actualTenantId == expectedTenantId;
     }
 
     public record CreateUserRequest(String email, String password, Set<String> roles) {

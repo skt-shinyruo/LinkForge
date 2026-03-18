@@ -1,10 +1,8 @@
 package com.linkforge.accounts.application;
 
+import com.linkforge.accounts.application.port.AccountsTenantStore;
+import com.linkforge.accounts.application.port.AccountsUserStore;
 import com.linkforge.accounts.domain.AccountsConstants;
-import com.linkforge.accounts.infrastructure.persistence.entity.TenantEntity;
-import com.linkforge.accounts.infrastructure.persistence.entity.UserEntity;
-import com.linkforge.accounts.infrastructure.persistence.mapper.TenantMapper;
-import com.linkforge.accounts.infrastructure.persistence.mapper.UserMapper;
 import com.linkforge.contract.accounts.AccountsErrorCode;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
@@ -16,13 +14,13 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 
 /**
- * Account status checks for auth flows.
+ * Account status checks for authentication flows.
  *
- * <p>Motivation: tenant/user status is validated at login time today, but once a JWT/API key is issued,
- * status changes (disable tenant / disable user) must take effect for subsequent requests.</p>
+ * <p>Tenant/user status is validated at login time, but issued JWT/API keys can outlive status
+ * changes. This service enforces status checks on subsequent requests.</p>
  *
- * <p>Implementation: best-effort Redis cache with short TTL to avoid per-request DB hits. If Redis is
- * unavailable, falls back to DB checks.</p>
+ * <p>Implementation uses best-effort Redis caching with short TTL to reduce DB pressure. When Redis
+ * is unavailable, checks fall back to the persistence store.</p>
  */
 @Service
 public class AccountStatusService {
@@ -33,13 +31,13 @@ public class AccountStatusService {
     private static final String USER_STATUS_KEY_PREFIX = "auth:user_status:";
     private static final Duration CACHE_TTL = Duration.ofSeconds(30);
 
-    private final TenantMapper tenantMapper;
-    private final UserMapper userMapper;
+    private final AccountsTenantStore tenantStore;
+    private final AccountsUserStore userStore;
     private final StringRedisTemplate redis;
 
-    public AccountStatusService(TenantMapper tenantMapper, UserMapper userMapper, StringRedisTemplate redis) {
-        this.tenantMapper = tenantMapper;
-        this.userMapper = userMapper;
+    public AccountStatusService(AccountsTenantStore tenantStore, AccountsUserStore userStore, StringRedisTemplate redis) {
+        this.tenantStore = tenantStore;
+        this.userStore = userStore;
         this.redis = redis;
     }
 
@@ -58,11 +56,11 @@ public class AccountStatusService {
             }
         }
 
-        TenantEntity tenant = tenantMapper.findById(tenantId);
-        if (tenant == null || tenant.getId() == null) {
+        AccountsTenantStore.TenantData tenant = tenantStore.findById(tenantId);
+        if (tenant == null || tenant.id() == null) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED);
         }
-        String status = tenant.getStatus();
+        String status = tenant.status();
         if (!AccountsConstants.STATUS_ACTIVE.equals(status)) {
             writeStatusQuietly(tenantStatusKey(tenantId), AccountsConstants.STATUS_DISABLED);
             throw new BusinessException(AccountsErrorCode.TENANT_DISABLED);
@@ -87,15 +85,14 @@ public class AccountStatusService {
             }
         }
 
-        UserEntity user = userMapper.findById(userId);
-        if (user == null || user.getId() == null) {
+        AccountsUserStore.UserData user = userStore.findById(userId);
+        if (user == null || user.id() == null) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED);
         }
-        // Defense-in-depth: ensure token tenantId still matches DB record.
-        if (user.getTenantId() == null || user.getTenantId() != tenantId) {
+        if (user.tenantId() == null || user.tenantId() != tenantId) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED);
         }
-        String status = user.getStatus();
+        String status = user.status();
         if (!AccountsConstants.STATUS_ACTIVE.equals(status)) {
             writeStatusQuietly(userStatusKey(userId), AccountsConstants.STATUS_DISABLED);
             throw new BusinessException(AccountsErrorCode.USER_DISABLED);
@@ -141,4 +138,3 @@ public class AccountStatusService {
         return USER_STATUS_KEY_PREFIX + userId;
     }
 }
-

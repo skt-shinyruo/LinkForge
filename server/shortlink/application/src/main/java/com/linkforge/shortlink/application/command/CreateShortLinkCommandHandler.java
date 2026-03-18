@@ -4,12 +4,14 @@ import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.shortlink.ShortLinkErrorCode;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.security.TenantGuard;
+import com.linkforge.foundation.tx.AfterCommit;
 import com.linkforge.foundation.util.Base62;
 import com.linkforge.shortlink.application.ShortLinkService.CreatedBy;
 import com.linkforge.shortlink.application.ShortLinkService.CreateLinkRequest;
 import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
+import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
 import com.linkforge.shortlink.application.port.ShortLinkEventPublisher;
 import com.linkforge.shortlink.application.port.ShortLinkRepository;
 import com.linkforge.shortlink.application.support.ShortLinkDomainExceptions;
@@ -36,6 +38,7 @@ public class CreateShortLinkCommandHandler {
     private final SetLinkTagsCommandHandler setLinkTagsHandler;
     private final LinkTagRepository linkTagRepository;
     private final ShortLinkEventPublisher eventPublisher;
+    private final RedirectCacheSyncPort redirectCacheSync;
     private final ShortLinkDtoMapper dtoMapper;
     private final TenantGuard tenantGuard;
     private final Clock clock;
@@ -46,6 +49,7 @@ public class CreateShortLinkCommandHandler {
             SetLinkTagsCommandHandler setLinkTagsHandler,
             LinkTagRepository linkTagRepository,
             ShortLinkEventPublisher eventPublisher,
+            RedirectCacheSyncPort redirectCacheSync,
             ShortLinkDtoMapper dtoMapper,
             TenantGuard tenantGuard,
             Clock clock
@@ -55,6 +59,7 @@ public class CreateShortLinkCommandHandler {
         this.setLinkTagsHandler = setLinkTagsHandler;
         this.linkTagRepository = linkTagRepository;
         this.eventPublisher = eventPublisher;
+        this.redirectCacheSync = redirectCacheSync;
         this.dtoMapper = dtoMapper;
         this.tenantGuard = tenantGuard;
         this.clock = clock;
@@ -121,6 +126,7 @@ public class CreateShortLinkCommandHandler {
 
         setLinkTagsHandler.handle(tenantId, id, req.tags());
         eventPublisher.created(persisted, clock.instant());
+        AfterCommit.run(() -> redirectCacheSync.evict(persisted.code().value()));
 
         List<String> tags = linkTagRepository.findTagNamesByLinkId(id);
         return dtoMapper.toDto(persisted, tags);

@@ -56,5 +56,5 @@ npm run dev
 
 ## 3. 方案与文档（SSOT）
 
-- `docs/architecture.md`：架构总览（推荐先读）
+- `docs/architecture.md`：当前模块化单体架构总览（推荐先读）
 - `docs/plans/`：方案与实现计划（SSOT）

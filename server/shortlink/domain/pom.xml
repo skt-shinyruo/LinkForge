@@ -15,11 +15,6 @@
     <name>linkforge-shortlink-domain</name>
 
     <dependencies>
-        <dependency>
-            <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-shared-kernel</artifactId>
-        </dependency>
-
         <!-- test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

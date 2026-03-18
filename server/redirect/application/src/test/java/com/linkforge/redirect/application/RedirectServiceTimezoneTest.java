@@ -3,6 +3,7 @@ package com.linkforge.redirect.application;
 import com.linkforge.contract.analytics.VisitRecorderPort;
 import com.linkforge.contract.redirect.LinkCachePort;
 import com.linkforge.contract.redirect.LinkMeta;
+import com.linkforge.contract.redirect.LinkMetaSourcePort;
 import com.linkforge.redirect.application.projection.LinkMetaProjectionPort;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -75,6 +76,7 @@ class RedirectServiceTimezoneTest {
                     }
                 },
                 (LinkMetaProjectionPort) code -> Optional.empty(),
+                (LinkMetaSourcePort) code -> Optional.empty(),
                 recorder,
                 Clock.systemUTC()
         );

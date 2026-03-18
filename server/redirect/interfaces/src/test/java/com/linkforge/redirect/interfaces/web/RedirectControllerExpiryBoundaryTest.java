@@ -3,12 +3,13 @@ package com.linkforge.redirect.interfaces.web;
 import com.linkforge.contract.analytics.VisitRecorderPort;
 import com.linkforge.contract.redirect.LinkCachePort;
 import com.linkforge.contract.redirect.LinkMeta;
+import com.linkforge.contract.redirect.LinkMetaSourcePort;
 import com.linkforge.foundation.config.RedirectProperties;
 import com.linkforge.redirect.application.RedirectService;
 import com.linkforge.redirect.application.RedirectUrlBuilder;
-import com.linkforge.redirect.application.projection.LinkMetaProjectionPort;
 import com.linkforge.redirect.application.error.RedirectBusinessException;
 import com.linkforge.redirect.application.error.RedirectErrorCode;
+import com.linkforge.redirect.application.projection.LinkMetaProjectionPort;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
@@ -68,6 +69,7 @@ class RedirectControllerExpiryBoundaryTest {
                     }
                 },
                 (LinkMetaProjectionPort) code -> Optional.of(meta),
+                (LinkMetaSourcePort) code -> Optional.of(meta),
                 recorder,
                 clock
         );

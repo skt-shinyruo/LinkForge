@@ -9,10 +9,6 @@ import com.linkforge.accounts.infrastructure.persistence.entity.TenantEntity;
 import com.linkforge.accounts.infrastructure.persistence.entity.UserEntity;
 import com.linkforge.accounts.infrastructure.persistence.entity.UserRoleEntity;
 import com.linkforge.accounts.infrastructure.persistence.entity.UserRoleId;
-import com.linkforge.accounts.infrastructure.persistence.mapper.ApiKeyMapper;
-import com.linkforge.accounts.infrastructure.persistence.mapper.TenantMapper;
-import com.linkforge.accounts.infrastructure.persistence.mapper.UserMapper;
-import com.linkforge.accounts.infrastructure.persistence.mapper.UserRoleMapper;
 import com.linkforge.foundation.security.AuthPrincipal;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -60,22 +56,44 @@ class AuthPersistenceIntegrationTest extends AccountsPersistenceIntegrationTestS
     ApplicationContext applicationContext;
 
     @Test
-    void accountsServices_shouldUseMapperPersistence_andEntitiesShouldBePlainPojos() {
-        assertConstructorUsesMapperTypes(
+    void accountsServices_shouldDependOnApplicationPorts_andPortBeansShouldUseAdapters() {
+        assertConstructorUsesTypes(
                 AuthService.class,
-                "com.linkforge.accounts.infrastructure.persistence.mapper.TenantMapper",
-                "com.linkforge.accounts.infrastructure.persistence.mapper.UserMapper",
-                "com.linkforge.accounts.infrastructure.persistence.mapper.UserRoleMapper"
+                "com.linkforge.accounts.application.port.AccountsTenantStore",
+                "com.linkforge.accounts.application.port.AccountsUserStore",
+                "com.linkforge.accounts.application.port.AccountsUserRoleStore",
+                "com.linkforge.accounts.application.port.AccountsTokenIssuer"
         );
-        assertConstructorUsesMapperTypes(
+        assertConstructorUsesTypes(
                 UserAdminService.class,
-                "com.linkforge.accounts.infrastructure.persistence.mapper.UserMapper",
-                "com.linkforge.accounts.infrastructure.persistence.mapper.UserRoleMapper"
+                "com.linkforge.accounts.application.port.AccountsUserStore",
+                "com.linkforge.accounts.application.port.AccountsUserRoleStore"
         );
-        assertDirectMapperBean(applicationContext, TenantMapper.class);
-        assertDirectMapperBean(applicationContext, UserMapper.class);
-        assertDirectMapperBean(applicationContext, UserRoleMapper.class);
-        assertDirectMapperBean(applicationContext, ApiKeyMapper.class);
+        assertPortBean(
+                applicationContext,
+                "com.linkforge.accounts.application.port.AccountsTenantStore",
+                "com.linkforge.accounts.infrastructure.persistence.AccountsTenantStoreMybatisAdapter"
+        );
+        assertPortBean(
+                applicationContext,
+                "com.linkforge.accounts.application.port.AccountsUserStore",
+                "com.linkforge.accounts.infrastructure.persistence.AccountsUserStoreMybatisAdapter"
+        );
+        assertPortBean(
+                applicationContext,
+                "com.linkforge.accounts.application.port.AccountsUserRoleStore",
+                "com.linkforge.accounts.infrastructure.persistence.AccountsUserRoleStoreMybatisAdapter"
+        );
+        assertPortBean(
+                applicationContext,
+                "com.linkforge.accounts.application.port.AccountsApiKeyStore",
+                "com.linkforge.accounts.infrastructure.persistence.AccountsApiKeyStoreMybatisAdapter"
+        );
+        assertPortBean(
+                applicationContext,
+                "com.linkforge.accounts.application.port.AccountsTokenIssuer",
+                "com.linkforge.accounts.infrastructure.security.AccountsJwtTokenIssuer"
+        );
 
         assertRepositoryClassRemoved("com.linkforge.accounts.infrastructure.persistence.repo.TenantRepository");
         assertRepositoryClassRemoved("com.linkforge.accounts.infrastructure.persistence.repo.UserRepository");
@@ -186,14 +204,21 @@ abstract class AccountsPersistenceIntegrationTestSupport {
         return prefix + "-" + UUID.randomUUID() + "@example.com";
     }
 
-    protected static void assertConstructorUsesMapperTypes(Class<?> targetType, String... expectedTypeNames) {
+    protected static void assertConstructorUsesTypes(Class<?> targetType, String... expectedTypeNames) {
         Constructor<?> constructor = Arrays.stream(targetType.getDeclaredConstructors())
                 .max(Comparator.comparingInt(Constructor::getParameterCount))
                 .orElseThrow();
 
         assertThat(Arrays.stream(constructor.getParameterTypes()).map(Class::getName))
                 .contains(expectedTypeNames)
-                .noneMatch(typeName -> typeName.contains(".persistence.repo."));
+                .noneMatch(typeName -> typeName.contains(".persistence.repo."))
+                .noneMatch(typeName -> typeName.contains(".infrastructure.persistence.mapper."))
+                .noneMatch(typeName -> typeName.contains(".infrastructure.persistence.entity."))
+                .noneMatch(typeName -> typeName.contains(".infrastructure.security.JwtService"));
+    }
+
+    protected static void assertConstructorUsesMapperTypes(Class<?> targetType, String... expectedTypeNames) {
+        assertConstructorUsesTypes(targetType, expectedTypeNames);
     }
 
     protected static void assertHasNoJakartaPersistenceAnnotations(Class<?> targetType) {
@@ -212,6 +237,19 @@ abstract class AccountsPersistenceIntegrationTestSupport {
     protected static void assertDirectMapperBean(ApplicationContext applicationContext, Class<?> mapperType) {
         assertThat(applicationContext.getBean(mapperType).getClass().getName())
                 .doesNotContain(".persistence.repo.");
+    }
+
+    protected static void assertPortBean(ApplicationContext applicationContext, String portTypeName, String adapterTypeName) {
+        assertThat(applicationContext.getBean(loadClass(portTypeName)).getClass())
+                .isAssignableTo(loadClass(adapterTypeName));
+    }
+
+    private static Class<?> loadClass(String className) {
+        try {
+            return Class.forName(className);
+        } catch (ClassNotFoundException e) {
+            throw new AssertionError("Expected class to exist: " + className, e);
+        }
     }
 
     protected static void assertRepositoryClassRemoved(String className) {

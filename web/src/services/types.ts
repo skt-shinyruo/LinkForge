@@ -15,6 +15,10 @@ export type AuthResponse = {
   };
 };
 
+export type LinkRedirectStatusCode = 301 | 302;
+
+export type QueryForwardMode = "OFF" | "ALLOWLIST" | "ALL";
+
 export type LinkDto = {
   id: number;
   tenantId: number;
@@ -25,10 +29,10 @@ export type LinkDto = {
   enabled: boolean;
   expiresAt?: string | null;
   archivedAt?: string | null;
-  redirectStatusCode?: number | null;
+  redirectStatusCode?: LinkRedirectStatusCode | null;
   previewEnabled?: boolean;
   unavailableLandingUrl?: string | null;
-  queryForwardMode?: string | null;
+  queryForwardMode?: QueryForwardMode | null;
   queryForwardAllowlist?: string[];
   tags?: string[];
   createdAt?: string | null;
@@ -39,6 +43,56 @@ export type PageResponse<T> = {
   total: number;
   page: number;
   size: number;
+};
+
+export type LinkListQuery = {
+  archived?: boolean;
+  enabled?: boolean;
+  keyword?: string;
+  tag?: string;
+  page?: number;
+  size?: number;
+};
+
+export type CreateLinkRequest = {
+  originalUrl: string;
+  note?: string;
+  expiresAt?: string;
+  enabled?: boolean;
+  customCode?: string;
+  tags?: string[];
+  redirectStatusCode?: LinkRedirectStatusCode;
+  previewEnabled?: boolean;
+  unavailableLandingUrl?: string;
+  queryForwardMode?: QueryForwardMode;
+  queryForwardAllowlist?: string[];
+};
+
+export type UpdateLinkRequest = {
+  originalUrl?: string;
+  note?: string;
+  expiresAt?: string;
+  clearExpiresAt?: boolean;
+  enabled?: boolean;
+  tags?: string[];
+  redirectStatusCode?: LinkRedirectStatusCode;
+  clearRedirectStatusCode?: boolean;
+  previewEnabled?: boolean;
+  unavailableLandingUrl?: string;
+  queryForwardMode?: QueryForwardMode;
+  clearQueryForwardMode?: boolean;
+  queryForwardAllowlist?: string[];
+};
+
+export type LinkExportQuery = {
+  page?: number;
+  size?: number;
+};
+
+export type LinkImportResult = {
+  success: number;
+  failed: number;
+  errors: string[];
 };
 
 export type DailyStat = {
@@ -56,7 +110,23 @@ export type TopLinkStat = {
   deleted: boolean;
 };
 
+export type StatsRangeQuery = {
+  from: string;
+  to: string;
+};
+
+export type TopLinkSortBy = "pv" | "uv";
+
+export type TopLinksQuery = StatsRangeQuery & {
+  limit?: number;
+  sortBy?: TopLinkSortBy;
+};
+
 export type TagDto = {
   id: number;
+  name: string;
+};
+
+export type CreateTagRequest = {
   name: string;
 };

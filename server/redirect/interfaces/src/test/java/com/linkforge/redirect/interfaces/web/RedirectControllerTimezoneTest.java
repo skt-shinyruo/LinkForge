@@ -3,6 +3,7 @@ package com.linkforge.redirect.interfaces.web;
 import com.linkforge.contract.analytics.VisitRecorderPort;
 import com.linkforge.contract.redirect.LinkCachePort;
 import com.linkforge.contract.redirect.LinkMeta;
+import com.linkforge.contract.redirect.LinkMetaSourcePort;
 import com.linkforge.foundation.config.RedirectProperties;
 import com.linkforge.redirect.application.RedirectService;
 import com.linkforge.redirect.application.RedirectUrlBuilder;
@@ -81,6 +82,7 @@ class RedirectControllerTimezoneTest {
                     }
                 },
                 (LinkMetaProjectionPort) code -> Optional.of(meta),
+                (LinkMetaSourcePort) code -> Optional.of(meta),
                 recorder,
                 Clock.systemUTC()
         );

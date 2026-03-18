@@ -12,9 +12,9 @@ import com.linkforge.shortlink.application.ShortLinkService;
 import com.linkforge.shortlink.application.ShortLinkService.CreatedBy;
 import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
 import com.linkforge.shortlink.application.query.ShortLinkSearchQuery;
+import com.linkforge.shortlink.interfaces.web.dto.ShortLinkCreateHttpRequest;
+import com.linkforge.shortlink.interfaces.web.dto.ShortLinkPageHttpResponse;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -35,7 +35,7 @@ public class OpenApiShortLinkController {
     }
 
     @PostMapping
-    public ApiResponse<LinkDto> create(@Valid @RequestBody CreateLinkRequest req) {
+    public ApiResponse<LinkDto> create(@Valid @RequestBody ShortLinkCreateHttpRequest req) {
         writeGuard.requireWriteEnabled();
         AuthPrincipal p = AuthContext.requirePrincipal();
         Long apiKeyId = p.getApiKeyId();
@@ -45,25 +45,13 @@ public class OpenApiShortLinkController {
         LinkDto dto = shortLinkService.create(
                 p.getTenantId(),
                 CreatedBy.apiKey(apiKeyId),
-                new ShortLinkService.CreateLinkRequest(
-                        req.originalUrl(),
-                        req.note(),
-                        req.expiresAt(),
-                        req.enabled(),
-                        req.customCode(),
-                        req.tags(),
-                        req.redirectStatusCode(),
-                        req.previewEnabled(),
-                        req.unavailableLandingUrl(),
-                        req.queryForwardMode(),
-                        req.queryForwardAllowlist()
-                )
+                ShortLinkHttpMapper.toCreateRequest(req)
         );
         return ApiResponse.ok(dto, RequestId.get());
     }
 
     @GetMapping
-    public ApiResponse<ShortLinkController.PageResponse<LinkDto>> list(
+    public ApiResponse<ShortLinkPageHttpResponse<LinkDto>> list(
             @RequestParam(required = false) Boolean enabled,
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "0") int page,
@@ -75,27 +63,6 @@ public class OpenApiShortLinkController {
                 new ShortLinkSearchQuery(false, enabled, keyword, null),
                 PageQuery.of(page, size, 100)
         );
-        return ApiResponse.ok(ShortLinkController.toPageResponse(result), RequestId.get());
-    }
-
-    public record CreateLinkRequest(
-            @NotBlank(message = "originalUrl 不能为空")
-            @Size(max = 2048, message = "URL 过长")
-            String originalUrl,
-            @Size(max = 512, message = "备注过长")
-            String note,
-            java.time.Instant expiresAt,
-            Boolean enabled,
-            @Size(max = 32, message = "自定义短码过长")
-            String customCode,
-            java.util.Set<String> tags,
-            Integer redirectStatusCode,
-            Boolean previewEnabled,
-            @Size(max = 2048, message = "落地页 URL 过长")
-            String unavailableLandingUrl,
-            @Size(max = 16, message = "queryForwardMode 过长")
-            String queryForwardMode,
-            java.util.List<@Size(max = 64, message = "queryForwardAllowlist 项过长") String> queryForwardAllowlist
-    ) {
+        return ApiResponse.ok(ShortLinkHttpMapper.toPageResponse(result), RequestId.get());
     }
 }

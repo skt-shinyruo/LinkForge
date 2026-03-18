@@ -4,6 +4,8 @@ import com.linkforge.LinkForgeApplication;
 import com.linkforge.foundation.eventing.IntegrationEventStore;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.redirect.application.RedirectService;
+import com.linkforge.redirect.application.error.RedirectBusinessException;
+import com.linkforge.redirect.application.error.RedirectErrorCode;
 import com.linkforge.redirect.infrastructure.projection.ShortLinkEventProjectorJob;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,6 +33,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @Testcontainers
 @SpringBootTest(
@@ -195,9 +198,37 @@ class ShortLinkCacheAfterCommitIntegrationTest {
     }
 
     @Test
-    void archive_commit_shouldEvictRedisCacheAfterProjectorDrain() {
+    void create_commit_shouldEvictNegativeCacheAndResolveWithoutProjectorDrain() {
+        String code = uniqueCode("create");
+        String key = key(code);
+
+        assertLinkNotFound(code);
+        assertThat(redis.opsForValue().get(key)).isNotNull();
+
+        ShortLinkService.CreateLinkRequest req = new ShortLinkService.CreateLinkRequest(
+                "https://example.com/create",
+                "note",
+                null,
+                null,
+                code,
+                Set.of(),
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), req);
+
+        assertThat(redis.opsForValue().get(key)).isNull();
+        assertThat(redirectService.resolve(code).originalUrl()).isEqualTo("https://example.com/create");
+        assertThat(redis.opsForValue().get(key)).isNotNull();
+    }
+
+    @Test
+    void update_commit_shouldEvictPositiveCacheAndResolveUpdatedLinkWithoutProjectorDrain() {
         ShortLinkService.CreateLinkRequest createReq = new ShortLinkService.CreateLinkRequest(
-                "https://example.com",
+                "https://example.com/old",
                 "note",
                 null,
                 null,
@@ -210,20 +241,38 @@ class ShortLinkCacheAfterCommitIntegrationTest {
                 null
         );
         ShortLinkService.LinkDto created = shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), createReq);
-        String key = key(created.code());
+        String code = created.code();
+        String key = key(code);
 
-        redirectProjector.drain();
+        assertThat(redirectService.resolve(code).originalUrl()).isEqualTo("https://example.com/old");
         assertThat(redis.opsForValue().get(key)).isNotNull();
 
-        shortLinkService.archive(TENANT_ID, created.id());
-        redirectProjector.drain();
+        ShortLinkService.UpdateLinkRequest updateReq = new ShortLinkService.UpdateLinkRequest(
+                "https://example.com/new",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        shortLinkService.update(TENANT_ID, created.id(), updateReq);
+
         assertThat(redis.opsForValue().get(key)).isNull();
+        assertThat(redirectService.resolve(code).originalUrl()).isEqualTo("https://example.com/new");
+        assertThat(redis.opsForValue().get(key)).isNotNull();
     }
 
     @Test
-    void resolve_shouldRepopulateCacheWhenMissing() {
-        ShortLinkService.CreateLinkRequest req = new ShortLinkService.CreateLinkRequest(
-                "https://example.com",
+    void archive_restore_delete_commits_shouldInvalidateCacheWithoutProjectorDrain() {
+        ShortLinkService.CreateLinkRequest createReq = new ShortLinkService.CreateLinkRequest(
+                "https://example.com/live",
                 "note",
                 null,
                 null,
@@ -235,18 +284,35 @@ class ShortLinkCacheAfterCommitIntegrationTest {
                 null,
                 null
         );
-        ShortLinkService.LinkDto created = shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), req);
+        ShortLinkService.LinkDto created = shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), createReq);
         String code = created.code();
         String key = key(code);
 
-        redirectProjector.drain();
+        assertThat(redirectService.resolve(code).code()).isEqualTo(code);
         assertThat(redis.opsForValue().get(key)).isNotNull();
 
-        redis.delete(key);
+        shortLinkService.archive(TENANT_ID, created.id());
+        assertThat(redis.opsForValue().get(key)).isNull();
+
+        assertLinkNotFound(code);
+        assertThat(redis.opsForValue().get(key)).isNotNull();
+
+        shortLinkService.restore(TENANT_ID, created.id());
         assertThat(redis.opsForValue().get(key)).isNull();
 
         assertThat(redirectService.resolve(code).code()).isEqualTo(code);
         assertThat(redis.opsForValue().get(key)).isNotNull();
+
+        shortLinkService.archive(TENANT_ID, created.id());
+        assertThat(redis.opsForValue().get(key)).isNull();
+
+        assertLinkNotFound(code);
+        assertThat(redis.opsForValue().get(key)).isNotNull();
+
+        shortLinkService.delete(TENANT_ID, created.id());
+        assertThat(redis.opsForValue().get(key)).isNull();
+
+        assertLinkNotFound(code);
     }
 
     @Test
@@ -278,5 +344,16 @@ class ShortLinkCacheAfterCommitIntegrationTest {
 
     private static String key(String code) {
         return "link:code:" + code;
+    }
+
+    private void assertLinkNotFound(String code) {
+        assertThatThrownBy(() -> redirectService.resolve(code))
+                .isInstanceOf(RedirectBusinessException.class)
+                .extracting(e -> ((RedirectBusinessException) e).getErrorCode())
+                .isEqualTo(RedirectErrorCode.LINK_NOT_FOUND);
+    }
+
+    private static String uniqueCode(String prefix) {
+        return prefix + Long.toHexString(System.nanoTime());
     }
 }

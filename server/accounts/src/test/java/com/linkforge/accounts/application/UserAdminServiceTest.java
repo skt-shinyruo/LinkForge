@@ -1,7 +1,7 @@
 package com.linkforge.accounts.application;
 
-import com.linkforge.accounts.infrastructure.persistence.mapper.UserMapper;
-import com.linkforge.accounts.infrastructure.persistence.mapper.UserRoleMapper;
+import com.linkforge.accounts.application.port.AccountsUserRoleStore;
+import com.linkforge.accounts.application.port.AccountsUserStore;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
@@ -17,29 +17,25 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 class UserAdminServiceTest {
 
     @Test
     void create_shouldRejectUnknownRoleCodes() {
         SnowflakeIdGenerator idGenerator = mock(SnowflakeIdGenerator.class);
-        UserMapper userMapper = mock(UserMapper.class);
-        UserRoleMapper userRoleMapper = mock(UserRoleMapper.class);
+        AccountsUserStore userStore = mock(AccountsUserStore.class);
+        AccountsUserRoleStore userRoleStore = mock(AccountsUserRoleStore.class);
         PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
         TenantGuard tenantGuard = mock(TenantGuard.class);
 
         UserAdminService service = new UserAdminService(
                 idGenerator,
-                userMapper,
-                userRoleMapper,
+                userStore,
+                userRoleStore,
                 passwordEncoder,
                 tenantGuard
         );
-
-        when(userMapper.findFirstByEmail("u@example.com")).thenReturn(null);
-        when(idGenerator.nextId()).thenReturn(123L);
-        when(passwordEncoder.encode("password123")).thenReturn("hash");
 
         UserAdminService.CreateUserRequest req = new UserAdminService.CreateUserRequest(
                 "u@example.com",
@@ -54,8 +50,7 @@ class UserAdminServiceTest {
                     assertThat(be.getErrorCode()).isEqualTo(ErrorCode.BAD_REQUEST);
                 });
 
-        verify(userMapper, never()).insert(any());
-        verify(userRoleMapper, never()).insert(any());
+        verify(userStore, never()).insert(any());
+        verifyNoInteractions(userRoleStore);
     }
 }
-

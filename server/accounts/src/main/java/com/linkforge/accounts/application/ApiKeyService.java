@@ -85,7 +85,10 @@ public class ApiKeyService {
         apiKeyStore.insert(apiKey);
 
         String digest = sha256Base64Url(secret);
-        authCache.putActive(id, tenantId, digest, authCacheTtlSeconds());
+        long authCacheTtlSeconds = authCacheTtlSeconds();
+        if (authCacheTtlSeconds > 0) {
+            authCache.putActive(id, tenantId, digest, authCacheTtlSeconds);
+        }
 
         return new CreatedApiKey(id, name, key);
     }
@@ -94,7 +97,10 @@ public class ApiKeyService {
         Parsed parsed = parse(apiKey);
         String secretDigest = sha256Base64Url(parsed.secret);
 
-        ApiKeyAuthCache.Entry cached = authCache.read(parsed.id);
+        long authCacheTtlSeconds = authCacheTtlSeconds();
+        ApiKeyAuthCache.Entry cached = authCacheTtlSeconds > 0
+                ? authCache.read(parsed.id)
+                : null;
         if (cached != null) {
             if (!AccountsConstants.STATUS_ACTIVE.equals(cached.status())) {
                 throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_DISABLED);
@@ -112,14 +118,18 @@ public class ApiKeyService {
         }
 
         if (!AccountsConstants.STATUS_ACTIVE.equals(apiKeyRecord.status())) {
-            authCache.putDisabled(parsed.id, apiKeyRecord.tenantId() == null ? 0L : apiKeyRecord.tenantId(), authCacheTtlSeconds());
+            if (authCacheTtlSeconds > 0) {
+                authCache.putDisabled(parsed.id, apiKeyRecord.tenantId() == null ? 0L : apiKeyRecord.tenantId(), authCacheTtlSeconds);
+            }
             throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_DISABLED);
         }
         if (!passwordHasher.matches(parsed.secret, apiKeyRecord.keyHash())) {
             throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_INVALID);
         }
 
-        authCache.putActive(parsed.id, apiKeyRecord.tenantId() == null ? 0L : apiKeyRecord.tenantId(), secretDigest, authCacheTtlSeconds());
+        if (authCacheTtlSeconds > 0) {
+            authCache.putActive(parsed.id, apiKeyRecord.tenantId() == null ? 0L : apiKeyRecord.tenantId(), secretDigest, authCacheTtlSeconds);
+        }
         tryUpdateLastUsedAtThrottled(parsed.id, apiKeyRecord.lastUsedAt(), true);
 
         return new ApiKeyAuthResult(apiKeyRecord.tenantId(), apiKeyRecord.id());
@@ -146,7 +156,10 @@ public class ApiKeyService {
             apiKey = withStatus(apiKey, AccountsConstants.STATUS_DISABLED);
             apiKeyStore.update(apiKey);
         }
-        authCache.putDisabled(apiKeyId, apiKey.tenantId() == null ? 0L : apiKey.tenantId(), authCacheTtlSeconds());
+        long authCacheTtlSeconds = authCacheTtlSeconds();
+        if (authCacheTtlSeconds > 0) {
+            authCache.putDisabled(apiKeyId, apiKey.tenantId() == null ? 0L : apiKey.tenantId(), authCacheTtlSeconds);
+        }
         return new ApiKeyInfo(apiKey.id(), apiKey.name(), apiKey.status(), apiKey.lastUsedAt(), apiKey.createdAt());
     }
 
@@ -184,7 +197,10 @@ public class ApiKeyService {
         apiKeyStore.update(withKeyHashAndStatus(apiKey, passwordHasher.encode(secret), AccountsConstants.STATUS_ACTIVE));
 
         String digest = sha256Base64Url(secret);
-        authCache.putActive(apiKeyId, apiKey.tenantId() == null ? 0L : apiKey.tenantId(), digest, authCacheTtlSeconds());
+        long authCacheTtlSeconds = authCacheTtlSeconds();
+        if (authCacheTtlSeconds > 0) {
+            authCache.putActive(apiKeyId, apiKey.tenantId() == null ? 0L : apiKey.tenantId(), digest, authCacheTtlSeconds);
+        }
 
         return new CreatedApiKey(apiKey.id(), apiKey.name(), key);
     }

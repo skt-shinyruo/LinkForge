@@ -183,6 +183,45 @@ class ApiKeyServiceTest {
     }
 
     @Test
+    void authenticate_shouldBypassAuthCacheRead_whenAuthCacheTtlIsDisabled() {
+        AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
+        AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
+        ApiKeyAuthCache authCache = mock(ApiKeyAuthCache.class);
+
+        SecurityProperties props = new SecurityProperties();
+        props.getApiKey().setAuthCacheTtlSeconds(0);
+        props.getApiKey().setLastUsedUpdateIntervalSeconds(0);
+
+        ApiKeyService service = new ApiKeyService(
+                mock(SnowflakeIdGenerator.class),
+                store,
+                passwordHasher,
+                mock(TenantGuard.class),
+                props,
+                authCache
+        );
+
+        AccountsApiKeyStore.ApiKey apiKey = new AccountsApiKeyStore.ApiKey(
+                123L,
+                1L,
+                "test-key",
+                "hash",
+                AccountsConstants.STATUS_ACTIVE,
+                null,
+                null
+        );
+
+        when(store.findById(123L)).thenReturn(apiKey);
+        when(passwordHasher.matches("secret", "hash")).thenReturn(true);
+
+        ApiKeyService.ApiKeyAuthResult result = service.authenticate("lfk_123_secret");
+
+        assertThat(result.tenantId()).isEqualTo(1L);
+        assertThat(result.apiKeyId()).isEqualTo(123L);
+        verifyNoInteractions(authCache);
+    }
+
+    @Test
     void authenticate_shouldUpdateLastUsedAtOncePerWindow_usingRedisToken() {
         AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
         AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);

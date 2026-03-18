@@ -1,7 +1,6 @@
 package com.linkforge.analytics.infrastructure.job;
 
 import com.linkforge.contract.analytics.AnalyticsKeys;
-import com.linkforge.analytics.infrastructure.persistence.mapper.LinkVisitEventInsertRow;
 import com.linkforge.analytics.infrastructure.persistence.mapper.LinkVisitEventMapper;
 import com.linkforge.foundation.config.AnalyticsProperties;
 import com.linkforge.foundation.config.IdProperties;
@@ -20,18 +19,12 @@ import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.connection.stream.PendingMessage;
 import org.springframework.data.redis.connection.stream.PendingMessages;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.connection.stream.StreamRecords;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
@@ -46,25 +39,13 @@ public class AnalyticsEventIngestJob {
 
     private static final String GROUP = "lf-visit-ingest";
     private static final Pattern NON_SAFE = Pattern.compile("[^a-zA-Z0-9._:-]");
-    private static final long DLQ_MAX_LEN = 10_000L;
-    private static final String DLQ_SUFFIX = ":dlq";
-
-    private static final int MAX_REQUEST_ID_LEN = 64;
-    private static final int MAX_IP_HASH_LEN = 64;
-    private static final int MAX_UA_RAW_LEN = 512;
-    private static final int MAX_UA_FAMILY_LEN = 64;
-    private static final int MAX_OS_FAMILY_LEN = 64;
-    private static final int MAX_DEVICE_TYPE_LEN = 32;
-    private static final int MAX_REFERER_DOMAIN_LEN = 255;
-    private static final int MAX_LANGUAGE_LEN = 32;
-    private static final int MAX_UTM_VALUE_LEN = 128;
 
     private final StringRedisTemplate redis;
     private final LinkVisitEventMapper visitEventMapper;
     private final AnalyticsProperties analyticsProperties;
-    private final IdProperties idProperties;
-    private final SnowflakeIdGenerator idGenerator;
     private final String consumerName;
+    private final VisitEventBatchAssembler batchAssembler;
+    private final VisitEventDeadLetterWriter deadLetterWriter;
 
     public AnalyticsEventIngestJob(
             StringRedisTemplate redis,
@@ -76,9 +57,9 @@ public class AnalyticsEventIngestJob {
         this.redis = redis;
         this.visitEventMapper = visitEventMapper;
         this.analyticsProperties = analyticsProperties;
-        this.idProperties = idProperties;
-        this.idGenerator = idGenerator;
         this.consumerName = resolveConsumerName(analyticsProperties, idProperties);
+        this.batchAssembler = new VisitEventBatchAssembler(idGenerator);
+        this.deadLetterWriter = new VisitEventDeadLetterWriter(redis);
     }
 
     @Scheduled(fixedDelayString = "${APP_ANALYTICS_EVENT_INGEST_DELAY_MS:2000}")
@@ -189,64 +170,14 @@ public class AnalyticsEventIngestJob {
         }
     }
 
-    record IngestItem(RecordId recordId, LinkVisitEventInsertRow row) {
-    }
-
     void ingestRecords(String streamKey, List<MapRecord<String, Object, Object>> records) {
         if (records == null || records.isEmpty()) {
             return;
         }
 
-        List<IngestItem> items = new ArrayList<>(records.size());
-        List<RecordId> ackAlways = new ArrayList<>(Math.min(records.size(), 200));
-
-        for (MapRecord<String, Object, Object> r : records) {
-            if (r == null || r.getId() == null || r.getValue() == null) {
-                continue;
-            }
-            Map<Object, Object> raw = r.getValue();
-            // StringRedisTemplate 写入的 stream field/value 本质是 String 序列化，这里统一转为 String 处理
-            Map<String, String> v = new java.util.HashMap<>(raw.size());
-            for (Map.Entry<Object, Object> e : raw.entrySet()) {
-                if (e.getKey() == null) {
-                    continue;
-                }
-                v.put(String.valueOf(e.getKey()), e.getValue() == null ? null : String.valueOf(e.getValue()));
-            }
-
-            long tenantId = safeLong(v.get("tenantId"), -1);
-            long linkId = safeLong(v.get("linkId"), -1);
-            if (tenantId <= 0 || linkId <= 0) {
-                ackAlways.add(r.getId());
-                continue;
-            }
-
-            String requestId = trimToNull(v.get("requestId"));
-            if (requestId == null || requestId.length() > MAX_REQUEST_ID_LEN) {
-                ackAlways.add(r.getId());
-                continue;
-            }
-
-            long ts = safeLong(v.get("ts"), System.currentTimeMillis());
-            LocalDateTime occurredAt = Instant.ofEpochMilli(ts).atOffset(ZoneOffset.UTC).toLocalDateTime();
-            LinkVisitEventInsertRow row = new LinkVisitEventInsertRow();
-            row.setId(idGenerator.nextId());
-            row.setTenantId(tenantId);
-            row.setLinkId(linkId);
-            row.setOccurredAt(occurredAt);
-            row.setRequestId(requestId);
-            row.setIpHash(truncate(trimToNull(v.get("ipHash")), MAX_IP_HASH_LEN));
-            row.setUaRaw(truncate(trimToNull(v.get("uaRaw")), MAX_UA_RAW_LEN));
-            row.setUaFamily(truncate(trimToNull(v.get("uaFamily")), MAX_UA_FAMILY_LEN));
-            row.setOsFamily(truncate(trimToNull(v.get("osFamily")), MAX_OS_FAMILY_LEN));
-            row.setDeviceType(truncate(trimToNull(v.get("deviceType")), MAX_DEVICE_TYPE_LEN));
-            row.setRefererDomain(truncate(trimToNull(v.get("refererDomain")), MAX_REFERER_DOMAIN_LEN));
-            row.setLanguage(truncate(trimToNull(v.get("language")), MAX_LANGUAGE_LEN));
-            row.setUtmSource(truncate(trimToNull(v.get("utmSource")), MAX_UTM_VALUE_LEN));
-            row.setUtmMedium(truncate(trimToNull(v.get("utmMedium")), MAX_UTM_VALUE_LEN));
-            row.setUtmCampaign(truncate(trimToNull(v.get("utmCampaign")), MAX_UTM_VALUE_LEN));
-            items.add(new IngestItem(r.getId(), row));
-        }
+        VisitEventBatchAssembler.Batch batch = batchAssembler.assemble(records);
+        List<VisitEventBatchAssembler.IngestItem> items = batch.items();
+        List<RecordId> ackAlways = batch.ackAlways();
 
         if (items.isEmpty()) {
             acknowledge(streamKey, ackAlways);
@@ -254,7 +185,7 @@ public class AnalyticsEventIngestJob {
         }
 
         try {
-            visitEventMapper.batchInsertIgnore(items.stream().map(IngestItem::row).toList());
+            visitEventMapper.batchInsertIgnore(items.stream().map(VisitEventBatchAssembler.IngestItem::row).toList());
         } catch (DataIntegrityViolationException e) {
             log.warn("ingest visit events failed (data integrity): size={}, err={}", items.size(), e.getMessage());
             acknowledge(streamKey, ackAlways);
@@ -269,16 +200,16 @@ public class AnalyticsEventIngestJob {
         if (!ackAlways.isEmpty()) {
             acknowledge(streamKey, ackAlways);
         }
-        acknowledge(streamKey, items.stream().map(IngestItem::recordId).toList());
+        acknowledge(streamKey, items.stream().map(VisitEventBatchAssembler.IngestItem::recordId).toList());
     }
 
-    private void isolatePoisonAndAck(String streamKey, List<IngestItem> items) {
+    private void isolatePoisonAndAck(String streamKey, List<VisitEventBatchAssembler.IngestItem> items) {
         if (items == null || items.isEmpty()) {
             return;
         }
 
         List<RecordId> ackIds = new ArrayList<>(items.size());
-        for (IngestItem item : items) {
+        for (VisitEventBatchAssembler.IngestItem item : items) {
             if (item == null || item.recordId() == null || item.row() == null) {
                 continue;
             }
@@ -287,7 +218,7 @@ public class AnalyticsEventIngestJob {
                 visitEventMapper.batchInsertIgnore(List.of(item.row()));
                 ackIds.add(item.recordId());
             } catch (DataIntegrityViolationException e) {
-                deadLetter(streamKey, item, e);
+                deadLetterWriter.write(streamKey, item.recordId(), item.row(), e);
                 ackIds.add(item.recordId());
             } catch (DataAccessException e) {
                 // Likely DB transient/fatal issue: keep pending for retry and avoid tight per-row loop.
@@ -298,31 +229,6 @@ public class AnalyticsEventIngestJob {
 
         if (!ackIds.isEmpty()) {
             acknowledge(streamKey, ackIds);
-        }
-    }
-
-    private void deadLetter(String streamKey, IngestItem item, Exception e) {
-        if (redis == null || streamKey == null || streamKey.isBlank() || item == null || item.row() == null) {
-            return;
-        }
-        String dlqKey = streamKey + DLQ_SUFFIX;
-
-        LinkVisitEventInsertRow row = item.row();
-        Map<String, String> fields = new LinkedHashMap<>();
-        fields.put("ts", String.valueOf(System.currentTimeMillis()));
-        fields.put("streamId", item.recordId() == null ? "" : item.recordId().toString());
-        fields.put("tenantId", row.getTenantId() == null ? "" : String.valueOf(row.getTenantId()));
-        fields.put("linkId", row.getLinkId() == null ? "" : String.valueOf(row.getLinkId()));
-        fields.put("requestId", truncate(row.getRequestId(), MAX_REQUEST_ID_LEN));
-        fields.put("reason", "data_integrity");
-        fields.put("err", truncate(e == null ? null : e.getMessage(), 200));
-
-        try {
-            redis.opsForStream().add(StreamRecords.newRecord().in(dlqKey).ofStrings(fields));
-            redis.opsForStream().trim(dlqKey, DLQ_MAX_LEN, true);
-        } catch (Exception ex) {
-            // best-effort: never break ingestion on DLQ failure
-            log.debug("dead-letter write failed: streamId={}, err={}", item.recordId(), ex.getMessage());
         }
     }
 
@@ -380,32 +286,11 @@ public class AnalyticsEventIngestJob {
         return NON_SAFE.matcher(derived).replaceAll("_");
     }
 
-    private static long safeLong(String raw, long defaultValue) {
-        if (raw == null || raw.isBlank()) {
-            return defaultValue;
-        }
-        try {
-            return Long.parseLong(raw.trim());
-        } catch (Exception e) {
-            return defaultValue;
-        }
-    }
-
     private static String trimToNull(String v) {
         if (v == null) {
             return null;
         }
         String t = v.trim();
         return t.isBlank() ? null : t;
-    }
-
-    private static String truncate(String v, int maxLen) {
-        if (v == null) {
-            return null;
-        }
-        if (maxLen <= 0) {
-            return v;
-        }
-        return v.length() <= maxLen ? v : v.substring(0, maxLen);
     }
 }

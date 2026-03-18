@@ -11,11 +11,11 @@ public final class RequestId {
         return TL.get();
     }
 
-    static void set(String requestId) {
+    public static void set(String requestId) {
         TL.set(requestId);
     }
 
-    static void clear() {
+    public static void clear() {
         TL.remove();
     }
 }

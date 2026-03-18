@@ -7,7 +7,7 @@ import com.linkforge.analytics.application.AnalyticsQueryService.TopLinkStat;
 import com.linkforge.analytics.application.AnalyticsQueryService.TopSortBy;
 import com.linkforge.analytics.application.AnalyticsQueryService.VisitEvent;
 import com.linkforge.analytics.infrastructure.persistence.AnalyticsQueryRepository;
-import com.linkforge.foundation.security.TenantGuard;
+import com.linkforge.foundation.runtime.security.TenantGuard;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;

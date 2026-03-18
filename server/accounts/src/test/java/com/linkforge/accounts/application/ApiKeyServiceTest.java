@@ -7,7 +7,7 @@ import com.linkforge.accounts.domain.AccountsConstants;
 import com.linkforge.contract.openapi.OpenApiErrorCode;
 import com.linkforge.foundation.config.SecurityProperties;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
-import com.linkforge.foundation.security.TenantGuard;
+import com.linkforge.foundation.runtime.security.TenantGuard;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Constructor;

@@ -6,7 +6,7 @@ import com.linkforge.accounts.application.port.AccountsUserStore;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
-import com.linkforge.foundation.security.TenantGuard;
+import com.linkforge.foundation.runtime.security.TenantGuard;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Constructor;

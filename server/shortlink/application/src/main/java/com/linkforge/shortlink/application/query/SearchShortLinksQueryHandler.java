@@ -2,7 +2,7 @@ package com.linkforge.shortlink.application.query;
 
 import com.linkforge.foundation.persistence.PageQuery;
 import com.linkforge.foundation.persistence.PageResult;
-import com.linkforge.foundation.security.TenantGuard;
+import com.linkforge.foundation.runtime.security.TenantGuard;
 import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
@@ -53,4 +53,3 @@ public class SearchShortLinksQueryHandler {
         return new PageResult<>(dtos, total, pageQuery.page(), pageQuery.size());
     }
 }
-

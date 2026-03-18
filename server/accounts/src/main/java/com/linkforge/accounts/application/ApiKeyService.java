@@ -10,7 +10,7 @@ import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.contract.openapi.OpenApiErrorCode;
 import com.linkforge.foundation.config.SecurityProperties;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
-import com.linkforge.foundation.security.TenantGuard;
+import com.linkforge.foundation.runtime.security.TenantGuard;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;

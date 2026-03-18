@@ -1,6 +1,6 @@
 package com.linkforge.shortlink.application.query;
 
-import com.linkforge.foundation.security.TenantGuard;
+import com.linkforge.foundation.runtime.security.TenantGuard;
 import com.linkforge.shortlink.application.ShortLinkService.TagDto;
 import com.linkforge.shortlink.application.port.TagRepository;
 import org.springframework.stereotype.Component;
@@ -27,4 +27,3 @@ public class ListTagsQueryHandler {
         return tags.stream().map(t -> new TagDto(t.id(), t.name())).toList();
     }
 }
-

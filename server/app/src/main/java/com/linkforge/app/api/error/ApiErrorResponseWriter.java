@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkforge.contract.api.ApiResponse;
 import com.linkforge.contract.api.AppErrorCode;
 import com.linkforge.foundation.web.RequestId;
-import com.linkforge.foundation.web.RequestIdFilter;
+import com.linkforge.foundation.runtime.web.RequestIdFilter;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;

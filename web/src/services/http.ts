@@ -14,9 +14,24 @@ const CSRF_HEADER_NAME = "X-XSRF-TOKEN";
 const CSRF_ENDPOINT = "/api/v1/auth/csrf";
 
 let onUnauthorized: (() => void) | null = null;
+let unauthorizedHandlerInFlight = false;
 
 export function setUnauthorizedHandler(handler: (() => void) | null) {
   onUnauthorized = handler;
+}
+
+function notifyUnauthorized() {
+  if (!onUnauthorized || unauthorizedHandlerInFlight) {
+    return;
+  }
+  unauthorizedHandlerInFlight = true;
+  try {
+    onUnauthorized();
+  } finally {
+    queueMicrotask(() => {
+      unauthorizedHandlerInFlight = false;
+    });
+  }
 }
 
 function storage(): Storage | null {
@@ -70,7 +85,7 @@ export async function authFetch(
 
   if (resp.status === 401) {
     clearToken();
-    onUnauthorized?.();
+    notifyUnauthorized();
   }
 
   return resp;

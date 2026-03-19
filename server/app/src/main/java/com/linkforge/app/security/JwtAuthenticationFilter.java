@@ -94,7 +94,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
             try {
                 AuthPrincipal principal = jwtService.parseToken(token);
-                accountStatusService.requireActiveUserAndTenant(principal.getUserId(), principal.getTenantId());
+                accountStatusService.requireActiveUserAndTenant(
+                        principal.getUserId(),
+                        principal.getTenantId(),
+                        principal.getTokenVersion()
+                );
                 Set<SimpleGrantedAuthority> authorities = principal.getRoles().stream()
                         .map(r -> new SimpleGrantedAuthority("ROLE_" + r))
                         .collect(Collectors.toUnmodifiableSet());

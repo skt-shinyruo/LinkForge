@@ -18,6 +18,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.connection.stream.StreamRecords;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.annotation.AnnotationUtils;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -112,6 +113,9 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
 
     @Autowired
     StringRedisTemplate redis;
+
+    @Autowired
+    JdbcTemplate jdbcTemplate;
 
     @Test
     void applicationStarts_withMyBatisBootstrap_and_withoutExplicitJpaHooks() {
@@ -415,8 +419,9 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
 
         long tenantId2 = createLinkJson3.get("data").get("tenantId").asLong();
         long linkId3 = createLinkJson3.get("data").get("id").asLong();
-        seedStats(tenantId2, linkId3, today, 1, 1);
-        analyticsFlushJob.flush();
+        // This section is asserting tenant isolation in top-links, not the Redis flush pipeline again.
+        // Seed the persisted daily aggregate directly so the assertion is not coupled to a second flush cycle.
+        seedDailyStatsRow(tenantId2, linkId3, today, 1, 1);
 
         String topRespTenant1Again = mockMvc.perform(
                         get("/api/v1/stats/top-links")
@@ -1133,6 +1138,24 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
                 "member", dirtyMember,
                 "ts", String.valueOf(System.currentTimeMillis())
         )));
+    }
+
+    private void seedDailyStatsRow(long tenantId, long linkId, LocalDate day, long pv, long uv) {
+        jdbcTemplate.update(
+                """
+                        INSERT INTO link_stats_daily (link_id, tenant_id, day, pv, uv, updated_at)
+                        VALUES (?, ?, ?, ?, ?, NOW())
+                        ON DUPLICATE KEY UPDATE
+                            pv = VALUES(pv),
+                            uv = VALUES(uv),
+                            updated_at = NOW()
+                        """,
+                linkId,
+                tenantId,
+                day,
+                pv,
+                uv
+        );
     }
 
     private void seedDimPv(long tenantId, long linkId, LocalDate day, String dimType, String dimValue, long pv) {

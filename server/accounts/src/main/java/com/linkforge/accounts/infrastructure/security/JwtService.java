@@ -1,6 +1,5 @@
 package com.linkforge.accounts.infrastructure.security;
 
-import com.linkforge.accounts.application.port.AccountsUserStore;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.config.SecurityProperties;
 import io.jsonwebtoken.Claims;
@@ -21,11 +20,9 @@ public class JwtService {
 
     private final SecurityProperties.Jwt jwt;
     private final SecretKey key;
-    private final AccountsUserStore userStore;
 
-    public JwtService(SecurityProperties properties, AccountsUserStore userStore) {
+    public JwtService(SecurityProperties properties) {
         this.jwt = properties == null ? null : properties.getJwt();
-        this.userStore = userStore;
         String secret = jwt == null ? null : jwt.getSecret();
         if (secret == null || secret.isBlank()) {
             throw new IllegalArgumentException("JWT secret 不能为空，请通过环境变量 JWT_SECRET 配置");
@@ -68,15 +65,6 @@ public class JwtService {
         List<String> roles = c.get("roles", List.class);
         Number tokenVersionClaim = c.get("tokenVersion", Number.class);
         int tokenVersion = tokenVersionClaim == null ? 0 : tokenVersionClaim.intValue();
-
-        AccountsUserStore.UserData currentUser = userStore == null ? null : userStore.findById(userId);
-        if (currentUser == null || currentUser.tenantId() == null || currentUser.tenantId() != tenantId) {
-            throw new IllegalArgumentException("JWT user not found");
-        }
-        int currentTokenVersion = currentUser.tokenVersion() == null ? 0 : currentUser.tokenVersion();
-        if (currentTokenVersion != tokenVersion) {
-            throw new IllegalArgumentException("JWT token version stale");
-        }
 
         return new AuthPrincipal(userId, tenantId, email, roles == null ? Set.of() : Set.copyOf(roles), tokenVersion);
     }

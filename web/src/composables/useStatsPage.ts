@@ -1,7 +1,9 @@
-import { computed, onMounted, ref } from "vue";
+import { computed, getCurrentInstance, onMounted, ref } from "vue";
 import { listLinks } from "../services/links";
 import { fetchLinkDailyStats, fetchOverviewStats, fetchTopLinksStats } from "../services/stats";
 import type { DailyStat, LinkDto, TopLinkSortBy, TopLinkStat } from "../services/types";
+
+const LINK_OPTIONS_PAGE_SIZE = 100;
 
 function toDateUTCString(date: Date) {
   const yyyy = date.getUTCFullYear();
@@ -53,9 +55,29 @@ export function useStatsPage() {
   ]);
 
   async function loadLinks() {
-    const response = await listLinks({ page: 0, size: 50 });
-    links.value = response.items;
-    if (!selectedLinkId.value && links.value.length > 0) {
+    const nextLinks: LinkDto[] = [];
+    let nextPage = 0;
+    let totalLinks = 0;
+
+    do {
+      const response = await listLinks({ page: nextPage, size: LINK_OPTIONS_PAGE_SIZE });
+      nextLinks.push(...response.items);
+      totalLinks = response.total;
+      nextPage += 1;
+
+      if (response.items.length === 0) {
+        break;
+      }
+    } while (nextLinks.length < totalLinks);
+
+    links.value = nextLinks;
+
+    if (links.value.length === 0) {
+      selectedLinkId.value = null;
+      return;
+    }
+
+    if (!links.value.some((link) => link.id === selectedLinkId.value)) {
       selectedLinkId.value = links.value[0]!.id;
     }
   }
@@ -127,9 +149,11 @@ export function useStatsPage() {
     }
   }
 
-  onMounted(() => {
-    void refresh();
-  });
+  if (getCurrentInstance()) {
+    onMounted(() => {
+      void refresh();
+    });
+  }
 
   return {
     error,

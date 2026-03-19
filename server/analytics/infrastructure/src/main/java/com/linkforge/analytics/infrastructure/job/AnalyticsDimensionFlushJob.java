@@ -211,6 +211,7 @@ public class AnalyticsDimensionFlushJob {
                     }
                 } catch (Exception ex) {
                     log.debug("scan dim hash failed: key={}, err={}", key, ex.getMessage());
+                    return false;
                 }
             }
         }

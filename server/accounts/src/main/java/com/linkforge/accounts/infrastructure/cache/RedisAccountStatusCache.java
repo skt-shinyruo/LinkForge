@@ -15,6 +15,7 @@ public class RedisAccountStatusCache implements AccountStatusCache {
 
     private static final String TENANT_STATUS_KEY_PREFIX = "auth:tenant_status:";
     private static final String USER_STATUS_KEY_PREFIX = "auth:user_status:";
+    private static final String USER_AUTH_STATE_VERSION = "v1";
 
     private final StringRedisTemplate redis;
 
@@ -28,8 +29,18 @@ public class RedisAccountStatusCache implements AccountStatusCache {
     }
 
     @Override
-    public String readUserStatus(long userId) {
-        return read(userStatusKey(userId));
+    public UserAuthState readUserAuthState(long userId) {
+        String key = userStatusKey(userId);
+        String raw = read(key);
+        if (raw == null) {
+            return null;
+        }
+        UserAuthState authState = parseUserAuthState(raw);
+        if (authState != null) {
+            return authState;
+        }
+        delete(key);
+        return null;
     }
 
     @Override
@@ -38,8 +49,21 @@ public class RedisAccountStatusCache implements AccountStatusCache {
     }
 
     @Override
-    public void writeUserStatus(long userId, String status, Duration ttl) {
-        write(userStatusKey(userId), status, ttl);
+    public void writeUserAuthState(long userId, long tenantId, String status, int tokenVersion, Duration ttl) {
+        if (tenantId <= 0 || tokenVersion < 0) {
+            return;
+        }
+        write(userStatusKey(userId), formatUserAuthState(new UserAuthState(tenantId, status, tokenVersion)), ttl);
+    }
+
+    @Override
+    public void evictTenantStatus(long tenantId) {
+        delete(tenantStatusKey(tenantId));
+    }
+
+    @Override
+    public void evictUserStatus(long userId) {
+        delete(userStatusKey(userId));
     }
 
     private String read(String key) {
@@ -70,6 +94,44 @@ public class RedisAccountStatusCache implements AccountStatusCache {
         } catch (Exception e) {
             log.debug("status cache write failed: key={}, err={}", key, e.getMessage());
         }
+    }
+
+    private void delete(String key) {
+        if (key == null || key.isBlank()) {
+            return;
+        }
+        try {
+            redis.delete(key);
+        } catch (Exception e) {
+            log.debug("status cache delete failed: key={}, err={}", key, e.getMessage());
+        }
+    }
+
+    private static UserAuthState parseUserAuthState(String raw) {
+        String[] parts = raw.split("\\|", 4);
+        if (parts.length != 4 || !USER_AUTH_STATE_VERSION.equals(parts[0])) {
+            return null;
+        }
+        long tenantId;
+        int tokenVersion;
+        try {
+            tenantId = Long.parseLong(parts[1]);
+            tokenVersion = Integer.parseInt(parts[3]);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        return new UserAuthState(tenantId, parts[2], tokenVersion);
+    }
+
+    private static String formatUserAuthState(UserAuthState authState) {
+        return USER_AUTH_STATE_VERSION
+                + "|" + authState.tenantId()
+                + "|" + nullToEmpty(authState.status())
+                + "|" + authState.tokenVersion();
+    }
+
+    private static String nullToEmpty(String value) {
+        return value == null ? "" : value;
     }
 
     private static String tenantStatusKey(long tenantId) {

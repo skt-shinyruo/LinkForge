@@ -118,6 +118,68 @@ class AnalyticsDimensionFlushJobTest {
     }
 
     @Test
+    void flush_should_not_ack_dirty_record_when_dim_hash_scan_fails() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        LinkStatsDimDailyMapper mapper = mock(LinkStatsDimDailyMapper.class);
+        AnalyticsProperties properties = new AnalyticsProperties();
+        properties.setFlushBackfillDays(1);
+        properties.getDimensions().setEnabled(true);
+        properties.getDimensions().setTypes(List.of("referer_domain"));
+
+        @SuppressWarnings("unchecked")
+        StreamOperations<String, Object, Object> streamOps = mock(StreamOperations.class);
+        when(redis.opsForStream()).thenReturn(streamOps);
+        when(redis.hasKey(anyString())).thenReturn(true);
+        when(streamOps.createGroup(anyString(), any(ReadOffset.class), anyString()))
+                .thenThrow(new RuntimeException("BUSYGROUP Consumer Group name already exists"));
+
+        @SuppressWarnings("unchecked")
+        MapRecord<String, Object, Object> dirtyRecord = mock(MapRecord.class);
+        when(dirtyRecord.getId()).thenReturn(RecordId.of("1-0"));
+        when(dirtyRecord.getValue()).thenReturn((Map) Map.of("member", "1:10"));
+
+        when(streamOps.read(any(Consumer.class), any(StreamReadOptions.class), any(StreamOffset.class)))
+                .thenReturn((List) List.of(dirtyRecord), List.of());
+
+        @SuppressWarnings("unchecked")
+        HashOperations<String, Object, Object> hashOps = mock(HashOperations.class);
+        when(redis.opsForHash()).thenReturn(hashOps);
+        when(hashOps.scan(anyString(), any())).thenThrow(new RuntimeException("redis scan failed"));
+
+        AnalyticsDimensionFlushJob job = new AnalyticsDimensionFlushJob(redis, mapper, properties);
+
+        job.flush();
+
+        verify(mapper, never()).batchUpsert(any());
+        verify(streamOps, never()).acknowledge(anyString(), anyString(), any(RecordId[].class));
+    }
+
+    @Test
+    void flushActiveMembers_should_surface_member_failure_as_retryable_batch_failure() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        LinkStatsDimDailyMapper mapper = mock(LinkStatsDimDailyMapper.class);
+        AnalyticsProperties properties = new AnalyticsProperties();
+        properties.getDimensions().setEnabled(true);
+        properties.getDimensions().setTypes(List.of("referer_domain"));
+
+        @SuppressWarnings("unchecked")
+        HashOperations<String, Object, Object> hashOps = mock(HashOperations.class);
+        when(redis.opsForHash()).thenReturn(hashOps);
+
+        @SuppressWarnings("unchecked")
+        Cursor<Map.Entry<Object, Object>> cursor = mock(Cursor.class);
+        when(hashOps.scan(anyString(), any())).thenReturn(cursor);
+        when(cursor.hasNext()).thenThrow(new RuntimeException("redis cursor failed"));
+
+        AnalyticsDimensionFlushJob job = new AnalyticsDimensionFlushJob(redis, mapper, properties);
+
+        boolean flushed = job.flushActiveMembers(LocalDate.of(2026, 2, 19), properties.getDimensions(), List.of("1:10"));
+
+        assertThat(flushed).isFalse();
+        verify(mapper, never()).batchUpsert(any());
+    }
+
+    @Test
     void flushActiveMembers_should_compute_uv_by_pfcount_and_write_to_mysql() {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         LinkStatsDimDailyMapper mapper = mock(LinkStatsDimDailyMapper.class);

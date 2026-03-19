@@ -1,7 +1,7 @@
 package com.linkforge;
 
 import com.linkforge.LinkForgeApplication;
-import com.linkforge.redirect.infrastructure.projection.RedirectLinkProjectionMapper;
+import com.linkforge.shortlink.infrastructure.query.AuthoritativeLinkMetaSourceAdapter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -76,7 +76,7 @@ class RedirectNegativeCacheIntegrationTest {
     StringRedisTemplate redis;
 
     @SpyBean
-    RedirectLinkProjectionMapper projectionMapper;
+    AuthoritativeLinkMetaSourceAdapter authoritativeLinkMetaSourceAdapter;
 
     @BeforeEach
     void setUp() {
@@ -94,6 +94,6 @@ class RedirectNegativeCacheIntegrationTest {
         mockMvc.perform(get("/r/" + code).header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE))
                 .andExpect(status().isNotFound());
 
-        verify(projectionMapper, times(1)).findByCode(code);
+        verify(authoritativeLinkMetaSourceAdapter, times(1)).findByCode(code);
     }
 }

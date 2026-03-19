@@ -1,4 +1,4 @@
-import { onMounted, reactive, ref } from "vue";
+import { getCurrentInstance, onMounted, reactive, ref } from "vue";
 import { listLinks } from "../services/links";
 import type { LinkDto } from "../services/types";
 import {
@@ -20,6 +20,8 @@ export type LinkListFilters = {
   keyword: string;
 };
 
+const DEFAULT_PAGE_SIZE = 50;
+
 function getErrorMessage(error: unknown, fallbackMessage: string): string {
   return error instanceof Error ? error.message : fallbackMessage;
 }
@@ -32,6 +34,9 @@ export function useLinksPage() {
   const items = ref<LinkDto[]>([]);
   const editingId = ref<number | null>(null);
   const importFile = ref<File | null>(null);
+  const page = ref(0);
+  const size = ref(DEFAULT_PAGE_SIZE);
+  const total = ref(0);
 
   const filters = reactive<LinkListFilters>({
     showArchived: false,
@@ -49,18 +54,21 @@ export function useLinksPage() {
     Object.assign(editForm, createEmptyEditForm());
   }
 
-  async function load() {
+  async function load(targetPage = page.value) {
     loading.value = true;
     error.value = null;
 
     try {
       const response = await listLinks({
-        page: 0,
-        size: 50,
+        page: targetPage,
+        size: size.value,
         archived: filters.showArchived,
         keyword: filters.keyword.trim() || undefined,
       });
       items.value = response.items;
+      total.value = response.total;
+      page.value = response.page;
+      size.value = response.size;
     } catch (caught) {
       error.value = getErrorMessage(caught, "加载失败");
     } finally {
@@ -83,9 +91,29 @@ export function useLinksPage() {
     resetEditForm,
   });
 
-  function setArchived(value: boolean) {
+  function setKeyword(value: string) {
+    filters.keyword = value;
+    page.value = 0;
+  }
+
+  async function setArchived(value: boolean) {
     filters.showArchived = value;
-    void load();
+    page.value = 0;
+    await load(0);
+  }
+
+  async function previousPage() {
+    if (loading.value || page.value <= 0) {
+      return;
+    }
+    await load(page.value - 1);
+  }
+
+  async function nextPage() {
+    if (loading.value || (page.value + 1) * size.value >= total.value) {
+      return;
+    }
+    await load(page.value + 1);
   }
 
   const importExport = useLinkImportExport({
@@ -98,9 +126,11 @@ export function useLinksPage() {
     reload: load,
   });
 
-  onMounted(() => {
-    void load();
-  });
+  if (getCurrentInstance()) {
+    onMounted(() => {
+      void load();
+    });
+  }
 
   return {
     createForm,
@@ -115,12 +145,18 @@ export function useLinksPage() {
     importing,
     items,
     load,
+    nextPage,
+    page,
     policySummary,
+    previousPage,
     saveEdit: mutations.saveEdit,
     setArchived,
+    setKeyword,
     setImportFile: importExport.setImportFile,
+    size,
     startEdit: mutations.startEdit,
     statusLabel,
+    total,
     toggleEnabled: mutations.toggleEnabled,
     archiveLink: mutations.archiveLink,
     cancelEdit: mutations.cancelEdit,

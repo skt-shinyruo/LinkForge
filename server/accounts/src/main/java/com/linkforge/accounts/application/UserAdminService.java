@@ -1,5 +1,6 @@
 package com.linkforge.accounts.application;
 
+import com.linkforge.accounts.application.port.AccountStatusCache;
 import com.linkforge.accounts.application.port.AccountsPasswordHasher;
 import com.linkforge.accounts.application.port.AccountsUserRoleStore;
 import com.linkforge.accounts.application.port.AccountsUserStore;
@@ -32,19 +33,22 @@ public class UserAdminService {
     private final AccountsUserRoleStore userRoleStore;
     private final AccountsPasswordHasher passwordHasher;
     private final TenantGuard tenantGuard;
+    private final AccountStatusCache statusCache;
 
     public UserAdminService(
             SnowflakeIdGenerator idGenerator,
             AccountsUserStore userStore,
             AccountsUserRoleStore userRoleStore,
             AccountsPasswordHasher passwordHasher,
-            TenantGuard tenantGuard
+            TenantGuard tenantGuard,
+            AccountStatusCache statusCache
     ) {
         this.idGenerator = idGenerator;
         this.userStore = userStore;
         this.userRoleStore = userRoleStore;
         this.passwordHasher = passwordHasher;
         this.tenantGuard = tenantGuard;
+        this.statusCache = statusCache;
     }
 
     public List<UserDto> list(long tenantId) {
@@ -114,6 +118,7 @@ public class UserAdminService {
         if (!AccountsConstants.STATUS_DISABLED.equals(user.status())) {
             userStore.update(withStatus(user, AccountsConstants.STATUS_DISABLED));
         }
+        statusCache.evictUserStatus(userId);
         return new UserDto(user.id(), tenantId, user.email(), AccountsConstants.STATUS_DISABLED, roles);
     }
 
@@ -124,6 +129,7 @@ public class UserAdminService {
         if (!AccountsConstants.STATUS_ACTIVE.equals(user.status())) {
             userStore.update(withStatus(user, AccountsConstants.STATUS_ACTIVE));
         }
+        statusCache.evictUserStatus(userId);
         Set<String> roles = loadRolesByUserId(userId);
         return new UserDto(user.id(), tenantId, user.email(), AccountsConstants.STATUS_ACTIVE, roles);
     }
@@ -150,6 +156,7 @@ public class UserAdminService {
                 user.updatedAt()
         );
         userStore.update(updated);
+        statusCache.evictUserStatus(userId);
 
         Set<String> roles = loadRolesByUserId(userId);
         return new UserDto(user.id(), tenantId, user.email(), user.status(), roles);

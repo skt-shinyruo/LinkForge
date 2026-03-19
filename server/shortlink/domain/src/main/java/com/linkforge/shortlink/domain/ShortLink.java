@@ -1,6 +1,7 @@
 package com.linkforge.shortlink.domain;
 
 import java.time.LocalDateTime;
+import java.util.Objects;
 
 import static com.linkforge.shortlink.domain.ShortLinkDomainException.Reason.DELETE_REQUIRES_ARCHIVE;
 import static com.linkforge.shortlink.domain.ShortLinkDomainException.Reason.INVALID_LINK_ID;
@@ -245,9 +246,7 @@ public class ShortLink {
     }
 
     public void archive(LocalDateTime nowUtc) {
-        if (nowUtc == null) {
-            nowUtc = LocalDateTime.now();
-        }
+        Objects.requireNonNull(nowUtc, "nowUtc must be provided in UTC");
         if (archivedAtUtc == null) {
             archivedAtUtc = nowUtc;
         }

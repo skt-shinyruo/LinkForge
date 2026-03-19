@@ -1,5 +1,6 @@
 package com.linkforge.accounts.application;
 
+import com.linkforge.accounts.application.port.AccountStatusCache;
 import com.linkforge.accounts.application.port.AccountsPasswordHasher;
 import com.linkforge.accounts.application.port.AccountsUserRoleStore;
 import com.linkforge.accounts.application.port.AccountsUserStore;
@@ -34,6 +35,7 @@ class UserAdminServiceTest {
 
         assertThat(Arrays.stream(constructor.getParameterTypes()).map(Class::getName))
                 .contains("com.linkforge.accounts.application.port.AccountsPasswordHasher")
+                .contains("com.linkforge.accounts.application.port.AccountStatusCache")
                 .doesNotContain("org.springframework.security.crypto.password.PasswordEncoder");
     }
 
@@ -44,13 +46,15 @@ class UserAdminServiceTest {
         AccountsUserRoleStore userRoleStore = mock(AccountsUserRoleStore.class);
         AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
         TenantGuard tenantGuard = mock(TenantGuard.class);
+        AccountStatusCache statusCache = mock(AccountStatusCache.class);
 
         UserAdminService service = new UserAdminService(
                 idGenerator,
                 userStore,
                 userRoleStore,
                 passwordHasher,
-                tenantGuard
+                tenantGuard,
+                statusCache
         );
 
         UserAdminService.CreateUserRequest req = new UserAdminService.CreateUserRequest(
@@ -77,13 +81,15 @@ class UserAdminServiceTest {
         AccountsUserRoleStore userRoleStore = mock(AccountsUserRoleStore.class);
         AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
         TenantGuard tenantGuard = mock(TenantGuard.class);
+        AccountStatusCache statusCache = mock(AccountStatusCache.class);
 
         UserAdminService service = new UserAdminService(
                 idGenerator,
                 userStore,
                 userRoleStore,
                 passwordHasher,
-                tenantGuard
+                tenantGuard,
+                statusCache
         );
 
         AccountsUserStore.UserData existing = new AccountsUserStore.UserData(
@@ -108,6 +114,7 @@ class UserAdminServiceTest {
         verify(userStore).update(captor.capture());
         assertThat(captor.getValue().passwordHash()).isEqualTo("new-hash");
         assertThat(captor.getValue().tokenVersion()).isEqualTo(8);
+        verify(statusCache).evictUserStatus(100L);
     }
 
     @Test
@@ -117,13 +124,15 @@ class UserAdminServiceTest {
         AccountsUserRoleStore userRoleStore = mock(AccountsUserRoleStore.class);
         AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
         TenantGuard tenantGuard = mock(TenantGuard.class);
+        AccountStatusCache statusCache = mock(AccountStatusCache.class);
 
         UserAdminService service = new UserAdminService(
                 idGenerator,
                 userStore,
                 userRoleStore,
                 passwordHasher,
-                tenantGuard
+                tenantGuard,
+                statusCache
         );
 
         AccountsUserStore.UserData existing = new AccountsUserStore.UserData(
@@ -153,13 +162,15 @@ class UserAdminServiceTest {
         AccountsUserRoleStore userRoleStore = mock(AccountsUserRoleStore.class);
         AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
         TenantGuard tenantGuard = mock(TenantGuard.class);
+        AccountStatusCache statusCache = mock(AccountStatusCache.class);
 
         UserAdminService service = new UserAdminService(
                 idGenerator,
                 userStore,
                 userRoleStore,
                 passwordHasher,
-                tenantGuard
+                tenantGuard,
+                statusCache
         );
 
         AccountsUserStore.UserData onlyAdmin = new AccountsUserStore.UserData(

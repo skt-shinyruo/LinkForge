@@ -16,11 +16,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.Base64;
 import java.util.List;
 
@@ -49,6 +51,7 @@ public class ApiKeyService {
     private final TenantGuard tenantGuard;
     private final SecurityProperties securityProperties;
     private final ApiKeyAuthCache authCache;
+    private final Clock clock;
 
     public ApiKeyService(
             SnowflakeIdGenerator idGenerator,
@@ -56,7 +59,8 @@ public class ApiKeyService {
             AccountsPasswordHasher passwordHasher,
             TenantGuard tenantGuard,
             SecurityProperties securityProperties,
-            ApiKeyAuthCache authCache
+            ApiKeyAuthCache authCache,
+            Clock clock
     ) {
         this.idGenerator = idGenerator;
         this.apiKeyStore = apiKeyStore;
@@ -64,6 +68,7 @@ public class ApiKeyService {
         this.tenantGuard = tenantGuard;
         this.securityProperties = securityProperties;
         this.authCache = authCache;
+        this.clock = clock;
     }
 
     @Transactional
@@ -288,7 +293,7 @@ public class ApiKeyService {
             return;
         }
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
 
         ApiKeyAuthCache.LastUsedTokenResult tokenResult = authCache.tryAcquireLastUsedToken(apiKeyId, intervalSeconds);
         if (tokenResult == ApiKeyAuthCache.LastUsedTokenResult.ACQUIRED) {

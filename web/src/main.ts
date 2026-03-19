@@ -13,10 +13,9 @@ app.use(router);
 
 setUnauthorizedHandler(() => {
   const auth = useAuthStore(pinia);
-  // 避免多次触发导致抖动
-  auth.logout();
+  auth.clearState();
   if (router.currentRoute.value.path !== "/login") {
-    router.replace({ path: "/login", query: { redirect: router.currentRoute.value.fullPath } });
+    void router.replace({ path: "/login", query: { redirect: router.currentRoute.value.fullPath } });
   }
 });
 app.mount("#app");

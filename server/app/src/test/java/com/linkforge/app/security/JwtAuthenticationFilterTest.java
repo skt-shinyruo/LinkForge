@@ -183,10 +183,10 @@ class JwtAuthenticationFilterTest {
         );
 
         when(jwtService.parseToken("good"))
-                .thenReturn(new AuthPrincipal(1L, 1L, "user@example.com", Set.of("USER")));
+                .thenReturn(new AuthPrincipal(1L, 1L, "user@example.com", Set.of("USER"), 0));
         doThrow(new BusinessException(AccountsErrorCode.USER_DISABLED))
                 .when(accountStatusService)
-                .requireActiveUserAndTenant(1L, 1L);
+                .requireActiveUserAndTenant(1L, 1L, 0);
 
         MockHttpServletRequest req = new MockHttpServletRequest("GET", "/api/v1/me");
         req.addHeader("Authorization", "Bearer good");
@@ -201,5 +201,39 @@ class JwtAuthenticationFilterTest {
         assertThat(resp.getStatus()).isEqualTo(403);
         assertThat(resp.getContentType()).startsWith("application/json");
         assertThat(resp.getContentAsString()).contains("\"code\":40302");
+    }
+
+    @Test
+    void jwt_filter_should_parse_claims_once_and_delegate_user_state_validation_to_account_status_service() throws Exception {
+        JwtService jwtService = mock(JwtService.class);
+        AccountStatusService accountStatusService = mock(AccountStatusService.class);
+        ApiErrorResponseWriter writer = new ApiErrorResponseWriter(new ObjectMapper());
+        SecurityProperties securityProperties = new SecurityProperties();
+
+        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(
+                jwtService,
+                accountStatusService,
+                writer,
+                securityProperties
+        );
+
+        when(jwtService.parseToken("good"))
+                .thenReturn(new AuthPrincipal(1L, 1L, "user@example.com", Set.of("USER"), 7));
+
+        MockHttpServletRequest req = new MockHttpServletRequest("GET", "/api/v1/me");
+        req.addHeader("Authorization", "Bearer good");
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+
+        AtomicBoolean chainCalled = new AtomicBoolean(false);
+        FilterChain chain = (r, s) -> {
+            chainCalled.set(true);
+            ((HttpServletResponse) s).setStatus(204);
+        };
+
+        filter.doFilter(req, resp, chain);
+
+        assertThat(chainCalled.get()).isTrue();
+        verify(jwtService).parseToken("good");
+        verify(accountStatusService).requireActiveUserAndTenant(1L, 1L, 7);
     }
 }

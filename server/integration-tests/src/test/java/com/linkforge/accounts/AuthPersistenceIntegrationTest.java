@@ -3,8 +3,10 @@ package com.linkforge.accounts;
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.accounts.application.AuthService;
 import com.linkforge.accounts.application.UserAdminService;
+import com.linkforge.accounts.application.port.AccountStatusCache;
 import com.linkforge.accounts.application.port.AccountsUserStore;
 import com.linkforge.accounts.domain.Roles;
+import com.linkforge.accounts.infrastructure.security.JwtService;
 import com.linkforge.accounts.infrastructure.persistence.entity.ApiKeyEntity;
 import com.linkforge.accounts.infrastructure.persistence.entity.TenantEntity;
 import com.linkforge.accounts.infrastructure.persistence.entity.UserEntity;
@@ -83,13 +85,15 @@ class AuthPersistenceIntegrationTest extends AccountsPersistenceIntegrationTestS
                 "com.linkforge.accounts.application.port.AccountsUserStore",
                 "com.linkforge.accounts.application.port.AccountsUserRoleStore",
                 "com.linkforge.accounts.application.port.AccountsPasswordHasher",
-                "com.linkforge.accounts.application.port.AccountsTokenIssuer"
+                "com.linkforge.accounts.application.port.AccountsTokenIssuer",
+                "com.linkforge.accounts.application.port.AccountStatusCache"
         );
         assertConstructorUsesTypes(
                 UserAdminService.class,
                 "com.linkforge.accounts.application.port.AccountsUserStore",
                 "com.linkforge.accounts.application.port.AccountsUserRoleStore",
-                "com.linkforge.accounts.application.port.AccountsPasswordHasher"
+                "com.linkforge.accounts.application.port.AccountsPasswordHasher",
+                "com.linkforge.accounts.application.port.AccountStatusCache"
         );
         assertPortBean(
                 applicationContext,
@@ -145,18 +149,29 @@ class AuthPersistenceIntegrationTest extends AccountsPersistenceIntegrationTestS
     }
 
     @Test
-    void accountStatusCache_shouldPersistTenantAndUserStatus_withExpectedKeysAndTtl() {
-        var cache = applicationContext.getBean(loadClass("com.linkforge.accounts.application.port.AccountStatusCache"));
+    void accountStatusCache_shouldPersistTenantAndUserAuthState_withExpectedKeysAndTtl() {
+        AccountStatusCache cache = applicationContext.getBean(AccountStatusCache.class);
 
-        invoke(cache, "writeTenantStatus", 101L, "active", Duration.ofSeconds(30));
-        invoke(cache, "writeUserStatus", 202L, "disabled", Duration.ofSeconds(30));
+        cache.writeTenantStatus(101L, "active", Duration.ofSeconds(30));
+        cache.writeUserAuthState(202L, 101L, "disabled", 7, Duration.ofSeconds(30));
 
         assertThat(redis.opsForValue().get("auth:tenant_status:101")).isEqualTo("active");
-        assertThat(redis.opsForValue().get("auth:user_status:202")).isEqualTo("disabled");
+        assertThat(redis.opsForValue().get("auth:user_status:202")).isEqualTo("v1|101|disabled|7");
         assertThat(redis.getExpire("auth:tenant_status:101")).isPositive();
         assertThat(redis.getExpire("auth:user_status:202")).isPositive();
-        assertThat(invoke(cache, "readTenantStatus", 101L)).isEqualTo("active");
-        assertThat(invoke(cache, "readUserStatus", 202L)).isEqualTo("disabled");
+        assertThat(cache.readTenantStatus(101L)).isEqualTo("active");
+        assertThat(cache.readUserAuthState(202L))
+                .isEqualTo(new AccountStatusCache.UserAuthState(101L, "disabled", 7));
+    }
+
+    @Test
+    void jwtService_shouldNotDependOnAccountsUserStore_forTokenParsing() {
+        Constructor<?> constructor = Arrays.stream(JwtService.class.getDeclaredConstructors())
+                .max(Comparator.comparingInt(Constructor::getParameterCount))
+                .orElseThrow();
+
+        assertThat(Arrays.stream(constructor.getParameterTypes()).map(Class::getName))
+                .doesNotContain("com.linkforge.accounts.application.port.AccountsUserStore");
     }
 
     @Test
@@ -198,7 +213,68 @@ class AuthPersistenceIntegrationTest extends AccountsPersistenceIntegrationTestS
     }
 
     @Test
-    void resetPassword_shouldInvalidatePreviouslyIssuedJwt_andPersistTokenVersion() throws Exception {
+    void disable_should_invalidate_cached_active_user_immediately() throws Exception {
+        String tenantName = uniqueTenantName();
+        String ownerEmail = uniqueEmail("owner");
+        String memberEmail = uniqueEmail("member");
+        String password = "password123";
+
+        AuthService.AuthResult owner = authService.register(tenantName, ownerEmail, password);
+        long tenantId = owner.principal().getTenantId();
+
+        authenticateAs(owner.principal());
+        UserAdminService.UserDto member = userAdminService.create(
+                tenantId,
+                new UserAdminService.CreateUserRequest(memberEmail, password, Set.of())
+        );
+
+        AuthService.AuthResult memberLogin = authService.login(memberEmail, password);
+
+        mockMvc.perform(get("/api/v1/me")
+                        .header("Authorization", "Bearer " + memberLogin.token()))
+                .andExpect(status().isOk());
+
+        authenticateAs(owner.principal());
+        userAdminService.disable(tenantId, owner.principal().getUserId(), member.id());
+
+        mockMvc.perform(get("/api/v1/me")
+                        .header("Authorization", "Bearer " + memberLogin.token()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void enable_should_clear_cached_disabled_user_immediately() throws Exception {
+        String tenantName = uniqueTenantName();
+        String ownerEmail = uniqueEmail("owner");
+        String memberEmail = uniqueEmail("member");
+        String password = "password123";
+
+        AuthService.AuthResult owner = authService.register(tenantName, ownerEmail, password);
+        long tenantId = owner.principal().getTenantId();
+
+        authenticateAs(owner.principal());
+        UserAdminService.UserDto member = userAdminService.create(
+                tenantId,
+                new UserAdminService.CreateUserRequest(memberEmail, password, Set.of())
+        );
+        AuthService.AuthResult memberLogin = authService.login(memberEmail, password);
+
+        userAdminService.disable(tenantId, owner.principal().getUserId(), member.id());
+
+        mockMvc.perform(get("/api/v1/me")
+                        .header("Authorization", "Bearer " + memberLogin.token()))
+                .andExpect(status().isForbidden());
+
+        authenticateAs(owner.principal());
+        userAdminService.enable(tenantId, member.id());
+
+        mockMvc.perform(get("/api/v1/me")
+                        .header("Authorization", "Bearer " + memberLogin.token()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void resetPassword_should_invalidate_cached_active_user_immediately_andPersistTokenVersion() throws Exception {
         String tenantName = uniqueTenantName();
         String ownerEmail = uniqueEmail("owner");
         String oldPassword = "password123";
@@ -211,14 +287,18 @@ class AuthPersistenceIntegrationTest extends AccountsPersistenceIntegrationTestS
         assertThat(registered.principal().getTokenVersion()).isZero();
         assertThat(userStore.findById(userId).tokenVersion()).isZero();
 
+        String userCacheKey = "auth:user_status:" + userId;
         mockMvc.perform(get("/api/v1/me")
                         .header("Authorization", "Bearer " + registered.token()))
                 .andExpect(status().isOk());
+        String cachedBeforeReset = redis.opsForValue().get(userCacheKey);
+        assertThat(cachedBeforeReset).isNotBlank();
 
         authenticateAs(registered.principal());
         userAdminService.resetPassword(tenantId, userId, newPassword);
 
         assertThat(userStore.findById(userId).tokenVersion()).isEqualTo(1);
+        assertThat(redis.opsForValue().get(userCacheKey)).isNotEqualTo(cachedBeforeReset);
 
         mockMvc.perform(get("/api/v1/me")
                         .header("Authorization", "Bearer " + registered.token()))
@@ -230,6 +310,32 @@ class AuthPersistenceIntegrationTest extends AccountsPersistenceIntegrationTestS
         mockMvc.perform(get("/api/v1/me")
                         .header("Authorization", "Bearer " + loggedIn.token()))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void logout_should_invalidate_cached_active_user_immediately() throws Exception {
+        String tenantName = uniqueTenantName();
+        String ownerEmail = uniqueEmail("owner");
+        String password = "password123";
+
+        AuthService.AuthResult registered = authService.register(tenantName, ownerEmail, password);
+        long userId = registered.principal().getUserId();
+        String userCacheKey = "auth:user_status:" + userId;
+
+        mockMvc.perform(get("/api/v1/me")
+                        .header("Authorization", "Bearer " + registered.token()))
+                .andExpect(status().isOk());
+        String cachedBeforeLogout = redis.opsForValue().get(userCacheKey);
+        assertThat(cachedBeforeLogout).isNotBlank();
+
+        authService.logout(userId);
+
+        assertThat(userStore.findById(userId).tokenVersion()).isEqualTo(1);
+        assertThat(redis.opsForValue().get(userCacheKey)).isNotEqualTo(cachedBeforeLogout);
+
+        mockMvc.perform(get("/api/v1/me")
+                        .header("Authorization", "Bearer " + registered.token()))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

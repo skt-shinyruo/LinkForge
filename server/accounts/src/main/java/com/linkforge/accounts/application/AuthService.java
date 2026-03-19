@@ -1,5 +1,6 @@
 package com.linkforge.accounts.application;
 
+import com.linkforge.accounts.application.port.AccountStatusCache;
 import com.linkforge.accounts.application.port.AccountsTenantStore;
 import com.linkforge.accounts.application.port.AccountsPasswordHasher;
 import com.linkforge.accounts.application.port.AccountsTokenIssuer;
@@ -28,6 +29,7 @@ public class AuthService {
     private final AccountsUserRoleStore userRoleStore;
     private final AccountsPasswordHasher passwordHasher;
     private final AccountsTokenIssuer tokenIssuer;
+    private final AccountStatusCache statusCache;
 
     public AuthService(
             SnowflakeIdGenerator idGenerator,
@@ -35,7 +37,8 @@ public class AuthService {
             AccountsUserStore userStore,
             AccountsUserRoleStore userRoleStore,
             AccountsPasswordHasher passwordHasher,
-            AccountsTokenIssuer tokenIssuer
+            AccountsTokenIssuer tokenIssuer,
+            AccountStatusCache statusCache
     ) {
         this.idGenerator = idGenerator;
         this.tenantStore = tenantStore;
@@ -43,6 +46,7 @@ public class AuthService {
         this.userRoleStore = userRoleStore;
         this.passwordHasher = passwordHasher;
         this.tokenIssuer = tokenIssuer;
+        this.statusCache = statusCache;
     }
 
     @Transactional
@@ -129,6 +133,7 @@ public class AuthService {
             return;
         }
         userStore.update(withIncrementedTokenVersion(user));
+        statusCache.evictUserStatus(userId);
     }
 
     private static AccountsUserStore.UserData withIncrementedTokenVersion(AccountsUserStore.UserData user) {

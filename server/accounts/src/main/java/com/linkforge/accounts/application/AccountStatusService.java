@@ -24,6 +24,7 @@ import java.time.Duration;
 public class AccountStatusService {
 
     private static final Duration CACHE_TTL = Duration.ofSeconds(30);
+    private static final int SKIP_TOKEN_VERSION_CHECK = Integer.MIN_VALUE;
 
     private final AccountsTenantStore tenantStore;
     private final AccountsUserStore userStore;
@@ -63,34 +64,60 @@ public class AccountStatusService {
     }
 
     public void requireActiveUserAndTenant(long userId, long tenantId) {
+        requireActiveUserAndTenant(userId, tenantId, SKIP_TOKEN_VERSION_CHECK);
+    }
+
+    public void requireActiveUserAndTenant(long userId, long tenantId, int tokenVersion) {
         if (userId <= 0 || tenantId <= 0) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED);
+            throw unauthorized();
         }
 
         requireActiveTenant(tenantId);
 
-        String cached = statusCache.readUserStatus(userId);
+        AccountStatusCache.UserAuthState cached = statusCache.readUserAuthState(userId);
         if (cached != null) {
-            if (AccountsConstants.STATUS_ACTIVE.equals(cached)) {
-                return;
-            }
-            if (AccountsConstants.STATUS_DISABLED.equals(cached)) {
-                throw new BusinessException(AccountsErrorCode.USER_DISABLED);
-            }
+            validateUserAuthState(cached, tenantId, tokenVersion);
+            return;
         }
 
         AccountsUserStore.UserData user = userStore.findById(userId);
         if (user == null || user.id() == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED);
+            throw unauthorized();
         }
         if (user.tenantId() == null || user.tenantId() != tenantId) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED);
+            throw unauthorized();
         }
-        String status = user.status();
+        String status = normalizeUserStatus(user.status());
+        int currentTokenVersion = user.tokenVersion() == null ? 0 : user.tokenVersion();
+        statusCache.writeUserAuthState(userId, tenantId, status, currentTokenVersion, CACHE_TTL);
+
         if (!AccountsConstants.STATUS_ACTIVE.equals(status)) {
-            statusCache.writeUserStatus(userId, AccountsConstants.STATUS_DISABLED, CACHE_TTL);
             throw new BusinessException(AccountsErrorCode.USER_DISABLED);
         }
-        statusCache.writeUserStatus(userId, AccountsConstants.STATUS_ACTIVE, CACHE_TTL);
+        if (tokenVersion != SKIP_TOKEN_VERSION_CHECK && currentTokenVersion != tokenVersion) {
+            throw unauthorized();
+        }
+    }
+
+    private void validateUserAuthState(AccountStatusCache.UserAuthState authState, long tenantId, int tokenVersion) {
+        if (authState.tenantId() != tenantId) {
+            throw unauthorized();
+        }
+        if (!AccountsConstants.STATUS_ACTIVE.equals(authState.status())) {
+            throw new BusinessException(AccountsErrorCode.USER_DISABLED);
+        }
+        if (tokenVersion != SKIP_TOKEN_VERSION_CHECK && authState.tokenVersion() != tokenVersion) {
+            throw unauthorized();
+        }
+    }
+
+    private static String normalizeUserStatus(String status) {
+        return AccountsConstants.STATUS_ACTIVE.equals(status)
+                ? AccountsConstants.STATUS_ACTIVE
+                : AccountsConstants.STATUS_DISABLED;
+    }
+
+    private static BusinessException unauthorized() {
+        return new BusinessException(ErrorCode.UNAUTHORIZED);
     }
 }

@@ -12,50 +12,59 @@ export const useAuthStore = defineStore("auth", {
     tenantId: 0 as number,
     roles: [] as string[],
     initialized: false as boolean,
+    initInFlight: null as Promise<void> | null,
   }),
   getters: {
     isAuthed: (s) => (AUTH_MODE === "cookie" ? !!s.email : !!s.token),
     isAdmin: (s) => s.roles.includes("TENANT_ADMIN"),
   },
   actions: {
+    applyUser(data: any) {
+      this.email = data.email;
+      this.tenantId = data.tenantId;
+      this.roles = Array.isArray(data.roles) ? data.roles : [];
+    },
+
+    clearState() {
+      this.email = "";
+      this.tenantId = 0;
+      this.roles = [];
+      this.token = null;
+      this.initialized = true;
+      clearToken();
+    },
+
     async init() {
+      this.hydrate();
       if (this.initialized) {
         return;
       }
-      this.initialized = true;
 
-      if (AUTH_MODE === "bearer") {
-        this.token = getToken();
-        if (!this.token) {
-          return;
-        }
-        // bearer 模式：token 已存在时，刷新后需要通过 /me 回填用户信息
+      if (this.initInFlight) {
+        return this.initInFlight;
+      }
+
+      if (AUTH_MODE === "bearer" && !this.token) {
+        this.clearState();
+        return;
+      }
+
+      this.initInFlight = (async () => {
         try {
           const r: ApiResponse<any> = await apiFetch<any>("/api/v1/me");
           if (r.code !== 0 || !r.data) {
             return;
           }
-          this.email = r.data.email;
-          this.tenantId = r.data.tenantId;
-          this.roles = Array.isArray(r.data.roles) ? r.data.roles : [];
+          this.applyUser(r.data);
+          this.initialized = true;
         } catch {
-          // ignore
+          // ignore transient bootstrap failures so a later navigation can retry
+        } finally {
+          this.initInFlight = null;
         }
-        return;
-      }
+      })();
 
-      // cookie 模式：通过 /me 取回当前会话信息
-      try {
-        const r: ApiResponse<any> = await apiFetch<any>("/api/v1/me");
-        if (r.code !== 0 || !r.data) {
-          return;
-        }
-        this.email = r.data.email;
-        this.tenantId = r.data.tenantId;
-        this.roles = Array.isArray(r.data.roles) ? r.data.roles : [];
-      } catch {
-        // ignore
-      }
+      return this.initInFlight;
     },
 
     async login(email: string, password: string) {
@@ -66,9 +75,8 @@ export const useAuthStore = defineStore("auth", {
       if (r.code !== 0 || !r.data?.user) {
         throw new Error(r.message || "登录失败");
       }
-      this.email = r.data.user.email;
-      this.tenantId = r.data.user.tenantId;
-      this.roles = r.data.user.roles;
+      this.applyUser(r.data.user);
+      this.initialized = true;
 
       if (AUTH_MODE === "bearer") {
         const token = r.data.token;
@@ -85,10 +93,7 @@ export const useAuthStore = defineStore("auth", {
     },
 
     async logout() {
-      this.email = "";
-      this.tenantId = 0;
-      this.roles = [];
-      this.token = null;
+      this.clearState();
 
       if (AUTH_MODE === "cookie") {
         try {
@@ -97,7 +102,6 @@ export const useAuthStore = defineStore("auth", {
           // ignore
         }
       }
-      clearToken();
     },
 
     hydrate() {

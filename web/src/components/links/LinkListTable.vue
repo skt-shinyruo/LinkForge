@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import type { LinkEditFormState } from "../../composables/useLinksPage";
 import type { LinkDto } from "../../services/types";
 
@@ -11,6 +12,9 @@ const props = defineProps<{
   editingId: number | null;
   editForm: LinkEditFormState;
   isAdmin: boolean;
+  page: number;
+  size: number;
+  total: number;
   formatInstantLocal: (value?: string | null) => string;
   policySummary: (link: LinkDto) => string;
   statusLabel: (link: LinkDto) => string;
@@ -20,6 +24,8 @@ const emit = defineEmits<{
   refresh: [];
   setArchived: [value: boolean];
   "update:keyword": [value: string];
+  previousPage: [];
+  nextPage: [];
   startEdit: [link: LinkDto];
   cancelEdit: [];
   saveEdit: [];
@@ -32,6 +38,17 @@ const emit = defineEmits<{
 function onKeywordInput(event: Event) {
   emit("update:keyword", (event.target as HTMLInputElement).value);
 }
+
+const pageCount = computed(() => {
+  if (props.total <= 0 || props.size <= 0) {
+    return 0;
+  }
+  return Math.ceil(props.total / props.size);
+});
+
+const currentPageLabel = computed(() => (pageCount.value === 0 ? 0 : props.page + 1));
+const hasPreviousPage = computed(() => props.page > 0);
+const hasNextPage = computed(() => (props.page + 1) * props.size < props.total);
 </script>
 
 <template>
@@ -191,6 +208,16 @@ function onKeywordInput(event: Event) {
         </template>
       </tbody>
     </table>
+    <div v-if="!props.loading" class="pagination">
+      <p class="sub">
+        共 {{ props.total }} 条
+        <span v-if="pageCount > 0"> · 第 {{ currentPageLabel }} / {{ pageCount }} 页</span>
+      </p>
+      <div class="pagination-actions">
+        <button class="btn small secondary" :disabled="!hasPreviousPage" @click="emit('previousPage')">上一页</button>
+        <button class="btn small secondary" :disabled="!hasNextPage" @click="emit('nextPage')">下一页</button>
+      </div>
+    </div>
   </section>
 </template>
 
@@ -259,6 +286,21 @@ textarea {
 .actions-col {
   display: flex;
   gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.pagination-actions {
+  display: flex;
+  gap: 8px;
   flex-wrap: wrap;
 }
 

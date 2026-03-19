@@ -17,16 +17,10 @@ export const router = createRouter({
   ],
 });
 
-let initPromise: Promise<void> | null = null;
-
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
-  if (!initPromise) {
-    initPromise = auth.init();
-  }
-  await initPromise;
-  auth.hydrate();
-  if (to.meta.requiresAuth && !auth.isAuthed) {
+  await auth.init();
+  if (to.meta.requiresAuth && auth.initialized && !auth.isAuthed) {
     return { path: "/login", query: { redirect: to.fullPath } };
   }
   if (to.path === "/login" && auth.isAuthed) {

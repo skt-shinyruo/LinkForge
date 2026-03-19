@@ -8,13 +8,21 @@ import com.linkforge.contract.openapi.OpenApiErrorCode;
 import com.linkforge.foundation.config.SecurityProperties;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.runtime.security.TenantGuard;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.lang.reflect.Constructor;
-import java.util.Arrays;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.Arrays;
 import java.util.Base64;
+import java.util.TimeZone;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -27,6 +35,18 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class ApiKeyServiceTest {
+
+    private TimeZone originalTimeZone;
+
+    @BeforeEach
+    void setUp() {
+        originalTimeZone = TimeZone.getDefault();
+    }
+
+    @AfterEach
+    void tearDown() {
+        TimeZone.setDefault(originalTimeZone);
+    }
 
     @Test
     void constructor_shouldDependOnApiKeyPortInsteadOfInfrastructureMapper() {
@@ -61,14 +81,7 @@ class ApiKeyServiceTest {
         props.getApiKey().setAuthCacheTtlSeconds(60);
         props.getApiKey().setLastUsedUpdateIntervalSeconds(0);
 
-        ApiKeyService service = new ApiKeyService(
-                mock(SnowflakeIdGenerator.class),
-                store,
-                passwordHasher,
-                mock(TenantGuard.class),
-                props,
-                authCache
-        );
+        ApiKeyService service = newService(store, passwordHasher, props, authCache);
 
         String digest = sha256Base64Url("secret");
         when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, AccountsConstants.STATUS_ACTIVE, digest));
@@ -91,14 +104,7 @@ class ApiKeyServiceTest {
         props.getApiKey().setAuthCacheTtlSeconds(60);
         props.getApiKey().setLastUsedUpdateIntervalSeconds(0);
 
-        ApiKeyService service = new ApiKeyService(
-                mock(SnowflakeIdGenerator.class),
-                store,
-                passwordHasher,
-                mock(TenantGuard.class),
-                props,
-                authCache
-        );
+        ApiKeyService service = newService(store, passwordHasher, props, authCache);
 
         String wrongDigest = sha256Base64Url("other-secret");
         when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, AccountsConstants.STATUS_ACTIVE, wrongDigest));
@@ -122,14 +128,7 @@ class ApiKeyServiceTest {
         props.getApiKey().setAuthCacheTtlSeconds(60);
         props.getApiKey().setLastUsedUpdateIntervalSeconds(0);
 
-        ApiKeyService service = new ApiKeyService(
-                mock(SnowflakeIdGenerator.class),
-                store,
-                passwordHasher,
-                mock(TenantGuard.class),
-                props,
-                authCache
-        );
+        ApiKeyService service = newService(store, passwordHasher, props, authCache);
 
         when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, AccountsConstants.STATUS_DISABLED, ""));
 
@@ -152,14 +151,7 @@ class ApiKeyServiceTest {
         props.getApiKey().setLastUsedUpdateIntervalSeconds(0);
         props.getApiKey().setAuthCacheTtlSeconds(60);
 
-        ApiKeyService service = new ApiKeyService(
-                mock(SnowflakeIdGenerator.class),
-                store,
-                passwordHasher,
-                mock(TenantGuard.class),
-                props,
-                authCache
-        );
+        ApiKeyService service = newService(store, passwordHasher, props, authCache);
 
         AccountsApiKeyStore.ApiKey apiKey = new AccountsApiKeyStore.ApiKey(
                 123L,
@@ -192,14 +184,7 @@ class ApiKeyServiceTest {
         props.getApiKey().setAuthCacheTtlSeconds(0);
         props.getApiKey().setLastUsedUpdateIntervalSeconds(0);
 
-        ApiKeyService service = new ApiKeyService(
-                mock(SnowflakeIdGenerator.class),
-                store,
-                passwordHasher,
-                mock(TenantGuard.class),
-                props,
-                authCache
-        );
+        ApiKeyService service = newService(store, passwordHasher, props, authCache);
 
         AccountsApiKeyStore.ApiKey apiKey = new AccountsApiKeyStore.ApiKey(
                 123L,
@@ -231,14 +216,7 @@ class ApiKeyServiceTest {
         props.getApiKey().setAuthCacheTtlSeconds(60);
         props.getApiKey().setLastUsedUpdateIntervalSeconds(300);
 
-        ApiKeyService service = new ApiKeyService(
-                mock(SnowflakeIdGenerator.class),
-                store,
-                passwordHasher,
-                mock(TenantGuard.class),
-                props,
-                authCache
-        );
+        ApiKeyService service = newService(store, passwordHasher, props, authCache);
 
         String digest = sha256Base64Url("secret");
         when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, AccountsConstants.STATUS_ACTIVE, digest));
@@ -250,12 +228,36 @@ class ApiKeyServiceTest {
     }
 
     @Test
+    void authenticate_shouldWriteLastUsedAt_inUtcBasedOnInjectedClock() {
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+
+        AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
+        AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
+        ApiKeyAuthCache authCache = mock(ApiKeyAuthCache.class);
+
+        SecurityProperties props = new SecurityProperties();
+        props.getApiKey().setAuthCacheTtlSeconds(60);
+        props.getApiKey().setLastUsedUpdateIntervalSeconds(300);
+
+        Clock fixedClock = Clock.fixed(Instant.parse("2026-03-19T01:02:03Z"), ZoneOffset.UTC);
+        ApiKeyService service = newService(store, passwordHasher, props, authCache, fixedClock);
+
+        String digest = sha256Base64Url("secret");
+        when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, AccountsConstants.STATUS_ACTIVE, digest));
+        when(authCache.tryAcquireLastUsedToken(123L, 300L)).thenReturn(ApiKeyAuthCache.LastUsedTokenResult.ACQUIRED);
+
+        service.authenticate("lfk_123_secret");
+
+        ArgumentCaptor<LocalDateTime> lastUsedAt = ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(store).updateLastUsedAt(eq(123L), lastUsedAt.capture());
+        assertThat(lastUsedAt.getValue()).isEqualTo(LocalDateTime.ofInstant(fixedClock.instant(), ZoneOffset.UTC));
+    }
+
+    @Test
     void authenticate_shouldReject_whenApiKeyHeaderIsTooLong() {
-        ApiKeyService service = new ApiKeyService(
-                mock(SnowflakeIdGenerator.class),
+        ApiKeyService service = newService(
                 mock(AccountsApiKeyStore.class),
                 mock(AccountsPasswordHasher.class),
-                mock(TenantGuard.class),
                 new SecurityProperties(),
                 mock(ApiKeyAuthCache.class)
         );
@@ -269,11 +271,9 @@ class ApiKeyServiceTest {
 
     @Test
     void authenticate_shouldReject_whenApiKeySecretIsTooLong() {
-        ApiKeyService service = new ApiKeyService(
-                mock(SnowflakeIdGenerator.class),
+        ApiKeyService service = newService(
                 mock(AccountsApiKeyStore.class),
                 mock(AccountsPasswordHasher.class),
-                mock(TenantGuard.class),
                 new SecurityProperties(),
                 mock(ApiKeyAuthCache.class)
         );
@@ -288,11 +288,9 @@ class ApiKeyServiceTest {
     @Test
     void disable_shouldReturnDisabledStatusInApiKeyInfo() {
         AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
-        ApiKeyService service = new ApiKeyService(
-                mock(SnowflakeIdGenerator.class),
+        ApiKeyService service = newService(
                 store,
                 mock(AccountsPasswordHasher.class),
-                mock(TenantGuard.class),
                 new SecurityProperties(),
                 mock(ApiKeyAuthCache.class)
         );
@@ -317,11 +315,9 @@ class ApiKeyServiceTest {
     @Test
     void enable_shouldReturnActiveStatusInApiKeyInfo() {
         AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
-        ApiKeyService service = new ApiKeyService(
-                mock(SnowflakeIdGenerator.class),
+        ApiKeyService service = newService(
                 store,
                 mock(AccountsPasswordHasher.class),
-                mock(TenantGuard.class),
                 new SecurityProperties(),
                 mock(ApiKeyAuthCache.class)
         );
@@ -350,6 +346,67 @@ class ApiKeyServiceTest {
             return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
         } catch (Exception e) {
             throw new IllegalStateException(e);
+        }
+    }
+
+    private static ApiKeyService newService(
+            AccountsApiKeyStore store,
+            AccountsPasswordHasher passwordHasher,
+            SecurityProperties props,
+            ApiKeyAuthCache authCache
+    ) {
+        return newService(store, passwordHasher, props, authCache, Clock.systemUTC());
+    }
+
+    private static ApiKeyService newService(
+            AccountsApiKeyStore store,
+            AccountsPasswordHasher passwordHasher,
+            SecurityProperties props,
+            ApiKeyAuthCache authCache,
+            Clock clock
+    ) {
+        try {
+            Constructor<ApiKeyService> constructor = ApiKeyService.class.getConstructor(
+                    SnowflakeIdGenerator.class,
+                    AccountsApiKeyStore.class,
+                    AccountsPasswordHasher.class,
+                    TenantGuard.class,
+                    SecurityProperties.class,
+                    ApiKeyAuthCache.class,
+                    Clock.class
+            );
+            return constructor.newInstance(
+                    mock(SnowflakeIdGenerator.class),
+                    store,
+                    passwordHasher,
+                    mock(TenantGuard.class),
+                    props,
+                    authCache,
+                    clock
+            );
+        } catch (NoSuchMethodException ignored) {
+            try {
+                Constructor<ApiKeyService> constructor = ApiKeyService.class.getConstructor(
+                        SnowflakeIdGenerator.class,
+                        AccountsApiKeyStore.class,
+                        AccountsPasswordHasher.class,
+                        TenantGuard.class,
+                        SecurityProperties.class,
+                        ApiKeyAuthCache.class
+                );
+                return constructor.newInstance(
+                        mock(SnowflakeIdGenerator.class),
+                        store,
+                        passwordHasher,
+                        mock(TenantGuard.class),
+                        props,
+                        authCache
+                );
+            } catch (ReflectiveOperationException ex) {
+                throw new IllegalStateException(ex);
+            }
+        } catch (ReflectiveOperationException ex) {
+            throw new IllegalStateException(ex);
         }
     }
 }

@@ -1,17 +1,21 @@
 package com.linkforge.analytics.infrastructure.job;
 
-import com.linkforge.contract.analytics.AnalyticsKeys;
 import com.linkforge.analytics.infrastructure.persistence.mapper.LinkStatsDailyMapper;
 import com.linkforge.analytics.infrastructure.persistence.mapper.LinkStatsDailyUpsertRow;
+import com.linkforge.contract.analytics.AnalyticsKeys;
 import com.linkforge.foundation.config.AnalyticsProperties;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
+import org.springframework.data.redis.connection.stream.Consumer;
+import org.springframework.data.redis.connection.stream.MapRecord;
+import org.springframework.data.redis.connection.stream.ReadOffset;
+import org.springframework.data.redis.connection.stream.RecordId;
+import org.springframework.data.redis.connection.stream.StreamOffset;
+import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.core.RedisCallback;
-import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -25,6 +29,9 @@ import java.util.List;
 public class AnalyticsFlushJob {
 
     private static final Logger log = LoggerFactory.getLogger(AnalyticsFlushJob.class);
+    private static final String GROUP = "lf-stats-flush";
+    private static final String CONSUMER = "lf-stats-flush-consumer";
+    private static final int BATCH_SIZE = 500;
 
     private final StringRedisTemplate redis;
     private final LinkStatsDailyMapper linkStatsDailyMapper;
@@ -39,8 +46,6 @@ public class AnalyticsFlushJob {
     @Scheduled(fixedDelayString = "${APP_ANALYTICS_FLUSH_DELAY_MS:60000}")
     @SchedulerLock(name = "lf:job:analytics:flush", lockAtMostFor = "PT10M")
     public void flush() {
-        // 约定：Redirect 侧会把“被触达的 linkId”写入当日活跃集合，flush 只需增量读取，不再做全量 SCAN
-        // 为覆盖跨天边界与短暂停摆，支持按回补窗口（最近 N 天）追赶 flush
         LocalDate todayUtc = LocalDate.now(ZoneOffset.UTC);
         int backfillDays = resolveBackfillDays();
         for (int i = 0; i < backfillDays; i++) {
@@ -49,28 +54,38 @@ public class AnalyticsFlushJob {
     }
 
     private void flushDay(LocalDate day) {
-        String activeKey = AnalyticsKeys.activeSetKey(day);
-        if (!hasKey(activeKey)) {
+        String streamKey = AnalyticsKeys.statsDirtyStreamKey(day);
+        if (!ensureGroup(streamKey)) {
             return;
         }
-        ScanOptions options = ScanOptions.scanOptions().count(1000).build();
 
-        List<String> batchMembers = new ArrayList<>(500);
-        try (Cursor<String> cursor = redis.opsForSet().scan(activeKey, options)) {
-            while (cursor.hasNext()) {
-                batchMembers.add(cursor.next());
-                if (batchMembers.size() >= 500) {
-                    flushActiveMembers(day, batchMembers);
-                    batchMembers.clear();
-                }
+        Consumer consumer = Consumer.from(GROUP, CONSUMER);
+        while (true) {
+            List<MapRecord<String, Object, Object>> records = readSafe(
+                    consumer,
+                    StreamReadOptions.empty().count(BATCH_SIZE),
+                    StreamOffset.create(streamKey, ReadOffset.from("0-0"))
+            );
+            if (records == null || records.isEmpty()) {
+                records = readSafe(
+                        consumer,
+                        StreamReadOptions.empty().count(BATCH_SIZE),
+                        StreamOffset.create(streamKey, ReadOffset.lastConsumed())
+                );
             }
-        } catch (Exception e) {
-            log.debug("scan active set failed: activeKey={}, err={}", activeKey, e.getMessage());
-            return;
-        }
+            if (records == null || records.isEmpty()) {
+                return;
+            }
 
-        if (!batchMembers.isEmpty()) {
-            flushActiveMembers(day, batchMembers);
+            List<String> members = extractMembers(records);
+            if (members.isEmpty()) {
+                acknowledge(streamKey, records.stream().map(MapRecord::getId).toList());
+                continue;
+            }
+            if (!flushActiveMembers(day, members)) {
+                return;
+            }
+            acknowledge(streamKey, records.stream().map(MapRecord::getId).toList());
         }
     }
 
@@ -96,7 +111,7 @@ public class AnalyticsFlushJob {
         }
     }
 
-    void flushActiveMembers(LocalDate day, List<String> members) {
+    boolean flushActiveMembers(LocalDate day, List<String> members) {
         long startNs = System.nanoTime();
         List<MemberParts> parts = new ArrayList<>(members.size());
         for (String m : members) {
@@ -106,7 +121,7 @@ public class AnalyticsFlushJob {
             }
         }
         if (parts.isEmpty()) {
-            return;
+            return true;
         }
 
         List<String> pvKeys = parts.stream().map(p -> AnalyticsKeys.pvKey(p.tenantId, p.linkId, day)).toList();
@@ -127,7 +142,6 @@ public class AnalyticsFlushJob {
                 skipped++;
                 continue;
             }
-            // 由于落库使用单调 upsert（GREATEST），uv 缺失/为 0 不再导致统计回退，可安全写入 pv。
             long uv = safeLong(uvRaw, 0L);
 
             LinkStatsDailyUpsertRow row = new LinkStatsDailyUpsertRow();
@@ -143,7 +157,7 @@ public class AnalyticsFlushJob {
             if (skipped > 0) {
                 log.info("flush stats batch skipped: day={}, scanned={}, skipped={}", day, parts.size(), skipped);
             }
-            return;
+            return true;
         }
 
         try {
@@ -157,6 +171,7 @@ public class AnalyticsFlushJob {
                     skipped,
                     latencyMs
             );
+            return true;
         } catch (DataAccessException e) {
             log.warn(
                     "flush stats batch failed: day={}, written={}, scanned={}, skipped={}, err={}",
@@ -166,6 +181,7 @@ public class AnalyticsFlushJob {
                     skipped,
                     e.getMessage()
             );
+            return false;
         }
     }
 
@@ -179,7 +195,6 @@ public class AnalyticsFlushJob {
             for (String k : keys) {
                 byte[] kk = (k == null || k.isBlank()) ? null : serializer.serialize(k);
                 if (kk == null || kk.length == 0) {
-                    // 保持 pipeline 结果与 key 列表对齐：用一个固定的“不存在 key”占位
                     connection.pfCount(dummyKey);
                 } else {
                     connection.pfCount(kk);
@@ -193,6 +208,68 @@ public class AnalyticsFlushJob {
         List<Long> out = new ArrayList<>(raw.size());
         for (Object o : raw) {
             out.add(o instanceof Long l ? l : null);
+        }
+        return out;
+    }
+
+    private boolean ensureGroup(String streamKey) {
+        if (!hasKey(streamKey)) {
+            return false;
+        }
+        try {
+            redis.opsForStream().createGroup(streamKey, ReadOffset.from("0-0"), GROUP);
+            return true;
+        } catch (Exception e) {
+            String msg = e.getMessage();
+            if (msg != null && msg.toLowerCase().contains("busygroup")) {
+                return true;
+            }
+            log.debug("create stats dirty stream group failed: streamKey={}, err={}", streamKey, msg);
+            return false;
+        }
+    }
+
+    private List<MapRecord<String, Object, Object>> readSafe(
+            Consumer consumer,
+            StreamReadOptions options,
+            StreamOffset<String> offset
+    ) {
+        try {
+            return redis.opsForStream().read(consumer, options, offset);
+        } catch (Exception e) {
+            log.debug("read stats dirty stream failed: streamKey={}, err={}", offset == null ? null : offset.getKey(), e.getMessage());
+            return null;
+        }
+    }
+
+    private void acknowledge(String streamKey, List<RecordId> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        try {
+            redis.opsForStream().acknowledge(streamKey, GROUP, ids.toArray(new RecordId[0]));
+        } catch (Exception e) {
+            log.debug("ack stats dirty stream failed: streamKey={}, size={}, err={}", streamKey, ids.size(), e.getMessage());
+        }
+    }
+
+    private static List<String> extractMembers(List<MapRecord<String, Object, Object>> records) {
+        if (records == null || records.isEmpty()) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>(records.size());
+        for (MapRecord<String, Object, Object> record : records) {
+            if (record == null || record.getValue() == null) {
+                continue;
+            }
+            Object raw = record.getValue().get("member");
+            if (raw == null) {
+                continue;
+            }
+            String member = String.valueOf(raw).trim();
+            if (!member.isBlank()) {
+                out.add(member);
+            }
         }
         return out;
     }
@@ -213,7 +290,6 @@ public class AnalyticsFlushJob {
     }
 
     private static MemberParts parseActiveMember(String member) {
-        // {tenantId}:{linkId}
         if (member == null || member.isBlank()) {
             return null;
         }

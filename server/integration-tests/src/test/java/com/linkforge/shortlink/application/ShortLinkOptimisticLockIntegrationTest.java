@@ -1,6 +1,7 @@
 package com.linkforge.shortlink.application;
 
 import com.linkforge.LinkForgeApplication;
+import com.linkforge.TestTenantFixtures;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.shortlink.infrastructure.persistence.repository.MybatisShortLinkRepository;
@@ -12,6 +13,7 @@ import org.mockito.stubbing.Answer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.SpyBean;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -90,8 +92,12 @@ class ShortLinkOptimisticLockIntegrationTest {
     @SpyBean
     MybatisShortLinkRepository shortLinkRepository;
 
+    @Autowired
+    JdbcTemplate jdbcTemplate;
+
     @BeforeEach
     void setUpAuth() {
+        TestTenantFixtures.ensureTenantExists(jdbcTemplate, TENANT_ID);
         setCurrentUser();
         reset(shortLinkRepository);
     }

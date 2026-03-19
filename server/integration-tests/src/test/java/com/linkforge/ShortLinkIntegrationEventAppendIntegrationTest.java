@@ -76,6 +76,7 @@ class ShortLinkIntegrationEventAppendIntegrationTest {
 
     @BeforeEach
     void setUpAuth() {
+        TestTenantFixtures.ensureTenantExists(jdbcTemplate, TENANT_ID);
         AuthPrincipal principal = new AuthPrincipal(USER_ID, TENANT_ID, "admin@example.com", Set.of("tenant_admin"));
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(principal, "N/A", List.of())

@@ -61,6 +61,8 @@ public class VisitRecorderService implements VisitRecorderPort {
             String uvKey = AnalyticsKeys.uvKey(tenantId, linkId, day);
             String activeKey = AnalyticsKeys.activeSetKey(day);
             String activeMember = AnalyticsKeys.activeMember(tenantId, linkId);
+            String statsDirtyStreamKey = AnalyticsKeys.statsDirtyStreamKey(day);
+            String dimDirtyStreamKey = AnalyticsKeys.dimDirtyStreamKey(day);
 
             // PV：计数
             Long pv = redis.opsForValue().increment(pvKey);
@@ -71,6 +73,7 @@ public class VisitRecorderService implements VisitRecorderPort {
             Long activeAdd = redis.opsForSet().add(activeKey, activeMember);
 
             Date expireAt = resolveDayExpireAtUtc(day);
+            enqueueDirtyMember(statsDirtyStreamKey, activeMember, expireAt);
             if (expireAt != null) {
                 // TTL 设置采用“有限重试”策略：首次设置失败时，在下一次访问中仍会再尝试一次，
                 // 避免因 pv>1 / uvAdd=0 / activeAdd=0 导致 key 永久漏 TTL。
@@ -90,6 +93,9 @@ public class VisitRecorderService implements VisitRecorderPort {
             AnalyticsProperties a = analyticsProperties;
             boolean dimsEnabled = a != null && a.getDimensions() != null && a.getDimensions().isEnabled();
             boolean eventsEnabled = a != null && a.getEvents() != null && a.getEvents().isEnabled();
+            if (dimsEnabled) {
+                enqueueDirtyMember(dimDirtyStreamKey, activeMember, expireAt);
+            }
             if (!dimsEnabled && !eventsEnabled) {
                 return;
             }
@@ -224,10 +230,7 @@ public class VisitRecorderService implements VisitRecorderPort {
         fields.put("tenantId", String.valueOf(tenantId));
         fields.put("linkId", String.valueOf(linkId));
 
-        String requestId = RequestId.get();
-        if (requestId == null || requestId.isBlank()) {
-            requestId = UUID.randomUUID().toString().replace("-", "");
-        }
+        String requestId = UUID.randomUUID().toString().replace("-", "");
         fields.put("requestId", requestId);
 
         String salt = analyticsProperties == null ? null : analyticsProperties.getSalt();
@@ -247,6 +250,19 @@ public class VisitRecorderService implements VisitRecorderPort {
         long maxLen = cfg.getStreamMaxLen();
         if (maxLen > 0) {
             redis.opsForStream().trim(streamKey, maxLen, true);
+        }
+    }
+
+    private void enqueueDirtyMember(String streamKey, String member, Date expireAt) {
+        if (streamKey == null || streamKey.isBlank() || member == null || member.isBlank()) {
+            return;
+        }
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("member", member);
+        fields.put("ts", String.valueOf(System.currentTimeMillis()));
+        redis.opsForStream().add(StreamRecords.newRecord().in(streamKey).ofStrings(fields));
+        if (expireAt != null) {
+            expireAtQuietly(streamKey, expireAt);
         }
     }
 

@@ -330,6 +330,7 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
         }
         assertThat(eventJson).isNotNull();
         assertThat(eventJson.get("data").size()).isGreaterThan(0);
+        assertThat(eventJson.get("data").get(0).get("requestId").asText()).isNotBlank();
 
         // 7) Top 链接报表（JWT）
         String topResp = mockMvc.perform(
@@ -1114,8 +1115,9 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
         String dayRaw = day.format(DateTimeFormatter.BASIC_ISO_DATE); // yyyyMMdd
         String pvKey = "stats:pv:" + tenantId + ":" + linkId + ":" + dayRaw;
         String uvKey = "stats:uv:" + tenantId + ":" + linkId + ":" + dayRaw;
-        String activeKey = "stats:active:" + dayRaw;
-        String activeMember = tenantId + ":" + linkId;
+        String statsDirtyStreamKey = "stats:dirty:flush:" + dayRaw;
+        String dimDirtyStreamKey = "stats:dirty:dim:" + dayRaw;
+        String dirtyMember = tenantId + ":" + linkId;
 
         for (int i = 0; i < pv; i++) {
             redis.opsForValue().increment(pvKey);
@@ -1123,7 +1125,14 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
         for (int i = 0; i < uv; i++) {
             redis.opsForHyperLogLog().add(uvKey, "v" + i + "-" + tenantId + "-" + linkId);
         }
-        redis.opsForSet().add(activeKey, activeMember);
+        redis.opsForStream().add(StreamRecords.newRecord().in(statsDirtyStreamKey).ofStrings(java.util.Map.of(
+                "member", dirtyMember,
+                "ts", String.valueOf(System.currentTimeMillis())
+        )));
+        redis.opsForStream().add(StreamRecords.newRecord().in(dimDirtyStreamKey).ofStrings(java.util.Map.of(
+                "member", dirtyMember,
+                "ts", String.valueOf(System.currentTimeMillis())
+        )));
     }
 
     private void seedDimPv(long tenantId, long linkId, LocalDate day, String dimType, String dimValue, long pv) {

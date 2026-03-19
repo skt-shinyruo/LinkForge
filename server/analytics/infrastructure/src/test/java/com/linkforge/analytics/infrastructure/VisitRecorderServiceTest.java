@@ -4,16 +4,21 @@ import com.linkforge.analytics.application.VisitorFingerprint;
 import com.linkforge.contract.analytics.AnalyticsKeys;
 import com.linkforge.contract.analytics.VisitContext;
 import com.linkforge.foundation.config.AnalyticsProperties;
+import com.linkforge.foundation.web.RequestId;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.data.redis.connection.stream.MapRecord;
+import org.springframework.data.redis.connection.stream.RecordId;
 import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.HyperLogLogOperations;
 import org.springframework.data.redis.core.SetOperations;
+import org.springframework.data.redis.core.StreamOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.Date;
 import java.util.Map;
 
@@ -27,6 +32,103 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class VisitRecorderServiceTest {
+
+    @Test
+    void recordVisit_should_use_server_owned_event_request_id_and_enqueue_dirty_streams() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        AnalyticsProperties properties = new AnalyticsProperties();
+        properties.setSalt("salt-test");
+        properties.setRedisKeyTtlDays(7);
+        properties.getDimensions().setEnabled(true);
+        properties.getDimensions().setTypes(java.util.List.of("referer_domain"));
+        properties.getEvents().setEnabled(true);
+        properties.getEvents().setSampleRate(1.0d);
+        properties.getEvents().setStreamMaxLen(0L);
+
+        @SuppressWarnings("unchecked")
+        ValueOperations<String, String> valueOps = mock(ValueOperations.class);
+        when(redis.opsForValue()).thenReturn(valueOps);
+        when(valueOps.increment(anyString())).thenReturn(1L);
+
+        @SuppressWarnings("unchecked")
+        HyperLogLogOperations<String, String> hllOps = mock(HyperLogLogOperations.class);
+        when(redis.opsForHyperLogLog()).thenReturn(hllOps);
+        when(hllOps.add(anyString(), any(String[].class))).thenReturn(1L);
+
+        @SuppressWarnings("unchecked")
+        SetOperations<String, String> setOps = mock(SetOperations.class);
+        when(redis.opsForSet()).thenReturn(setOps);
+        when(setOps.add(anyString(), any(String[].class))).thenReturn(1L);
+
+        @SuppressWarnings("unchecked")
+        HashOperations<String, Object, Object> hashOps = mock(HashOperations.class);
+        when(redis.opsForHash()).thenReturn(hashOps);
+        when(hashOps.increment(anyString(), any(), eq(1L))).thenReturn(1L);
+
+        @SuppressWarnings("unchecked")
+        StreamOperations<String, Object, Object> streamOps = mock(StreamOperations.class);
+        when(redis.opsForStream()).thenReturn(streamOps);
+        when(streamOps.add(any())).thenReturn(
+                RecordId.of("1-0"),
+                RecordId.of("2-0"),
+                RecordId.of("3-0")
+        );
+
+        when(redis.expireAt(anyString(), any(Date.class))).thenReturn(true);
+
+        VisitRecorderService service = new VisitRecorderService(redis, properties);
+        VisitContext visitContext = new VisitContext(
+                "1.2.3.4",
+                "ua-test",
+                "https://Example.COM/p",
+                "zh-CN,zh;q=0.9",
+                Map.of()
+        );
+
+        LocalDate day = LocalDate.now(ZoneOffset.UTC);
+        String dayRaw = day.format(DateTimeFormatter.BASIC_ISO_DATE);
+        String statsDirtyStreamKey = "stats:dirty:flush:" + dayRaw;
+        String dimDirtyStreamKey = "stats:dirty:dim:" + dayRaw;
+
+        RequestId.set("client-request-id");
+        try {
+            service.recordVisit(1L, 2L, visitContext);
+        } finally {
+            RequestId.clear();
+        }
+
+        @SuppressWarnings({"rawtypes", "unchecked"})
+        ArgumentCaptor<MapRecord> recordCaptor = ArgumentCaptor.forClass(MapRecord.class);
+        verify(streamOps, times(3)).add(recordCaptor.capture());
+
+        @SuppressWarnings("unchecked")
+        java.util.List<MapRecord<String, Object, Object>> records = recordCaptor.getAllValues().stream()
+                .map(record -> (MapRecord<String, Object, Object>) record)
+                .toList();
+
+        MapRecord<String, Object, Object> eventRecord = records.stream()
+                .filter(record -> AnalyticsKeys.visitEventStreamKey().equals(record.getStream()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(String.valueOf(eventRecord.getValue().get("requestId")))
+                .isNotBlank()
+                .isNotEqualTo("client-request-id");
+
+        MapRecord<String, Object, Object> statsDirtyRecord = records.stream()
+                .filter(record -> statsDirtyStreamKey.equals(record.getStream()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(statsDirtyRecord.getValue()).containsEntry("member", "1:2");
+
+        MapRecord<String, Object, Object> dimDirtyRecord = records.stream()
+                .filter(record -> dimDirtyStreamKey.equals(record.getStream()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(dimDirtyRecord.getValue()).containsEntry("member", "1:2");
+
+        verify(redis).expireAt(eq(statsDirtyStreamKey), any(Date.class));
+        verify(redis).expireAt(eq(dimDirtyStreamKey), any(Date.class));
+    }
 
     @Test
     void recordVisit_should_retry_expireAt_on_later_visits_even_when_not_first_pv_or_new_uv_or_new_active() {
@@ -48,6 +150,11 @@ class VisitRecorderServiceTest {
         SetOperations<String, String> setOps = mock(SetOperations.class);
         when(redis.opsForSet()).thenReturn(setOps);
         when(setOps.add(anyString(), any(String[].class))).thenReturn(1L, 0L);
+
+        @SuppressWarnings("unchecked")
+        StreamOperations<String, Object, Object> streamOps = mock(StreamOperations.class);
+        when(redis.opsForStream()).thenReturn(streamOps);
+        when(streamOps.add(any())).thenReturn(RecordId.of("1-0"), RecordId.of("2-0"));
 
         // Simulate expireAt failing (no exception). We only care that it gets retried.
         when(redis.expireAt(anyString(), any(Date.class))).thenReturn(false);
@@ -98,6 +205,15 @@ class VisitRecorderServiceTest {
         SetOperations<String, String> setOps = mock(SetOperations.class);
         when(redis.opsForSet()).thenReturn(setOps);
         when(setOps.add(anyString(), any(String[].class))).thenReturn(1L);
+
+        @SuppressWarnings("unchecked")
+        StreamOperations<String, Object, Object> streamOps = mock(StreamOperations.class);
+        when(redis.opsForStream()).thenReturn(streamOps);
+        when(streamOps.add(any())).thenReturn(
+                RecordId.of("1-0"),
+                RecordId.of("2-0"),
+                RecordId.of("3-0")
+        );
 
         @SuppressWarnings("unchecked")
         HashOperations<String, Object, Object> hashOps = mock(HashOperations.class);

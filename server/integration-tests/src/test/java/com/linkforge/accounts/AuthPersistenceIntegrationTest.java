@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.context.ApplicationContext;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.annotation.DirtiesContext;
@@ -70,6 +71,9 @@ class AuthPersistenceIntegrationTest extends AccountsPersistenceIntegrationTestS
 
     @Autowired
     MockMvc mockMvc;
+
+    @Autowired
+    JdbcTemplate jdbcTemplate;
 
     @Test
     void accountsServices_shouldDependOnApplicationPorts_andPortBeansShouldUseAdapters() {
@@ -226,6 +230,38 @@ class AuthPersistenceIntegrationTest extends AccountsPersistenceIntegrationTestS
         mockMvc.perform(get("/api/v1/me")
                         .header("Authorization", "Bearer " + loggedIn.token()))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void operationalForeignKeys_shouldCoverOnlyLiveOperationalTables() {
+        List<ForeignKeyRef> refs = jdbcTemplate.query(
+                """
+                        SELECT table_name, column_name, referenced_table_name, referenced_column_name
+                        FROM information_schema.KEY_COLUMN_USAGE
+                        WHERE table_schema = DATABASE()
+                          AND referenced_table_name IS NOT NULL
+                        ORDER BY table_name, column_name
+                        """,
+                (rs, rowNum) -> new ForeignKeyRef(
+                        rs.getString("table_name"),
+                        rs.getString("column_name"),
+                        rs.getString("referenced_table_name"),
+                        rs.getString("referenced_column_name")
+                )
+        );
+
+        assertThat(refs).containsExactlyInAnyOrder(
+                new ForeignKeyRef("users", "tenant_id", "tenants", "id"),
+                new ForeignKeyRef("api_keys", "tenant_id", "tenants", "id"),
+                new ForeignKeyRef("short_links", "tenant_id", "tenants", "id"),
+                new ForeignKeyRef("tags", "tenant_id", "tenants", "id"),
+                new ForeignKeyRef("user_roles", "user_id", "users", "id"),
+                new ForeignKeyRef("link_tags", "link_id", "short_links", "id"),
+                new ForeignKeyRef("link_tags", "tag_id", "tags", "id")
+        );
+    }
+
+    private record ForeignKeyRef(String tableName, String columnName, String referencedTableName, String referencedColumnName) {
     }
 
 }

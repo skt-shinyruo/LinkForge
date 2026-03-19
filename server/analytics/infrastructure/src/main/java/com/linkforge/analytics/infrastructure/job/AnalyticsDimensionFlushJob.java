@@ -1,16 +1,22 @@
 package com.linkforge.analytics.infrastructure.job;
 
-import com.linkforge.contract.analytics.AnalyticsKeys;
 import com.linkforge.analytics.infrastructure.persistence.mapper.LinkStatsDimDailyMapper;
 import com.linkforge.analytics.infrastructure.persistence.mapper.LinkStatsDimDailyUpsertRow;
+import com.linkforge.contract.analytics.AnalyticsKeys;
 import com.linkforge.foundation.config.AnalyticsProperties;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
-import org.springframework.data.redis.core.RedisCallback;
+import org.springframework.data.redis.connection.stream.Consumer;
+import org.springframework.data.redis.connection.stream.MapRecord;
+import org.springframework.data.redis.connection.stream.ReadOffset;
+import org.springframework.data.redis.connection.stream.RecordId;
+import org.springframework.data.redis.connection.stream.StreamOffset;
+import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.core.Cursor;
-import org.springframework.data.redis.core.ScanOptions;
+import org.springframework.data.redis.core.HashOperations;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -24,13 +30,14 @@ import java.util.Map;
 
 /**
  * 维度按天聚合落库作业：将 Redis 维度 PV（Hash）聚合写入 MySQL。
- *
- * <p>约束：以 active-set 为入口增量处理，避免全量扫描 keyspace。</p>
  */
 @Component
 public class AnalyticsDimensionFlushJob {
 
     private static final Logger log = LoggerFactory.getLogger(AnalyticsDimensionFlushJob.class);
+    private static final String GROUP = "lf-dim-flush";
+    private static final String CONSUMER = "lf-dim-flush-consumer";
+    private static final int BATCH_SIZE = 500;
 
     private static final List<String> DEFAULT_DIM_TYPES = List.of(
             "referer_domain",
@@ -73,44 +80,38 @@ public class AnalyticsDimensionFlushJob {
     }
 
     private void flushDay(LocalDate day, AnalyticsProperties.Dimensions cfg) {
-        String activeKey = AnalyticsKeys.activeSetKey(day);
-        if (!hasKey(activeKey)) {
+        String streamKey = AnalyticsKeys.dimDirtyStreamKey(day);
+        if (!ensureGroup(streamKey)) {
             return;
         }
-        ScanOptions options = ScanOptions.scanOptions().count(1000).build();
 
-        int maxLinksPerDay = cfg.getMaxLinksPerDay();
-        int processed = 0;
-        int batchSize = 500;
-
-        List<String> batchMembers = new ArrayList<>(500);
-        try (Cursor<String> cursor = redis.opsForSet().scan(activeKey, options)) {
-            while (cursor.hasNext()) {
-                if (maxLinksPerDay > 0 && processed >= maxLinksPerDay) {
-                    break;
-                }
-                batchMembers.add(cursor.next());
-                int currentBatchLimit = maxLinksPerDay > 0
-                        ? Math.min(batchSize, maxLinksPerDay - processed)
-                        : batchSize;
-                if (batchMembers.size() >= currentBatchLimit) {
-                    flushActiveMembers(day, cfg, batchMembers);
-                    processed += batchMembers.size();
-                    batchMembers.clear();
-                }
+        Consumer consumer = Consumer.from(GROUP, CONSUMER);
+        while (true) {
+            List<MapRecord<String, Object, Object>> records = readSafe(
+                    consumer,
+                    StreamReadOptions.empty().count(BATCH_SIZE),
+                    StreamOffset.create(streamKey, ReadOffset.from("0-0"))
+            );
+            if (records == null || records.isEmpty()) {
+                records = readSafe(
+                        consumer,
+                        StreamReadOptions.empty().count(BATCH_SIZE),
+                        StreamOffset.create(streamKey, ReadOffset.lastConsumed())
+                );
             }
-        } catch (Exception e) {
-            log.debug("scan dim active set failed: activeKey={}, err={}", activeKey, e.getMessage());
-            return;
-        }
+            if (records == null || records.isEmpty()) {
+                return;
+            }
 
-        if (!batchMembers.isEmpty()) {
-            flushActiveMembers(day, cfg, batchMembers);
-            processed += batchMembers.size();
-        }
-
-        if (maxLinksPerDay > 0 && processed >= maxLinksPerDay) {
-            log.info("dim flush limited: day={}, processedLinks={}, maxLinksPerDay={}", day, processed, maxLinksPerDay);
+            List<String> members = extractMembers(records);
+            if (members.isEmpty()) {
+                acknowledge(streamKey, records.stream().map(MapRecord::getId).toList());
+                continue;
+            }
+            if (!flushActiveMembers(day, cfg, members)) {
+                return;
+            }
+            acknowledge(streamKey, records.stream().map(MapRecord::getId).toList());
         }
     }
 
@@ -136,7 +137,7 @@ public class AnalyticsDimensionFlushJob {
         }
     }
 
-    void flushActiveMembers(LocalDate day, AnalyticsProperties.Dimensions cfg, List<String> members) {
+    boolean flushActiveMembers(LocalDate day, AnalyticsProperties.Dimensions cfg, List<String> members) {
         long startNs = System.nanoTime();
         List<MemberParts> parts = new ArrayList<>(members.size());
         for (String m : members) {
@@ -146,7 +147,7 @@ public class AnalyticsDimensionFlushJob {
             }
         }
         if (parts.isEmpty()) {
-            return;
+            return true;
         }
 
         List<String> types = cfg.getTypes();
@@ -156,8 +157,6 @@ public class AnalyticsDimensionFlushJob {
 
         List<LinkStatsDimDailyUpsertRow> batch = new ArrayList<>(800);
         long flushedRows = 0;
-        ScanOptions hscan = ScanOptions.scanOptions().count(1000).build();
-        int uvPipelineBatchSize = 200;
 
         for (MemberParts p : parts) {
             for (String rawType : types) {
@@ -167,9 +166,11 @@ public class AnalyticsDimensionFlushJob {
                 }
                 String key = AnalyticsKeys.dimPvHashKey(p.tenantId, p.linkId, day, dimType);
 
-                try (Cursor<Map.Entry<Object, Object>> cursor = redis.opsForHash().scan(key, hscan)) {
-                    List<String> dimValues = new ArrayList<>(uvPipelineBatchSize);
-                    List<Long> dimPvs = new ArrayList<>(uvPipelineBatchSize);
+                @SuppressWarnings("unchecked")
+                HashOperations<String, Object, Object> hashOps = redis.opsForHash();
+                try (Cursor<Map.Entry<Object, Object>> cursor = hashOps.scan(key, org.springframework.data.redis.core.ScanOptions.scanOptions().count(1000).build())) {
+                    List<String> dimValues = new ArrayList<>(200);
+                    List<Long> dimPvs = new ArrayList<>(200);
 
                     while (cursor.hasNext()) {
                         Map.Entry<Object, Object> e = cursor.next();
@@ -184,11 +185,13 @@ public class AnalyticsDimensionFlushJob {
                         dimValues.add(dimValue);
                         dimPvs.add(pv);
 
-                        if (dimValues.size() >= uvPipelineBatchSize) {
+                        if (dimValues.size() >= 200) {
                             appendRowsWithUv(batch, p, day, dimType, dimValues, dimPvs);
                             if (batch.size() >= 500) {
                                 flushedRows += batch.size();
-                                flushBatch(batch);
+                                if (!flushBatch(batch)) {
+                                    return false;
+                                }
                                 batch.clear();
                             }
                             dimValues.clear();
@@ -200,11 +203,11 @@ public class AnalyticsDimensionFlushJob {
                         appendRowsWithUv(batch, p, day, dimType, dimValues, dimPvs);
                         if (batch.size() >= 500) {
                             flushedRows += batch.size();
-                            flushBatch(batch);
+                            if (!flushBatch(batch)) {
+                                return false;
+                            }
                             batch.clear();
                         }
-                        dimValues.clear();
-                        dimPvs.clear();
                     }
                 } catch (Exception ex) {
                     log.debug("scan dim hash failed: key={}, err={}", key, ex.getMessage());
@@ -214,13 +217,16 @@ public class AnalyticsDimensionFlushJob {
 
         if (!batch.isEmpty()) {
             flushedRows += batch.size();
-            flushBatch(batch);
+            if (!flushBatch(batch)) {
+                return false;
+            }
         }
 
         if (flushedRows > 0) {
             long latencyMs = (System.nanoTime() - startNs) / 1_000_000;
             log.info("flush dim batch ok: day={}, links={}, rows={}, latencyMs={}", day, parts.size(), flushedRows, latencyMs);
         }
+        return true;
     }
 
     private void appendRowsWithUv(
@@ -287,15 +293,79 @@ public class AnalyticsDimensionFlushJob {
         return out;
     }
 
-    private void flushBatch(List<LinkStatsDimDailyUpsertRow> batch) {
+    private boolean flushBatch(List<LinkStatsDimDailyUpsertRow> batch) {
         if (batch == null || batch.isEmpty()) {
-            return;
+            return true;
         }
         try {
             linkStatsDimDailyMapper.batchUpsert(batch);
+            return true;
         } catch (DataAccessException e) {
             log.warn("flush dim batch failed: size={}, err={}", batch.size(), e.getMessage());
+            return false;
         }
+    }
+
+    private boolean ensureGroup(String streamKey) {
+        if (!hasKey(streamKey)) {
+            return false;
+        }
+        try {
+            redis.opsForStream().createGroup(streamKey, ReadOffset.from("0-0"), GROUP);
+            return true;
+        } catch (Exception e) {
+            String msg = e.getMessage();
+            if (msg != null && msg.toLowerCase().contains("busygroup")) {
+                return true;
+            }
+            log.debug("create dim dirty stream group failed: streamKey={}, err={}", streamKey, msg);
+            return false;
+        }
+    }
+
+    private List<MapRecord<String, Object, Object>> readSafe(
+            Consumer consumer,
+            StreamReadOptions options,
+            StreamOffset<String> offset
+    ) {
+        try {
+            return redis.opsForStream().read(consumer, options, offset);
+        } catch (Exception e) {
+            log.debug("read dim dirty stream failed: streamKey={}, err={}", offset == null ? null : offset.getKey(), e.getMessage());
+            return null;
+        }
+    }
+
+    private void acknowledge(String streamKey, List<RecordId> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        try {
+            redis.opsForStream().acknowledge(streamKey, GROUP, ids.toArray(new RecordId[0]));
+        } catch (Exception e) {
+            log.debug("ack dim dirty stream failed: streamKey={}, size={}, err={}", streamKey, ids.size(), e.getMessage());
+        }
+    }
+
+    private static List<String> extractMembers(List<MapRecord<String, Object, Object>> records) {
+        if (records == null || records.isEmpty()) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>(records.size());
+        for (MapRecord<String, Object, Object> record : records) {
+            if (record == null || record.getValue() == null) {
+                continue;
+            }
+            Object raw = record.getValue().get("member");
+            if (raw == null) {
+                continue;
+            }
+            String member = String.valueOf(raw).trim();
+            if (!member.isBlank()) {
+                out.add(member);
+            }
+        }
+        return out;
     }
 
     private static long safeLong(Object raw, long defaultValue) {
@@ -317,7 +387,6 @@ public class AnalyticsDimensionFlushJob {
     }
 
     private static MemberParts parseActiveMember(String member) {
-        // {tenantId}:{linkId}
         if (member == null || member.isBlank()) {
             return null;
         }

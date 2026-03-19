@@ -1,6 +1,7 @@
 package com.linkforge.shortlink.application;
 
 import com.linkforge.LinkForgeApplication;
+import com.linkforge.TestTenantFixtures;
 import com.linkforge.foundation.eventing.IntegrationEventStore;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.redirect.application.RedirectService;
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -93,11 +95,15 @@ class ShortLinkCacheAfterCommitIntegrationTest {
     @Autowired
     PlatformTransactionManager transactionManager;
 
+    @Autowired
+    JdbcTemplate jdbcTemplate;
+
     private static final long TENANT_ID = 1L;
     private static final long USER_ID = 1L;
 
     @BeforeEach
     void setUpAuth() {
+        TestTenantFixtures.ensureTenantExists(jdbcTemplate, TENANT_ID);
         AuthPrincipal principal = new AuthPrincipal(USER_ID, TENANT_ID, "admin@example.com", Set.of("tenant_admin"));
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(principal, "N/A", List.of())

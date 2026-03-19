@@ -22,6 +22,14 @@ public final class AnalyticsKeys {
         return "stats:active:" + DAY.format(day);
     }
 
+    public static String statsDirtyStreamKey(LocalDate day) {
+        return "stats:dirty:flush:" + DAY.format(day);
+    }
+
+    public static String dimDirtyStreamKey(LocalDate day) {
+        return "stats:dirty:dim:" + DAY.format(day);
+    }
+
     public static String activeMember(long tenantId, long linkId) {
         return tenantId + ":" + linkId;
     }

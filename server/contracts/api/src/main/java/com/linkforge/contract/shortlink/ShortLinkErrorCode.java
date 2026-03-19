@@ -5,6 +5,7 @@ import com.linkforge.contract.api.AppErrorCode;
 public enum ShortLinkErrorCode implements AppErrorCode {
 
     CODE_ALREADY_EXISTS(40901, "短码已存在"),
+    LINK_STALE_WRITE(40902, "短链已被其他请求修改，请刷新后重试"),
     LINK_DISABLED(41001, "短链已禁用"),
     LINK_EXPIRED(41002, "短链已过期"),
     LINK_NOT_FOUND(40410, "短链不存在"),

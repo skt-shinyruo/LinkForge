@@ -88,6 +88,7 @@ public class UserAdminService {
                 req.email(),
                 passwordHasher.encode(req.password()),
                 AccountsConstants.STATUS_ACTIVE,
+                0,
                 null,
                 null
         );
@@ -105,13 +106,14 @@ public class UserAdminService {
     }
 
     @Transactional
-    public UserDto disable(long tenantId, long userId) {
+    public UserDto disable(long tenantId, long actorUserId, long userId) {
         tenantGuard.requireCurrentTenant(tenantId);
         AccountsUserStore.UserData user = requireUserInTenant(tenantId, userId);
+        Set<String> roles = loadRolesByUserId(userId);
+        requireDisableAllowed(tenantId, actorUserId, user, roles);
         if (!AccountsConstants.STATUS_DISABLED.equals(user.status())) {
             userStore.update(withStatus(user, AccountsConstants.STATUS_DISABLED));
         }
-        Set<String> roles = loadRolesByUserId(userId);
         return new UserDto(user.id(), tenantId, user.email(), AccountsConstants.STATUS_DISABLED, roles);
     }
 
@@ -143,6 +145,7 @@ public class UserAdminService {
                 user.email(),
                 passwordHasher.encode(newPassword),
                 user.status(),
+                nextTokenVersion(user),
                 user.createdAt(),
                 user.updatedAt()
         );
@@ -186,9 +189,51 @@ public class UserAdminService {
                 user.email(),
                 user.passwordHash(),
                 status,
+                user.tokenVersion(),
                 user.createdAt(),
                 user.updatedAt()
         );
+    }
+
+    private void requireDisableAllowed(
+            long tenantId,
+            long actorUserId,
+            AccountsUserStore.UserData user,
+            Set<String> roles
+    ) {
+        if (user == null || user.id() == null) {
+            return;
+        }
+        if (actorUserId == user.id()) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "不能禁用当前管理员");
+        }
+        if (!AccountsConstants.STATUS_ACTIVE.equals(user.status()) || !roles.contains(Roles.TENANT_ADMIN)) {
+            return;
+        }
+
+        List<AccountsUserStore.UserData> tenantUsers = userStore.findAllByTenantIdOrderByCreatedAtDesc(tenantId);
+        if (tenantUsers.isEmpty()) {
+            return;
+        }
+
+        List<Long> userIds = tenantUsers.stream()
+                .map(AccountsUserStore.UserData::id)
+                .toList();
+        Map<Long, Set<String>> rolesByUserId = loadRolesByUserIds(userIds);
+        long activeTenantAdminCount = tenantUsers.stream()
+                .filter(u -> AccountsConstants.STATUS_ACTIVE.equals(u.status()))
+                .filter(u -> rolesByUserId.getOrDefault(u.id(), Set.of()).contains(Roles.TENANT_ADMIN))
+                .count();
+        if (activeTenantAdminCount <= 1) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "至少保留一个启用中的租户管理员");
+        }
+    }
+
+    private static int nextTokenVersion(AccountsUserStore.UserData user) {
+        if (user == null || user.tokenVersion() == null) {
+            return 1;
+        }
+        return user.tokenVersion() + 1;
     }
 
     private static boolean tenantIdEquals(Long actualTenantId, long expectedTenantId) {

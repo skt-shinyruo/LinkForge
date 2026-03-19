@@ -10,6 +10,8 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class AuthControllerTest {
@@ -75,5 +77,54 @@ class AuthControllerTest {
                 .contains("lf_token=")
                 .contains("jwt-token")
                 .contains("HttpOnly");
+    }
+
+    @Test
+    void logout_shouldInvalidateAuthenticatedPrincipal_andClearCookie() {
+        AuthService authService = mock(AuthService.class);
+
+        SecurityProperties securityProperties = new SecurityProperties();
+        securityProperties.getJwt().setCookieEnabled(true);
+        securityProperties.getJwt().setCookieName("lf_token");
+        securityProperties.getJwt().setCookieSameSite("Lax");
+        securityProperties.getJwt().setCookieSecure(false);
+
+        AuthController controller = new AuthController(authService, securityProperties);
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AuthPrincipal principal = new AuthPrincipal(11L, 22L, "u@example.com", Set.of("TENANT_ADMIN"));
+
+        var out = controller.logout(principal, response);
+
+        assertThat(out).isNotNull();
+        assertThat(out.getData()).isNull();
+        assertThat(response.getHeader("Set-Cookie"))
+                .contains("lf_token=")
+                .contains("Max-Age=0");
+        verify(authService).logout(11L);
+    }
+
+    @Test
+    void logout_shouldRemainBestEffortCookieClear_whenPrincipalIsAbsent() {
+        AuthService authService = mock(AuthService.class);
+
+        SecurityProperties securityProperties = new SecurityProperties();
+        securityProperties.getJwt().setCookieEnabled(true);
+        securityProperties.getJwt().setCookieName("lf_token");
+        securityProperties.getJwt().setCookieSameSite("Lax");
+        securityProperties.getJwt().setCookieSecure(false);
+
+        AuthController controller = new AuthController(authService, securityProperties);
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        var out = controller.logout(null, response);
+
+        assertThat(out).isNotNull();
+        assertThat(out.getData()).isNull();
+        assertThat(response.getHeader("Set-Cookie"))
+                .contains("lf_token=")
+                .contains("Max-Age=0");
+        verify(authService, never()).logout(11L);
     }
 }

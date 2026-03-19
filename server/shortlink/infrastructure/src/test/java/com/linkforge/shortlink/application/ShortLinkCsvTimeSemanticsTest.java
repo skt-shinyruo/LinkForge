@@ -118,6 +118,7 @@ class ShortLinkCsvTimeSemanticsTest {
                 null,
                 CreatedByType.USER,
                 1L,
+                0L,
                 LocalDateTime.of(2026, 3, 1, 0, 0, 0),
                 LocalDateTime.of(2026, 3, 1, 0, 0, 0)
         );
@@ -137,6 +138,7 @@ class ShortLinkCsvTimeSemanticsTest {
                 null,
                 CreatedByType.USER,
                 1L,
+                0L,
                 LocalDateTime.of(2026, 3, 1, 0, 0, 0),
                 LocalDateTime.of(2026, 3, 1, 0, 0, 0)
         );

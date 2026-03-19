@@ -148,7 +148,10 @@ public class UpdateShortLinkCommandHandler {
             }
         }
 
-        shortLinkRepository.update(link);
+        if (!shortLinkRepository.update(link)) {
+            throw new BusinessException(ShortLinkErrorCode.LINK_STALE_WRITE);
+        }
+        link.incrementVersion();
 
         if (req.tags() != null) {
             setLinkTagsHandler.handle(tenantId, linkId, req.tags());

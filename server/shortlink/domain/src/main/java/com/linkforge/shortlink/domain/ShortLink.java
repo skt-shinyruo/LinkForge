@@ -14,6 +14,7 @@ public class ShortLink {
     private final long id;
     private final long tenantId;
     private final ShortCode code;
+    private long version;
 
     private HttpUrl originalUrl;
     private String note;
@@ -53,6 +54,7 @@ public class ShortLink {
             QueryForwardAllowlist queryForwardAllowlist,
             CreatedByType createdByType,
             long createdBy,
+            long version,
             LocalDateTime createdAtUtc,
             LocalDateTime updatedAtUtc
     ) {
@@ -83,6 +85,7 @@ public class ShortLink {
         this.queryForwardAllowlist = queryForwardAllowlist == null ? QueryForwardAllowlist.empty() : queryForwardAllowlist;
         this.createdBy = createdBy;
         this.createdByType = createdByType == null ? CreatedByType.USER : createdByType;
+        this.version = Math.max(version, 0L);
         this.createdAtUtc = createdAtUtc;
         this.updatedAtUtc = updatedAtUtc;
     }
@@ -121,6 +124,7 @@ public class ShortLink {
                 queryForwardAllowlist,
                 createdByType,
                 createdBy,
+                0L,
                 null,
                 null
         );
@@ -142,6 +146,7 @@ public class ShortLink {
             QueryForwardAllowlist queryForwardAllowlist,
             CreatedByType createdByType,
             long createdBy,
+            long version,
             LocalDateTime createdAtUtc,
             LocalDateTime updatedAtUtc
     ) {
@@ -161,6 +166,7 @@ public class ShortLink {
                 queryForwardAllowlist,
                 createdByType,
                 createdBy,
+                version,
                 createdAtUtc,
                 updatedAtUtc
         );
@@ -220,6 +226,10 @@ public class ShortLink {
 
     public long createdBy() {
         return createdBy;
+    }
+
+    public long version() {
+        return version;
     }
 
     public CreatedByType createdByType() {
@@ -320,6 +330,10 @@ public class ShortLink {
 
     public void setUpdatedAtUtc(LocalDateTime updatedAtUtc) {
         this.updatedAtUtc = updatedAtUtc;
+    }
+
+    public void incrementVersion() {
+        this.version++;
     }
 
     private static Integer validateRedirectStatusCode(Integer status) {

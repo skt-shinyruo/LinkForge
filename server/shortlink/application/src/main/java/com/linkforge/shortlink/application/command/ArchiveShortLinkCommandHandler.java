@@ -65,7 +65,10 @@ public class ArchiveShortLinkCommandHandler {
             } catch (ShortLinkDomainException ex) {
                 throw ShortLinkDomainExceptions.translate(ex);
             }
-            shortLinkRepository.update(link);
+            if (!shortLinkRepository.update(link)) {
+                throw new BusinessException(ShortLinkErrorCode.LINK_STALE_WRITE);
+            }
+            link.incrementVersion();
             Instant occurredAtUtc = nowUtc.toInstant(ZoneOffset.UTC);
             eventPublisher.archived(link, occurredAtUtc);
             AfterCommit.run(() -> redirectCacheSync.evict(link.code().value()));

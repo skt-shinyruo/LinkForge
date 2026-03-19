@@ -52,13 +52,13 @@ public class MybatisShortLinkRepository implements ShortLinkRepository {
     }
 
     @Override
-    public void update(ShortLink link) {
-        commandMapper.update(ShortLinkEntityMapper.toEntity(link));
+    public boolean update(ShortLink link) {
+        return commandMapper.update(ShortLinkEntityMapper.toEntity(link)) > 0;
     }
 
     @Override
-    public int deleteByTenantIdAndId(long tenantId, long linkId) {
-        return commandMapper.deleteByTenantIdAndId(tenantId, linkId);
+    public boolean deleteByTenantIdAndId(long tenantId, long linkId, long version) {
+        return commandMapper.deleteByTenantIdAndIdAndVersion(tenantId, linkId, version) > 0;
     }
 
     @Override
@@ -98,4 +98,3 @@ public class MybatisShortLinkRepository implements ShortLinkRepository {
         return t.isBlank() ? null : t;
     }
 }
-

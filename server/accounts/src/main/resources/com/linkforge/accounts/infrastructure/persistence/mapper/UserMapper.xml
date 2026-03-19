@@ -10,12 +10,13 @@
         <result property="email" column="email"/>
         <result property="passwordHash" column="password_hash"/>
         <result property="status" column="status"/>
+        <result property="tokenVersion" column="token_version"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
     </resultMap>
 
     <sql id="userColumns">
-        id, tenant_id, email, password_hash, status, created_at, updated_at
+        id, tenant_id, email, password_hash, status, token_version, created_at, updated_at
     </sql>
 
     <insert id="insert" parameterType="com.linkforge.accounts.infrastructure.persistence.entity.UserEntity">
@@ -24,13 +25,15 @@
             tenant_id,
             email,
             password_hash,
-            status
+            status,
+            token_version
         ) VALUES (
             #{id},
             #{tenantId},
             #{email},
             #{passwordHash},
-            #{status}
+            #{status},
+            #{tokenVersion}
         )
     </insert>
 
@@ -62,7 +65,8 @@
         SET tenant_id = #{tenantId},
             email = #{email},
             password_hash = #{passwordHash},
-            status = #{status}
+            status = #{status},
+            token_version = #{tokenVersion}
         WHERE id = #{id}
     </update>
 </mapper>

@@ -14,6 +14,8 @@ public class UserEntity {
 
     private String status;
 
+    private Integer tokenVersion;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
@@ -56,6 +58,14 @@ public class UserEntity {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public Integer getTokenVersion() {
+        return tokenVersion;
+    }
+
+    public void setTokenVersion(Integer tokenVersion) {
+        this.tokenVersion = tokenVersion;
     }
 
     public LocalDateTime getCreatedAt() {

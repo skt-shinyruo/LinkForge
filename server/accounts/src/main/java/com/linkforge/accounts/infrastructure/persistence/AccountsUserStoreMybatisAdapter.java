@@ -58,6 +58,7 @@ public class AccountsUserStoreMybatisAdapter implements AccountsUserStore {
         entity.setEmail(user.email());
         entity.setPasswordHash(user.passwordHash());
         entity.setStatus(user.status());
+        entity.setTokenVersion(user.tokenVersion());
         entity.setCreatedAt(user.createdAt());
         entity.setUpdatedAt(user.updatedAt());
         return entity;
@@ -73,6 +74,7 @@ public class AccountsUserStoreMybatisAdapter implements AccountsUserStore {
                 entity.getEmail(),
                 entity.getPasswordHash(),
                 entity.getStatus(),
+                entity.getTokenVersion(),
                 entity.getCreatedAt(),
                 entity.getUpdatedAt()
         );

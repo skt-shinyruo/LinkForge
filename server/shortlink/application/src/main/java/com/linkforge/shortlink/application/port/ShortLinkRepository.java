@@ -14,12 +14,11 @@ public interface ShortLinkRepository {
 
     void insert(ShortLink link);
 
-    void update(ShortLink link);
+    boolean update(ShortLink link);
 
-    int deleteByTenantIdAndId(long tenantId, long linkId);
+    boolean deleteByTenantIdAndId(long tenantId, long linkId, long version);
 
     long countSearch(long tenantId, ShortLinkSearchQuery query);
 
     List<ShortLink> listSearch(long tenantId, ShortLinkSearchQuery query, long offset, int limit);
 }
-

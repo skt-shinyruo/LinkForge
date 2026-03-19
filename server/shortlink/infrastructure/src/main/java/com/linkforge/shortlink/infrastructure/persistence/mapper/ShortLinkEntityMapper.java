@@ -40,6 +40,7 @@ public final class ShortLinkEntityMapper {
                     QueryForwardAllowlist.parseSerialized(e.getQueryForwardAllowlist()),
                     CreatedByType.parseOrDefault(e.getCreatedByType(), CreatedByType.USER),
                     e.getCreatedBy() == null ? 0L : e.getCreatedBy(),
+                    safeLong(e.getVersion()),
                     e.getCreatedAt(),
                     e.getUpdatedAt()
             );
@@ -68,6 +69,7 @@ public final class ShortLinkEntityMapper {
         e.setQueryForwardAllowlist(link.queryForwardAllowlist() == null ? null : link.queryForwardAllowlist().serializeOrNull());
         e.setCreatedByType(link.createdByType() == null ? null : link.createdByType().name());
         e.setCreatedBy(link.createdBy());
+        e.setVersion(link.version());
         e.setCreatedAt(link.createdAtUtc());
         e.setUpdatedAt(link.updatedAtUtc());
         return e;

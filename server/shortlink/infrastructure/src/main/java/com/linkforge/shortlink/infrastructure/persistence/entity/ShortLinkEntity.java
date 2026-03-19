@@ -52,6 +52,8 @@ public class ShortLinkEntity {
 
     private Long createdBy;
 
+    private Long version;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
@@ -174,6 +176,14 @@ public class ShortLinkEntity {
 
     public void setCreatedBy(Long createdBy) {
         this.createdBy = createdBy;
+    }
+
+    public Long getVersion() {
+        return version;
+    }
+
+    public void setVersion(Long version) {
+        this.version = version;
     }
 
     public LocalDateTime getCreatedAt() {

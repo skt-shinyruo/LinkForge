@@ -4,5 +4,5 @@ import java.util.Set;
 
 public interface AccountsTokenIssuer {
 
-    String issueToken(long userId, long tenantId, String email, Set<String> roles);
+    String issueToken(long userId, long tenantId, String email, Set<String> roles, int tokenVersion);
 }

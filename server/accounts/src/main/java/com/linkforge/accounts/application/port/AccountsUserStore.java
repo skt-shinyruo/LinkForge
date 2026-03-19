@@ -21,6 +21,7 @@ public interface AccountsUserStore {
             String email,
             String passwordHash,
             String status,
+            Integer tokenVersion,
             LocalDateTime createdAt,
             LocalDateTime updatedAt
     ) {

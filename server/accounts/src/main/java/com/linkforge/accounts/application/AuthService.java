@@ -67,6 +67,7 @@ public class AuthService {
                 email,
                 passwordHasher.encode(rawPassword),
                 AccountsConstants.STATUS_ACTIVE,
+                0,
                 null,
                 null
         );
@@ -79,8 +80,8 @@ public class AuthService {
         userRoleStore.insert(new AccountsUserRoleStore.UserRoleData(userId, Roles.TENANT_ADMIN));
 
         Set<String> roles = Set.of(Roles.TENANT_ADMIN);
-        String token = tokenIssuer.issueToken(userId, tenantId, email, roles);
-        return new AuthResult(token, new AuthPrincipal(userId, tenantId, email, roles));
+        String token = tokenIssuer.issueToken(userId, tenantId, email, roles, 0);
+        return new AuthResult(token, new AuthPrincipal(userId, tenantId, email, roles, 0));
     }
 
     public AuthResult login(String email, String rawPassword) {
@@ -113,8 +114,35 @@ public class AuthService {
             roles = Set.of(Roles.USER);
         }
 
-        String token = tokenIssuer.issueToken(user.id(), user.tenantId(), user.email(), roles);
-        return new AuthResult(token, new AuthPrincipal(user.id(), user.tenantId(), user.email(), roles));
+        int tokenVersion = user.tokenVersion() == null ? 0 : user.tokenVersion();
+        String token = tokenIssuer.issueToken(user.id(), user.tenantId(), user.email(), roles, tokenVersion);
+        return new AuthResult(token, new AuthPrincipal(user.id(), user.tenantId(), user.email(), roles, tokenVersion));
+    }
+
+    @Transactional
+    public void logout(long userId) {
+        if (userId <= 0) {
+            return;
+        }
+        AccountsUserStore.UserData user = userStore.findById(userId);
+        if (user == null) {
+            return;
+        }
+        userStore.update(withIncrementedTokenVersion(user));
+    }
+
+    private static AccountsUserStore.UserData withIncrementedTokenVersion(AccountsUserStore.UserData user) {
+        int tokenVersion = user.tokenVersion() == null ? 0 : user.tokenVersion();
+        return new AccountsUserStore.UserData(
+                user.id(),
+                user.tenantId(),
+                user.email(),
+                user.passwordHash(),
+                user.status(),
+                tokenVersion + 1,
+                user.createdAt(),
+                user.updatedAt()
+        );
     }
 
     public record AuthResult(String token, AuthPrincipal principal) {

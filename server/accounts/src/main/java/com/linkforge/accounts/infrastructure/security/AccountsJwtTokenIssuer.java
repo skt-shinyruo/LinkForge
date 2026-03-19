@@ -15,7 +15,7 @@ public class AccountsJwtTokenIssuer implements AccountsTokenIssuer {
     }
 
     @Override
-    public String issueToken(long userId, long tenantId, String email, Set<String> roles) {
-        return jwtService.issueToken(userId, tenantId, email, roles);
+    public String issueToken(long userId, long tenantId, String email, Set<String> roles, int tokenVersion) {
+        return jwtService.issueToken(userId, tenantId, email, roles, tokenVersion);
     }
 }

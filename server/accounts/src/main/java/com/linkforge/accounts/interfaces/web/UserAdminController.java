@@ -53,8 +53,11 @@ public class UserAdminController {
     @PutMapping("/{id}/disable")
     @PreAuthorize("hasRole('TENANT_ADMIN')")
     public ApiResponse<UserAdminService.UserDto> disable(@PathVariable("id") long id) {
-        long tenantId = AuthContext.requirePrincipal().getTenantId();
-        return ApiResponse.ok(userAdminService.disable(tenantId, id), RequestId.get());
+        var principal = AuthContext.requirePrincipal();
+        return ApiResponse.ok(
+                userAdminService.disable(principal.getTenantId(), principal.getUserId(), id),
+                RequestId.get()
+        );
     }
 
     @PutMapping("/{id}/enable")

@@ -20,7 +20,8 @@
             query_forward_mode,
             query_forward_allowlist,
             created_by_type,
-            created_by
+            created_by,
+            version
         ) VALUES (
             #{id},
             #{tenantId},
@@ -36,7 +37,8 @@
             #{queryForwardMode},
             #{queryForwardAllowlist},
             #{createdByType},
-            #{createdBy}
+            #{createdBy},
+            #{version}
         )
     </insert>
 
@@ -51,14 +53,17 @@
             preview_enabled = #{previewEnabled},
             unavailable_landing_url = #{unavailableLandingUrl},
             query_forward_mode = #{queryForwardMode},
-            query_forward_allowlist = #{queryForwardAllowlist}
+            query_forward_allowlist = #{queryForwardAllowlist},
+            version = version + 1
         WHERE tenant_id = #{tenantId}
           AND id = #{id}
+          AND version = #{version}
     </update>
 
-    <delete id="deleteByTenantIdAndId">
+    <delete id="deleteByTenantIdAndIdAndVersion">
         DELETE FROM short_links
         WHERE tenant_id = #{param1}
           AND id = #{param2}
+          AND version = #{param3}
     </delete>
 </mapper>

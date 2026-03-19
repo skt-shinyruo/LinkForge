@@ -56,7 +56,9 @@ public class DeleteShortLinkCommandHandler {
 
         eventPublisher.deleted(link, clock.instant());
         linkTagRepository.deleteAllByLinkId(linkId);
-        shortLinkRepository.deleteByTenantIdAndId(tenantId, linkId);
+        if (!shortLinkRepository.deleteByTenantIdAndId(tenantId, linkId, link.version())) {
+            throw new BusinessException(ShortLinkErrorCode.LINK_STALE_WRITE);
+        }
         AfterCommit.run(() -> redirectCacheSync.evict(link.code().value()));
     }
 }

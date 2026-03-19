@@ -55,7 +55,10 @@ public class RestoreShortLinkCommandHandler {
         boolean restored = false;
         if (link.archivedAtUtc() != null) {
             link.restore();
-            shortLinkRepository.update(link);
+            if (!shortLinkRepository.update(link)) {
+                throw new BusinessException(ShortLinkErrorCode.LINK_STALE_WRITE);
+            }
+            link.incrementVersion();
             restored = true;
         }
 

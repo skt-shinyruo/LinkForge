@@ -20,6 +20,7 @@
         <result property="queryForwardAllowlist" column="query_forward_allowlist"/>
         <result property="createdByType" column="created_by_type"/>
         <result property="createdBy" column="created_by"/>
+        <result property="version" column="version"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
     </resultMap>
@@ -40,6 +41,7 @@
         query_forward_allowlist,
         created_by_type,
         created_by,
+        version,
         created_at,
         updated_at
     </sql>

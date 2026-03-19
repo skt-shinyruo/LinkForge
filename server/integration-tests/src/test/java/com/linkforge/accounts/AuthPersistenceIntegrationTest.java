@@ -3,6 +3,7 @@ package com.linkforge.accounts;
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.accounts.application.AuthService;
 import com.linkforge.accounts.application.UserAdminService;
+import com.linkforge.accounts.application.port.AccountsUserStore;
 import com.linkforge.accounts.domain.Roles;
 import com.linkforge.accounts.infrastructure.persistence.entity.ApiKeyEntity;
 import com.linkforge.accounts.infrastructure.persistence.entity.TenantEntity;
@@ -13,6 +14,7 @@ import com.linkforge.foundation.security.AuthPrincipal;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.context.ApplicationContext;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -21,6 +23,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
@@ -41,10 +44,13 @@ import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = LinkForgeApplication.class, webEnvironment = SpringBootTest.WebEnvironment.MOCK)
+@AutoConfigureMockMvc
 class AuthPersistenceIntegrationTest extends AccountsPersistenceIntegrationTestSupport {
 
     @Autowired
@@ -54,10 +60,16 @@ class AuthPersistenceIntegrationTest extends AccountsPersistenceIntegrationTestS
     UserAdminService userAdminService;
 
     @Autowired
+    AccountsUserStore userStore;
+
+    @Autowired
     ApplicationContext applicationContext;
 
     @Autowired
     StringRedisTemplate redis;
+
+    @Autowired
+    MockMvc mockMvc;
 
     @Test
     void accountsServices_shouldDependOnApplicationPorts_andPortBeansShouldUseAdapters() {
@@ -180,6 +192,42 @@ class AuthPersistenceIntegrationTest extends AccountsPersistenceIntegrationTestS
         assertThat(users.get(0).roles()).containsExactlyInAnyOrder(Roles.USER);
         assertThat(users.get(1).roles()).containsExactlyInAnyOrder(Roles.TENANT_ADMIN);
     }
+
+    @Test
+    void resetPassword_shouldInvalidatePreviouslyIssuedJwt_andPersistTokenVersion() throws Exception {
+        String tenantName = uniqueTenantName();
+        String ownerEmail = uniqueEmail("owner");
+        String oldPassword = "password123";
+        String newPassword = "new-password123";
+
+        AuthService.AuthResult registered = authService.register(tenantName, ownerEmail, oldPassword);
+        long tenantId = registered.principal().getTenantId();
+        long userId = registered.principal().getUserId();
+
+        assertThat(registered.principal().getTokenVersion()).isZero();
+        assertThat(userStore.findById(userId).tokenVersion()).isZero();
+
+        mockMvc.perform(get("/api/v1/me")
+                        .header("Authorization", "Bearer " + registered.token()))
+                .andExpect(status().isOk());
+
+        authenticateAs(registered.principal());
+        userAdminService.resetPassword(tenantId, userId, newPassword);
+
+        assertThat(userStore.findById(userId).tokenVersion()).isEqualTo(1);
+
+        mockMvc.perform(get("/api/v1/me")
+                        .header("Authorization", "Bearer " + registered.token()))
+                .andExpect(status().isUnauthorized());
+
+        AuthService.AuthResult loggedIn = authService.login(ownerEmail, newPassword);
+        assertThat(loggedIn.principal().getTokenVersion()).isEqualTo(1);
+
+        mockMvc.perform(get("/api/v1/me")
+                        .header("Authorization", "Bearer " + loggedIn.token()))
+                .andExpect(status().isOk());
+    }
+
 }
 
 abstract class AccountsPersistenceIntegrationTestSupport {

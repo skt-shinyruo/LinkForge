@@ -4,13 +4,17 @@ import com.linkforge.analytics.application.AnalyticsQueryService;
 import com.linkforge.contract.api.ApiResponse;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
+import com.linkforge.contract.shortlink.ShortLinkOwnershipLookupPort;
 import com.linkforge.foundation.security.AuthContext;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.web.RequestId;
+import com.linkforge.governance.application.GovernanceService;
+import com.linkforge.governance.domain.SensitiveOperationType;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -22,10 +26,12 @@ import java.util.List;
 import java.util.Set;
 
 @RestController
-@RequestMapping("/api/v1/stats")
+@RequestMapping("/api/v1")
 public class StatsController {
 
     private final AnalyticsQueryService queryService;
+    private final GovernanceService governanceService;
+    private final ShortLinkOwnershipLookupPort shortLinkOwnershipLookupPort;
 
     private static final Set<String> DIM_TYPES = Set.of(
             "referer_domain",
@@ -38,11 +44,17 @@ public class StatsController {
             "utm_campaign"
     );
 
-    public StatsController(AnalyticsQueryService queryService) {
+    public StatsController(
+            AnalyticsQueryService queryService,
+            GovernanceService governanceService,
+            ShortLinkOwnershipLookupPort shortLinkOwnershipLookupPort
+    ) {
         this.queryService = queryService;
+        this.governanceService = governanceService;
+        this.shortLinkOwnershipLookupPort = shortLinkOwnershipLookupPort;
     }
 
-    @GetMapping("/links/{id}/daily")
+    @GetMapping("/stats/links/{id}/daily")
     @PreAuthorize("!hasRole('OPENAPI')")
     public ApiResponse<List<AnalyticsQueryService.DailyStat>> linkDaily(
             @PathVariable("id") long linkId,
@@ -57,7 +69,7 @@ public class StatsController {
         return ApiResponse.ok(r, RequestId.get());
     }
 
-    @GetMapping("/overview")
+    @GetMapping("/stats/overview")
     @PreAuthorize("!hasRole('OPENAPI')")
     public ApiResponse<List<AnalyticsQueryService.DailyStat>> overview(
             @RequestParam("from") @NotNull LocalDate from,
@@ -70,7 +82,45 @@ public class StatsController {
         return ApiResponse.ok(queryService.tenantDaily(p.getTenantId(), from, to), RequestId.get());
     }
 
-    @GetMapping("/top-links")
+    @GetMapping("/stats/applications/{id}/overview")
+    @PreAuthorize("!hasRole('OPENAPI')")
+    public ApiResponse<List<AnalyticsQueryService.DailyStat>> applicationOverview(
+            @PathVariable("id") long applicationId,
+            @RequestParam("from") @NotNull LocalDate from,
+            @RequestParam("to") @NotNull LocalDate to
+    ) {
+        if (from.isAfter(to)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "from 不能晚于 to");
+        }
+        AuthPrincipal p = AuthContext.requirePrincipal();
+        return ApiResponse.ok(queryService.applicationDaily(p.getTenantId(), applicationId, from, to), RequestId.get());
+    }
+
+    @GetMapping("/applications/{id}/stats/overview")
+    @PreAuthorize("!hasRole('OPENAPI')")
+    public ApiResponse<List<AnalyticsQueryService.DailyStat>> applicationOverviewAlias(
+            @PathVariable("id") long applicationId,
+            @RequestParam("from") @NotNull LocalDate from,
+            @RequestParam("to") @NotNull LocalDate to
+    ) {
+        return applicationOverview(applicationId, from, to);
+    }
+
+    @GetMapping("/stats/domains/{id}/overview")
+    @PreAuthorize("!hasRole('OPENAPI')")
+    public ApiResponse<List<AnalyticsQueryService.DailyStat>> domainOverview(
+            @PathVariable("id") long domainId,
+            @RequestParam("from") @NotNull LocalDate from,
+            @RequestParam("to") @NotNull LocalDate to
+    ) {
+        if (from.isAfter(to)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "from 不能晚于 to");
+        }
+        AuthPrincipal p = AuthContext.requirePrincipal();
+        return ApiResponse.ok(queryService.domainDaily(p.getTenantId(), domainId, from, to), RequestId.get());
+    }
+
+    @GetMapping("/stats/top-links")
     @PreAuthorize("!hasRole('OPENAPI')")
     public ApiResponse<List<AnalyticsQueryService.TopLinkStat>> topLinks(
             @RequestParam("from") @NotNull LocalDate from,
@@ -104,7 +154,49 @@ public class StatsController {
         return ApiResponse.ok(queryService.topLinks(p.getTenantId(), from, to, l, s), RequestId.get());
     }
 
-    @GetMapping("/links/{id}/dimensions")
+    @GetMapping("/stats/applications/{id}/top-links")
+    @PreAuthorize("!hasRole('OPENAPI')")
+    public ApiResponse<List<AnalyticsQueryService.TopLinkStat>> applicationTopLinks(
+            @PathVariable("id") long applicationId,
+            @RequestParam("from") @NotNull LocalDate from,
+            @RequestParam("to") @NotNull LocalDate to,
+            @RequestParam(value = "limit", required = false) Integer limit,
+            @RequestParam(value = "sortBy", required = false) String sortBy
+    ) {
+        AnalyticsQueryService.TopSortBy sort = resolveTopSortBy(from, to, limit, sortBy);
+        int l = normalizeTopLimit(limit);
+        AuthPrincipal p = AuthContext.requirePrincipal();
+        return ApiResponse.ok(queryService.applicationTopLinks(p.getTenantId(), applicationId, from, to, l, sort), RequestId.get());
+    }
+
+    @GetMapping("/applications/{id}/stats/top-links")
+    @PreAuthorize("!hasRole('OPENAPI')")
+    public ApiResponse<List<AnalyticsQueryService.TopLinkStat>> applicationTopLinksAlias(
+            @PathVariable("id") long applicationId,
+            @RequestParam("from") @NotNull LocalDate from,
+            @RequestParam("to") @NotNull LocalDate to,
+            @RequestParam(value = "limit", required = false) Integer limit,
+            @RequestParam(value = "sortBy", required = false) String sortBy
+    ) {
+        return applicationTopLinks(applicationId, from, to, limit, sortBy);
+    }
+
+    @GetMapping("/stats/domains/{id}/top-links")
+    @PreAuthorize("!hasRole('OPENAPI')")
+    public ApiResponse<List<AnalyticsQueryService.TopLinkStat>> domainTopLinks(
+            @PathVariable("id") long domainId,
+            @RequestParam("from") @NotNull LocalDate from,
+            @RequestParam("to") @NotNull LocalDate to,
+            @RequestParam(value = "limit", required = false) Integer limit,
+            @RequestParam(value = "sortBy", required = false) String sortBy
+    ) {
+        AnalyticsQueryService.TopSortBy sort = resolveTopSortBy(from, to, limit, sortBy);
+        int l = normalizeTopLimit(limit);
+        AuthPrincipal p = AuthContext.requirePrincipal();
+        return ApiResponse.ok(queryService.domainTopLinks(p.getTenantId(), domainId, from, to, l, sort), RequestId.get());
+    }
+
+    @GetMapping("/stats/links/{id}/dimensions")
     @PreAuthorize("!hasRole('OPENAPI')")
     public ApiResponse<List<AnalyticsQueryService.DimensionStat>> linkDimensions(
             @PathVariable("id") long linkId,
@@ -133,7 +225,7 @@ public class StatsController {
         return ApiResponse.ok(queryService.linkDimensions(p.getTenantId(), linkId, from, to, t, l), RequestId.get());
     }
 
-    @GetMapping("/links/{id}/events")
+    @GetMapping("/stats/links/{id}/events")
     @PreAuthorize("!hasRole('OPENAPI')")
     public ApiResponse<List<AnalyticsQueryService.VisitEvent>> linkEvents(
             @PathVariable("id") long linkId,
@@ -157,5 +249,105 @@ public class StatsController {
 
         AuthPrincipal p = AuthContext.requirePrincipal();
         return ApiResponse.ok(queryService.linkEvents(p.getTenantId(), linkId, f, t, l), RequestId.get());
+    }
+
+    @PostMapping("/stats/links/{id}/events/export-requests")
+    @PreAuthorize("!hasRole('OPENAPI')")
+    public ApiResponse<GovernanceService.ApprovalRequestDto> requestEventExport(
+            @PathVariable("id") long linkId,
+            @RequestParam(value = "from", required = false) LocalDateTime from,
+            @RequestParam(value = "to", required = false) LocalDateTime to
+    ) {
+        LocalDateTime t = (to == null ? LocalDateTime.now(ZoneOffset.UTC) : to);
+        LocalDateTime f = (from == null ? t.minusDays(1) : from);
+        if (f.isAfter(t)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "from 不能晚于 to");
+        }
+        AuthPrincipal p = AuthContext.requirePrincipal();
+        ShortLinkOwnershipLookupPort.ShortLinkOwnership link = requireLinkScope(p.getTenantId(), linkId);
+        GovernanceService.ApprovalRequestDto dto = governanceService.submitRequest(
+                p.getTenantId(),
+                new GovernanceService.SubmitApprovalRequest(
+                        SensitiveOperationType.ANALYTICS_DETAIL_EXPORT,
+                        link.applicationId(),
+                        null,
+                        "linkId=" + linkId + ",from=" + f + ",to=" + t
+                )
+        );
+        return ApiResponse.ok(dto, RequestId.get());
+    }
+
+    @PostMapping("/applications/{applicationId}/links/{id}/events/export-requests")
+    @PreAuthorize("!hasRole('OPENAPI')")
+    public ApiResponse<GovernanceService.ApprovalRequestDto> requestEventExportByApplication(
+            @PathVariable("applicationId") long applicationId,
+            @PathVariable("id") long linkId,
+            @RequestParam(value = "from", required = false) LocalDateTime from,
+            @RequestParam(value = "to", required = false) LocalDateTime to
+    ) {
+        AuthPrincipal p = AuthContext.requirePrincipal();
+        ShortLinkOwnershipLookupPort.ShortLinkOwnership link = requireLinkWithinApplication(p.getTenantId(), applicationId, linkId);
+        LocalDateTime t = (to == null ? LocalDateTime.now(ZoneOffset.UTC) : to);
+        LocalDateTime f = (from == null ? t.minusDays(1) : from);
+        if (f.isAfter(t)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "from 不能晚于 to");
+        }
+        GovernanceService.ApprovalRequestDto dto = governanceService.submitRequest(
+                p.getTenantId(),
+                new GovernanceService.SubmitApprovalRequest(
+                        SensitiveOperationType.ANALYTICS_DETAIL_EXPORT,
+                        link.applicationId(),
+                        null,
+                        "linkId=" + linkId + ",from=" + f + ",to=" + t
+                )
+        );
+        return ApiResponse.ok(dto, RequestId.get());
+    }
+
+    private static AnalyticsQueryService.TopSortBy resolveTopSortBy(LocalDate from, LocalDate to, Integer limit, String sortBy) {
+        validateDateRange(from, to);
+        normalizeTopLimit(limit);
+        AnalyticsQueryService.TopSortBy s = AnalyticsQueryService.TopSortBy.PV;
+        if (sortBy != null && !sortBy.isBlank()) {
+            String raw = sortBy.trim().toLowerCase();
+            if ("pv".equals(raw)) {
+                s = AnalyticsQueryService.TopSortBy.PV;
+            } else if ("uv".equals(raw)) {
+                s = AnalyticsQueryService.TopSortBy.UV;
+            } else {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "sortBy 仅支持 pv/uv");
+            }
+        }
+        return s;
+    }
+
+    private static int normalizeTopLimit(Integer limit) {
+        int l = (limit == null ? 10 : limit);
+        if (l < 1) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "limit 必须 >= 1");
+        }
+        if (l > 100) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "limit 最大为 100");
+        }
+        return l;
+    }
+
+    private static void validateDateRange(LocalDate from, LocalDate to) {
+        if (from.isAfter(to)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "from 不能晚于 to");
+        }
+    }
+
+    private ShortLinkOwnershipLookupPort.ShortLinkOwnership requireLinkWithinApplication(long tenantId, long applicationId, long linkId) {
+        ShortLinkOwnershipLookupPort.ShortLinkOwnership link = requireLinkScope(tenantId, linkId);
+        if (link.applicationId() == null || link.applicationId() != applicationId) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "链接不属于该应用");
+        }
+        return link;
+    }
+
+    private ShortLinkOwnershipLookupPort.ShortLinkOwnership requireLinkScope(long tenantId, long linkId) {
+        return shortLinkOwnershipLookupPort.findByTenantIdAndId(tenantId, linkId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "链接不存在"));
     }
 }

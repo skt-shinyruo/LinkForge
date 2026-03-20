@@ -47,6 +47,24 @@ public class MybatisShortLinkRepository implements ShortLinkRepository {
     }
 
     @Override
+    public Optional<ShortLink> findByDomainIdAndCode(long domainId, String code) {
+        String c = normalizeNullable(code);
+        if (domainId <= 0 || c == null) {
+            return Optional.empty();
+        }
+        ShortLinkEntity e = queryMapper.findByDomainIdAndCode(domainId, c);
+        return Optional.ofNullable(ShortLinkEntityMapper.toDomain(e));
+    }
+
+    @Override
+    public long countActiveByTenantIdAndApplicationId(long tenantId, long applicationId) {
+        if (tenantId <= 0 || applicationId <= 0) {
+            return 0L;
+        }
+        return queryMapper.countActiveByTenantIdAndApplicationId(tenantId, applicationId);
+    }
+
+    @Override
     public void insert(ShortLink link) {
         commandMapper.insert(ShortLinkEntityMapper.toEntity(link));
     }
@@ -78,13 +96,14 @@ public class MybatisShortLinkRepository implements ShortLinkRepository {
     }
 
     private static ShortLinkSearchParam toSearchParam(long tenantId, ShortLinkSearchQuery query, long offset, int limit) {
-        ShortLinkSearchQuery q = query == null ? new ShortLinkSearchQuery(false, null, null, null) : query;
+        ShortLinkSearchQuery q = query == null ? new ShortLinkSearchQuery(false, null, null, null, null) : query;
         return new ShortLinkSearchParam(
                 tenantId,
                 q.archived(),
                 q.enabled(),
                 normalizeNullable(q.keyword()),
                 normalizeNullable(q.tag()),
+                q.applicationId(),
                 offset,
                 limit
         );

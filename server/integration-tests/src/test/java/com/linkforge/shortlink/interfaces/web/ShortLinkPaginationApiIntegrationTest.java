@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -73,13 +74,21 @@ class ShortLinkPaginationApiIntegrationTest {
     @Autowired
     ObjectMapper objectMapper;
 
+    @Autowired
+    JdbcTemplate jdbcTemplate;
+
     @Test
     void listEndpoints_shouldPreservePageResponseShape() throws Exception {
         RegisteredPrincipal principal = registerTenantAdmin();
-        String apiKey = createApiKey(principal.token());
+        AppDomainFixture fixture = provisionDedicatedApplication(
+                principal.tenantId(),
+                "pagination-links-" + principal.tenantId(),
+                "pagination-links-" + principal.tenantId() + ".example.test"
+        );
+        String apiKey = createApiKey(principal.token(), fixture.applicationId());
 
-        JsonNode first = createLink(principal.token(), "https://example.com/pagination/a", "page-a");
-        JsonNode second = createLink(principal.token(), "https://example.com/pagination/b", "page-b");
+        JsonNode first = createScopedLink(principal.token(), fixture, "https://example.com/pagination/a", "page-a");
+        JsonNode second = createScopedLink(principal.token(), fixture, "https://example.com/pagination/b", "page-b");
         String firstIdentity = linkIdentity(first.get("data"));
         String secondIdentity = linkIdentity(second.get("data"));
 
@@ -120,8 +129,13 @@ class ShortLinkPaginationApiIntegrationTest {
     @Test
     void listEndpoints_shouldNormalizeNonPositiveSize() throws Exception {
         RegisteredPrincipal principal = registerTenantAdmin();
-        String apiKey = createApiKey(principal.token());
-        createLink(principal.token(), "https://example.com/pagination/zero-size", "page-zero");
+        AppDomainFixture fixture = provisionDedicatedApplication(
+                principal.tenantId(),
+                "pagination-zero-" + principal.tenantId(),
+                "pagination-zero-" + principal.tenantId() + ".example.test"
+        );
+        String apiKey = createApiKey(principal.token(), fixture.applicationId());
+        createScopedLink(principal.token(), fixture, "https://example.com/pagination/zero-size", "page-zero");
 
         JsonNode jwtList = getJson(
                 get("/api/v1/links")
@@ -151,10 +165,101 @@ class ShortLinkPaginationApiIntegrationTest {
     }
 
     @Test
+    void application_scoped_link_api_should_reject_access_to_other_application_in_same_tenant() throws Exception {
+        RegisteredPrincipal principal = registerTenantAdmin();
+        AppDomainFixture firstApp = provisionDedicatedApplication(
+                principal.tenantId(),
+                "scope-a-" + principal.tenantId(),
+                "scope-a-" + principal.tenantId() + ".example.test"
+        );
+        AppDomainFixture secondApp = provisionDedicatedApplication(
+                principal.tenantId(),
+                "scope-b-" + principal.tenantId(),
+                "scope-b-" + principal.tenantId() + ".example.test"
+        );
+        String firstAppApiKey = createApiKey(principal.token(), firstApp.applicationId());
+
+        JsonNode firstLinkBody = objectMapper.createObjectNode()
+                .put("originalUrl", "https://example.com/app-scope/a")
+                .put("note", "scope-a")
+                .put("applicationId", firstApp.applicationId())
+                .put("domainId", firstApp.domainId());
+        JsonNode secondLinkBody = objectMapper.createObjectNode()
+                .put("originalUrl", "https://example.com/app-scope/b")
+                .put("note", "scope-b")
+                .put("applicationId", secondApp.applicationId())
+                .put("domainId", secondApp.domainId());
+
+        JsonNode firstCreated = postJson("/api/v1/links", firstLinkBody, principal.token(), null);
+        JsonNode secondCreated = postJson("/api/v1/links", secondLinkBody, principal.token(), null);
+        assertThat(firstCreated.get("code").asInt()).isEqualTo(0);
+        assertThat(secondCreated.get("code").asInt()).isEqualTo(0);
+
+        JsonNode scopedList = getJson(
+                get("/api/v1/open/applications/" + firstApp.applicationId() + "/links")
+                        .header("X-API-Key", firstAppApiKey)
+                        .param("page", "0")
+                        .param("size", "20")
+        );
+        assertThat(scopedList.get("code").asInt()).isEqualTo(0);
+        JsonNode scopedData = scopedList.get("data");
+        assertThat(scopedData.get("total").asLong()).isEqualTo(1L);
+        assertThat(scopedData.get("items")).hasSize(1);
+        assertThat(scopedData.get("items").get(0).get("applicationId").asLong()).isEqualTo(firstApp.applicationId());
+        assertThat(scopedData.get("items").get(0).get("domainId").asLong()).isEqualTo(firstApp.domainId());
+
+        JsonNode forbidden = objectMapper.readTree(mockMvc.perform(
+                        get("/api/v1/open/applications/" + secondApp.applicationId() + "/links")
+                                .header("X-API-Key", firstAppApiKey)
+                )
+                .andExpect(status().isForbidden())
+                .andReturn()
+                .getResponse()
+                .getContentAsByteArray());
+        assertThat(forbidden.get("code").asInt()).isEqualTo(40300);
+        assertThat(forbidden.get("message").asText()).contains("应用");
+    }
+
+    @Test
+    void application_scoped_jwt_link_api_should_require_tenant_admin() throws Exception {
+        RegisteredPrincipal admin = registerTenantAdmin();
+        AppDomainFixture fixture = provisionDedicatedApplication(
+                admin.tenantId(),
+                "jwt-scope-admin-" + admin.tenantId(),
+                "jwt-scope-admin-" + admin.tenantId() + ".example.test"
+        );
+        String userToken = createRegularUserToken(admin.token(), "jwt-user-" + System.nanoTime() + "@example.com");
+
+        JsonNode createLinkBody = objectMapper.createObjectNode()
+                .put("originalUrl", "https://example.com/user-scope")
+                .put("applicationId", fixture.applicationId())
+                .put("domainId", fixture.domainId());
+
+        mockMvc.perform(
+                        post("/api/v1/applications/" + fixture.applicationId() + "/links")
+                                .header("Authorization", "Bearer " + userToken)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(createLinkBody))
+                )
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(
+                        get("/api/v1/applications/" + fixture.applicationId() + "/links")
+                                .header("Authorization", "Bearer " + userToken)
+                )
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void listEndpoints_shouldRejectHugePageToAvoidDeepOffsetPagination() throws Exception {
         RegisteredPrincipal principal = registerTenantAdmin();
-        String apiKey = createApiKey(principal.token());
-        createLink(principal.token(), "https://example.com/pagination/huge-page", "page-huge");
+        AppDomainFixture fixture = provisionDedicatedApplication(
+                principal.tenantId(),
+                "pagination-huge-" + principal.tenantId(),
+                "pagination-huge-" + principal.tenantId() + ".example.test"
+        );
+        String apiKey = createApiKey(principal.token(), fixture.applicationId());
+        createScopedLink(principal.token(), fixture, "https://example.com/pagination/huge-page", "page-huge");
 
         String huge = String.valueOf(Integer.MAX_VALUE);
 
@@ -232,11 +337,125 @@ class ShortLinkPaginationApiIntegrationTest {
         );
     }
 
+    private String createRegularUserToken(String adminToken, String email) throws Exception {
+        var createUserBody = objectMapper.createObjectNode()
+                .put("email", email)
+                .put("password", "password123");
+        createUserBody.putArray("roles").add("USER");
+        JsonNode createUser = postJson("/api/v1/users", createUserBody, adminToken, null);
+        assertThat(createUser.get("code").asInt()).isEqualTo(0);
+
+        JsonNode loginBody = objectMapper.createObjectNode()
+                .put("email", email)
+                .put("password", "password123");
+        JsonNode login = postJson("/api/v1/auth/login", loginBody, null, null);
+        assertThat(login.get("code").asInt()).isEqualTo(0);
+        return login.get("data").get("token").asText();
+    }
+
     private String createApiKey(String token) throws Exception {
-        JsonNode createKeyBody = objectMapper.createObjectNode().put("name", "pagination-key");
+        RegisteredPrincipal principal = registerTenantAdminForToken(token);
+        long applicationId = provisionApplication(principal.tenantId(), "pagination-key-app-" + principal.tenantId());
+        return createApiKey(token, applicationId);
+    }
+
+    private String createApiKey(String token, long applicationId) throws Exception {
+        JsonNode createKeyBody = objectMapper.createObjectNode()
+                .put("applicationId", applicationId)
+                .put("name", "pagination-key");
         JsonNode response = postJson("/api/v1/api-keys", createKeyBody, token, null);
         assertThat(response.get("code").asInt()).isEqualTo(0);
         return response.get("data").get("apiKey").asText();
+    }
+
+    private RegisteredPrincipal registerTenantAdminForToken(String token) {
+        return new RegisteredPrincipal(token, readTenantId(token));
+    }
+
+    private long readTenantId(String token) {
+        try {
+            String me = mockMvc.perform(
+                            get("/api/v1/me")
+                                    .header("Authorization", "Bearer " + token)
+                    )
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+            JsonNode json = objectMapper.readTree(me);
+            return json.get("data").get("tenantId").asLong();
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private long provisionApplication(long tenantId, String applicationKey) {
+        long applicationId = Math.abs(System.nanoTime()) + 20_000;
+        jdbcTemplate.update(
+                """
+                        INSERT INTO applications (id, tenant_id, application_key, display_name, status)
+                        VALUES (?, ?, ?, ?, 'ACTIVE')
+                        """,
+                applicationId,
+                tenantId,
+                applicationKey,
+                applicationKey
+        );
+        jdbcTemplate.update(
+                """
+                        INSERT INTO application_policies (application_id, default_domain_scope, default_redirect_status_code, preview_enabled)
+                        VALUES (?, 'TENANT_SHARED', 302, 0)
+                        """,
+                applicationId
+        );
+        jdbcTemplate.update(
+                """
+                        INSERT INTO application_quotas (application_id, monthly_link_limit, monthly_click_limit)
+                        VALUES (?, 10000, 1000000)
+                        """,
+                applicationId
+        );
+        return applicationId;
+    }
+
+    private AppDomainFixture provisionDedicatedApplication(long tenantId, String applicationKey, String hostname) {
+        long applicationId = Math.abs(System.nanoTime()) + 20_000;
+        long domainId = applicationId + 5_000;
+        jdbcTemplate.update(
+                """
+                        INSERT INTO applications (id, tenant_id, application_key, display_name, status)
+                        VALUES (?, ?, ?, ?, 'ACTIVE')
+                        """,
+                applicationId,
+                tenantId,
+                applicationKey,
+                applicationKey
+        );
+        jdbcTemplate.update(
+                """
+                        INSERT INTO application_policies (application_id, default_domain_scope, default_redirect_status_code, preview_enabled)
+                        VALUES (?, 'APPLICATION_DEDICATED', 302, 0)
+                        """,
+                applicationId
+        );
+        jdbcTemplate.update(
+                """
+                        INSERT INTO application_quotas (application_id, monthly_link_limit, monthly_click_limit)
+                        VALUES (?, 10000, 1000000)
+                        """,
+                applicationId
+        );
+        jdbcTemplate.update(
+                """
+                        INSERT INTO domains (id, tenant_id, application_id, hostname, scope, status, trust_class)
+                        VALUES (?, ?, ?, ?, 'APPLICATION_DEDICATED', 'ACTIVE', 'FIRST_PARTY')
+                        """,
+                domainId,
+                tenantId,
+                applicationId,
+                hostname
+        );
+        return new AppDomainFixture(applicationId, domainId);
     }
 
     private JsonNode createLink(String token, String originalUrl, String note) throws Exception {
@@ -244,6 +463,17 @@ class ShortLinkPaginationApiIntegrationTest {
                 .put("originalUrl", originalUrl)
                 .put("note", note);
         JsonNode response = postJson("/api/v1/links", createLinkBody, token, null);
+        assertThat(response.get("code").asInt()).isEqualTo(0);
+        return response;
+    }
+
+    private JsonNode createScopedLink(String token, AppDomainFixture fixture, String originalUrl, String note) throws Exception {
+        JsonNode createLinkBody = objectMapper.createObjectNode()
+                .put("originalUrl", originalUrl)
+                .put("note", note)
+                .put("applicationId", fixture.applicationId())
+                .put("domainId", fixture.domainId());
+        JsonNode response = postJson("/api/v1/applications/" + fixture.applicationId() + "/links", createLinkBody, token, null);
         assertThat(response.get("code").asInt()).isEqualTo(0);
         return response;
     }
@@ -275,5 +505,8 @@ class ShortLinkPaginationApiIntegrationTest {
     }
 
     private record RegisteredPrincipal(String token, long tenantId) {
+    }
+
+    private record AppDomainFixture(long applicationId, long domainId) {
     }
 }

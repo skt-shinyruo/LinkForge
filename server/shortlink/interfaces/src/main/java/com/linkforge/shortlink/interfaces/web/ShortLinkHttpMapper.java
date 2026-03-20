@@ -23,7 +23,10 @@ public final class ShortLinkHttpMapper {
                 req.previewEnabled(),
                 req.unavailableLandingUrl(),
                 req.queryForwardMode(),
-                req.queryForwardAllowlist()
+                req.queryForwardAllowlist(),
+                req.applicationId(),
+                req.domainId(),
+                req.lifecycleState()
         );
     }
 
@@ -41,7 +44,8 @@ public final class ShortLinkHttpMapper {
                 req.unavailableLandingUrl(),
                 req.queryForwardMode(),
                 req.clearQueryForwardMode(),
-                req.queryForwardAllowlist()
+                req.queryForwardAllowlist(),
+                req.lifecycleState()
         );
     }
 

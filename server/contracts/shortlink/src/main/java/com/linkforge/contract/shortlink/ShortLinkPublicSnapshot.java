@@ -7,6 +7,7 @@ public record ShortLinkPublicSnapshot(
         long tenantId,
         long linkId,
         String code,
+        String hostname,
         String originalUrl,
         boolean enabled,
         Instant expiresAtUtc,
@@ -15,7 +16,8 @@ public record ShortLinkPublicSnapshot(
         String unavailableLandingUrl,
         String queryForwardMode,
         List<String> queryForwardAllowlist,
-        Instant archivedAtUtc
+        Instant archivedAtUtc,
+        Long applicationId,
+        Long domainId
 ) {
 }
-

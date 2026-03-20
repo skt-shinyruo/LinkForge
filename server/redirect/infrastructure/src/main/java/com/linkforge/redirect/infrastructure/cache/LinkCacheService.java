@@ -17,6 +17,7 @@ public class LinkCacheService implements LinkCachePort {
 
     private static final Logger log = LoggerFactory.getLogger(LinkCacheService.class);
     private static final String PREFIX = "link:code:";
+    private static final String HOST_PREFIX = "link:host:";
     private static final String NOT_FOUND_SENTINEL = "__lf_not_found__";
 
     private final StringRedisTemplate redis;
@@ -36,16 +37,21 @@ public class LinkCacheService implements LinkCachePort {
      */
     @Override
     public LookupResult lookup(String code) {
+        return lookup(null, code);
+    }
+
+    @Override
+    public LookupResult lookup(String host, String code) {
         if (code == null || code.isBlank()) {
             return LookupResult.miss();
         }
 
         String raw;
         try {
-            raw = redis.opsForValue().get(key(code));
+            raw = redis.opsForValue().get(key(host, code));
         } catch (Exception e) {
             // 缓存异常：降级为未命中，让主链路回源
-            log.debug("cache read failed: code={}, err={}", code, e.getMessage());
+            log.debug("cache read failed: host={}, code={}, err={}", host, code, e.getMessage());
             return LookupResult.miss();
         }
         if (raw == null) {
@@ -59,11 +65,11 @@ public class LinkCacheService implements LinkCachePort {
         } catch (Exception e) {
             // 缓存反序列化失败时，直接当作未命中并清理
             try {
-                redis.delete(key(code));
+                redis.delete(key(host, code));
             } catch (Exception ex) {
-                log.debug("cache delete failed after deserialize error: code={}, err={}", code, ex.getMessage());
+                log.debug("cache delete failed after deserialize error: host={}, code={}, err={}", host, code, ex.getMessage());
             }
-            log.debug("cache deserialize failed: code={}, err={}", code, e.getMessage());
+            log.debug("cache deserialize failed: host={}, code={}, err={}", host, code, e.getMessage());
             return LookupResult.miss();
         }
     }
@@ -83,17 +89,27 @@ public class LinkCacheService implements LinkCachePort {
      */
     @Override
     public boolean tryPut(LinkMeta meta) {
+        return tryPut(null, meta);
+    }
+
+    @Override
+    public boolean tryPut(String host, LinkMeta meta) {
         if (meta == null || meta.code() == null || meta.code().isBlank()) {
             return true;
         }
         try {
             String raw = objectMapper.writeValueAsString(meta);
-            redis.opsForValue().set(key(meta.code()), raw, Duration.ofSeconds(redirectProperties.getCacheTtlSeconds()));
+            redis.opsForValue().set(
+                    key(resolveCacheHost(host, meta), meta.code()),
+                    raw,
+                    Duration.ofSeconds(redirectProperties.getCacheTtlSeconds())
+            );
             return true;
         } catch (Exception e) {
             // 缓存写入失败不应影响主链路
             log.debug(
-                    "cache write failed: code={}, tenantId={}, linkId={}, err={}",
+                    "cache write failed: host={}, code={}, tenantId={}, linkId={}, err={}",
+                    resolveCacheHost(host, meta),
                     meta == null ? null : meta.code(),
                     meta == null ? null : meta.tenantId(),
                     meta == null ? null : meta.id(),
@@ -105,6 +121,11 @@ public class LinkCacheService implements LinkCachePort {
 
     @Override
     public void markNotFound(String code) {
+        markNotFound(null, code);
+    }
+
+    @Override
+    public void markNotFound(String host, String code) {
         if (code == null || code.isBlank()) {
             return;
         }
@@ -113,10 +134,10 @@ public class LinkCacheService implements LinkCachePort {
             return;
         }
         try {
-            redis.opsForValue().set(key(code), NOT_FOUND_SENTINEL, Duration.ofSeconds(ttlSeconds));
+            redis.opsForValue().set(key(host, code), NOT_FOUND_SENTINEL, Duration.ofSeconds(ttlSeconds));
         } catch (Exception e) {
             // 负缓存写入失败不应影响主链路
-            log.debug("cache write not-found failed: code={}, err={}", code, e.getMessage());
+            log.debug("cache write not-found failed: host={}, code={}, err={}", host, code, e.getMessage());
         }
     }
 
@@ -129,19 +150,55 @@ public class LinkCacheService implements LinkCachePort {
      */
     @Override
     public boolean tryEvict(String code) {
+        return tryEvict(null, code);
+    }
+
+    @Override
+    public boolean tryEvict(String host, String code) {
         if (code == null || code.isBlank()) {
             return true;
         }
         try {
-            redis.delete(key(code));
+            redis.delete(key(host, code));
             return true;
         } catch (Exception e) {
-            log.debug("cache evict failed: code={}, err={}", code, e.getMessage());
+            log.debug("cache evict failed: host={}, code={}, err={}", host, code, e.getMessage());
             return false;
         }
     }
 
     private static String key(String code) {
         return PREFIX + code;
+    }
+
+    private static String key(String host, String code) {
+        String normalizedHost = normalizeHost(host);
+        if (normalizedHost == null) {
+            return key(code);
+        }
+        return HOST_PREFIX + normalizedHost + ":code:" + code;
+    }
+
+    private static String resolveCacheHost(String requestedHost, LinkMeta meta) {
+        String host = normalizeHost(requestedHost);
+        if (host != null) {
+            return host;
+        }
+        return meta == null ? null : normalizeHost(meta.hostname());
+    }
+
+    private static String normalizeHost(String host) {
+        if (host == null) {
+            return null;
+        }
+        String normalized = host.trim().toLowerCase();
+        if (normalized.isBlank()) {
+            return null;
+        }
+        int colonIndex = normalized.indexOf(':');
+        if (colonIndex > 0) {
+            normalized = normalized.substring(0, colonIndex);
+        }
+        return normalized.isBlank() ? null : normalized;
     }
 }

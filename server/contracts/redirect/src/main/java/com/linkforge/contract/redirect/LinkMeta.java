@@ -13,6 +13,7 @@ public record LinkMeta(
         boolean previewEnabled,
         String unavailableLandingUrl,
         String queryForwardMode,
-        String queryForwardAllowlist
+        String queryForwardAllowlist,
+        String hostname
 ) {
 }

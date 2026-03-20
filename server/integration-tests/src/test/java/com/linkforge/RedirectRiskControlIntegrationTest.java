@@ -83,7 +83,7 @@ class RedirectRiskControlIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        when(redirectService.resolve(anyString()))
+        when(redirectService.resolve(anyString(), anyString()))
                 .thenReturn(new LinkMeta(
                         1L,
                         1L,
@@ -93,6 +93,7 @@ class RedirectRiskControlIntegrationTest {
                         (LocalDateTime) null,
                         null,
                         false,
+                        null,
                         null,
                         null,
                         null

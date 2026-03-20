@@ -27,6 +27,9 @@ public class ShortLinkDtoMapper {
         return new LinkDto(
                 link.id(),
                 link.tenantId(),
+                link.applicationId(),
+                link.domainId(),
+                link.lifecycleState().name(),
                 link.code().value(),
                 buildShortUrl(link.code().value()),
                 link.originalUrl().value(),

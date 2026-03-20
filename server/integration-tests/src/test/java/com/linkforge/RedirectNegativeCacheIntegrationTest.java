@@ -94,6 +94,6 @@ class RedirectNegativeCacheIntegrationTest {
         mockMvc.perform(get("/r/" + code).header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE))
                 .andExpect(status().isNotFound());
 
-        verify(authoritativeLinkMetaSourceAdapter, times(1)).findByCode(code);
+        verify(authoritativeLinkMetaSourceAdapter, times(1)).findByHostAndCode("localhost", code);
     }
 }

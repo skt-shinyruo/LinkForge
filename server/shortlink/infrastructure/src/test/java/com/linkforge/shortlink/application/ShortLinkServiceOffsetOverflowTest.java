@@ -35,7 +35,7 @@ class ShortLinkServiceOffsetOverflowTest {
         int size = 2;
         assertThatThrownBy(() -> handler.handle(
                 1L,
-                new ShortLinkSearchQuery(false, null, null, null),
+                new ShortLinkSearchQuery(false, null, null, null, null),
                 new PageQuery(page, size)
         ))
                 .isInstanceOf(BusinessException.class)
@@ -61,6 +61,7 @@ class ShortLinkServiceOffsetOverflowTest {
         int size = 2;
         assertThatThrownBy(() -> handler.handle(
                 1L,
+                new ShortLinkSearchQuery(false, null, null, null, null),
                 new PageQuery(page, size),
                 new ByteArrayOutputStream()
         ))

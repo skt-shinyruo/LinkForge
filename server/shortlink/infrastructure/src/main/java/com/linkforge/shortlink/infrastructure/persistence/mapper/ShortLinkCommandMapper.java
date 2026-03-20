@@ -11,4 +11,6 @@ public interface ShortLinkCommandMapper {
     int update(ShortLinkEntity entity);
 
     int deleteByTenantIdAndIdAndVersion(long tenantId, long id, long version);
+
+    int backfillOwnershipByTenant(long tenantId, long applicationId, long domainId);
 }

@@ -58,7 +58,12 @@ export async function listLinks(
     keyword: query.keyword,
     tag: query.tag,
   });
-  const response = await apiFetch<PageResponse<LinkDto>>(`/api/v1/links?${queryString}`);
+  const basePath = query.applicationId
+    ? `/api/v1/applications/${query.applicationId}/links`
+    : "/api/v1/links";
+  const response = await apiFetch<PageResponse<LinkDto>>(
+    `${basePath}${queryString ? `?${queryString}` : ""}`,
+  );
   return (
     ensureApiSuccess(response, "加载短链失败") ?? {
       items: [],
@@ -70,7 +75,10 @@ export async function listLinks(
 }
 
 export async function createLink(request: CreateLinkRequest): Promise<LinkDto> {
-  const response = await apiFetch<LinkDto>("/api/v1/links", {
+  const path = request.applicationId
+    ? `/api/v1/applications/${request.applicationId}/links`
+    : "/api/v1/links";
+  const response = await apiFetch<LinkDto>(path, {
     method: "POST",
     body: JSON.stringify(request),
   });
@@ -129,8 +137,18 @@ export async function importLinksCsv(file: File): Promise<LinkImportResult> {
 export async function exportLinksCsv(query: LinkExportQuery = {}): Promise<Blob> {
   const page = query.page ?? 0;
   const size = query.size ?? 1000;
-  const queryString = buildQueryString({ page, size });
-  const response = await authFetch(`/api/v1/links/export?${queryString}`);
+  const queryString = buildQueryString({
+    page,
+    size,
+    archived: query.archived,
+    enabled: query.enabled,
+    keyword: query.keyword,
+    tag: query.tag,
+  });
+  const basePath = query.applicationId
+    ? `/api/v1/applications/${query.applicationId}/links/export`
+    : "/api/v1/links/export";
+  const response = await authFetch(`${basePath}${queryString ? `?${queryString}` : ""}`);
 
   if (!response.ok) {
     throw new Error(`导出失败（HTTP ${response.status}）`);

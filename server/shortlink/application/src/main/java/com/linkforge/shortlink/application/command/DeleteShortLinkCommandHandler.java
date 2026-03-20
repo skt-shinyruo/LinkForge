@@ -59,6 +59,6 @@ public class DeleteShortLinkCommandHandler {
         if (!shortLinkRepository.deleteByTenantIdAndId(tenantId, linkId, link.version())) {
             throw new BusinessException(ShortLinkErrorCode.LINK_STALE_WRITE);
         }
-        AfterCommit.run(() -> redirectCacheSync.evict(link.code().value()));
+        AfterCommit.run(() -> redirectCacheSync.evict(link.tenantId(), link.domainId(), link.code().value()));
     }
 }

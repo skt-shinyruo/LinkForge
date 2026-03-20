@@ -5,6 +5,7 @@ import com.linkforge.shortlink.domain.CreatedByType;
 import com.linkforge.shortlink.domain.QueryForwardAllowlist;
 import com.linkforge.shortlink.domain.QueryForwardMode;
 import com.linkforge.shortlink.domain.ShortCode;
+import com.linkforge.shortlink.domain.ShortLinkLifecycleState;
 import com.linkforge.shortlink.domain.ShortLink;
 import com.linkforge.shortlink.domain.ShortLinkDomainException;
 import com.linkforge.shortlink.infrastructure.persistence.entity.ShortLinkEntity;
@@ -27,7 +28,10 @@ public final class ShortLinkEntityMapper {
             return ShortLink.rehydrate(
                     safeLong(e.getId()),
                     safeLong(e.getTenantId()),
+                    e.getApplicationId(),
+                    e.getDomainId(),
                     ShortCode.of(e.getCode()),
+                    ShortLinkLifecycleState.parseNullable(e.getLifecycleState()),
                     HttpUrl.of(e.getOriginalUrl()),
                     e.getNote(),
                     Boolean.TRUE.equals(e.getEnabled()),
@@ -56,7 +60,10 @@ public final class ShortLinkEntityMapper {
         ShortLinkEntity e = new ShortLinkEntity();
         e.setId(link.id());
         e.setTenantId(link.tenantId());
+        e.setApplicationId(link.applicationId());
+        e.setDomainId(link.domainId());
         e.setCode(link.code().value());
+        e.setLifecycleState(link.lifecycleState().name());
         e.setOriginalUrl(link.originalUrl().value());
         e.setNote(link.note());
         e.setEnabled(link.enabled());

@@ -180,8 +180,16 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
         assertThat(token).isNotBlank();
         assertThat(tenantId).isPositive();
 
+        AppDomainFixture openApiFixture = provisionDedicatedApplication(
+                tenantId,
+                "openapi-app-" + tenantId,
+                "openapi-" + tenantId + ".example.test"
+        );
+
         // 2) 创建 API Key（用于 OpenAPI）
-        JsonNode createKeyBody = objectMapper.createObjectNode().put("name", "test-key");
+        JsonNode createKeyBody = objectMapper.createObjectNode()
+                .put("applicationId", openApiFixture.applicationId())
+                .put("name", "test-key");
         String createKeyResp = mockMvc.perform(
                         post("/api/v1/api-keys")
                                 .header("Authorization", "Bearer " + token)
@@ -462,7 +470,8 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
 
         // 9) OpenAPI 创建短链（API Key）
         JsonNode openCreateBody = objectMapper.createObjectNode()
-                .put("originalUrl", "https://example.com/openapi");
+                .put("originalUrl", "https://example.com/openapi")
+                .put("domainId", openApiFixture.domainId());
         String openCreateResp = mockMvc.perform(
                         post("/api/v1/open/links")
                                 .header("X-API-Key", apiKey)
@@ -617,6 +626,172 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
     }
 
     @Test
+    void tenant_admin_should_be_able_to_manage_own_applications_but_not_other_tenants() throws Exception {
+        RegisteredPrincipal tenantOne = registerTenantAdmin("control-plane-a");
+        RegisteredPrincipal tenantTwo = registerTenantAdmin("control-plane-b");
+
+        JsonNode createApplicationBody = objectMapper.createObjectNode()
+                .put("applicationKey", "orders-api")
+                .put("displayName", "Orders API");
+        String createApplicationResp = mockMvc.perform(
+                        post("/api/v1/applications")
+                                .header("Authorization", "Bearer " + tenantOne.token())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(createApplicationBody))
+                )
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        JsonNode createApplicationJson = objectMapper.readTree(createApplicationResp);
+        assertThat(createApplicationJson.get("code").asInt()).isEqualTo(0);
+        long applicationId = createApplicationJson.get("data").get("id").asLong();
+        assertThat(applicationId).isPositive();
+
+        JsonNode createDomainBody = objectMapper.createObjectNode()
+                .put("hostname", "shared-" + tenantOne.tenantId() + ".example.test");
+        String createDomainResp = mockMvc.perform(
+                        post("/api/v1/domains/tenant-shared")
+                                .header("Authorization", "Bearer " + tenantOne.token())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(createDomainBody))
+                )
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        JsonNode createDomainJson = objectMapper.readTree(createDomainResp);
+        assertThat(createDomainJson.get("code").asInt()).isEqualTo(0);
+        long domainId = createDomainJson.get("data").get("id").asLong();
+        assertThat(domainId).isPositive();
+
+        mockMvc.perform(
+                        post("/api/v1/applications/" + applicationId + "/domain-authorizations/" + domainId)
+                                .header("Authorization", "Bearer " + tenantOne.token())
+                )
+                .andExpect(status().isOk());
+
+        String tenantOneApplicationsResp = mockMvc.perform(
+                        get("/api/v1/applications")
+                                .header("Authorization", "Bearer " + tenantOne.token())
+                )
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        JsonNode tenantOneApplicationsJson = objectMapper.readTree(tenantOneApplicationsResp);
+        assertThat(tenantOneApplicationsJson.get("code").asInt()).isEqualTo(0);
+        assertThat(tenantOneApplicationsJson.get("data").isArray()).isTrue();
+        assertThat(tenantOneApplicationsJson.get("data"))
+                .anySatisfy(item -> assertThat(item.get("id").asLong()).isEqualTo(applicationId));
+
+        String tenantOneDomainsResp = mockMvc.perform(
+                        get("/api/v1/domains")
+                                .header("Authorization", "Bearer " + tenantOne.token())
+                )
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        JsonNode tenantOneDomainsJson = objectMapper.readTree(tenantOneDomainsResp);
+        assertThat(tenantOneDomainsJson.get("code").asInt()).isEqualTo(0);
+        assertThat(tenantOneDomainsJson.get("data").isArray()).isTrue();
+        assertThat(tenantOneDomainsJson.get("data"))
+                .anySatisfy(item -> assertThat(item.get("id").asLong()).isEqualTo(domainId));
+
+        String tenantTwoApplicationsResp = mockMvc.perform(
+                        get("/api/v1/applications")
+                                .header("Authorization", "Bearer " + tenantTwo.token())
+                )
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        JsonNode tenantTwoApplicationsJson = objectMapper.readTree(tenantTwoApplicationsResp);
+        assertThat(tenantTwoApplicationsJson.get("code").asInt()).isEqualTo(0);
+        assertThat(tenantTwoApplicationsJson.get("data").isArray()).isTrue();
+        assertThat(tenantTwoApplicationsJson.get("data"))
+                .allSatisfy(item -> assertThat(item.get("id").asLong()).isNotEqualTo(applicationId));
+
+        String tenantTwoDomainsResp = mockMvc.perform(
+                        get("/api/v1/domains")
+                                .header("Authorization", "Bearer " + tenantTwo.token())
+                )
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        JsonNode tenantTwoDomainsJson = objectMapper.readTree(tenantTwoDomainsResp);
+        assertThat(tenantTwoDomainsJson.get("code").asInt()).isEqualTo(0);
+        assertThat(tenantTwoDomainsJson.get("data").isArray()).isTrue();
+        assertThat(tenantTwoDomainsJson.get("data"))
+                .allSatisfy(item -> assertThat(item.get("id").asLong()).isNotEqualTo(domainId));
+
+        mockMvc.perform(
+                        post("/api/v1/applications/" + applicationId + "/domain-authorizations/" + domainId)
+                                .header("Authorization", "Bearer " + tenantTwo.token())
+                )
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void application_domain_listing_should_only_include_dedicated_and_authorized_shared_domains() throws Exception {
+        RegisteredPrincipal tenant = registerTenantAdmin("app-domain-list");
+
+        JsonNode createApplicationBody = objectMapper.createObjectNode()
+                .put("applicationKey", "app-domain-list")
+                .put("displayName", "Application Domain List");
+        String applicationResp = mockMvc.perform(
+                        post("/api/v1/applications")
+                                .header("Authorization", "Bearer " + tenant.token())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(createApplicationBody))
+                )
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        JsonNode applicationJson = objectMapper.readTree(applicationResp);
+        assertThat(applicationJson.get("code").asInt()).isEqualTo(0);
+        long applicationId = applicationJson.get("data").get("id").asLong();
+
+        long authorizedSharedDomainId = createTenantSharedDomain(
+                tenant.token(),
+                "authorized-shared-" + tenant.tenantId() + ".example.test"
+        );
+        long unauthorizedSharedDomainId = createTenantSharedDomain(
+                tenant.token(),
+                "unauthorized-shared-" + tenant.tenantId() + ".example.test"
+        );
+        long dedicatedDomainId = createDedicatedDomain(
+                tenant.token(),
+                applicationId,
+                "dedicated-" + tenant.tenantId() + ".example.test"
+        );
+
+        mockMvc.perform(
+                        post("/api/v1/applications/" + applicationId + "/domain-authorizations/" + authorizedSharedDomainId)
+                                .header("Authorization", "Bearer " + tenant.token())
+                )
+                .andExpect(status().isOk());
+
+        String domainListResp = mockMvc.perform(
+                        get("/api/v1/applications/" + applicationId + "/domains")
+                                .header("Authorization", "Bearer " + tenant.token())
+                )
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        JsonNode domainListJson = objectMapper.readTree(domainListResp);
+        assertThat(domainListJson.get("code").asInt()).isEqualTo(0);
+        assertThat(domainListJson.get("data"))
+                .anySatisfy(item -> assertThat(item.get("id").asLong()).isEqualTo(dedicatedDomainId))
+                .anySatisfy(item -> assertThat(item.get("id").asLong()).isEqualTo(authorizedSharedDomainId))
+                .allSatisfy(item -> assertThat(item.get("id").asLong()).isNotEqualTo(unauthorizedSharedDomainId));
+    }
+
+    @Test
     void authErrors_shouldReturnConsistentApiResponse() throws Exception {
         // 1) 受保护接口：无 token -> 401 + ApiResponse(code=40100)
         String noTokenResp = mockMvc.perform(get("/api/v1/links"))
@@ -696,6 +871,7 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
         JsonNode registerJson = objectMapper.readTree(registerResp);
         assertThat(registerJson.get("code").asInt()).isEqualTo(0);
         String token = registerJson.get("data").get("token").asText();
+        long tenantId = registerJson.get("data").get("user").get("tenantId").asLong();
         assertThat(token).isNotBlank();
 
         var createLinkBody = objectMapper.createObjectNode();
@@ -784,6 +960,7 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
         JsonNode registerJson = objectMapper.readTree(registerResp);
         assertThat(registerJson.get("code").asInt()).isEqualTo(0);
         String token = registerJson.get("data").get("token").asText();
+        long tenantId = registerJson.get("data").get("user").get("tenantId").asLong();
         assertThat(token).isNotBlank();
 
         // 创建短链
@@ -925,10 +1102,19 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
         JsonNode registerJson = objectMapper.readTree(registerResp);
         assertThat(registerJson.get("code").asInt()).isEqualTo(0);
         String token = registerJson.get("data").get("token").asText();
+        long tenantId = registerJson.get("data").get("user").get("tenantId").asLong();
         assertThat(token).isNotBlank();
 
+        AppDomainFixture openApiFixture = provisionDedicatedApplication(
+                tenantId,
+                "govern-openapi-app-" + tenantId,
+                "govern-openapi-" + tenantId + ".example.test"
+        );
+
         // 1) API Key：disable/enable/rotate + OpenAPI 验证
-        JsonNode createKeyBody = objectMapper.createObjectNode().put("name", "govern-key");
+        JsonNode createKeyBody = objectMapper.createObjectNode()
+                .put("applicationId", openApiFixture.applicationId())
+                .put("name", "govern-key");
         String createKeyResp = mockMvc.perform(
                         post("/api/v1/api-keys")
                                 .header("Authorization", "Bearer " + token)
@@ -958,7 +1144,9 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
         assertThat(disableKeyJson.get("code").asInt()).isEqualTo(0);
         assertThat(disableKeyJson.get("data").get("status").asText()).isEqualTo("disabled");
 
-        JsonNode openCreateBody = objectMapper.createObjectNode().put("originalUrl", "https://example.com/open-1");
+        JsonNode openCreateBody = objectMapper.createObjectNode()
+                .put("originalUrl", "https://example.com/open-1")
+                .put("domainId", openApiFixture.domainId());
         String openDisabledResp = mockMvc.perform(
                         post("/api/v1/open/links")
                                 .header("X-API-Key", apiKey)
@@ -1140,6 +1328,46 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
         )));
     }
 
+    private AppDomainFixture provisionDedicatedApplication(long tenantId, String applicationKey, String hostname) {
+        long applicationId = Math.abs(System.nanoTime()) + 10_000;
+        long domainId = applicationId + 1_000;
+        jdbcTemplate.update(
+                """
+                        INSERT INTO applications (id, tenant_id, application_key, display_name, status)
+                        VALUES (?, ?, ?, ?, 'ACTIVE')
+                        """,
+                applicationId,
+                tenantId,
+                applicationKey,
+                applicationKey
+        );
+        jdbcTemplate.update(
+                """
+                        INSERT INTO application_policies (application_id, default_domain_scope, default_redirect_status_code, preview_enabled)
+                        VALUES (?, 'APPLICATION_DEDICATED', 302, 0)
+                        """,
+                applicationId
+        );
+        jdbcTemplate.update(
+                """
+                        INSERT INTO application_quotas (application_id, monthly_link_limit, monthly_click_limit)
+                        VALUES (?, 10000, 1000000)
+                        """,
+                applicationId
+        );
+        jdbcTemplate.update(
+                """
+                        INSERT INTO domains (id, tenant_id, application_id, hostname, scope, status, trust_class)
+                        VALUES (?, ?, ?, ?, 'APPLICATION_DEDICATED', 'ACTIVE', 'FIRST_PARTY')
+                        """,
+                domainId,
+                tenantId,
+                applicationId,
+                hostname
+        );
+        return new AppDomainFixture(applicationId, domainId);
+    }
+
     private void seedDailyStatsRow(long tenantId, long linkId, LocalDate day, long pv, long uv) {
         jdbcTemplate.update(
                 """
@@ -1170,5 +1398,67 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
         for (int i = 0; i < pv; i++) {
             redis.opsForHash().increment(key, dimValue, 1L);
         }
+    }
+
+    private long createTenantSharedDomain(String token, String hostname) throws Exception {
+        JsonNode createDomainBody = objectMapper.createObjectNode().put("hostname", hostname);
+        String response = mockMvc.perform(
+                        post("/api/v1/domains/tenant-shared")
+                                .header("Authorization", "Bearer " + token)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(createDomainBody))
+                )
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        JsonNode json = objectMapper.readTree(response);
+        assertThat(json.get("code").asInt()).isEqualTo(0);
+        return json.get("data").get("id").asLong();
+    }
+
+    private long createDedicatedDomain(String token, long applicationId, String hostname) throws Exception {
+        JsonNode createDomainBody = objectMapper.createObjectNode().put("hostname", hostname);
+        String response = mockMvc.perform(
+                        post("/api/v1/applications/" + applicationId + "/domains")
+                                .header("Authorization", "Bearer " + token)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(createDomainBody))
+                )
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        JsonNode json = objectMapper.readTree(response);
+        assertThat(json.get("code").asInt()).isEqualTo(0);
+        return json.get("data").get("id").asLong();
+    }
+
+    private RegisteredPrincipal registerTenantAdmin(String tenantNamePrefix) throws Exception {
+        String suffix = Long.toUnsignedString(System.nanoTime());
+        JsonNode registerBody = objectMapper.createObjectNode()
+                .put("tenantName", tenantNamePrefix + "-" + suffix)
+                .put("email", tenantNamePrefix + "-" + suffix + "@example.com")
+                .put("password", "password123");
+        String registerResp = mockMvc.perform(
+                        post("/api/v1/auth/register")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(registerBody))
+                )
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        JsonNode registerJson = objectMapper.readTree(registerResp);
+        return new RegisteredPrincipal(
+                registerJson.get("data").get("token").asText(),
+                registerJson.get("data").get("user").get("tenantId").asLong()
+        );
+    }
+
+    private record AppDomainFixture(long applicationId, long domainId) {
+    }
+
+    private record RegisteredPrincipal(String token, long tenantId) {
     }
 }

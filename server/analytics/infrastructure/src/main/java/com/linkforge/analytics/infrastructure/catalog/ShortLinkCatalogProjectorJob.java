@@ -157,6 +157,8 @@ public class ShortLinkCatalogProjectorJob {
         AnalyticsLinkCatalogRow row = new AnalyticsLinkCatalogRow();
         row.setTenantId(snapshot.tenantId());
         row.setLinkId(snapshot.linkId());
+        row.setApplicationId(snapshot.applicationId());
+        row.setDomainId(snapshot.domainId());
         row.setCode(snapshot.code());
         row.setOriginalUrl(snapshot.originalUrl());
         row.setArchivedAt(toUtcLocalDateTime(snapshot.archivedAtUtc()));
@@ -172,6 +174,8 @@ public class ShortLinkCatalogProjectorJob {
         AnalyticsLinkCatalogRow row = new AnalyticsLinkCatalogRow();
         row.setTenantId(snapshot.tenantId());
         row.setLinkId(snapshot.linkId());
+        row.setApplicationId(snapshot.applicationId());
+        row.setDomainId(snapshot.domainId());
         row.setCode(null);
         row.setOriginalUrl(null);
         row.setArchivedAt(null);

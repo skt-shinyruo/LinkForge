@@ -6,6 +6,7 @@ import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.runtime.security.TenantGuard;
 import com.linkforge.foundation.tx.AfterCommit;
 import com.linkforge.foundation.util.Base62;
+import com.linkforge.platform.application.PlatformControlPlaneService;
 import com.linkforge.shortlink.application.ShortLinkService.CreatedBy;
 import com.linkforge.shortlink.application.ShortLinkService.CreateLinkRequest;
 import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
@@ -19,6 +20,7 @@ import com.linkforge.shortlink.domain.HttpUrl;
 import com.linkforge.shortlink.domain.QueryForwardAllowlist;
 import com.linkforge.shortlink.domain.QueryForwardMode;
 import com.linkforge.shortlink.domain.ShortCode;
+import com.linkforge.shortlink.domain.ShortLinkLifecycleState;
 import com.linkforge.shortlink.domain.ShortLink;
 import com.linkforge.shortlink.domain.ShortLinkDomainException;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -42,6 +44,7 @@ public class CreateShortLinkCommandHandler {
     private final ShortLinkDtoMapper dtoMapper;
     private final TenantGuard tenantGuard;
     private final Clock clock;
+    private final PlatformControlPlaneService platformControlPlaneService;
 
     public CreateShortLinkCommandHandler(
             SnowflakeIdGenerator idGenerator,
@@ -52,7 +55,8 @@ public class CreateShortLinkCommandHandler {
             RedirectCacheSyncPort redirectCacheSync,
             ShortLinkDtoMapper dtoMapper,
             TenantGuard tenantGuard,
-            Clock clock
+            Clock clock,
+            PlatformControlPlaneService platformControlPlaneService
     ) {
         this.idGenerator = idGenerator;
         this.shortLinkRepository = shortLinkRepository;
@@ -63,6 +67,7 @@ public class CreateShortLinkCommandHandler {
         this.dtoMapper = dtoMapper;
         this.tenantGuard = tenantGuard;
         this.clock = clock;
+        this.platformControlPlaneService = platformControlPlaneService;
     }
 
     @Transactional
@@ -77,13 +82,32 @@ public class CreateShortLinkCommandHandler {
 
         String customCodeRaw = normalizeNullable(req.customCode());
         boolean custom = customCodeRaw != null;
+        Long applicationId = req.applicationId();
+        Long domainId = req.domainId();
+        ShortLinkLifecycleState lifecycleState = ShortLinkLifecycleState.parseNullable(req.lifecycleState());
+
+        if ((applicationId == null) != (domainId == null)) {
+            throw new BusinessException(com.linkforge.contract.api.ErrorCode.BAD_REQUEST, "applicationId 与 domainId 必须同时提供");
+        }
+        if (applicationId != null) {
+            platformControlPlaneService.requireApplicationAndDomainAuthorized(tenantId, applicationId, domainId);
+            platformControlPlaneService.findApplicationQuota(tenantId, applicationId).ifPresent(quota -> {
+                long monthlyLinkLimit = quota.monthlyLinkLimit();
+                if (monthlyLinkLimit > 0 && shortLinkRepository.countActiveByTenantIdAndApplicationId(tenantId, applicationId) >= monthlyLinkLimit) {
+                    throw new BusinessException(com.linkforge.contract.api.ErrorCode.FORBIDDEN, "应用发链额度已用尽");
+                }
+            });
+        }
 
         long id = idGenerator.nextId();
         String codeRaw = custom ? customCodeRaw : Base62.encode(id);
 
         if (custom) {
             ShortCode code = parseCode(codeRaw);
-            if (shortLinkRepository.findByCode(code.value()).isPresent()) {
+            boolean exists = domainId == null
+                    ? shortLinkRepository.findByCode(code.value()).isPresent()
+                    : shortLinkRepository.findByDomainIdAndCode(domainId, code.value()).isPresent();
+            if (exists) {
                 throw new BusinessException(ShortLinkErrorCode.CODE_ALREADY_EXISTS);
             }
         }
@@ -96,7 +120,10 @@ public class CreateShortLinkCommandHandler {
             link = ShortLink.create(
                     id,
                     tenantId,
+                    applicationId,
+                    domainId,
                     parseCode(codeRaw),
+                    lifecycleState,
                     HttpUrl.of(req.originalUrl()),
                     req.note(),
                     req.enabled(),
@@ -126,7 +153,7 @@ public class CreateShortLinkCommandHandler {
 
         setLinkTagsHandler.handle(tenantId, id, req.tags());
         eventPublisher.created(persisted, clock.instant());
-        AfterCommit.run(() -> redirectCacheSync.evict(persisted.code().value()));
+        AfterCommit.run(() -> redirectCacheSync.evict(persisted.tenantId(), persisted.domainId(), persisted.code().value()));
 
         List<String> tags = linkTagRepository.findTagNamesByLinkId(id);
         return dtoMapper.toDto(persisted, tags);

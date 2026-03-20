@@ -10,9 +10,17 @@ public interface AnalyticsQueryService {
 
     List<DailyStat> tenantDaily(long tenantId, LocalDate from, LocalDate to);
 
+    List<DailyStat> applicationDaily(long tenantId, long applicationId, LocalDate from, LocalDate to);
+
+    List<DailyStat> domainDaily(long tenantId, long domainId, LocalDate from, LocalDate to);
+
     List<TopLinkStat> topLinks(long tenantId, LocalDate from, LocalDate to, int limit);
 
     List<TopLinkStat> topLinks(long tenantId, LocalDate from, LocalDate to, int limit, TopSortBy sortBy);
+
+    List<TopLinkStat> applicationTopLinks(long tenantId, long applicationId, LocalDate from, LocalDate to, int limit, TopSortBy sortBy);
+
+    List<TopLinkStat> domainTopLinks(long tenantId, long domainId, LocalDate from, LocalDate to, int limit, TopSortBy sortBy);
 
     List<DimensionStat> linkDimensions(long tenantId, long linkId, LocalDate from, LocalDate to, String dimType, int limit);
 
@@ -48,4 +56,3 @@ public interface AnalyticsQueryService {
     ) {
     }
 }
-

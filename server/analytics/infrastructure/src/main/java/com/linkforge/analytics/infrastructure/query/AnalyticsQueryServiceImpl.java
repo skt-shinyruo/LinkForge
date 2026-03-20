@@ -13,7 +13,6 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
-
 @Service
 public class AnalyticsQueryServiceImpl implements AnalyticsQueryService {
 
@@ -44,6 +43,24 @@ public class AnalyticsQueryServiceImpl implements AnalyticsQueryService {
     }
 
     @Override
+    public List<DailyStat> applicationDaily(long tenantId, long applicationId, LocalDate from, LocalDate to) {
+        tenantGuard.requireCurrentTenant(tenantId);
+        return queryRepository.applicationDaily(tenantId, applicationId, from, to)
+                .stream()
+                .map(r -> new DailyStat(r.day(), r.pv(), r.uv()))
+                .toList();
+    }
+
+    @Override
+    public List<DailyStat> domainDaily(long tenantId, long domainId, LocalDate from, LocalDate to) {
+        tenantGuard.requireCurrentTenant(tenantId);
+        return queryRepository.domainDaily(tenantId, domainId, from, to)
+                .stream()
+                .map(r -> new DailyStat(r.day(), r.pv(), r.uv()))
+                .toList();
+    }
+
+    @Override
     public List<TopLinkStat> topLinks(long tenantId, LocalDate from, LocalDate to, int limit) {
         tenantGuard.requireCurrentTenant(tenantId);
         return topLinks(tenantId, from, to, limit, TopSortBy.PV);
@@ -57,6 +74,30 @@ public class AnalyticsQueryServiceImpl implements AnalyticsQueryService {
                 ? queryRepository.topLinksOrderByUv(tenantId, from, to, limit)
                 : queryRepository.topLinksOrderByPv(tenantId, from, to, limit));
 
+        return rows.stream()
+                .map(r -> new TopLinkStat(r.linkId(), r.code(), r.originalUrl(), r.pv(), r.uv(), r.deleted()))
+                .toList();
+    }
+
+    @Override
+    public List<TopLinkStat> applicationTopLinks(long tenantId, long applicationId, LocalDate from, LocalDate to, int limit, TopSortBy sortBy) {
+        tenantGuard.requireCurrentTenant(tenantId);
+        TopSortBy s = (sortBy == null ? TopSortBy.PV : sortBy);
+        List<AnalyticsQueryRepository.TopLinkRow> rows = (s == TopSortBy.UV
+                ? queryRepository.applicationTopLinksOrderByUv(tenantId, applicationId, from, to, limit)
+                : queryRepository.applicationTopLinksOrderByPv(tenantId, applicationId, from, to, limit));
+        return rows.stream()
+                .map(r -> new TopLinkStat(r.linkId(), r.code(), r.originalUrl(), r.pv(), r.uv(), r.deleted()))
+                .toList();
+    }
+
+    @Override
+    public List<TopLinkStat> domainTopLinks(long tenantId, long domainId, LocalDate from, LocalDate to, int limit, TopSortBy sortBy) {
+        tenantGuard.requireCurrentTenant(tenantId);
+        TopSortBy s = (sortBy == null ? TopSortBy.PV : sortBy);
+        List<AnalyticsQueryRepository.TopLinkRow> rows = (s == TopSortBy.UV
+                ? queryRepository.domainTopLinksOrderByUv(tenantId, domainId, from, to, limit)
+                : queryRepository.domainTopLinksOrderByPv(tenantId, domainId, from, to, limit));
         return rows.stream()
                 .map(r -> new TopLinkStat(r.linkId(), r.code(), r.originalUrl(), r.pv(), r.uv(), r.deleted()))
                 .toList();

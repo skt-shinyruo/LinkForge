@@ -38,7 +38,11 @@ public class RedirectService {
      * 仅解析短码，不写统计；用于预览页等“未确认不计数”的场景。
      */
     public LinkMeta resolve(String code) {
-        return resolveMeta(code);
+        return resolveMeta(null, code);
+    }
+
+    public LinkMeta resolve(String host, String code) {
+        return resolveMeta(host, code);
     }
 
     /**
@@ -51,15 +55,21 @@ public class RedirectService {
     }
 
     public LinkMeta resolveAndRecord(String code, VisitInfo visitInfo) {
-        LinkMeta meta = resolveMeta(code);
+        LinkMeta meta = resolveMeta(null, code);
         recordVisitIfAvailable(meta, visitInfo);
         return meta;
     }
 
-    private LinkMeta resolveMeta(String code) {
+    public LinkMeta resolveAndRecord(String host, String code, VisitInfo visitInfo) {
+        LinkMeta meta = resolveMeta(host, code);
+        recordVisitIfAvailable(meta, visitInfo);
+        return meta;
+    }
+
+    private LinkMeta resolveMeta(String host, String code) {
         String normalized = normalizeAndValidateCode(code);
 
-        LinkCachePort.LookupResult cached = linkCache.lookup(normalized);
+        LinkCachePort.LookupResult cached = linkCache.lookup(host, normalized);
         if (cached.notFound()) {
             throw new RedirectBusinessException(RedirectErrorCode.LINK_NOT_FOUND);
         }
@@ -67,14 +77,14 @@ public class RedirectService {
             return cached.meta();
         }
 
-        LinkMeta meta = linkMetaSource.findByCode(normalized).orElse(null);
+        LinkMeta meta = linkMetaSource.findByHostAndCode(host, normalized).orElse(null);
         if (meta != null) {
-            linkCache.tryPut(meta);
+            linkCache.tryPut(host, meta);
             return meta;
         }
 
         // Monolith correctness uses the authoritative source. Projectors remain warm/recovery infrastructure.
-        linkCache.markNotFound(normalized);
+        linkCache.markNotFound(host, normalized);
         throw new RedirectBusinessException(RedirectErrorCode.LINK_NOT_FOUND);
     }
 

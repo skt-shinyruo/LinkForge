@@ -12,6 +12,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import java.time.Clock;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -42,9 +43,10 @@ class RedirectControllerPreviewConfirmHrefLimitTest {
                 true,
                 null,
                 "ALL",
+                null,
                 null
         );
-        when(redirectService.resolve("abc123")).thenReturn(meta);
+        when(redirectService.resolve(anyString(), anyString())).thenReturn(meta);
 
         MockHttpServletRequest req = new MockHttpServletRequest("GET", "/r/abc123");
         req.setRequestURI("/r/abc123");

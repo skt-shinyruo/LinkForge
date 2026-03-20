@@ -8,7 +8,15 @@ public class ShortLinkEntity {
 
     private Long tenantId;
 
+    private Long applicationId;
+
+    private Long domainId;
+
+    private String hostname;
+
     private String code;
+
+    private String lifecycleState;
 
     private String originalUrl;
 
@@ -80,6 +88,38 @@ public class ShortLinkEntity {
 
     public void setCode(String code) {
         this.code = code;
+    }
+
+    public String getHostname() {
+        return hostname;
+    }
+
+    public void setHostname(String hostname) {
+        this.hostname = hostname;
+    }
+
+    public Long getApplicationId() {
+        return applicationId;
+    }
+
+    public void setApplicationId(Long applicationId) {
+        this.applicationId = applicationId;
+    }
+
+    public Long getDomainId() {
+        return domainId;
+    }
+
+    public void setDomainId(Long domainId) {
+        this.domainId = domainId;
+    }
+
+    public String getLifecycleState() {
+        return lifecycleState;
+    }
+
+    public void setLifecycleState(String lifecycleState) {
+        this.lifecycleState = lifecycleState;
     }
 
     public String getOriginalUrl() {

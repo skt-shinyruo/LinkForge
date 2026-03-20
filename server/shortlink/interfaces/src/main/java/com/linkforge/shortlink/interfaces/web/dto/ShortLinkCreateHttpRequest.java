@@ -24,6 +24,10 @@ public record ShortLinkCreateHttpRequest(
         String unavailableLandingUrl,
         @Size(max = 16, message = "queryForwardMode 过长")
         String queryForwardMode,
-        List<@Size(max = 64, message = "queryForwardAllowlist 项过长") String> queryForwardAllowlist
+        List<@Size(max = 64, message = "queryForwardAllowlist 项过长") String> queryForwardAllowlist,
+        Long applicationId,
+        Long domainId,
+        @Size(max = 32, message = "lifecycleState 过长")
+        String lifecycleState
 ) {
 }

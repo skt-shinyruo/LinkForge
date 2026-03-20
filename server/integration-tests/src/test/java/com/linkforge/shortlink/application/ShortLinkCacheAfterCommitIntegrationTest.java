@@ -132,6 +132,9 @@ class ShortLinkCacheAfterCommitIntegrationTest {
                     null,
                     null,
                     null,
+                    null,
+                    null,
+                    null,
                     null
             );
             ShortLinkService.LinkDto dto = shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), req);
@@ -161,12 +164,16 @@ class ShortLinkCacheAfterCommitIntegrationTest {
                 null,
                 null,
                 null,
+                null,
+                null,
+                null,
                 null
         );
         ShortLinkService.LinkDto created = shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), createReq);
         String key = key(created.code());
 
         redirectProjector.drain();
+        assertThat(redirectService.resolve(created.code()).originalUrl()).isEqualTo("https://example.com/old");
         String before = redis.opsForValue().get(key);
         assertThat(before).isNotNull();
 
@@ -176,6 +183,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
         tx.executeWithoutResult(status -> {
             ShortLinkService.UpdateLinkRequest updateReq = new ShortLinkService.UpdateLinkRequest(
                     "https://example.com/new",
+                    null,
                     null,
                     null,
                     null,
@@ -222,6 +230,9 @@ class ShortLinkCacheAfterCommitIntegrationTest {
                 null,
                 null,
                 null,
+                null,
+                null,
+                null,
                 null
         );
         shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), req);
@@ -244,6 +255,9 @@ class ShortLinkCacheAfterCommitIntegrationTest {
                 null,
                 null,
                 null,
+                null,
+                null,
+                null,
                 null
         );
         ShortLinkService.LinkDto created = shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), createReq);
@@ -255,6 +269,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
 
         ShortLinkService.UpdateLinkRequest updateReq = new ShortLinkService.UpdateLinkRequest(
                 "https://example.com/new",
+                null,
                 null,
                 null,
                 null,
@@ -284,6 +299,9 @@ class ShortLinkCacheAfterCommitIntegrationTest {
                 null,
                 null,
                 Set.of(),
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,

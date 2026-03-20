@@ -8,7 +8,10 @@
         INSERT INTO short_links (
             id,
             tenant_id,
+            application_id,
+            domain_id,
             code,
+            lifecycle_state,
             original_url,
             note,
             enabled,
@@ -25,7 +28,10 @@
         ) VALUES (
             #{id},
             #{tenantId},
+            #{applicationId},
+            #{domainId},
             #{code},
+            #{lifecycleState},
             #{originalUrl},
             #{note},
             #{enabled},
@@ -47,6 +53,7 @@
         SET original_url = #{originalUrl},
             note = #{note},
             enabled = #{enabled},
+            lifecycle_state = #{lifecycleState},
             expires_at = #{expiresAt},
             archived_at = #{archivedAt},
             redirect_status_code = #{redirectStatusCode},
@@ -66,4 +73,13 @@
           AND id = #{param2}
           AND version = #{param3}
     </delete>
+
+    <update id="backfillOwnershipByTenant">
+        UPDATE short_links
+        SET application_id = #{param2},
+            domain_id = #{param3}
+        WHERE tenant_id = #{param1}
+          AND application_id IS NULL
+          AND domain_id IS NULL
+    </update>
 </mapper>

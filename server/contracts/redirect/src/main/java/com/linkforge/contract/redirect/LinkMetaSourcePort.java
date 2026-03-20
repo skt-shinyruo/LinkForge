@@ -8,4 +8,8 @@ import java.util.Optional;
 public interface LinkMetaSourcePort {
 
     Optional<LinkMeta> findByCode(String code);
+
+    default Optional<LinkMeta> findByHostAndCode(String host, String code) {
+        return findByCode(code);
+    }
 }

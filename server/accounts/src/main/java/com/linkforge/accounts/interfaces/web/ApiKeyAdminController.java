@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
@@ -33,16 +34,16 @@ public class ApiKeyAdminController {
     @PreAuthorize("hasRole('TENANT_ADMIN')")
     public ApiResponse<CreateApiKeyResponse> create(@Valid @RequestBody CreateApiKeyRequest req) {
         long tenantId = AuthContext.requirePrincipal().getTenantId();
-        ApiKeyService.CreatedApiKey created = apiKeyService.create(tenantId, req.name());
+        ApiKeyService.CreatedApiKey created = apiKeyService.create(tenantId, req.applicationId(), req.name());
         return ApiResponse.ok(new CreateApiKeyResponse(created.id(), created.name(), created.apiKey()), RequestId.get());
     }
 
     @GetMapping
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<List<ApiKeyDto>> list() {
+    public ApiResponse<List<ApiKeyDto>> list(@RequestParam(required = false) Long applicationId) {
         long tenantId = AuthContext.requirePrincipal().getTenantId();
-        List<ApiKeyDto> dto = apiKeyService.list(tenantId).stream()
-                .map(e -> new ApiKeyDto(e.id(), e.name(), e.status(), e.lastUsedAt(), e.createdAt()))
+        List<ApiKeyDto> dto = apiKeyService.list(tenantId, applicationId).stream()
+                .map(e -> new ApiKeyDto(e.id(), e.applicationId(), e.name(), e.status(), e.lastUsedAt(), e.createdAt()))
                 .toList();
         return ApiResponse.ok(dto, RequestId.get());
     }
@@ -52,7 +53,7 @@ public class ApiKeyAdminController {
     public ApiResponse<ApiKeyDto> disable(@PathVariable("id") long id) {
         long tenantId = AuthContext.requirePrincipal().getTenantId();
         ApiKeyService.ApiKeyInfo e = apiKeyService.disable(tenantId, id);
-        return ApiResponse.ok(new ApiKeyDto(e.id(), e.name(), e.status(), e.lastUsedAt(), e.createdAt()), RequestId.get());
+        return ApiResponse.ok(new ApiKeyDto(e.id(), e.applicationId(), e.name(), e.status(), e.lastUsedAt(), e.createdAt()), RequestId.get());
     }
 
     @PutMapping("/{id}/enable")
@@ -60,7 +61,7 @@ public class ApiKeyAdminController {
     public ApiResponse<ApiKeyDto> enable(@PathVariable("id") long id) {
         long tenantId = AuthContext.requirePrincipal().getTenantId();
         ApiKeyService.ApiKeyInfo e = apiKeyService.enable(tenantId, id);
-        return ApiResponse.ok(new ApiKeyDto(e.id(), e.name(), e.status(), e.lastUsedAt(), e.createdAt()), RequestId.get());
+        return ApiResponse.ok(new ApiKeyDto(e.id(), e.applicationId(), e.name(), e.status(), e.lastUsedAt(), e.createdAt()), RequestId.get());
     }
 
     @PostMapping("/{id}/rotate")
@@ -72,6 +73,8 @@ public class ApiKeyAdminController {
     }
 
     public record CreateApiKeyRequest(
+            @jakarta.validation.constraints.NotNull(message = "applicationId 不能为空")
+            Long applicationId,
             @NotBlank(message = "名称不能为空")
             @Size(max = 128, message = "名称过长")
             String name
@@ -81,6 +84,6 @@ public class ApiKeyAdminController {
     public record CreateApiKeyResponse(long id, String name, String apiKey) {
     }
 
-    public record ApiKeyDto(long id, String name, String status, LocalDateTime lastUsedAt, LocalDateTime createdAt) {
+    public record ApiKeyDto(long id, Long applicationId, String name, String status, LocalDateTime lastUsedAt, LocalDateTime createdAt) {
     }
 }

@@ -7,6 +7,7 @@ public class ShortLinkSearchParam {
     private final Boolean enabled;
     private final String keyword;
     private final String tag;
+    private final Long applicationId;
     private final long offset;
     private final int limit;
 
@@ -16,6 +17,7 @@ public class ShortLinkSearchParam {
             Boolean enabled,
             String keyword,
             String tag,
+            Long applicationId,
             long offset,
             int limit
     ) {
@@ -24,6 +26,7 @@ public class ShortLinkSearchParam {
         this.enabled = enabled;
         this.keyword = keyword;
         this.tag = tag;
+        this.applicationId = applicationId;
         this.offset = offset;
         this.limit = limit;
     }
@@ -46,6 +49,10 @@ public class ShortLinkSearchParam {
 
     public String getTag() {
         return tag;
+    }
+
+    public Long getApplicationId() {
+        return applicationId;
     }
 
     public long getOffset() {

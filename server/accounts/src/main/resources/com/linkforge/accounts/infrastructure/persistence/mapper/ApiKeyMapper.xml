@@ -7,6 +7,7 @@
     <resultMap id="ApiKeyResultMap" type="com.linkforge.accounts.infrastructure.persistence.entity.ApiKeyEntity">
         <id property="id" column="id"/>
         <result property="tenantId" column="tenant_id"/>
+        <result property="applicationId" column="application_id"/>
         <result property="name" column="name"/>
         <result property="keyHash" column="key_hash"/>
         <result property="status" column="status"/>
@@ -15,13 +16,14 @@
     </resultMap>
 
     <sql id="apiKeyColumns">
-        id, tenant_id, name, key_hash, status, last_used_at, created_at
+        id, tenant_id, application_id, name, key_hash, status, last_used_at, created_at
     </sql>
 
     <insert id="insert" parameterType="com.linkforge.accounts.infrastructure.persistence.entity.ApiKeyEntity">
         INSERT INTO api_keys (
             id,
             tenant_id,
+            application_id,
             name,
             key_hash,
             status,
@@ -29,6 +31,7 @@
         ) VALUES (
             #{id},
             #{tenantId},
+            #{applicationId},
             #{name},
             #{keyHash},
             #{status},
@@ -54,6 +57,7 @@
     <update id="update" parameterType="com.linkforge.accounts.infrastructure.persistence.entity.ApiKeyEntity">
         UPDATE api_keys
         SET tenant_id = #{tenantId},
+            application_id = #{applicationId},
             name = #{name},
             key_hash = #{keyHash},
             status = #{status},

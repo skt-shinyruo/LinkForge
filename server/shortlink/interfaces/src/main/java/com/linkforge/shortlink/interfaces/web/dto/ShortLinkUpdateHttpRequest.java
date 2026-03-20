@@ -23,6 +23,8 @@ public record ShortLinkUpdateHttpRequest(
         @Size(max = 16, message = "queryForwardMode 过长")
         String queryForwardMode,
         Boolean clearQueryForwardMode,
-        List<@Size(max = 64, message = "queryForwardAllowlist 项过长") String> queryForwardAllowlist
+        List<@Size(max = 64, message = "queryForwardAllowlist 项过长") String> queryForwardAllowlist,
+        @Size(max = 32, message = "lifecycleState 过长")
+        String lifecycleState
 ) {
 }

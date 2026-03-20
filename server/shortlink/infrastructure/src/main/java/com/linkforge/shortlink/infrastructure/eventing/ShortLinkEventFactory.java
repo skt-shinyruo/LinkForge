@@ -6,6 +6,7 @@ import com.linkforge.contract.shortlink.event.ShortLinkCreatedV1;
 import com.linkforge.contract.shortlink.event.ShortLinkDeletedV1;
 import com.linkforge.contract.shortlink.event.ShortLinkRestoredV1;
 import com.linkforge.contract.shortlink.event.ShortLinkUpdatedV1;
+import com.linkforge.platform.application.port.DomainRepository;
 import com.linkforge.shortlink.infrastructure.persistence.entity.ShortLinkEntity;
 import org.springframework.stereotype.Component;
 
@@ -18,11 +19,18 @@ import java.util.List;
 @Component
 public class ShortLinkEventFactory {
 
+    private final DomainRepository domainRepository;
+
+    public ShortLinkEventFactory(DomainRepository domainRepository) {
+        this.domainRepository = domainRepository;
+    }
+
     public ShortLinkPublicSnapshot toSnapshot(ShortLinkEntity e, Instant archivedAtUtc) {
         return new ShortLinkPublicSnapshot(
                 e.getTenantId(),
                 e.getId(),
                 e.getCode(),
+                resolveHostname(e),
                 e.getOriginalUrl(),
                 Boolean.TRUE.equals(e.getEnabled()),
                 toUtcInstant(e.getExpiresAt()),
@@ -31,8 +39,19 @@ public class ShortLinkEventFactory {
                 e.getUnavailableLandingUrl(),
                 e.getQueryForwardMode(),
                 splitAllowlist(e.getQueryForwardAllowlist()),
-                archivedAtUtc
+                archivedAtUtc,
+                e.getApplicationId(),
+                e.getDomainId()
         );
+    }
+
+    private String resolveHostname(ShortLinkEntity e) {
+        if (e == null || e.getTenantId() == null || e.getTenantId() <= 0 || e.getDomainId() == null || e.getDomainId() <= 0) {
+            return null;
+        }
+        return domainRepository.findByTenantIdAndId(e.getTenantId(), e.getDomainId())
+                .map(domain -> domain.hostname())
+                .orElse(null);
     }
 
     public ShortLinkCreatedV1 created(ShortLinkEntity e, Instant occurredAtUtc, String eventId) {
@@ -123,4 +142,3 @@ public class ShortLinkEventFactory {
         return out;
     }
 }
-

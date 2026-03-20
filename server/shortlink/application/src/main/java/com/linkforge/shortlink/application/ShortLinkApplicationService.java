@@ -112,7 +112,7 @@ public class ShortLinkApplicationService implements ShortLinkService {
     }
 
     @Override
-    public void exportCsv(long tenantId, PageQuery pageQuery, OutputStream os) {
-        exportCsvHandler.handle(tenantId, pageQuery, os);
+    public void exportCsv(long tenantId, ShortLinkSearchQuery query, PageQuery pageQuery, OutputStream os) {
+        exportCsvHandler.handle(tenantId, query, pageQuery, os);
     }
 }

@@ -74,7 +74,8 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
                     r.tenantId(),
                     null,
                     Set.of(Roles.OPENAPI),
-                    r.apiKeyId()
+                    r.apiKeyId(),
+                    r.applicationId()
             );
             UsernamePasswordAuthenticationToken at = new UsernamePasswordAuthenticationToken(
                     principal,

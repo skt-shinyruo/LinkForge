@@ -65,21 +65,21 @@ class ShortLinkCatalogProjectorJobTest {
         Instant now = Instant.parse("2026-03-16T00:00:00Z");
 
         ShortLinkPublicSnapshot createdSnap = new ShortLinkPublicSnapshot(
-                tenantId, linkId, code, url, true, null, null, false,
-                null, null, List.of(), null
+                tenantId, linkId, code, null, url, true, null, null, false,
+                null, null, List.of(), null, 101L, 201L
         );
         ShortLinkCreatedV1 created = new ShortLinkCreatedV1("e1", now, tenantId, linkId, code, createdSnap);
 
         Instant archivedAt = Instant.parse("2026-03-16T01:00:00Z");
         ShortLinkPublicSnapshot archivedSnap = new ShortLinkPublicSnapshot(
-                tenantId, linkId, code, url, true, null, null, false,
-                null, null, List.of(), archivedAt
+                tenantId, linkId, code, null, url, true, null, null, false,
+                null, null, List.of(), archivedAt, 101L, 201L
         );
         ShortLinkArchivedV1 archived = new ShortLinkArchivedV1("e2", archivedAt, tenantId, linkId, code, archivedSnap);
 
         ShortLinkPublicSnapshot deletedSnap = new ShortLinkPublicSnapshot(
-                tenantId, linkId, code, url, true, null, null, false,
-                null, null, List.of(), null
+                tenantId, linkId, code, null, url, true, null, null, false,
+                null, null, List.of(), null, 101L, 201L
         );
         ShortLinkDeletedV1 deleted = new ShortLinkDeletedV1("e3", Instant.parse("2026-03-16T02:00:00Z"), tenantId, linkId, code, deletedSnap);
 
@@ -245,8 +245,8 @@ class ShortLinkCatalogProjectorJobTest {
         Instant now = Instant.parse("2026-03-16T00:00:00Z");
 
         ShortLinkPublicSnapshot createdSnap = new ShortLinkPublicSnapshot(
-                tenantId, linkId, code, url, true, null, null, false,
-                null, null, List.of(), null
+                tenantId, linkId, code, null, url, true, null, null, false,
+                null, null, List.of(), null, 101L, 201L
         );
         ShortLinkCreatedV1 created = new ShortLinkCreatedV1("e1", now, tenantId, linkId, code, createdSnap);
 

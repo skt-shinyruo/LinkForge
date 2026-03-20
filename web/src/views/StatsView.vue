@@ -19,6 +19,22 @@ const page = useStatsPage();
     @navigate="navigation.navigate"
     @logout="navigation.logout"
   >
+    <section v-if="navigation.isAdmin.value" class="scope card">
+      <h2>统计范围</h2>
+      <label class="field">
+        <span class="sub">应用</span>
+        <select
+          :value="page.selectedApplicationId.value ?? ''"
+          @change="page.setSelectedApplicationId(($event.target as HTMLSelectElement).value ? Number(($event.target as HTMLSelectElement).value) : null)"
+        >
+          <option value="">全部应用</option>
+          <option v-for="application in page.applications.value" :key="application.id" :value="application.id">
+            {{ application.displayName }}
+          </option>
+        </select>
+      </label>
+    </section>
+
     <StatsRangeToolbar
       :range-days="page.rangeDays.value"
       :range="page.range.value"
@@ -56,3 +72,30 @@ const page = useStatsPage();
     />
   </AppPageShell>
 </template>
+
+<style scoped>
+.card {
+  border: 1px solid #eee;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sub {
+  color: #666;
+  font-size: 12px;
+}
+
+select {
+  max-width: 320px;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+}
+</style>

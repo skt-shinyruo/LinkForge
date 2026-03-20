@@ -101,6 +101,9 @@ class ShortLinkIntegrationEventAppendIntegrationTest {
                 null,
                 null,
                 null,
+                null,
+                null,
+                null,
                 null
         );
         ShortLinkService.LinkDto dto = shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), req);

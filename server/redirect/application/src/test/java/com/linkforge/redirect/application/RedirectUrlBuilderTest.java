@@ -25,6 +25,7 @@ class RedirectUrlBuilderTest {
                 false,
                 null,
                 "ALL",
+                null,
                 null
         );
 
@@ -52,6 +53,7 @@ class RedirectUrlBuilderTest {
                 false,
                 null,
                 "ALL",
+                null,
                 null
         );
 
@@ -82,6 +84,7 @@ class RedirectUrlBuilderTest {
                 false,
                 null,
                 "ALL",
+                null,
                 null
         );
 

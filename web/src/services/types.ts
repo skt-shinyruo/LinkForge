@@ -22,6 +22,9 @@ export type QueryForwardMode = "OFF" | "ALLOWLIST" | "ALL";
 export type LinkDto = {
   id: number;
   tenantId: number;
+  applicationId?: number | null;
+  domainId?: number | null;
+  lifecycleState?: string;
   code: string;
   shortUrl: string;
   originalUrl: string;
@@ -46,6 +49,7 @@ export type PageResponse<T> = {
 };
 
 export type LinkListQuery = {
+  applicationId?: number;
   archived?: boolean;
   enabled?: boolean;
   keyword?: string;
@@ -66,6 +70,9 @@ export type CreateLinkRequest = {
   unavailableLandingUrl?: string;
   queryForwardMode?: QueryForwardMode;
   queryForwardAllowlist?: string[];
+  applicationId?: number;
+  domainId?: number;
+  lifecycleState?: string;
 };
 
 export type UpdateLinkRequest = {
@@ -82,9 +89,15 @@ export type UpdateLinkRequest = {
   queryForwardMode?: QueryForwardMode;
   clearQueryForwardMode?: boolean;
   queryForwardAllowlist?: string[];
+  lifecycleState?: string;
 };
 
 export type LinkExportQuery = {
+  applicationId?: number;
+  archived?: boolean;
+  enabled?: boolean;
+  keyword?: string;
+  tag?: string;
   page?: number;
   size?: number;
 };
@@ -113,11 +126,13 @@ export type TopLinkStat = {
 export type StatsRangeQuery = {
   from: string;
   to: string;
+  applicationId?: number;
 };
 
 export type TopLinkSortBy = "pv" | "uv";
 
 export type TopLinksQuery = StatsRangeQuery & {
+  applicationId?: number;
   limit?: number;
   sortBy?: TopLinkSortBy;
 };
@@ -129,4 +144,81 @@ export type TagDto = {
 
 export type CreateTagRequest = {
   name: string;
+};
+
+export type ApplicationDto = {
+  id: number;
+  tenantId: number;
+  applicationKey: string;
+  displayName: string;
+};
+
+export type CreateApplicationRequest = {
+  applicationKey: string;
+  displayName: string;
+};
+
+export type DomainScope = "TENANT_SHARED" | "APPLICATION_DEDICATED";
+
+export type DomainDto = {
+  id: number;
+  tenantId: number;
+  applicationId?: number | null;
+  hostname: string;
+  scope: DomainScope;
+};
+
+export type CreateDomainRequest = {
+  hostname: string;
+};
+
+export type ApiKeyDto = {
+  id: number;
+  applicationId?: number | null;
+  name: string;
+  status: string;
+  lastUsedAt?: string | null;
+  createdAt?: string | null;
+};
+
+export type CreateApiKeyRequest = {
+  applicationId: number;
+  name: string;
+};
+
+export type CreateApiKeyResponse = {
+  id: number;
+  name: string;
+  apiKey: string;
+};
+
+export type ApprovalRequestDto = {
+  id: number;
+  tenantId: number;
+  operationType: string;
+  targetApplicationId?: number | null;
+  requestedByUserId: number;
+  requestedByEmail: string;
+  status: string;
+  approverUserId?: number | null;
+  approverEmail?: string | null;
+  decisionReason?: string | null;
+};
+
+export type ApproveRequest = {
+  reason?: string;
+};
+
+export type AuditLogDto = {
+  id: number;
+  tenantId: number;
+  actorUserId: number;
+  actorEmail: string;
+  actionType: string;
+  resourceType: string;
+  resourceId: string;
+  requestId?: number | null;
+  beforeSnapshot?: string | null;
+  afterSnapshot?: string | null;
+  createdAt: string;
 };

@@ -4,6 +4,7 @@ public record ShortLinkSearchQuery(
         boolean archived,
         Boolean enabled,
         String keyword,
-        String tag
+        String tag,
+        Long applicationId
 ) {
 }

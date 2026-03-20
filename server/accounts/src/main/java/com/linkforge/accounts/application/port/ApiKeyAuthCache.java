@@ -4,9 +4,9 @@ public interface ApiKeyAuthCache {
 
     Entry read(long apiKeyId);
 
-    void putActive(long apiKeyId, long tenantId, String secretDigest, long ttlSeconds);
+    void putActive(long apiKeyId, long tenantId, Long applicationId, String secretDigest, long ttlSeconds);
 
-    void putDisabled(long apiKeyId, long tenantId, long ttlSeconds);
+    void putDisabled(long apiKeyId, long tenantId, Long applicationId, long ttlSeconds);
 
     void evict(long apiKeyId);
 
@@ -14,7 +14,7 @@ public interface ApiKeyAuthCache {
 
     void releaseLastUsedToken(long apiKeyId);
 
-    record Entry(long tenantId, String status, String secretDigest) {
+    record Entry(long tenantId, Long applicationId, String status, String secretDigest) {
     }
 
     enum LastUsedTokenResult {

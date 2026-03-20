@@ -4,10 +4,12 @@ import com.linkforge.accounts.application.port.AccountsApiKeyStore;
 import com.linkforge.accounts.application.port.AccountsPasswordHasher;
 import com.linkforge.accounts.application.port.ApiKeyAuthCache;
 import com.linkforge.accounts.domain.AccountsConstants;
+import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.openapi.OpenApiErrorCode;
 import com.linkforge.foundation.config.SecurityProperties;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.runtime.security.TenantGuard;
+import com.linkforge.platform.application.PlatformControlPlaneService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,10 +31,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
 
 class ApiKeyServiceTest {
 
@@ -84,7 +87,7 @@ class ApiKeyServiceTest {
         ApiKeyService service = newService(store, passwordHasher, props, authCache);
 
         String digest = sha256Base64Url("secret");
-        when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, AccountsConstants.STATUS_ACTIVE, digest));
+        when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, null, AccountsConstants.STATUS_ACTIVE, digest));
 
         ApiKeyService.ApiKeyAuthResult r = service.authenticate("lfk_123_secret");
         assertThat(r.tenantId()).isEqualTo(1L);
@@ -107,7 +110,7 @@ class ApiKeyServiceTest {
         ApiKeyService service = newService(store, passwordHasher, props, authCache);
 
         String wrongDigest = sha256Base64Url("other-secret");
-        when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, AccountsConstants.STATUS_ACTIVE, wrongDigest));
+        when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, null, AccountsConstants.STATUS_ACTIVE, wrongDigest));
 
         assertThatThrownBy(() -> service.authenticate("lfk_123_secret"))
                 .isInstanceOf(ApiKeyService.ApiKeyAuthException.class)
@@ -130,7 +133,7 @@ class ApiKeyServiceTest {
 
         ApiKeyService service = newService(store, passwordHasher, props, authCache);
 
-        when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, AccountsConstants.STATUS_DISABLED, ""));
+        when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, null, AccountsConstants.STATUS_DISABLED, ""));
 
         assertThatThrownBy(() -> service.authenticate("lfk_123_secret"))
                 .isInstanceOf(ApiKeyService.ApiKeyAuthException.class)
@@ -156,6 +159,7 @@ class ApiKeyServiceTest {
         AccountsApiKeyStore.ApiKey apiKey = new AccountsApiKeyStore.ApiKey(
                 123L,
                 1L,
+                null,
                 "test-key",
                 "hash",
                 AccountsConstants.STATUS_ACTIVE,
@@ -171,7 +175,29 @@ class ApiKeyServiceTest {
         assertThat(r.tenantId()).isEqualTo(1L);
         assertThat(r.apiKeyId()).isEqualTo(123L);
 
-        verify(authCache).putActive(eq(123L), eq(1L), any(), eq(60L));
+        verify(authCache).putActive(eq(123L), eq(1L), isNull(), any(), eq(60L));
+    }
+
+    @Test
+    void create_shouldBindApiKeyToApplication() {
+        AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
+        AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
+        ApiKeyAuthCache authCache = mock(ApiKeyAuthCache.class);
+
+        SecurityProperties props = new SecurityProperties();
+        props.getApiKey().setAuthCacheTtlSeconds(60);
+        props.getApiKey().setLastUsedUpdateIntervalSeconds(0);
+
+        ApiKeyService service = newService(store, passwordHasher, props, authCache);
+        when(passwordHasher.encode(any())).thenReturn("encoded-secret");
+
+        ApiKeyService.CreatedApiKey created = service.create(1L, 2001L, "openapi-app");
+
+        assertThat(created.id()).isPositive();
+        ArgumentCaptor<AccountsApiKeyStore.ApiKey> captor = ArgumentCaptor.forClass(AccountsApiKeyStore.ApiKey.class);
+        verify(store).insert(captor.capture());
+        assertThat(captor.getValue().tenantId()).isEqualTo(1L);
+        assertThat(captor.getValue().applicationId()).isEqualTo(2001L);
     }
 
     @Test
@@ -189,6 +215,7 @@ class ApiKeyServiceTest {
         AccountsApiKeyStore.ApiKey apiKey = new AccountsApiKeyStore.ApiKey(
                 123L,
                 1L,
+                null,
                 "test-key",
                 "hash",
                 AccountsConstants.STATUS_ACTIVE,
@@ -219,7 +246,7 @@ class ApiKeyServiceTest {
         ApiKeyService service = newService(store, passwordHasher, props, authCache);
 
         String digest = sha256Base64Url("secret");
-        when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, AccountsConstants.STATUS_ACTIVE, digest));
+        when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, null, AccountsConstants.STATUS_ACTIVE, digest));
         when(authCache.tryAcquireLastUsedToken(123L, 300L)).thenReturn(ApiKeyAuthCache.LastUsedTokenResult.ACQUIRED);
 
         service.authenticate("lfk_123_secret");
@@ -243,7 +270,7 @@ class ApiKeyServiceTest {
         ApiKeyService service = newService(store, passwordHasher, props, authCache, fixedClock);
 
         String digest = sha256Base64Url("secret");
-        when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, AccountsConstants.STATUS_ACTIVE, digest));
+        when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, null, AccountsConstants.STATUS_ACTIVE, digest));
         when(authCache.tryAcquireLastUsedToken(123L, 300L)).thenReturn(ApiKeyAuthCache.LastUsedTokenResult.ACQUIRED);
 
         service.authenticate("lfk_123_secret");
@@ -298,6 +325,7 @@ class ApiKeyServiceTest {
         AccountsApiKeyStore.ApiKey existing = new AccountsApiKeyStore.ApiKey(
                 123L,
                 1L,
+                null,
                 "test-key",
                 "hash",
                 AccountsConstants.STATUS_ACTIVE,
@@ -325,6 +353,7 @@ class ApiKeyServiceTest {
         AccountsApiKeyStore.ApiKey existing = new AccountsApiKeyStore.ApiKey(
                 123L,
                 1L,
+                null,
                 "test-key",
                 "hash",
                 AccountsConstants.STATUS_DISABLED,
@@ -366,6 +395,8 @@ class ApiKeyServiceTest {
             Clock clock
     ) {
         try {
+            SnowflakeIdGenerator idGenerator = mock(SnowflakeIdGenerator.class);
+            when(idGenerator.nextId()).thenReturn(123L);
             Constructor<ApiKeyService> constructor = ApiKeyService.class.getConstructor(
                     SnowflakeIdGenerator.class,
                     AccountsApiKeyStore.class,
@@ -373,19 +404,23 @@ class ApiKeyServiceTest {
                     TenantGuard.class,
                     SecurityProperties.class,
                     ApiKeyAuthCache.class,
-                    Clock.class
+                    Clock.class,
+                    PlatformControlPlaneService.class
             );
             return constructor.newInstance(
-                    mock(SnowflakeIdGenerator.class),
+                    idGenerator,
                     store,
                     passwordHasher,
                     mock(TenantGuard.class),
                     props,
                     authCache,
-                    clock
+                    clock,
+                    mock(PlatformControlPlaneService.class)
             );
         } catch (NoSuchMethodException ignored) {
             try {
+                SnowflakeIdGenerator idGenerator = mock(SnowflakeIdGenerator.class);
+                when(idGenerator.nextId()).thenReturn(123L);
                 Constructor<ApiKeyService> constructor = ApiKeyService.class.getConstructor(
                         SnowflakeIdGenerator.class,
                         AccountsApiKeyStore.class,
@@ -395,7 +430,7 @@ class ApiKeyServiceTest {
                         ApiKeyAuthCache.class
                 );
                 return constructor.newInstance(
-                        mock(SnowflakeIdGenerator.class),
+                        idGenerator,
                         store,
                         passwordHasher,
                         mock(TenantGuard.class),

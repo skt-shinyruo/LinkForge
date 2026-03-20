@@ -10,7 +10,6 @@ import org.springframework.stereotype.Repository;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
-
 @Repository
 public class AnalyticsQueryRepository {
 
@@ -32,6 +31,18 @@ public class AnalyticsQueryRepository {
                 .toList();
     }
 
+    public List<DailyStatRow> applicationDaily(long tenantId, long applicationId, LocalDate from, LocalDate to) {
+        return safeList(queryMapper.applicationDaily(tenantId, applicationId, from, to)).stream()
+                .map(r -> new DailyStatRow(r.getDay(), safeLong(r.getPv()), safeLong(r.getUv())))
+                .toList();
+    }
+
+    public List<DailyStatRow> domainDaily(long tenantId, long domainId, LocalDate from, LocalDate to) {
+        return safeList(queryMapper.domainDaily(tenantId, domainId, from, to)).stream()
+                .map(r -> new DailyStatRow(r.getDay(), safeLong(r.getPv()), safeLong(r.getUv())))
+                .toList();
+    }
+
     public List<TopLinkRow> topLinksOrderByPv(long tenantId, LocalDate from, LocalDate to, int limit) {
         return safeList(queryMapper.topLinksOrderByPv(tenantId, from, to, limit)).stream()
                 .map(AnalyticsQueryRepository::toTopLinkRow)
@@ -40,6 +51,30 @@ public class AnalyticsQueryRepository {
 
     public List<TopLinkRow> topLinksOrderByUv(long tenantId, LocalDate from, LocalDate to, int limit) {
         return safeList(queryMapper.topLinksOrderByUv(tenantId, from, to, limit)).stream()
+                .map(AnalyticsQueryRepository::toTopLinkRow)
+                .toList();
+    }
+
+    public List<TopLinkRow> applicationTopLinksOrderByPv(long tenantId, long applicationId, LocalDate from, LocalDate to, int limit) {
+        return safeList(queryMapper.applicationTopLinksOrderByPv(tenantId, applicationId, from, to, limit)).stream()
+                .map(AnalyticsQueryRepository::toTopLinkRow)
+                .toList();
+    }
+
+    public List<TopLinkRow> applicationTopLinksOrderByUv(long tenantId, long applicationId, LocalDate from, LocalDate to, int limit) {
+        return safeList(queryMapper.applicationTopLinksOrderByUv(tenantId, applicationId, from, to, limit)).stream()
+                .map(AnalyticsQueryRepository::toTopLinkRow)
+                .toList();
+    }
+
+    public List<TopLinkRow> domainTopLinksOrderByPv(long tenantId, long domainId, LocalDate from, LocalDate to, int limit) {
+        return safeList(queryMapper.domainTopLinksOrderByPv(tenantId, domainId, from, to, limit)).stream()
+                .map(AnalyticsQueryRepository::toTopLinkRow)
+                .toList();
+    }
+
+    public List<TopLinkRow> domainTopLinksOrderByUv(long tenantId, long domainId, LocalDate from, LocalDate to, int limit) {
+        return safeList(queryMapper.domainTopLinksOrderByUv(tenantId, domainId, from, to, limit)).stream()
                 .map(AnalyticsQueryRepository::toTopLinkRow)
                 .toList();
     }

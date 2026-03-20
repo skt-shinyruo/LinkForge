@@ -71,7 +71,7 @@ public class ArchiveShortLinkCommandHandler {
             link.incrementVersion();
             Instant occurredAtUtc = nowUtc.toInstant(ZoneOffset.UTC);
             eventPublisher.archived(link, occurredAtUtc);
-            AfterCommit.run(() -> redirectCacheSync.evict(link.code().value()));
+            AfterCommit.run(() -> redirectCacheSync.evict(link.tenantId(), link.domainId(), link.code().value()));
         }
 
         List<String> tags = linkTagRepository.findTagNamesByLinkId(linkId);

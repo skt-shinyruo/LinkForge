@@ -33,7 +33,7 @@ public interface ShortLinkService {
 
     ImportResult importCsv(long tenantId, CreatedBy createdBy, InputStream inputStream);
 
-    void exportCsv(long tenantId, PageQuery pageQuery, OutputStream os);
+    void exportCsv(long tenantId, ShortLinkSearchQuery query, PageQuery pageQuery, OutputStream os);
 
     record CreatedBy(long id, CreatedByType type) {
         public static CreatedBy user(long userId) {
@@ -56,7 +56,10 @@ public interface ShortLinkService {
             Boolean previewEnabled,
             String unavailableLandingUrl,
             String queryForwardMode,
-            List<String> queryForwardAllowlist
+            List<String> queryForwardAllowlist,
+            Long applicationId,
+            Long domainId,
+            String lifecycleState
     ) {
     }
 
@@ -73,13 +76,17 @@ public interface ShortLinkService {
             String unavailableLandingUrl,
             String queryForwardMode,
             Boolean clearQueryForwardMode,
-            List<String> queryForwardAllowlist
+            List<String> queryForwardAllowlist,
+            String lifecycleState
     ) {
     }
 
     record LinkDto(
             long id,
             long tenantId,
+            Long applicationId,
+            Long domainId,
+            String lifecycleState,
             String code,
             String shortUrl,
             String originalUrl,

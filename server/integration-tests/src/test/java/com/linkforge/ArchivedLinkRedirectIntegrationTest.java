@@ -105,6 +105,7 @@ class ArchivedLinkRedirectIntegrationTest {
                 1L,
                 linkId,
                 code,
+                "localhost",
                 "https://example.com",
                 true,
                 null,
@@ -113,6 +114,8 @@ class ArchivedLinkRedirectIntegrationTest {
                 null,
                 null,
                 List.of(),
+                null,
+                null,
                 null
         );
         String createdEventId = "it-created-" + code;
@@ -123,6 +126,7 @@ class ArchivedLinkRedirectIntegrationTest {
                 1L,
                 linkId,
                 code,
+                "localhost",
                 "https://example.com",
                 true,
                 null,
@@ -131,7 +135,9 @@ class ArchivedLinkRedirectIntegrationTest {
                 null,
                 null,
                 List.of(),
-                t2
+                t2,
+                null,
+                null
         );
         String archivedEventId = "it-archived-" + code;
         ShortLinkArchivedV1 archived = new ShortLinkArchivedV1(archivedEventId, t2, 1L, linkId, code, archivedSnapshot);

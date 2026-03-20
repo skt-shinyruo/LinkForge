@@ -11,6 +11,7 @@ import com.linkforge.contract.openapi.OpenApiErrorCode;
 import com.linkforge.foundation.config.SecurityProperties;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.runtime.security.TenantGuard;
+import com.linkforge.platform.application.PlatformControlPlaneService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -52,6 +53,7 @@ public class ApiKeyService {
     private final SecurityProperties securityProperties;
     private final ApiKeyAuthCache authCache;
     private final Clock clock;
+    private final PlatformControlPlaneService platformControlPlaneService;
 
     public ApiKeyService(
             SnowflakeIdGenerator idGenerator,
@@ -60,7 +62,8 @@ public class ApiKeyService {
             TenantGuard tenantGuard,
             SecurityProperties securityProperties,
             ApiKeyAuthCache authCache,
-            Clock clock
+            Clock clock,
+            PlatformControlPlaneService platformControlPlaneService
     ) {
         this.idGenerator = idGenerator;
         this.apiKeyStore = apiKeyStore;
@@ -69,11 +72,18 @@ public class ApiKeyService {
         this.securityProperties = securityProperties;
         this.authCache = authCache;
         this.clock = clock;
+        this.platformControlPlaneService = platformControlPlaneService;
     }
 
     @Transactional
     public CreatedApiKey create(long tenantId, String name) {
+        throw new BusinessException(ErrorCode.BAD_REQUEST, "applicationId 不能为空");
+    }
+
+    @Transactional
+    public CreatedApiKey create(long tenantId, long applicationId, String name) {
         tenantGuard.requireCurrentTenant(tenantId);
+        platformControlPlaneService.requireApplicationExists(tenantId, applicationId);
         long id = idGenerator.nextId();
         String secret = randomSecret();
         String key = API_KEY_PREFIX + "_" + id + "_" + secret;
@@ -81,6 +91,7 @@ public class ApiKeyService {
         AccountsApiKeyStore.ApiKey apiKey = new AccountsApiKeyStore.ApiKey(
                 id,
                 tenantId,
+                applicationId,
                 name,
                 passwordHasher.encode(secret),
                 AccountsConstants.STATUS_ACTIVE,
@@ -92,7 +103,7 @@ public class ApiKeyService {
         String digest = sha256Base64Url(secret);
         long authCacheTtlSeconds = authCacheTtlSeconds();
         if (authCacheTtlSeconds > 0) {
-            authCache.putActive(id, tenantId, digest, authCacheTtlSeconds);
+            authCache.putActive(id, tenantId, applicationId, digest, authCacheTtlSeconds);
         }
 
         return new CreatedApiKey(id, name, key);
@@ -114,7 +125,7 @@ public class ApiKeyService {
                 throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_INVALID);
             }
             tryUpdateLastUsedAtThrottled(parsed.id, null, false);
-            return new ApiKeyAuthResult(cached.tenantId(), parsed.id);
+            return new ApiKeyAuthResult(cached.tenantId(), cached.applicationId(), parsed.id);
         }
 
         AccountsApiKeyStore.ApiKey apiKeyRecord = apiKeyStore.findById(parsed.id);
@@ -124,7 +135,12 @@ public class ApiKeyService {
 
         if (!AccountsConstants.STATUS_ACTIVE.equals(apiKeyRecord.status())) {
             if (authCacheTtlSeconds > 0) {
-                authCache.putDisabled(parsed.id, apiKeyRecord.tenantId() == null ? 0L : apiKeyRecord.tenantId(), authCacheTtlSeconds);
+                authCache.putDisabled(
+                        parsed.id,
+                        apiKeyRecord.tenantId() == null ? 0L : apiKeyRecord.tenantId(),
+                        apiKeyRecord.applicationId(),
+                        authCacheTtlSeconds
+                );
             }
             throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_DISABLED);
         }
@@ -133,17 +149,28 @@ public class ApiKeyService {
         }
 
         if (authCacheTtlSeconds > 0) {
-            authCache.putActive(parsed.id, apiKeyRecord.tenantId() == null ? 0L : apiKeyRecord.tenantId(), secretDigest, authCacheTtlSeconds);
+            authCache.putActive(
+                    parsed.id,
+                    apiKeyRecord.tenantId() == null ? 0L : apiKeyRecord.tenantId(),
+                    apiKeyRecord.applicationId(),
+                    secretDigest,
+                    authCacheTtlSeconds
+            );
         }
         tryUpdateLastUsedAtThrottled(parsed.id, apiKeyRecord.lastUsedAt(), true);
 
-        return new ApiKeyAuthResult(apiKeyRecord.tenantId(), apiKeyRecord.id());
+        return new ApiKeyAuthResult(apiKeyRecord.tenantId(), apiKeyRecord.applicationId(), apiKeyRecord.id());
     }
 
     public List<ApiKeyInfo> list(long tenantId) {
+        return list(tenantId, null);
+    }
+
+    public List<ApiKeyInfo> list(long tenantId, Long applicationId) {
         tenantGuard.requireCurrentTenant(tenantId);
         return apiKeyStore.findAllByTenantIdOrderByCreatedAtDesc(tenantId).stream()
-                .map(e -> new ApiKeyInfo(e.id(), e.name(), e.status(), e.lastUsedAt(), e.createdAt()))
+                .filter(e -> applicationId == null || applicationId.equals(e.applicationId()))
+                .map(e -> new ApiKeyInfo(e.id(), e.applicationId(), e.name(), e.status(), e.lastUsedAt(), e.createdAt()))
                 .toList();
     }
 
@@ -163,9 +190,14 @@ public class ApiKeyService {
         }
         long authCacheTtlSeconds = authCacheTtlSeconds();
         if (authCacheTtlSeconds > 0) {
-            authCache.putDisabled(apiKeyId, apiKey.tenantId() == null ? 0L : apiKey.tenantId(), authCacheTtlSeconds);
+            authCache.putDisabled(
+                    apiKeyId,
+                    apiKey.tenantId() == null ? 0L : apiKey.tenantId(),
+                    apiKey.applicationId(),
+                    authCacheTtlSeconds
+            );
         }
-        return new ApiKeyInfo(apiKey.id(), apiKey.name(), apiKey.status(), apiKey.lastUsedAt(), apiKey.createdAt());
+        return new ApiKeyInfo(apiKey.id(), apiKey.applicationId(), apiKey.name(), apiKey.status(), apiKey.lastUsedAt(), apiKey.createdAt());
     }
 
     @Transactional
@@ -183,7 +215,7 @@ public class ApiKeyService {
             apiKeyStore.update(apiKey);
         }
         authCache.evict(apiKeyId);
-        return new ApiKeyInfo(apiKey.id(), apiKey.name(), apiKey.status(), apiKey.lastUsedAt(), apiKey.createdAt());
+        return new ApiKeyInfo(apiKey.id(), apiKey.applicationId(), apiKey.name(), apiKey.status(), apiKey.lastUsedAt(), apiKey.createdAt());
     }
 
     @Transactional
@@ -204,7 +236,13 @@ public class ApiKeyService {
         String digest = sha256Base64Url(secret);
         long authCacheTtlSeconds = authCacheTtlSeconds();
         if (authCacheTtlSeconds > 0) {
-            authCache.putActive(apiKeyId, apiKey.tenantId() == null ? 0L : apiKey.tenantId(), digest, authCacheTtlSeconds);
+            authCache.putActive(
+                    apiKeyId,
+                    apiKey.tenantId() == null ? 0L : apiKey.tenantId(),
+                    apiKey.applicationId(),
+                    digest,
+                    authCacheTtlSeconds
+            );
         }
 
         return new CreatedApiKey(apiKey.id(), apiKey.name(), key);
@@ -213,10 +251,10 @@ public class ApiKeyService {
     public record CreatedApiKey(long id, String name, String apiKey) {
     }
 
-    public record ApiKeyAuthResult(long tenantId, long apiKeyId) {
+    public record ApiKeyAuthResult(long tenantId, Long applicationId, long apiKeyId) {
     }
 
-    public record ApiKeyInfo(long id, String name, String status, LocalDateTime lastUsedAt, LocalDateTime createdAt) {
+    public record ApiKeyInfo(long id, Long applicationId, String name, String status, LocalDateTime lastUsedAt, LocalDateTime createdAt) {
     }
 
     public static class ApiKeyAuthException extends RuntimeException {
@@ -331,6 +369,7 @@ public class ApiKeyService {
         return new AccountsApiKeyStore.ApiKey(
                 apiKey.id(),
                 apiKey.tenantId(),
+                apiKey.applicationId(),
                 apiKey.name(),
                 apiKey.keyHash(),
                 status,
@@ -347,6 +386,7 @@ public class ApiKeyService {
         return new AccountsApiKeyStore.ApiKey(
                 apiKey.id(),
                 apiKey.tenantId(),
+                apiKey.applicationId(),
                 apiKey.name(),
                 keyHash,
                 status,

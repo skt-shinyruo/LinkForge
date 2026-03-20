@@ -14,7 +14,10 @@ public class ShortLink {
 
     private final long id;
     private final long tenantId;
+    private final Long applicationId;
+    private final Long domainId;
     private final ShortCode code;
+    private ShortLinkLifecycleState lifecycleState;
     private long version;
 
     private HttpUrl originalUrl;
@@ -42,7 +45,10 @@ public class ShortLink {
     private ShortLink(
             long id,
             long tenantId,
+            Long applicationId,
+            Long domainId,
             ShortCode code,
+            ShortLinkLifecycleState lifecycleState,
             HttpUrl originalUrl,
             String note,
             boolean enabled,
@@ -73,7 +79,10 @@ public class ShortLink {
         }
         this.id = id;
         this.tenantId = tenantId;
+        this.applicationId = applicationId;
+        this.domainId = domainId;
         this.code = code;
+        this.lifecycleState = lifecycleState == null ? ShortLinkLifecycleState.ACTIVE : lifecycleState;
         this.originalUrl = originalUrl;
         this.note = normalizeNote(note);
         this.enabled = enabled;
@@ -107,12 +116,55 @@ public class ShortLink {
             CreatedByType createdByType,
             long createdBy
     ) {
+        return create(
+                id,
+                tenantId,
+                null,
+                null,
+                code,
+                ShortLinkLifecycleState.ACTIVE,
+                originalUrl,
+                note,
+                enabled,
+                expiresAtUtc,
+                redirectStatusCode,
+                previewEnabled,
+                unavailableLandingUrl,
+                queryForwardMode,
+                queryForwardAllowlist,
+                createdByType,
+                createdBy
+        );
+    }
+
+    public static ShortLink create(
+            long id,
+            long tenantId,
+            Long applicationId,
+            Long domainId,
+            ShortCode code,
+            ShortLinkLifecycleState lifecycleState,
+            HttpUrl originalUrl,
+            String note,
+            Boolean enabled,
+            LocalDateTime expiresAtUtc,
+            Integer redirectStatusCode,
+            Boolean previewEnabled,
+            HttpUrl unavailableLandingUrl,
+            QueryForwardMode queryForwardMode,
+            QueryForwardAllowlist queryForwardAllowlist,
+            CreatedByType createdByType,
+            long createdBy
+    ) {
         boolean en = enabled == null || enabled;
         boolean preview = previewEnabled != null && previewEnabled;
         return new ShortLink(
                 id,
                 tenantId,
+                applicationId,
+                domainId,
                 code,
+                lifecycleState,
                 originalUrl,
                 note,
                 en,
@@ -151,10 +203,61 @@ public class ShortLink {
             LocalDateTime createdAtUtc,
             LocalDateTime updatedAtUtc
     ) {
+        return rehydrate(
+                id,
+                tenantId,
+                null,
+                null,
+                code,
+                ShortLinkLifecycleState.ACTIVE,
+                originalUrl,
+                note,
+                enabled,
+                expiresAtUtc,
+                archivedAtUtc,
+                redirectStatusCode,
+                previewEnabled,
+                unavailableLandingUrl,
+                queryForwardMode,
+                queryForwardAllowlist,
+                createdByType,
+                createdBy,
+                version,
+                createdAtUtc,
+                updatedAtUtc
+        );
+    }
+
+    public static ShortLink rehydrate(
+            long id,
+            long tenantId,
+            Long applicationId,
+            Long domainId,
+            ShortCode code,
+            ShortLinkLifecycleState lifecycleState,
+            HttpUrl originalUrl,
+            String note,
+            boolean enabled,
+            LocalDateTime expiresAtUtc,
+            LocalDateTime archivedAtUtc,
+            Integer redirectStatusCode,
+            boolean previewEnabled,
+            HttpUrl unavailableLandingUrl,
+            QueryForwardMode queryForwardMode,
+            QueryForwardAllowlist queryForwardAllowlist,
+            CreatedByType createdByType,
+            long createdBy,
+            long version,
+            LocalDateTime createdAtUtc,
+            LocalDateTime updatedAtUtc
+    ) {
         return new ShortLink(
                 id,
                 tenantId,
+                applicationId,
+                domainId,
                 code,
+                lifecycleState,
                 originalUrl,
                 note,
                 enabled,
@@ -181,8 +284,20 @@ public class ShortLink {
         return tenantId;
     }
 
+    public Long applicationId() {
+        return applicationId;
+    }
+
+    public Long domainId() {
+        return domainId;
+    }
+
     public ShortCode code() {
         return code;
+    }
+
+    public ShortLinkLifecycleState lifecycleState() {
+        return lifecycleState;
     }
 
     public HttpUrl originalUrl() {
@@ -273,6 +388,10 @@ public class ShortLink {
             throw new ShortLinkDomainException(ShortLinkDomainException.Reason.INVALID_URL, "originalUrl 不能为空");
         }
         this.originalUrl = newUrl;
+    }
+
+    public void setLifecycleState(ShortLinkLifecycleState lifecycleState) {
+        this.lifecycleState = lifecycleState == null ? ShortLinkLifecycleState.ACTIVE : lifecycleState;
     }
 
     public void changeNote(String note) {

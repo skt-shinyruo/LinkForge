@@ -39,6 +39,32 @@
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-platform-application</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-platform-infrastructure</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-governance-application</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-platform-interfaces</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-governance-interfaces</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-governance-infrastructure</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
             <artifactId>linkforge-shortlink-interfaces</artifactId>
         </dependency>
         <dependency>

@@ -5,6 +5,7 @@
 <mapper namespace="com.linkforge.redirect.infrastructure.projection.RedirectLinkProjectionMapper">
 
     <resultMap id="RedirectLinkProjectionResultMap" type="com.linkforge.redirect.infrastructure.projection.RedirectLinkProjection">
+        <id property="hostname" column="hostname"/>
         <id property="code" column="code"/>
         <result property="tenantId" column="tenant_id"/>
         <result property="linkId" column="link_id"/>
@@ -20,6 +21,7 @@
     </resultMap>
 
     <sql id="projectionColumns">
+        hostname,
         code,
         tenant_id,
         link_id,
@@ -34,16 +36,18 @@
         updated_at
     </sql>
 
-    <select id="findByCode" resultMap="RedirectLinkProjectionResultMap">
+    <select id="findByHostnameAndCode" resultMap="RedirectLinkProjectionResultMap">
         SELECT
         <include refid="projectionColumns"/>
         FROM redirect_link_projection
-        WHERE code = #{param1}
+        WHERE hostname = #{hostname}
+          AND code = #{code}
         LIMIT 1
     </select>
 
     <insert id="upsert" parameterType="com.linkforge.redirect.infrastructure.projection.RedirectLinkProjection">
         INSERT INTO redirect_link_projection (
+            hostname,
             code,
             tenant_id,
             link_id,
@@ -56,6 +60,7 @@
             query_forward_mode,
             query_forward_allowlist
         ) VALUES (
+            #{hostname},
             #{code},
             #{tenantId},
             #{linkId},
@@ -82,9 +87,9 @@
             updated_at = NOW()
     </insert>
 
-    <delete id="deleteByCode">
+    <delete id="deleteByHostnameAndCode">
         DELETE FROM redirect_link_projection
-        WHERE code = #{param1}
+        WHERE hostname = #{hostname}
+          AND code = #{code}
     </delete>
 </mapper>
-

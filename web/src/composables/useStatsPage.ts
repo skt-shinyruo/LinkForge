@@ -1,7 +1,9 @@
 import { computed, getCurrentInstance, onMounted, ref } from "vue";
+import { listApplications } from "../services/applications";
 import { listLinks } from "../services/links";
+import { useAuthStore } from "../stores/auth";
 import { fetchLinkDailyStats, fetchOverviewStats, fetchTopLinksStats } from "../services/stats";
-import type { DailyStat, LinkDto, TopLinkSortBy, TopLinkStat } from "../services/types";
+import type { ApplicationDto, DailyStat, LinkDto, TopLinkSortBy, TopLinkStat } from "../services/types";
 
 const LINK_OPTIONS_PAGE_SIZE = 100;
 
@@ -32,6 +34,8 @@ export function useStatsPage() {
   const showOverviewChart = ref(false);
   const showLinkChart = ref(false);
 
+  const applications = ref<ApplicationDto[]>([]);
+  const selectedApplicationId = ref<number | null>(null);
   const links = ref<LinkDto[]>([]);
   const selectedLinkId = ref<number | null>(null);
   const linkStats = ref<DailyStat[]>([]);
@@ -60,7 +64,11 @@ export function useStatsPage() {
     let totalLinks = 0;
 
     do {
-      const response = await listLinks({ page: nextPage, size: LINK_OPTIONS_PAGE_SIZE });
+      const response = await listLinks({
+        applicationId: selectedApplicationId.value ?? undefined,
+        page: nextPage,
+        size: LINK_OPTIONS_PAGE_SIZE,
+      });
       nextLinks.push(...response.items);
       totalLinks = response.total;
       nextPage += 1;
@@ -82,16 +90,46 @@ export function useStatsPage() {
     }
   }
 
+  const auth = useAuthStore();
+  const isAdmin = computed(() => auth.isAdmin);
+
+  async function loadApplications() {
+    if (!isAdmin.value) {
+      applications.value = [];
+      selectedApplicationId.value = null;
+      return;
+    }
+    applications.value = await listApplications();
+    if (
+      selectedApplicationId.value != null &&
+      !applications.value.some((application) => application.id === selectedApplicationId.value)
+    ) {
+      selectedApplicationId.value = null;
+    }
+    if (selectedApplicationId.value == null && applications.value.length > 0) {
+      selectedApplicationId.value = applications.value[0]!.id;
+    }
+  }
+
   async function loadOverview() {
-    overviewStats.value = await fetchOverviewStats(range.value);
+    overviewStats.value = await fetchOverviewStats({
+      ...range.value,
+      applicationId: selectedApplicationId.value ?? undefined,
+    });
   }
 
   async function loadTopLinks() {
     topLinks.value = await fetchTopLinksStats({
       ...range.value,
+      applicationId: selectedApplicationId.value ?? undefined,
       limit: 10,
       sortBy: topSortBy.value,
     });
+  }
+
+  async function setSelectedApplicationId(value: number | null) {
+    selectedApplicationId.value = value;
+    await refresh();
   }
 
   async function loadLinkStats() {
@@ -151,11 +189,21 @@ export function useStatsPage() {
 
   if (getCurrentInstance()) {
     onMounted(() => {
-      void refresh();
+      void (async () => {
+        if (isAdmin.value) {
+          try {
+            await loadApplications();
+          } catch (caught) {
+            error.value = getErrorMessage(caught, "加载应用失败");
+          }
+        }
+        await refresh();
+      })();
     });
   }
 
   return {
+    applications,
     error,
     linkChartLabels,
     linkChartSeries,
@@ -170,8 +218,10 @@ export function useStatsPage() {
     rangeDays,
     refresh,
     selectedLink,
+    selectedApplicationId,
     selectedLinkId,
     setRange,
+    setSelectedApplicationId,
     setTopSortBy,
     showLinkChart,
     showOverviewChart,

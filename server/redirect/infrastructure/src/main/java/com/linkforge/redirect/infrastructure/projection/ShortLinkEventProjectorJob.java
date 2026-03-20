@@ -117,9 +117,9 @@ public class ShortLinkEventProjectorJob {
                 case ShortLinkEventTypes.SHORT_LINK_RESTORED_V1 ->
                         upsert(event, read(event.payloadJson(), ShortLinkRestoredV1.class).snapshot());
                 case ShortLinkEventTypes.SHORT_LINK_ARCHIVED_V1 ->
-                        delete(event, read(event.payloadJson(), ShortLinkArchivedV1.class).code());
+                        delete(event, read(event.payloadJson(), ShortLinkArchivedV1.class).snapshot());
                 case ShortLinkEventTypes.SHORT_LINK_DELETED_V1 ->
-                        delete(event, read(event.payloadJson(), ShortLinkDeletedV1.class).code());
+                        delete(event, read(event.payloadJson(), ShortLinkDeletedV1.class).snapshot());
                 default -> ProjectAction.none();
             };
         } catch (JsonProcessingException ex) {
@@ -135,6 +135,10 @@ public class ShortLinkEventProjectorJob {
             throw new PoisonEventException("snapshot/originalUrl is required");
         }
 
+        if (snapshot.hostname() == null || snapshot.hostname().isBlank()) {
+            return ProjectAction.cacheOnly(toMeta(snapshot));
+        }
+
         RedirectLinkProjection row = toRow(snapshot);
         return tx.execute(status -> {
             projectionMapper.upsert(row);
@@ -142,15 +146,20 @@ public class ShortLinkEventProjectorJob {
         });
     }
 
-    private ProjectAction delete(IntegrationEventRow event, String code) {
-        if (code == null || code.isBlank()) {
-            throw new PoisonEventException("code is required");
+    private ProjectAction delete(IntegrationEventRow event, ShortLinkPublicSnapshot snapshot) {
+        if (snapshot == null || snapshot.code() == null || snapshot.code().isBlank()) {
+            throw new PoisonEventException("snapshot/code is required");
         }
 
-        String normalized = code.trim();
+        if (snapshot.hostname() == null || snapshot.hostname().isBlank()) {
+            return ProjectAction.evict(null, snapshot.code().trim());
+        }
+
+        String normalizedHost = snapshot.hostname().trim().toLowerCase();
+        String normalizedCode = snapshot.code().trim();
         return tx.execute(status -> {
-            projectionMapper.deleteByCode(normalized);
-            return ProjectAction.evict(normalized);
+            projectionMapper.deleteByHostnameAndCode(normalizedHost, normalizedCode);
+            return ProjectAction.evict(normalizedHost, normalizedCode);
         });
     }
 
@@ -170,21 +179,34 @@ public class ShortLinkEventProjectorJob {
             return;
         }
         if (action.evictCode != null) {
-            tryCache("evict", action.evictCode, linkCache.tryEvict(action.evictCode));
+            boolean ok = action.evictHostname == null
+                    ? linkCache.tryEvict(action.evictCode)
+                    : linkCache.tryEvict(action.evictHostname, action.evictCode);
+            tryCache("evict", action.evictHostname, action.evictCode, ok);
         }
         if (action.putRow != null) {
             LinkMeta meta = RedirectLinkProjectionQueryService.toMeta(action.putRow);
             // overwrite negative cache sentinel if any
-            tryCache("evict", meta.code(), linkCache.tryEvict(meta.code()));
-            tryCache("put", meta.code(), linkCache.tryPut(meta));
+            tryCache("evict", meta.hostname(), meta.code(), linkCache.tryEvict(meta.hostname(), meta.code()));
+            tryCache("put", meta.hostname(), meta.code(), linkCache.tryPut(meta.hostname(), meta));
+        }
+        if (action.cacheMeta != null) {
+            LinkMeta meta = action.cacheMeta;
+            if (meta.hostname() == null || meta.hostname().isBlank()) {
+                tryCache("evict", null, meta.code(), linkCache.tryEvict(meta.code()));
+                tryCache("put", null, meta.code(), linkCache.tryPut(meta));
+            } else {
+                tryCache("evict", meta.hostname(), meta.code(), linkCache.tryEvict(meta.hostname(), meta.code()));
+                tryCache("put", meta.hostname(), meta.code(), linkCache.tryPut(meta.hostname(), meta));
+            }
         }
     }
 
-    private static void tryCache(String op, String code, boolean ok) {
+    private static void tryCache(String op, String hostname, String code, boolean ok) {
         if (ok) {
             return;
         }
-        throw new CacheSideEffectException("cache " + op + " failed: code=" + code);
+        throw new CacheSideEffectException("cache " + op + " failed: host=" + hostname + ", code=" + code);
     }
 
     private <T> T read(String json, Class<T> type) throws JsonProcessingException {
@@ -193,6 +215,7 @@ public class ShortLinkEventProjectorJob {
 
     private static RedirectLinkProjection toRow(ShortLinkPublicSnapshot s) {
         RedirectLinkProjection row = new RedirectLinkProjection();
+        row.setHostname(s.hostname().trim().toLowerCase());
         row.setCode(s.code());
         row.setTenantId(s.tenantId());
         row.setLinkId(s.linkId());
@@ -205,6 +228,29 @@ public class ShortLinkEventProjectorJob {
         row.setQueryForwardMode(s.queryForwardMode());
         row.setQueryForwardAllowlist(joinAllowlist(s.queryForwardAllowlist()));
         return row;
+    }
+
+    private static LinkMeta toMeta(ShortLinkPublicSnapshot s) {
+        String hostname = s.hostname();
+        if (hostname != null && !hostname.isBlank()) {
+            hostname = hostname.trim().toLowerCase();
+        } else {
+            hostname = null;
+        }
+        return new LinkMeta(
+                s.linkId(),
+                s.tenantId(),
+                s.code(),
+                s.originalUrl(),
+                s.enabled(),
+                toUtcLocalDateTime(s.expiresAtUtc()),
+                s.redirectStatusCode(),
+                s.previewEnabled(),
+                s.unavailableLandingUrl(),
+                s.queryForwardMode(),
+                joinAllowlist(s.queryForwardAllowlist()),
+                hostname
+        );
     }
 
     private static LocalDateTime toUtcLocalDateTime(Instant instant) {
@@ -240,17 +286,21 @@ public class ShortLinkEventProjectorJob {
         return t.length() > 512 ? t.substring(0, 512) : t;
     }
 
-    private record ProjectAction(String evictCode, RedirectLinkProjection putRow) {
+    private record ProjectAction(String evictHostname, String evictCode, RedirectLinkProjection putRow, LinkMeta cacheMeta) {
         static ProjectAction none() {
-            return new ProjectAction(null, null);
+            return new ProjectAction(null, null, null, null);
         }
 
-        static ProjectAction evict(String code) {
-            return new ProjectAction(code, null);
+        static ProjectAction evict(String hostname, String code) {
+            return new ProjectAction(hostname, code, null, null);
         }
 
         static ProjectAction put(RedirectLinkProjection row) {
-            return new ProjectAction(null, row);
+            return new ProjectAction(null, null, row, null);
+        }
+
+        static ProjectAction cacheOnly(LinkMeta meta) {
+            return new ProjectAction(null, null, null, meta);
         }
     }
 

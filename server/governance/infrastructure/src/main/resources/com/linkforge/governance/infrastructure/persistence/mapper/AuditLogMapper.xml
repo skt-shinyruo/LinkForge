@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.linkforge.governance.infrastructure.persistence.mapper.AuditLogMapper">
+
+    <insert id="insert" parameterType="com.linkforge.governance.infrastructure.persistence.entity.AuditLogEntity">
+        INSERT INTO audit_logs (
+            id,
+            tenant_id,
+            actor_user_id,
+            actor_email,
+            action_type,
+            resource_type,
+            resource_id,
+            request_id,
+            before_snapshot,
+            after_snapshot,
+            created_at
+        ) VALUES (
+            #{id},
+            #{tenantId},
+            #{actorUserId},
+            #{actorEmail},
+            #{actionType},
+            #{resourceType},
+            #{resourceId},
+            #{requestId},
+            #{beforeSnapshot},
+            #{afterSnapshot},
+            #{createdAt}
+        )
+    </insert>
+
+    <resultMap id="AuditLogResultMap" type="com.linkforge.governance.infrastructure.persistence.entity.AuditLogEntity">
+        <id property="id" column="id"/>
+        <result property="tenantId" column="tenant_id"/>
+        <result property="actorUserId" column="actor_user_id"/>
+        <result property="actorEmail" column="actor_email"/>
+        <result property="actionType" column="action_type"/>
+        <result property="resourceType" column="resource_type"/>
+        <result property="resourceId" column="resource_id"/>
+        <result property="requestId" column="request_id"/>
+        <result property="beforeSnapshot" column="before_snapshot"/>
+        <result property="afterSnapshot" column="after_snapshot"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <select id="listByTenantId" resultMap="AuditLogResultMap">
+        SELECT id, tenant_id, actor_user_id, actor_email, action_type, resource_type, resource_id, request_id,
+               before_snapshot, after_snapshot, created_at
+        FROM audit_logs
+        WHERE tenant_id = #{tenantId}
+        ORDER BY created_at DESC, id DESC
+    </select>
+</mapper>

@@ -243,6 +243,9 @@ class ShortLinkOptimisticLockIntegrationTest {
                         null,
                         null,
                         null,
+                        null,
+                        null,
+                        null,
                         null
                 )
         );
@@ -255,6 +258,7 @@ class ShortLinkOptimisticLockIntegrationTest {
     private ShortLinkService.UpdateLinkRequest updateRequest(String originalUrl) {
         return new ShortLinkService.UpdateLinkRequest(
                 originalUrl,
+                null,
                 null,
                 null,
                 null,

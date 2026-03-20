@@ -23,7 +23,10 @@ function buildRangeParams(range: StatsRangeQuery): URLSearchParams {
 
 export async function fetchOverviewStats(range: StatsRangeQuery): Promise<DailyStat[]> {
   const params = buildRangeParams(range);
-  const response = await apiFetch<DailyStat[]>(`/api/v1/stats/overview?${params.toString()}`);
+  const path = range.applicationId
+    ? `/api/v1/applications/${range.applicationId}/stats/overview`
+    : "/api/v1/stats/overview";
+  const response = await apiFetch<DailyStat[]>(`${path}?${params.toString()}`);
   return ensureApiSuccess(response, "加载概览失败") ?? [];
 }
 
@@ -32,8 +35,11 @@ export async function fetchTopLinksStats(query: TopLinksQuery): Promise<TopLinkS
   params.set("limit", String(query.limit ?? 10));
   params.set("sortBy", query.sortBy ?? "pv");
 
+  const path = query.applicationId
+    ? `/api/v1/applications/${query.applicationId}/stats/top-links`
+    : "/api/v1/stats/top-links";
   const response = await apiFetch<TopLinkStat[]>(
-    `/api/v1/stats/top-links?${params.toString()}`,
+    `${path}?${params.toString()}`,
   );
   return ensureApiSuccess(response, "加载 Top 报表失败") ?? [];
 }

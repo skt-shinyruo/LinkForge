@@ -8,6 +8,8 @@ public class ApiKeyEntity {
 
     private Long tenantId;
 
+    private Long applicationId;
+
     private String name;
 
     private String keyHash;
@@ -32,6 +34,14 @@ public class ApiKeyEntity {
 
     public void setTenantId(Long tenantId) {
         this.tenantId = tenantId;
+    }
+
+    public Long getApplicationId() {
+        return applicationId;
+    }
+
+    public void setApplicationId(Long applicationId) {
+        this.applicationId = applicationId;
     }
 
     public String getName() {

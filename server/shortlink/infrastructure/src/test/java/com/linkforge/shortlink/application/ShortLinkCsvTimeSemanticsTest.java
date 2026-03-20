@@ -7,6 +7,7 @@ import com.linkforge.shortlink.application.command.ImportShortLinksCsvCommandHan
 import com.linkforge.shortlink.application.port.LinkTagRepository;
 import com.linkforge.shortlink.application.port.ShortLinkRepository;
 import com.linkforge.shortlink.application.query.ExportShortLinksCsvQueryHandler;
+import com.linkforge.shortlink.application.query.ShortLinkSearchQuery;
 import com.linkforge.shortlink.domain.CreatedByType;
 import com.linkforge.shortlink.domain.HttpUrl;
 import com.linkforge.shortlink.domain.ShortCode;
@@ -148,7 +149,7 @@ class ShortLinkCsvTimeSemanticsTest {
         when(linkTagRepository.findTagNamesByLinkIds(any())).thenReturn(List.of());
 
         ByteArrayOutputStream os = new ByteArrayOutputStream();
-        handler.handle(1L, new PageQuery(0, 10), os);
+        handler.handle(1L, new ShortLinkSearchQuery(false, null, null, null, null), new PageQuery(0, 10), os);
 
         String out = os.toString(StandardCharsets.UTF_8);
         try (CSVParser parser = CSVFormat.DEFAULT.builder()

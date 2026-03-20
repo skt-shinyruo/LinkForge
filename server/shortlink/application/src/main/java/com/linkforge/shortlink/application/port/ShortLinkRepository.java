@@ -12,6 +12,10 @@ public interface ShortLinkRepository {
 
     Optional<ShortLink> findByCode(String code);
 
+    Optional<ShortLink> findByDomainIdAndCode(long domainId, String code);
+
+    long countActiveByTenantIdAndApplicationId(long tenantId, long applicationId);
+
     void insert(ShortLink link);
 
     boolean update(ShortLink link);

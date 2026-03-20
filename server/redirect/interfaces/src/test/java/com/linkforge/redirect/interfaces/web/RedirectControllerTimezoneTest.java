@@ -52,6 +52,7 @@ class RedirectControllerTimezoneTest {
                 false,
                 null,
                 null,
+                null,
                 null
         );
 

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.linkforge.platform.infrastructure.persistence.mapper.ApplicationMapper">
+
+    <resultMap id="ApplicationResultMap" type="com.linkforge.platform.infrastructure.persistence.entity.ApplicationEntity">
+        <id property="id" column="id"/>
+        <result property="tenantId" column="tenant_id"/>
+        <result property="applicationKey" column="application_key"/>
+        <result property="displayName" column="display_name"/>
+        <result property="status" column="status"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.linkforge.platform.infrastructure.persistence.entity.ApplicationEntity">
+        INSERT INTO applications (
+            id,
+            tenant_id,
+            application_key,
+            display_name,
+            status
+        ) VALUES (
+            #{id},
+            #{tenantId},
+            #{applicationKey},
+            #{displayName},
+            #{status}
+        )
+    </insert>
+
+    <select id="findByTenantIdAndId" resultMap="ApplicationResultMap">
+        SELECT id, tenant_id, application_key, display_name, status, created_at, updated_at
+        FROM applications
+        WHERE tenant_id = #{param1}
+          AND id = #{param2}
+    </select>
+
+    <select id="findByTenantIdAndApplicationKey" resultMap="ApplicationResultMap">
+        SELECT id, tenant_id, application_key, display_name, status, created_at, updated_at
+        FROM applications
+        WHERE tenant_id = #{param1}
+          AND application_key = #{param2}
+        LIMIT 1
+    </select>
+
+    <select id="listByTenantId" resultMap="ApplicationResultMap">
+        SELECT id, tenant_id, application_key, display_name, status, created_at, updated_at
+        FROM applications
+        WHERE tenant_id = #{param1}
+        ORDER BY created_at DESC, id DESC
+    </select>
+
+    <select id="listAll" resultMap="ApplicationResultMap">
+        SELECT id, tenant_id, application_key, display_name, status, created_at, updated_at
+        FROM applications
+        ORDER BY created_at DESC, id DESC
+    </select>
+</mapper>

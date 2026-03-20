@@ -28,6 +28,7 @@ class RedirectServiceAuthoritativeFallbackTest {
                 false,
                 null,
                 null,
+                null,
                 null
         );
         LinkMetaSourcePort authoritativeSource = code -> Optional.of(expected);

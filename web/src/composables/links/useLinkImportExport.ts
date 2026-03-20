@@ -1,14 +1,16 @@
 import { computed, type Ref } from "vue";
 import { exportLinksCsv, importLinksCsv } from "../../services/links";
+import type { LinkExportQuery } from "../../services/types";
 
 export function useLinkImportExport(args: {
   importFile: Ref<File | null>;
   importing: Ref<boolean>;
   setError: (message: string | null) => void;
   getErrorMessage: (error: unknown, fallbackMessage: string) => string;
+  getExportQuery: () => LinkExportQuery;
   reload: () => Promise<void>;
 }) {
-  const { importFile, importing, setError, getErrorMessage, reload } = args;
+  const { importFile, importing, setError, getErrorMessage, getExportQuery, reload } = args;
 
   const importFileName = computed(() => importFile.value?.name ?? "");
 
@@ -39,7 +41,7 @@ export function useLinkImportExport(args: {
     setError(null);
 
     try {
-      const blob = await exportLinksCsv({ page: 0, size: 1000 });
+      const blob = await exportLinksCsv({ page: 0, size: 1000, ...getExportQuery() });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;

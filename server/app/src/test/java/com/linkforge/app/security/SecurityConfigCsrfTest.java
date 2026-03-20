@@ -92,7 +92,7 @@ class SecurityConfigCsrfTest {
         assertThat(securityProperties.getJwt().isCookieEnabled()).isTrue();
 
         when(apiKeyService.authenticate(anyString()))
-                .thenReturn(new ApiKeyService.ApiKeyAuthResult(1L, 123L));
+                .thenReturn(new ApiKeyService.ApiKeyAuthResult(1L, 1L, 123L));
 
         // Without X-API-Key: OpenAPI chain is stateless and does not use CSRF; auth should fail as 401.
         mockMvc.perform(post("/api/v1/open/links")

@@ -64,7 +64,7 @@ public class RestoreShortLinkCommandHandler {
 
         if (restored) {
             eventPublisher.restored(link, clock.instant());
-            AfterCommit.run(() -> redirectCacheSync.evict(link.code().value()));
+            AfterCommit.run(() -> redirectCacheSync.evict(link.tenantId(), link.domainId(), link.code().value()));
         }
 
         List<String> tags = linkTagRepository.findTagNamesByLinkId(linkId);

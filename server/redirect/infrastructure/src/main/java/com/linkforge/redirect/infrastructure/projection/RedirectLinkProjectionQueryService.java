@@ -17,10 +17,15 @@ public class RedirectLinkProjectionQueryService implements LinkMetaProjectionPor
 
     @Override
     public Optional<LinkMeta> findByCode(String code) {
-        if (code == null || code.isBlank()) {
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<LinkMeta> findByHostAndCode(String host, String code) {
+        if (host == null || host.isBlank() || code == null || code.isBlank()) {
             return Optional.empty();
         }
-        RedirectLinkProjection row = mapper.findByCode(code.trim());
+        RedirectLinkProjection row = mapper.findByHostnameAndCode(host.trim().toLowerCase(), code.trim());
         if (row == null) {
             return Optional.empty();
         }
@@ -39,8 +44,8 @@ public class RedirectLinkProjectionQueryService implements LinkMetaProjectionPor
                 Boolean.TRUE.equals(row.getPreviewEnabled()),
                 row.getUnavailableLandingUrl(),
                 row.getQueryForwardMode(),
-                row.getQueryForwardAllowlist()
+                row.getQueryForwardAllowlist(),
+                row.getHostname()
         );
     }
 }
-

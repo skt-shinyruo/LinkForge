@@ -35,6 +35,10 @@
             <groupId>com.linkforge</groupId>
             <artifactId>linkforge-contract-shortlink</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-platform-application</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>org.mybatis.spring.boot</groupId>

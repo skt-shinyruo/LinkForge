@@ -67,8 +67,9 @@ public class RedirectController {
         try {
             boolean html = isHtmlRequest(request);
             boolean confirmed = hasConfirmParam(request);
+            String host = resolveRequestHost(request);
 
-            LinkMeta meta = redirectService.resolve(code);
+            LinkMeta meta = redirectService.resolve(host, code);
 
             RedirectAvailabilityPolicy.UnavailableReason unavailable = availabilityPolicy.unavailableReason(meta);
             if (unavailable != null) {
@@ -151,6 +152,25 @@ public class RedirectController {
             return false;
         }
         return request.getParameter("__lf_confirm") != null;
+    }
+
+    private static String resolveRequestHost(HttpServletRequest request) {
+        if (request == null) {
+            return null;
+        }
+        String host = request.getServerName();
+        if (host == null || host.isBlank()) {
+            host = request.getHeader(HttpHeaders.HOST);
+        }
+        if (host == null) {
+            return null;
+        }
+        String normalized = host.trim().toLowerCase();
+        int colonIndex = normalized.indexOf(':');
+        if (colonIndex > 0) {
+            normalized = normalized.substring(0, colonIndex);
+        }
+        return normalized.isBlank() ? null : normalized;
     }
 
     private int resolveStatusCode(LinkMeta meta) {

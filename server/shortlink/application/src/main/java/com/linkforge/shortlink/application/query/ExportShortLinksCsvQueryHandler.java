@@ -41,19 +41,19 @@ public class ExportShortLinksCsvQueryHandler {
         this.tenantGuard = tenantGuard;
     }
 
-    public void handle(long tenantId, PageQuery pageQuery, OutputStream os) {
+    public void handle(long tenantId, ShortLinkSearchQuery query, PageQuery pageQuery, OutputStream os) {
         tenantGuard.requireCurrentTenant(tenantId);
         if (os == null) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "输出流不能为空");
         }
-        exportCsv(tenantId, pageQuery, new OutputStreamWriter(os, StandardCharsets.UTF_8));
+        exportCsv(tenantId, query, pageQuery, new OutputStreamWriter(os, StandardCharsets.UTF_8));
     }
 
-    void exportCsv(long tenantId, PageQuery pageQuery, Writer writer) {
+    void exportCsv(long tenantId, ShortLinkSearchQuery query, PageQuery pageQuery, Writer writer) {
         tenantGuard.requireCurrentTenant(tenantId);
         long offset = OffsetPagingGuard.requireOffsetWithin(pageQuery, MAX_EXPORT_OFFSET);
-        ShortLinkSearchQuery query = new ShortLinkSearchQuery(false, null, null, null);
-        List<ShortLink> links = shortLinkRepository.listSearch(tenantId, query, offset, pageQuery.size());
+        ShortLinkSearchQuery effectiveQuery = query == null ? new ShortLinkSearchQuery(false, null, null, null, null) : query;
+        List<ShortLink> links = shortLinkRepository.listSearch(tenantId, effectiveQuery, offset, pageQuery.size());
         Map<Long, List<String>> tags = TagMaps.loadTagsByLinkIds(linkTagRepository, links);
 
         try (CSVPrinter printer = new CSVPrinter(

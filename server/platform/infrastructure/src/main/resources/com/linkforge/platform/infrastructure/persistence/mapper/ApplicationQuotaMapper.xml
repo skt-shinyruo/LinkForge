@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.linkforge.platform.infrastructure.persistence.mapper.ApplicationQuotaMapper">
+
+    <insert id="insert" parameterType="com.linkforge.platform.infrastructure.persistence.entity.ApplicationQuotaEntity">
+        INSERT INTO application_quotas (
+            application_id,
+            monthly_link_limit,
+            monthly_click_limit
+        ) VALUES (
+            #{applicationId},
+            #{monthlyLinkLimit},
+            #{monthlyClickLimit}
+        )
+    </insert>
+
+    <select id="findByApplicationId" resultType="com.linkforge.platform.infrastructure.persistence.entity.ApplicationQuotaEntity">
+        SELECT application_id, monthly_link_limit, monthly_click_limit, created_at, updated_at
+        FROM application_quotas
+        WHERE application_id = #{param1}
+    </select>
+</mapper>

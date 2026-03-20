@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 
 public class RedirectLinkProjection {
 
+    private String hostname;
     private String code;
     private Long tenantId;
     private Long linkId;
@@ -16,6 +17,14 @@ public class RedirectLinkProjection {
     private String queryForwardMode;
     private String queryForwardAllowlist;
     private LocalDateTime updatedAt;
+
+    public String getHostname() {
+        return hostname;
+    }
+
+    public void setHostname(String hostname) {
+        this.hostname = hostname;
+    }
 
     public String getCode() {
         return code;
@@ -113,4 +122,3 @@ public class RedirectLinkProjection {
         this.updatedAt = updatedAt;
     }
 }
-

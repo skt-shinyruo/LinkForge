@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createPinia, setActivePinia } from "pinia";
 import type { LinkDto, PageResponse } from "../services/types";
 
 const listLinksMock = vi.hoisted(() => vi.fn());
@@ -53,6 +54,7 @@ function createLink(id: number): LinkDto {
 describe("useLinksPage", () => {
   beforeEach(() => {
     vi.resetModules();
+    setActivePinia(createPinia());
     listLinksMock.mockReset();
     useLinkMutationsMock.mockReset();
     useLinkImportExportMock.mockReset();

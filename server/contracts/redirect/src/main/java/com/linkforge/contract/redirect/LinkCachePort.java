@@ -28,10 +28,25 @@ public interface LinkCachePort {
 
     LookupResult lookup(String code);
 
+    default LookupResult lookup(String host, String code) {
+        return lookup(code);
+    }
+
     boolean tryPut(LinkMeta meta);
+
+    default boolean tryPut(String host, LinkMeta meta) {
+        return tryPut(meta);
+    }
 
     void markNotFound(String code);
 
-    boolean tryEvict(String code);
-}
+    default void markNotFound(String host, String code) {
+        markNotFound(code);
+    }
 
+    boolean tryEvict(String code);
+
+    default boolean tryEvict(String host, String code) {
+        return tryEvict(code);
+    }
+}

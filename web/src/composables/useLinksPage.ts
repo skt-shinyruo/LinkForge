@@ -1,6 +1,9 @@
-import { getCurrentInstance, onMounted, reactive, ref } from "vue";
+import { computed, getCurrentInstance, onMounted, reactive, ref } from "vue";
+import { listApplications } from "../services/applications";
+import { listDomainsForApplication } from "../services/domains";
 import { listLinks } from "../services/links";
-import type { LinkDto } from "../services/types";
+import type { ApplicationDto, DomainDto, LinkDto } from "../services/types";
+import { useAuthStore } from "../stores/auth";
 import {
   createEmptyCreateForm,
   createEmptyEditForm,
@@ -32,11 +35,15 @@ export function useLinksPage() {
   const importing = ref(false);
   const error = ref<string | null>(null);
   const items = ref<LinkDto[]>([]);
+  const applications = ref<ApplicationDto[]>([]);
+  const availableDomains = ref<DomainDto[]>([]);
   const editingId = ref<number | null>(null);
   const importFile = ref<File | null>(null);
   const page = ref(0);
   const size = ref(DEFAULT_PAGE_SIZE);
   const total = ref(0);
+  const selectedApplicationId = ref<number | null>(null);
+  const selectedDomainId = ref<number | null>(null);
 
   const filters = reactive<LinkListFilters>({
     showArchived: false,
@@ -45,6 +52,9 @@ export function useLinksPage() {
 
   const createForm = reactive<LinkCreateFormState>(createEmptyCreateForm());
   const editForm = reactive<LinkEditFormState>(createEmptyEditForm());
+
+  const auth = useAuthStore();
+  const isAdmin = computed(() => auth.isAdmin);
 
   function resetCreateForm() {
     Object.assign(createForm, createEmptyCreateForm());
@@ -62,6 +72,7 @@ export function useLinksPage() {
       const response = await listLinks({
         page: targetPage,
         size: size.value,
+        applicationId: selectedApplicationId.value ?? undefined,
         archived: filters.showArchived,
         keyword: filters.keyword.trim() || undefined,
       });
@@ -76,12 +87,49 @@ export function useLinksPage() {
     }
   }
 
+  async function loadAdminOptions() {
+    try {
+      const nextApplications = await listApplications();
+      applications.value = nextApplications;
+      if (
+        selectedApplicationId.value != null &&
+        !nextApplications.some((application) => application.id === selectedApplicationId.value)
+      ) {
+        selectedApplicationId.value = null;
+      }
+      if (selectedApplicationId.value != null) {
+        await loadDomainsForApplication(selectedApplicationId.value);
+      }
+    } catch (caught) {
+      error.value = getErrorMessage(caught, "加载应用和域名失败");
+    }
+  }
+
+  async function loadDomainsForApplication(applicationId: number | null) {
+    if (!isAdmin.value || applicationId == null) {
+      availableDomains.value = [];
+      selectedDomainId.value = null;
+      return;
+    }
+    const nextDomains = await listDomainsForApplication(applicationId);
+    availableDomains.value = nextDomains;
+    if (nextDomains.length === 0) {
+      selectedDomainId.value = null;
+      return;
+    }
+    if (!nextDomains.some((domain) => domain.id === selectedDomainId.value)) {
+      selectedDomainId.value = nextDomains[0]!.id;
+    }
+  }
+
   const mutations = useLinkMutations({
     createForm,
     editForm,
     editingId,
     creating,
     filters,
+    selectedApplicationId,
+    selectedDomainId,
     setError: (message) => {
       error.value = message;
     },
@@ -123,16 +171,43 @@ export function useLinksPage() {
       error.value = message;
     },
     getErrorMessage,
+    getExportQuery: () => ({
+      applicationId: selectedApplicationId.value ?? undefined,
+      archived: filters.showArchived,
+      keyword: filters.keyword.trim() || undefined,
+    }),
     reload: load,
   });
 
+  async function setSelectedApplicationId(value: number | null) {
+    selectedApplicationId.value = value;
+    try {
+      await loadDomainsForApplication(value);
+    } catch (caught) {
+      error.value = getErrorMessage(caught, "加载域名失败");
+    }
+    page.value = 0;
+    await load(0);
+  }
+
+  function setSelectedDomainId(value: number | null) {
+    selectedDomainId.value = value;
+  }
+
   if (getCurrentInstance()) {
     onMounted(() => {
-      void load();
+      void (async () => {
+        if (isAdmin.value) {
+          await loadAdminOptions();
+        }
+        await load();
+      })();
     });
   }
 
   return {
+    applications,
+    availableDomains,
     createForm,
     creating,
     editForm,
@@ -150,7 +225,11 @@ export function useLinksPage() {
     policySummary,
     previousPage,
     saveEdit: mutations.saveEdit,
+    selectedApplicationId,
+    selectedDomainId,
     setArchived,
+    setSelectedApplicationId,
+    setSelectedDomainId,
     setKeyword,
     setImportFile: importExport.setImportFile,
     size,

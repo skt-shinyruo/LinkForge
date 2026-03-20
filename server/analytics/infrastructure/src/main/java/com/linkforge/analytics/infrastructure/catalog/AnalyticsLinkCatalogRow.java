@@ -6,6 +6,8 @@ public class AnalyticsLinkCatalogRow {
 
     private Long tenantId;
     private Long linkId;
+    private Long applicationId;
+    private Long domainId;
     private String code;
     private String originalUrl;
     private LocalDateTime archivedAt;
@@ -25,6 +27,22 @@ public class AnalyticsLinkCatalogRow {
 
     public void setLinkId(Long linkId) {
         this.linkId = linkId;
+    }
+
+    public Long getApplicationId() {
+        return applicationId;
+    }
+
+    public void setApplicationId(Long applicationId) {
+        this.applicationId = applicationId;
+    }
+
+    public Long getDomainId() {
+        return domainId;
+    }
+
+    public void setDomainId(Long domainId) {
+        this.domainId = domainId;
     }
 
     public String getCode() {
@@ -59,4 +77,3 @@ public class AnalyticsLinkCatalogRow {
         this.deleted = deleted;
     }
 }
-

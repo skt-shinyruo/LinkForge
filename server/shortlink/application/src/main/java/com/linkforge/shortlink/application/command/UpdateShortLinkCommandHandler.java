@@ -5,6 +5,8 @@ import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.contract.shortlink.ShortLinkErrorCode;
 import com.linkforge.foundation.runtime.security.TenantGuard;
 import com.linkforge.foundation.tx.AfterCommit;
+import com.linkforge.governance.application.GovernanceService;
+import com.linkforge.governance.domain.SensitiveOperationType;
 import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
 import com.linkforge.shortlink.application.ShortLinkService.UpdateLinkRequest;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
@@ -17,6 +19,7 @@ import com.linkforge.shortlink.domain.HttpUrl;
 import com.linkforge.shortlink.domain.QueryForwardAllowlist;
 import com.linkforge.shortlink.domain.QueryForwardMode;
 import com.linkforge.shortlink.domain.ShortLink;
+import com.linkforge.shortlink.domain.ShortLinkLifecycleState;
 import com.linkforge.shortlink.domain.ShortLinkDomainException;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +40,7 @@ public class UpdateShortLinkCommandHandler {
     private final ShortLinkDtoMapper dtoMapper;
     private final TenantGuard tenantGuard;
     private final Clock clock;
+    private final GovernanceService governanceService;
 
     public UpdateShortLinkCommandHandler(
             ShortLinkRepository shortLinkRepository,
@@ -46,7 +50,8 @@ public class UpdateShortLinkCommandHandler {
             RedirectCacheSyncPort redirectCacheSync,
             ShortLinkDtoMapper dtoMapper,
             TenantGuard tenantGuard,
-            Clock clock
+            Clock clock,
+            GovernanceService governanceService
     ) {
         this.shortLinkRepository = shortLinkRepository;
         this.setLinkTagsHandler = setLinkTagsHandler;
@@ -56,6 +61,7 @@ public class UpdateShortLinkCommandHandler {
         this.dtoMapper = dtoMapper;
         this.tenantGuard = tenantGuard;
         this.clock = clock;
+        this.governanceService = governanceService;
     }
 
     @Transactional
@@ -73,7 +79,32 @@ public class UpdateShortLinkCommandHandler {
             throw ShortLinkDomainExceptions.translate(ex);
         }
 
+        boolean appAwareLink = link.applicationId() != null && link.domainId() != null;
+        ShortLinkLifecycleState persistedLifecycleState = link.lifecycleState();
+        if (req.lifecycleState() != null) {
+            try {
+                link.setLifecycleState(ShortLinkLifecycleState.parseNullable(req.lifecycleState()));
+            } catch (IllegalArgumentException ex) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "lifecycleState 不合法");
+            }
+        }
+
         if (req.originalUrl() != null) {
+            if (appAwareLink
+                    && persistedLifecycleState == ShortLinkLifecycleState.ACTIVE
+                    && !link.originalUrl().value().equals(req.originalUrl())) {
+                governanceService.submitRequest(
+                        tenantId,
+                        new GovernanceService.SubmitApprovalRequest(
+                                SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE,
+                                link.applicationId(),
+                                "originalUrl=" + link.originalUrl().value(),
+                                "originalUrl=" + req.originalUrl()
+                        )
+                );
+                List<String> tags = linkTagRepository.findTagNamesByLinkId(linkId);
+                return dtoMapper.toDto(link, tags);
+            }
             try {
                 link.changeOriginalUrl(HttpUrl.of(req.originalUrl()));
             } catch (ShortLinkDomainException ex) {
@@ -158,7 +189,7 @@ public class UpdateShortLinkCommandHandler {
         }
 
         eventPublisher.updated(link, clock.instant());
-        AfterCommit.run(() -> redirectCacheSync.evict(link.code().value()));
+        AfterCommit.run(() -> redirectCacheSync.evict(link.tenantId(), link.domainId(), link.code().value()));
 
         List<String> tags = linkTagRepository.findTagNamesByLinkId(linkId);
         return dtoMapper.toDto(link, tags);

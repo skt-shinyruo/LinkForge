@@ -15,7 +15,13 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-@RestControllerAdvice(basePackages = {"com.linkforge.accounts", "com.linkforge.shortlink", "com.linkforge.analytics"})
+@RestControllerAdvice(basePackages = {
+        "com.linkforge.accounts",
+        "com.linkforge.shortlink",
+        "com.linkforge.analytics",
+        "com.linkforge.platform",
+        "com.linkforge.governance"
+})
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);

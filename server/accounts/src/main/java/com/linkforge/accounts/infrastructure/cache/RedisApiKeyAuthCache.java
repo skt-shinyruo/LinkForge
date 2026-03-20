@@ -44,19 +44,19 @@ public class RedisApiKeyAuthCache implements ApiKeyAuthCache {
     }
 
     @Override
-    public void putActive(long apiKeyId, long tenantId, String secretDigest, long ttlSeconds) {
+    public void putActive(long apiKeyId, long tenantId, Long applicationId, String secretDigest, long ttlSeconds) {
         if (tenantId <= 0 || secretDigest == null || secretDigest.isBlank() || ttlSeconds <= 0) {
             return;
         }
-        write(apiKeyId, new Entry(tenantId, AccountsConstants.STATUS_ACTIVE, secretDigest), ttlSeconds);
+        write(apiKeyId, new Entry(tenantId, applicationId, AccountsConstants.STATUS_ACTIVE, secretDigest), ttlSeconds);
     }
 
     @Override
-    public void putDisabled(long apiKeyId, long tenantId, long ttlSeconds) {
+    public void putDisabled(long apiKeyId, long tenantId, Long applicationId, long ttlSeconds) {
         if (tenantId <= 0 || ttlSeconds <= 0) {
             return;
         }
-        write(apiKeyId, new Entry(tenantId, AccountsConstants.STATUS_DISABLED, ""), ttlSeconds);
+        write(apiKeyId, new Entry(tenantId, applicationId, AccountsConstants.STATUS_DISABLED, ""), ttlSeconds);
     }
 
     @Override
@@ -103,8 +103,17 @@ public class RedisApiKeyAuthCache implements ApiKeyAuthCache {
     }
 
     private static Entry parse(String raw) {
-        String[] parts = raw.split("\\|", 4);
-        if (parts.length != 4 || !"v1".equals(parts[0])) {
+        String[] parts = raw.split("\\|", 5);
+        if (parts.length == 4 && "v1".equals(parts[0])) {
+            long tenantId;
+            try {
+                tenantId = Long.parseLong(parts[1]);
+            } catch (NumberFormatException e) {
+                return null;
+            }
+            return new Entry(tenantId, null, parts[2], parts[3]);
+        }
+        if (parts.length != 5 || !"v2".equals(parts[0])) {
             return null;
         }
         long tenantId;
@@ -113,11 +122,26 @@ public class RedisApiKeyAuthCache implements ApiKeyAuthCache {
         } catch (NumberFormatException e) {
             return null;
         }
-        return new Entry(tenantId, parts[2], parts[3]);
+        Long applicationId = null;
+        if (!parts[2].isBlank()) {
+            try {
+                applicationId = Long.parseLong(parts[2]);
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        return new Entry(tenantId, applicationId, parts[3], parts[4]);
     }
 
     private static String format(Entry entry) {
-        return "v1|" + entry.tenantId() + "|" + nullToEmpty(entry.status()) + "|" + nullToEmpty(entry.secretDigest());
+        return "v2|"
+                + entry.tenantId()
+                + "|"
+                + (entry.applicationId() == null ? "" : entry.applicationId())
+                + "|"
+                + nullToEmpty(entry.status())
+                + "|"
+                + nullToEmpty(entry.secretDigest());
     }
 
     private static String nullToEmpty(String value) {

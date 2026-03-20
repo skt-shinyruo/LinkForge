@@ -39,6 +39,7 @@ class RedirectControllerExpiryBoundaryTest {
                 false,
                 null,
                 null,
+                null,
                 null
         );
 

@@ -7,7 +7,11 @@
     <resultMap id="ShortLinkResultMap" type="com.linkforge.shortlink.infrastructure.persistence.entity.ShortLinkEntity">
         <id property="id" column="id"/>
         <result property="tenantId" column="tenant_id"/>
+        <result property="applicationId" column="application_id"/>
+        <result property="domainId" column="domain_id"/>
+        <result property="hostname" column="hostname"/>
         <result property="code" column="code"/>
+        <result property="lifecycleState" column="lifecycle_state"/>
         <result property="originalUrl" column="original_url"/>
         <result property="note" column="note"/>
         <result property="enabled" column="enabled"/>
@@ -28,7 +32,10 @@
     <sql id="shortLinkColumns">
         id,
         tenant_id,
+        application_id,
+        domain_id,
         code,
+        lifecycle_state,
         original_url,
         note,
         enabled,
@@ -44,6 +51,30 @@
         version,
         created_at,
         updated_at
+    </sql>
+
+    <sql id="shortLinkColumnsAliased">
+        sl.id AS id,
+        sl.tenant_id AS tenant_id,
+        sl.application_id AS application_id,
+        sl.domain_id AS domain_id,
+        sl.code AS code,
+        sl.lifecycle_state AS lifecycle_state,
+        sl.original_url AS original_url,
+        sl.note AS note,
+        sl.enabled AS enabled,
+        sl.expires_at AS expires_at,
+        sl.archived_at AS archived_at,
+        sl.redirect_status_code AS redirect_status_code,
+        sl.preview_enabled AS preview_enabled,
+        sl.unavailable_landing_url AS unavailable_landing_url,
+        sl.query_forward_mode AS query_forward_mode,
+        sl.query_forward_allowlist AS query_forward_allowlist,
+        sl.created_by_type AS created_by_type,
+        sl.created_by AS created_by,
+        sl.version AS version,
+        sl.created_at AS created_at,
+        sl.updated_at AS updated_at
     </sql>
 
     <select id="findByTenantIdAndId" resultMap="ShortLinkResultMap">
@@ -63,6 +94,15 @@
         LIMIT 1
     </select>
 
+    <select id="findByDomainIdAndCode" resultMap="ShortLinkResultMap">
+        SELECT
+        <include refid="shortLinkColumns"/>
+        FROM short_links
+        WHERE domain_id = #{domainId}
+          AND code = #{code}
+        LIMIT 1
+    </select>
+
     <select id="findActiveByCode" resultMap="ShortLinkResultMap">
         SELECT
         <include refid="shortLinkColumns"/>
@@ -70,6 +110,38 @@
         WHERE code = #{param1}
           AND archived_at IS NULL
         LIMIT 1
+    </select>
+
+    <select id="findActiveByHostnameAndCode" resultMap="ShortLinkResultMap">
+        SELECT
+        <include refid="shortLinkColumnsAliased"/>,
+        d.hostname AS hostname
+        FROM short_links sl
+        JOIN domains d ON d.id = sl.domain_id
+        WHERE d.hostname = #{hostname}
+          AND sl.code = #{code}
+          AND sl.archived_at IS NULL
+        LIMIT 1
+    </select>
+
+    <select id="findActiveByLegacyBaseHostAndCode" resultMap="ShortLinkResultMap">
+        SELECT
+        <include refid="shortLinkColumnsAliased"/>,
+        d.hostname AS hostname
+        FROM short_links sl
+        JOIN domains d ON d.id = sl.domain_id
+        WHERE d.hostname = CONCAT('legacy-', sl.tenant_id, '.', #{baseHost})
+          AND sl.code = #{code}
+          AND sl.archived_at IS NULL
+        LIMIT 1
+    </select>
+
+    <select id="countActiveByTenantIdAndApplicationId" resultType="long">
+        SELECT COUNT(*)
+        FROM short_links
+        WHERE tenant_id = #{tenantId}
+          AND application_id = #{applicationId}
+          AND archived_at IS NULL
     </select>
 
     <sql id="searchWhere">
@@ -106,6 +178,10 @@
                       AND t.tenant_id = short_links.tenant_id
                       AND t.name = #{tag}
                 )
+            </if>
+
+            <if test="applicationId != null">
+                AND application_id = #{applicationId}
             </if>
         </where>
     </sql>

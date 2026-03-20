@@ -81,7 +81,7 @@ class RedirectExperienceIntegrationTest {
 
     @Test
     void should_return_404_html_when_link_not_found_and_accept_html() throws Exception {
-        when(redirectService.resolve(anyString()))
+        when(redirectService.resolve(anyString(), anyString()))
                 .thenThrow(new RedirectBusinessException(RedirectErrorCode.LINK_NOT_FOUND));
 
         mockMvc.perform(get("/r/missing").header(HttpHeaders.ACCEPT, "text/html"))
@@ -93,7 +93,7 @@ class RedirectExperienceIntegrationTest {
 
     @Test
     void should_return_json_when_link_not_found_and_accept_not_html() throws Exception {
-        when(redirectService.resolve(anyString()))
+        when(redirectService.resolve(anyString(), anyString()))
                 .thenThrow(new RedirectBusinessException(RedirectErrorCode.LINK_NOT_FOUND));
 
         mockMvc.perform(get("/r/missing").header(HttpHeaders.ACCEPT, "application/json"))
@@ -106,7 +106,7 @@ class RedirectExperienceIntegrationTest {
 
     @Test
     void should_return_410_html_when_link_disabled_and_accept_html() throws Exception {
-        when(redirectService.resolve(anyString()))
+        when(redirectService.resolve(anyString(), anyString()))
                 .thenReturn(new LinkMeta(
                         1L,
                         1L,
@@ -116,6 +116,7 @@ class RedirectExperienceIntegrationTest {
                         null,
                         null,
                         false,
+                        null,
                         null,
                         null,
                         null
@@ -130,7 +131,7 @@ class RedirectExperienceIntegrationTest {
 
     @Test
     void should_return_preview_html_when_preview_enabled_and_not_confirmed() throws Exception {
-        when(redirectService.resolve(anyString()))
+        when(redirectService.resolve(anyString(), anyString()))
                 .thenReturn(new LinkMeta(
                         1L,
                         1L,
@@ -140,6 +141,7 @@ class RedirectExperienceIntegrationTest {
                         null,
                         null,
                         true,
+                        null,
                         null,
                         null,
                         null
@@ -158,7 +160,7 @@ class RedirectExperienceIntegrationTest {
 
     @Test
     void should_redirect_after_confirm_and_forward_allowed_query_only() throws Exception {
-        when(redirectService.resolve(anyString()))
+        when(redirectService.resolve(anyString(), anyString()))
                 .thenReturn(new LinkMeta(
                         1L,
                         1L,
@@ -170,7 +172,8 @@ class RedirectExperienceIntegrationTest {
                         true,
                         null,
                         "ALLOWLIST",
-                        "utm_*"
+                        "utm_*",
+                        null
                 ));
 
         MvcResult r = mockMvc.perform(
@@ -195,7 +198,7 @@ class RedirectExperienceIntegrationTest {
 
     @Test
     void should_not_override_existing_query_param_in_original_url() throws Exception {
-        when(redirectService.resolve(anyString()))
+        when(redirectService.resolve(anyString(), anyString()))
                 .thenReturn(new LinkMeta(
                         1L,
                         1L,
@@ -207,6 +210,7 @@ class RedirectExperienceIntegrationTest {
                         false,
                         null,
                         "ALL",
+                        null,
                         null
                 ));
 
@@ -225,7 +229,7 @@ class RedirectExperienceIntegrationTest {
 
     @Test
     void should_return_410_json_when_link_expired_and_accept_not_html() throws Exception {
-        when(redirectService.resolve(anyString()))
+        when(redirectService.resolve(anyString(), anyString()))
                 .thenReturn(new LinkMeta(
                         1L,
                         1L,
@@ -235,6 +239,7 @@ class RedirectExperienceIntegrationTest {
                         LocalDateTime.now(ZoneOffset.UTC).minusMinutes(1),
                         null,
                         false,
+                        null,
                         null,
                         null,
                         null

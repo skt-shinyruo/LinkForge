@@ -56,4 +56,73 @@ describe("router auth bootstrap", () => {
     expect(auth.email).toBe("cookie-user@example.com");
     expect(auth.initialized).toBe(true);
   });
+
+  it("redirects authenticated admins into the control-plane overview and exposes self-service routes", async () => {
+    apiFetchMock.mockResolvedValue({
+      code: 0,
+      data: {
+        email: "admin@example.com",
+        tenantId: 21,
+        roles: ["TENANT_ADMIN"],
+      },
+    });
+
+    const [{ router }] = await Promise.all([import("./index"), import("../stores/auth")]);
+
+    await router.push("/login");
+    await router.isReady();
+
+    expect(router.currentRoute.value.fullPath).toBe("/overview");
+
+    const routePaths = router.getRoutes().map((route) => route.path);
+    expect(routePaths).toEqual(
+      expect.arrayContaining([
+        "/overview",
+        "/applications",
+        "/applications/:applicationId",
+        "/domains",
+        "/api-keys",
+        "/approvals",
+        "/audit",
+        "/links",
+        "/stats",
+      ]),
+    );
+  });
+
+  it("redirects authenticated non-admin users to /links instead of /overview", async () => {
+    apiFetchMock.mockResolvedValue({
+      code: 0,
+      data: {
+        email: "user@example.com",
+        tenantId: 22,
+        roles: ["USER"],
+      },
+    });
+
+    const [{ router }] = await Promise.all([import("./index"), import("../stores/auth")]);
+
+    await router.push("/login");
+    await router.isReady();
+
+    expect(router.currentRoute.value.fullPath).toBe("/links");
+  });
+
+  it("redirects authenticated non-admin users away from admin-only routes", async () => {
+    apiFetchMock.mockResolvedValue({
+      code: 0,
+      data: {
+        email: "user@example.com",
+        tenantId: 22,
+        roles: ["USER"],
+      },
+    });
+
+    const [{ router }] = await Promise.all([import("./index"), import("../stores/auth")]);
+
+    await router.push("/overview");
+    await router.isReady();
+
+    expect(router.currentRoute.value.fullPath).toBe("/links");
+  });
 });

@@ -28,6 +28,8 @@
         <module>shortlink</module>
         <module>redirect</module>
         <module>analytics</module>
+        <module>platform</module>
+        <module>governance</module>
         <module>app</module>
     </modules>
 
@@ -149,6 +151,56 @@
             <dependency>
                 <groupId>com.linkforge</groupId>
                 <artifactId>linkforge-analytics-interfaces</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-platform</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-platform-domain</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-platform-application</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-platform-infrastructure</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-platform-interfaces</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-governance</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-governance-domain</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-governance-application</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-governance-infrastructure</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-governance-interfaces</artifactId>
                 <version>${project.version}</version>
             </dependency>
 

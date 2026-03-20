@@ -73,7 +73,7 @@ class ShortLinkEventProjectorJobTest {
         assertThat(checkpoints.lastSeq).isEqualTo(1L);
         verify(deadLetters, never()).upsertFailure(anyString(), any(IntegrationEventRow.class), anyInt(), anyString());
         verify(projectionMapper, never()).upsert(any());
-        verify(projectionMapper, never()).deleteByCode(anyString());
+        verify(projectionMapper, never()).deleteByHostnameAndCode(anyString(), anyString());
         verify(linkCache, never()).tryPut(any());
         verify(linkCache, never()).tryEvict(anyString());
     }
@@ -98,6 +98,7 @@ class ShortLinkEventProjectorJobTest {
                 tenantId,
                 linkId,
                 code,
+                "alpha.example.test",
                 url,
                 true,
                 null,
@@ -106,6 +107,8 @@ class ShortLinkEventProjectorJobTest {
                 null,
                 null,
                 List.of(),
+                null,
+                null,
                 null
         );
         ShortLinkCreatedV1 created = new ShortLinkCreatedV1("e1", occurredAt, tenantId, linkId, code, snapshot);
@@ -135,8 +138,8 @@ class ShortLinkEventProjectorJobTest {
 
         when(store.listAfterSeq(0L, 200)).thenReturn(List.of(row1, row2));
         when(projectionMapper.upsert(any())).thenReturn(1);
-        when(linkCache.tryEvict(eq(code))).thenReturn(true);
-        when(linkCache.tryPut(any())).thenReturn(false);
+        when(linkCache.tryEvict(eq("alpha.example.test"), eq(code))).thenReturn(true);
+        when(linkCache.tryPut(eq("alpha.example.test"), any())).thenReturn(false);
 
         ShortLinkEventProjectorJob job = new ShortLinkEventProjectorJob(
                 store,
@@ -155,7 +158,7 @@ class ShortLinkEventProjectorJobTest {
         verify(deadLetters, never()).upsertFailure(anyString(), any(IntegrationEventRow.class), anyInt(), anyString());
         verify(projectionMapper, times(1)).upsert(any());
         verify(store, times(1)).listAfterSeq(eq(0L), anyInt());
-        verify(linkCache, times(1)).tryPut(any());
+        verify(linkCache, times(1)).tryPut(eq("alpha.example.test"), any());
     }
 
     private static PlatformTransactionManager noOpTxManager() {
@@ -191,4 +194,3 @@ class ShortLinkEventProjectorJobTest {
         }
     }
 }
-

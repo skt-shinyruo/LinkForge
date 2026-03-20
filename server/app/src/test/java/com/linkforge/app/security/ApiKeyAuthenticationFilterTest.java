@@ -87,7 +87,7 @@ class ApiKeyAuthenticationFilterTest {
         );
 
         when(apiKeyService.authenticate("lfk_123_secret"))
-                .thenReturn(new ApiKeyService.ApiKeyAuthResult(1L, 123L));
+                .thenReturn(new ApiKeyService.ApiKeyAuthResult(1L, 1L, 123L));
         doThrow(new BusinessException(AccountsErrorCode.TENANT_DISABLED))
                 .when(accountStatusService)
                 .requireActiveTenant(1L);

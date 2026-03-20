@@ -56,6 +56,7 @@ public class AccountsApiKeyStoreMybatisAdapter implements AccountsApiKeyStore {
         ApiKeyEntity entity = new ApiKeyEntity();
         entity.setId(apiKey.id());
         entity.setTenantId(apiKey.tenantId());
+        entity.setApplicationId(apiKey.applicationId());
         entity.setName(apiKey.name());
         entity.setKeyHash(apiKey.keyHash());
         entity.setStatus(apiKey.status());
@@ -71,6 +72,7 @@ public class AccountsApiKeyStoreMybatisAdapter implements AccountsApiKeyStore {
         return new ApiKey(
                 entity.getId(),
                 entity.getTenantId(),
+                entity.getApplicationId(),
                 entity.getName(),
                 entity.getKeyHash(),
                 entity.getStatus(),

@@ -87,6 +87,9 @@ public class ImportShortLinksCsvCommandHandler {
                             null,
                             null,
                             null,
+                            null,
+                            null,
+                            null,
                             null
                     );
                     importRowTx.executeWithoutResult(status -> createHandler.handle(tenantId, createdBy, req));

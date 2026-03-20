@@ -14,20 +14,43 @@ export function useLinkMutations(args: {
   editingId: { value: number | null };
   creating: { value: boolean };
   filters: { showArchived: boolean };
+  selectedApplicationId: { value: number | null };
+  selectedDomainId: { value: number | null };
   setError: (message: string | null) => void;
   getErrorMessage: (error: unknown, fallbackMessage: string) => string;
   load: () => Promise<void>;
   resetCreateForm: () => void;
   resetEditForm: () => void;
 }) {
-  const { createForm, editForm, editingId, creating, filters, setError, getErrorMessage, load, resetCreateForm, resetEditForm } = args;
+  const {
+    createForm,
+    editForm,
+    editingId,
+    creating,
+    filters,
+    selectedApplicationId,
+    selectedDomainId,
+    setError,
+    getErrorMessage,
+    load,
+    resetCreateForm,
+    resetEditForm,
+  } = args;
 
   async function createLink() {
     creating.value = true;
     setError(null);
 
     try {
-      await createLinkRequest(buildCreatePayload(createForm));
+      const payload = buildCreatePayload(createForm);
+      if (selectedApplicationId.value != null) {
+        if (selectedDomainId.value == null) {
+          throw new Error("请选择应用域名");
+        }
+        payload.applicationId = selectedApplicationId.value;
+        payload.domainId = selectedDomainId.value;
+      }
+      await createLinkRequest(payload);
       filters.showArchived = false;
       resetCreateForm();
       await load();

@@ -18,6 +18,7 @@ public interface AccountsApiKeyStore {
     record ApiKey(
             Long id,
             Long tenantId,
+            Long applicationId,
             String name,
             String keyHash,
             String status,

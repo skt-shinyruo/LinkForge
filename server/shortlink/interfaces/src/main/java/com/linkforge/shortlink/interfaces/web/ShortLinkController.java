@@ -8,8 +8,10 @@ import com.linkforge.foundation.persistence.PageResult;
 import com.linkforge.foundation.security.AuthContext;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.web.RequestId;
+import com.linkforge.platform.application.PlatformControlPlaneService;
 import com.linkforge.shortlink.application.ShortLinkService;
 import com.linkforge.shortlink.application.ShortLinkService.CreatedBy;
+import com.linkforge.shortlink.application.ShortLinkService.CreateLinkRequest;
 import com.linkforge.shortlink.application.ShortLinkService.ImportResult;
 import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
 import com.linkforge.shortlink.application.query.ShortLinkSearchQuery;
@@ -34,18 +36,24 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 
 @RestController
-@RequestMapping("/api/v1/links")
+@RequestMapping("/api/v1")
 public class ShortLinkController {
 
     private final ShortLinkService shortLinkService;
     private final ShortLinkWriteGuard writeGuard;
+    private final PlatformControlPlaneService platformControlPlaneService;
 
-    public ShortLinkController(ShortLinkService shortLinkService, ShortLinkWriteGuard writeGuard) {
+    public ShortLinkController(
+            ShortLinkService shortLinkService,
+            ShortLinkWriteGuard writeGuard,
+            PlatformControlPlaneService platformControlPlaneService
+    ) {
         this.shortLinkService = shortLinkService;
         this.writeGuard = writeGuard;
+        this.platformControlPlaneService = platformControlPlaneService;
     }
 
-    @PostMapping
+    @PostMapping("/links")
     public ApiResponse<LinkDto> create(@Valid @RequestBody ShortLinkCreateHttpRequest req) {
         writeGuard.requireWriteEnabled();
         AuthPrincipal p = AuthContext.requirePrincipal();
@@ -58,8 +66,43 @@ public class ShortLinkController {
         return ApiResponse.ok(dto, RequestId.get());
     }
 
-    @GetMapping
+    @PostMapping("/applications/{applicationId}/links")
+    @PreAuthorize("hasRole('TENANT_ADMIN')")
+    public ApiResponse<LinkDto> createForApplication(
+            @PathVariable("applicationId") long applicationId,
+            @Valid @RequestBody ShortLinkCreateHttpRequest req
+    ) {
+        writeGuard.requireWriteEnabled();
+        AuthPrincipal p = AuthContext.requirePrincipal();
+        platformControlPlaneService.requireApplicationExists(p.getTenantId(), applicationId);
+        CreateLinkRequest createRequest = withApplicationId(ShortLinkHttpMapper.toCreateRequest(req), applicationId, req.applicationId());
+        LinkDto dto = shortLinkService.create(p.getTenantId(), CreatedBy.user(p.getUserId()), createRequest);
+        return ApiResponse.ok(dto, RequestId.get());
+    }
+
+    @GetMapping("/links")
     public ApiResponse<ShortLinkPageHttpResponse<LinkDto>> list(
+            @RequestParam(required = false) Boolean archived,
+            @RequestParam(required = false) Boolean enabled,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String tag,
+            @RequestParam(required = false) Long applicationId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        AuthPrincipal p = AuthContext.requirePrincipal();
+        PageResult<LinkDto> result = shortLinkService.search(
+                p.getTenantId(),
+                buildSearchQuery(applicationId, archived, enabled, keyword, tag),
+                PageQuery.of(page, size, 100)
+        );
+        return ApiResponse.ok(ShortLinkHttpMapper.toPageResponse(result), RequestId.get());
+    }
+
+    @GetMapping("/applications/{applicationId}/links")
+    @PreAuthorize("hasRole('TENANT_ADMIN')")
+    public ApiResponse<ShortLinkPageHttpResponse<LinkDto>> listByApplication(
+            @PathVariable("applicationId") long applicationId,
             @RequestParam(required = false) Boolean archived,
             @RequestParam(required = false) Boolean enabled,
             @RequestParam(required = false) String keyword,
@@ -68,22 +111,22 @@ public class ShortLinkController {
             @RequestParam(defaultValue = "20") int size
     ) {
         AuthPrincipal p = AuthContext.requirePrincipal();
-        boolean archivedFlag = archived != null && archived;
+        platformControlPlaneService.requireApplicationExists(p.getTenantId(), applicationId);
         PageResult<LinkDto> result = shortLinkService.search(
                 p.getTenantId(),
-                new ShortLinkSearchQuery(archivedFlag, enabled, keyword, tag),
+                buildSearchQuery(applicationId, archived, enabled, keyword, tag),
                 PageQuery.of(page, size, 100)
         );
         return ApiResponse.ok(ShortLinkHttpMapper.toPageResponse(result), RequestId.get());
     }
 
-    @GetMapping("/{id}")
+    @GetMapping("/links/{id}")
     public ApiResponse<LinkDto> detail(@PathVariable("id") long id) {
         AuthPrincipal p = AuthContext.requirePrincipal();
         return ApiResponse.ok(shortLinkService.detail(p.getTenantId(), id), RequestId.get());
     }
 
-    @PutMapping("/{id}")
+    @PutMapping("/links/{id}")
     public ApiResponse<LinkDto> update(@PathVariable("id") long id, @Valid @RequestBody ShortLinkUpdateHttpRequest req) {
         writeGuard.requireWriteEnabled();
         AuthPrincipal p = AuthContext.requirePrincipal();
@@ -97,7 +140,7 @@ public class ShortLinkController {
         );
     }
 
-    @PostMapping("/{id}/archive")
+    @PostMapping("/links/{id}/archive")
     @PreAuthorize("hasRole('TENANT_ADMIN')")
     public ApiResponse<LinkDto> archive(@PathVariable("id") long id) {
         writeGuard.requireWriteEnabled();
@@ -105,7 +148,7 @@ public class ShortLinkController {
         return ApiResponse.ok(shortLinkService.archive(p.getTenantId(), id), RequestId.get());
     }
 
-    @PostMapping("/{id}/restore")
+    @PostMapping("/links/{id}/restore")
     @PreAuthorize("hasRole('TENANT_ADMIN')")
     public ApiResponse<LinkDto> restore(@PathVariable("id") long id) {
         writeGuard.requireWriteEnabled();
@@ -113,7 +156,7 @@ public class ShortLinkController {
         return ApiResponse.ok(shortLinkService.restore(p.getTenantId(), id), RequestId.get());
     }
 
-    @DeleteMapping("/{id}")
+    @DeleteMapping("/links/{id}")
     @PreAuthorize("hasRole('TENANT_ADMIN')")
     public ApiResponse<Void> delete(@PathVariable("id") long id) {
         writeGuard.requireWriteEnabled();
@@ -122,7 +165,7 @@ public class ShortLinkController {
         return ApiResponse.ok(null, RequestId.get());
     }
 
-    @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping(value = "/links/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('TENANT_ADMIN')")
     public ApiResponse<ImportResult> importCsv(@RequestParam("file") MultipartFile file) {
         writeGuard.requireWriteEnabled();
@@ -139,10 +182,15 @@ public class ShortLinkController {
         return ApiResponse.ok(r, RequestId.get());
     }
 
-    @GetMapping("/export")
+    @GetMapping("/links/export")
     @PreAuthorize("hasRole('TENANT_ADMIN')")
     public void exportCsv(
             jakarta.servlet.http.HttpServletResponse response,
+            @RequestParam(required = false) Boolean archived,
+            @RequestParam(required = false) Boolean enabled,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String tag,
+            @RequestParam(required = false) Long applicationId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "200") int size
     ) throws IOException {
@@ -150,7 +198,72 @@ public class ShortLinkController {
 
         response.setHeader(HttpHeaders.CONTENT_TYPE, "text/csv; charset=utf-8");
         response.setHeader(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"links.csv\"");
-        shortLinkService.exportCsv(p.getTenantId(), PageQuery.of(page, size, 1000), response.getOutputStream());
+        shortLinkService.exportCsv(
+                p.getTenantId(),
+                buildSearchQuery(applicationId, archived, enabled, keyword, tag),
+                PageQuery.of(page, size, 1000),
+                response.getOutputStream()
+        );
     }
 
+    @GetMapping("/applications/{applicationId}/links/export")
+    @PreAuthorize("hasRole('TENANT_ADMIN')")
+    public void exportCsvByApplication(
+            @PathVariable("applicationId") long applicationId,
+            jakarta.servlet.http.HttpServletResponse response,
+            @RequestParam(required = false) Boolean archived,
+            @RequestParam(required = false) Boolean enabled,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String tag,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "200") int size
+    ) throws IOException {
+        AuthPrincipal p = AuthContext.requirePrincipal();
+        platformControlPlaneService.requireApplicationExists(p.getTenantId(), applicationId);
+        response.setHeader(HttpHeaders.CONTENT_TYPE, "text/csv; charset=utf-8");
+        response.setHeader(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"links.csv\"");
+        shortLinkService.exportCsv(
+                p.getTenantId(),
+                buildSearchQuery(applicationId, archived, enabled, keyword, tag),
+                PageQuery.of(page, size, 1000),
+                response.getOutputStream()
+        );
+    }
+
+    private static CreateLinkRequest withApplicationId(
+            CreateLinkRequest createRequest,
+            long applicationId,
+            Long requestApplicationId
+    ) {
+        if (requestApplicationId != null && requestApplicationId != applicationId) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "请求体中的 applicationId 与路径不一致");
+        }
+        return new CreateLinkRequest(
+                createRequest.originalUrl(),
+                createRequest.note(),
+                createRequest.expiresAt(),
+                createRequest.enabled(),
+                createRequest.customCode(),
+                createRequest.tags(),
+                createRequest.redirectStatusCode(),
+                createRequest.previewEnabled(),
+                createRequest.unavailableLandingUrl(),
+                createRequest.queryForwardMode(),
+                createRequest.queryForwardAllowlist(),
+                applicationId,
+                createRequest.domainId(),
+                createRequest.lifecycleState()
+        );
+    }
+
+    private static ShortLinkSearchQuery buildSearchQuery(
+            Long applicationId,
+            Boolean archived,
+            Boolean enabled,
+            String keyword,
+            String tag
+    ) {
+        boolean archivedFlag = archived != null && archived;
+        return new ShortLinkSearchQuery(archivedFlag, enabled, keyword, tag, applicationId);
+    }
 }

@@ -125,6 +125,9 @@ class ShortLinkDeleteRetentionIntegrationTest {
                 null,
                 null,
                 null,
+                null,
+                null,
+                null,
                 null
         );
         ShortLinkService.LinkDto created = shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), req);

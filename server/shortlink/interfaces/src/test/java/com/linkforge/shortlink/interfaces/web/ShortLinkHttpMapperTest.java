@@ -28,7 +28,10 @@ class ShortLinkHttpMapperTest {
                 true,
                 "https://example.com/unavailable",
                 "ALLOWLIST",
-                List.of("utm_*", "ref")
+                List.of("utm_*", "ref"),
+                11L,
+                12L,
+                "ACTIVE"
         );
 
         assertThat(ShortLinkHttpMapper.toCreateRequest(httpRequest)).isEqualTo(
@@ -43,7 +46,10 @@ class ShortLinkHttpMapperTest {
                         true,
                         "https://example.com/unavailable",
                         "ALLOWLIST",
-                        List.of("utm_*", "ref")
+                        List.of("utm_*", "ref"),
+                        11L,
+                        12L,
+                        "ACTIVE"
                 )
         );
     }
@@ -63,7 +69,8 @@ class ShortLinkHttpMapperTest {
                 "https://example.com/fallback",
                 "DROP",
                 true,
-                List.of("utm_campaign")
+                List.of("utm_campaign"),
+                "DRAFT"
         );
 
         assertThat(ShortLinkHttpMapper.toUpdateRequest(httpRequest)).isEqualTo(
@@ -80,7 +87,8 @@ class ShortLinkHttpMapperTest {
                         "https://example.com/fallback",
                         "DROP",
                         true,
-                        List.of("utm_campaign")
+                        List.of("utm_campaign"),
+                        "DRAFT"
                 )
         );
     }
@@ -90,6 +98,9 @@ class ShortLinkHttpMapperTest {
         ShortLinkService.LinkDto link = new ShortLinkService.LinkDto(
                 42L,
                 7L,
+                11L,
+                12L,
+                "ACTIVE",
                 "launch",
                 "https://lnk.forge/launch",
                 "https://example.com/source",

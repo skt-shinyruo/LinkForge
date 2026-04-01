@@ -10,6 +10,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 class ArchitectureTest {
 
@@ -217,6 +221,23 @@ class ArchitectureTest {
                 .should().dependOnClassesThat()
                 .resideInAnyPackage("com.linkforge.accounts..")
                 .check(CLASSES);
+    }
+
+    @Test
+    void governance_service_source_should_not_import_accounts_roles() throws Exception {
+        // ArchUnit can miss constant-only dependencies after javac inlines static final String fields.
+        // Keep this source-level guard until governance stops importing accounts-domain Roles.
+        Path governanceService = Path.of(
+                "governance/application/src/main/java/com/linkforge/governance/application/GovernanceService.java"
+        );
+        if (!Files.exists(governanceService)) {
+            governanceService = Path.of(
+                    "../governance/application/src/main/java/com/linkforge/governance/application/GovernanceService.java"
+            );
+        }
+        assertThat(Files.exists(governanceService)).isTrue();
+        String source = Files.readString(governanceService);
+        assertThat(source).doesNotContain("import com.linkforge.accounts.domain.Roles;");
     }
 
     @Test

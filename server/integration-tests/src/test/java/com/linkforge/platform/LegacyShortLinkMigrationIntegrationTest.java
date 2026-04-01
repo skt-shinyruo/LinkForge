@@ -65,12 +65,18 @@ class LegacyShortLinkMigrationIntegrationTest extends PlatformPersistenceIntegra
         assertThat(first.domainId()).isEqualTo(second.domainId());
 
         Integer applicationCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM applications WHERE tenant_id = ? AND application_key = ?",
+                "SELECT COUNT(*) FROM applications WHERE tenant_id = ?",
                 Integer.class,
-                TENANT_ID,
-                LegacyShortLinkBackfillService.LEGACY_DEFAULT_APPLICATION_KEY
+                TENANT_ID
         );
         assertThat(applicationCount).isEqualTo(1);
+
+        Long persistedTenantId = jdbcTemplate.queryForObject(
+                "SELECT tenant_id FROM applications WHERE id = ?",
+                Long.class,
+                first.applicationId()
+        );
+        assertThat(persistedTenantId).isEqualTo(TENANT_ID);
 
         Long applicationId = jdbcTemplate.queryForObject(
                 "SELECT application_id FROM short_links WHERE id = ?",

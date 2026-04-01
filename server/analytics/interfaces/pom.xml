@@ -34,7 +34,7 @@
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-governance-application</artifactId>
+            <artifactId>linkforge-contract-governance</artifactId>
         </dependency>
 
         <dependency>

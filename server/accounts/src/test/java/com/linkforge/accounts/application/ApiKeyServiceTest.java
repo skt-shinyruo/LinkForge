@@ -5,11 +5,11 @@ import com.linkforge.accounts.application.port.AccountsPasswordHasher;
 import com.linkforge.accounts.application.port.ApiKeyAuthCache;
 import com.linkforge.accounts.domain.AccountsConstants;
 import com.linkforge.contract.api.BusinessException;
+import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.contract.openapi.OpenApiErrorCode;
 import com.linkforge.foundation.config.SecurityProperties;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.runtime.security.TenantGuard;
-import com.linkforge.platform.application.PlatformControlPlaneService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -68,10 +68,12 @@ class ApiKeyServiceTest {
         assertThat(Arrays.stream(constructor.getParameterTypes()).map(Class::getName))
                 .contains(
                         "com.linkforge.accounts.application.port.AccountsPasswordHasher",
-                        "com.linkforge.accounts.application.port.ApiKeyAuthCache"
+                        "com.linkforge.accounts.application.port.ApiKeyAuthCache",
+                        "com.linkforge.contract.platform.ApplicationScopePort"
                 )
                 .doesNotContain("org.springframework.data.redis.core.StringRedisTemplate")
-                .doesNotContain("org.springframework.security.crypto.password.PasswordEncoder");
+                .doesNotContain("org.springframework.security.crypto.password.PasswordEncoder")
+                .doesNotContain("com.linkforge.platform.application.PlatformControlPlaneService");
     }
 
     @Test
@@ -183,12 +185,13 @@ class ApiKeyServiceTest {
         AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
         AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
         ApiKeyAuthCache authCache = mock(ApiKeyAuthCache.class);
+        ApplicationScopePort applicationScopePort = mock(ApplicationScopePort.class);
 
         SecurityProperties props = new SecurityProperties();
         props.getApiKey().setAuthCacheTtlSeconds(60);
         props.getApiKey().setLastUsedUpdateIntervalSeconds(0);
 
-        ApiKeyService service = newService(store, passwordHasher, props, authCache);
+        ApiKeyService service = newService(store, passwordHasher, props, authCache, applicationScopePort);
         when(passwordHasher.encode(any())).thenReturn("encoded-secret");
 
         ApiKeyService.CreatedApiKey created = service.create(1L, 2001L, "openapi-app");
@@ -198,6 +201,7 @@ class ApiKeyServiceTest {
         verify(store).insert(captor.capture());
         assertThat(captor.getValue().tenantId()).isEqualTo(1L);
         assertThat(captor.getValue().applicationId()).isEqualTo(2001L);
+        verify(applicationScopePort).requireApplicationExists(1L, 2001L);
     }
 
     @Test
@@ -384,7 +388,7 @@ class ApiKeyServiceTest {
             SecurityProperties props,
             ApiKeyAuthCache authCache
     ) {
-        return newService(store, passwordHasher, props, authCache, Clock.systemUTC());
+        return newService(store, passwordHasher, props, authCache, Clock.systemUTC(), mock(ApplicationScopePort.class));
     }
 
     private static ApiKeyService newService(
@@ -393,6 +397,27 @@ class ApiKeyServiceTest {
             SecurityProperties props,
             ApiKeyAuthCache authCache,
             Clock clock
+    ) {
+        return newService(store, passwordHasher, props, authCache, clock, mock(ApplicationScopePort.class));
+    }
+
+    private static ApiKeyService newService(
+            AccountsApiKeyStore store,
+            AccountsPasswordHasher passwordHasher,
+            SecurityProperties props,
+            ApiKeyAuthCache authCache,
+            ApplicationScopePort applicationScopePort
+    ) {
+        return newService(store, passwordHasher, props, authCache, Clock.systemUTC(), applicationScopePort);
+    }
+
+    private static ApiKeyService newService(
+            AccountsApiKeyStore store,
+            AccountsPasswordHasher passwordHasher,
+            SecurityProperties props,
+            ApiKeyAuthCache authCache,
+            Clock clock,
+            ApplicationScopePort applicationScopePort
     ) {
         try {
             SnowflakeIdGenerator idGenerator = mock(SnowflakeIdGenerator.class);
@@ -405,7 +430,7 @@ class ApiKeyServiceTest {
                     SecurityProperties.class,
                     ApiKeyAuthCache.class,
                     Clock.class,
-                    PlatformControlPlaneService.class
+                    ApplicationScopePort.class
             );
             return constructor.newInstance(
                     idGenerator,
@@ -415,7 +440,7 @@ class ApiKeyServiceTest {
                     props,
                     authCache,
                     clock,
-                    mock(PlatformControlPlaneService.class)
+                    applicationScopePort
             );
         } catch (NoSuchMethodException ignored) {
             try {

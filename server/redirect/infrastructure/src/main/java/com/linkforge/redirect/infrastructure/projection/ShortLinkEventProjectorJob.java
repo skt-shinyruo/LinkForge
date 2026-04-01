@@ -185,7 +185,7 @@ public class ShortLinkEventProjectorJob {
             tryCache("evict", action.evictHostname, action.evictCode, ok);
         }
         if (action.putRow != null) {
-            LinkMeta meta = RedirectLinkProjectionQueryService.toMeta(action.putRow);
+            LinkMeta meta = toMeta(action.putRow);
             // overwrite negative cache sentinel if any
             tryCache("evict", meta.hostname(), meta.code(), linkCache.tryEvict(meta.hostname(), meta.code()));
             tryCache("put", meta.hostname(), meta.code(), linkCache.tryPut(meta.hostname(), meta));
@@ -228,6 +228,23 @@ public class ShortLinkEventProjectorJob {
         row.setQueryForwardMode(s.queryForwardMode());
         row.setQueryForwardAllowlist(joinAllowlist(s.queryForwardAllowlist()));
         return row;
+    }
+
+    private static LinkMeta toMeta(RedirectLinkProjection row) {
+        return new LinkMeta(
+                row.getLinkId() == null ? 0L : row.getLinkId(),
+                row.getTenantId() == null ? 0L : row.getTenantId(),
+                row.getCode(),
+                row.getOriginalUrl(),
+                Boolean.TRUE.equals(row.getEnabled()),
+                row.getExpiresAt(),
+                row.getRedirectStatusCode(),
+                Boolean.TRUE.equals(row.getPreviewEnabled()),
+                row.getUnavailableLandingUrl(),
+                row.getQueryForwardMode(),
+                row.getQueryForwardAllowlist(),
+                row.getHostname()
+        );
     }
 
     private static LinkMeta toMeta(ShortLinkPublicSnapshot s) {

@@ -24,6 +24,8 @@
         <module>contracts/redirect</module>
         <module>contracts/analytics</module>
         <module>contracts/shortlink</module>
+        <module>contracts/platform</module>
+        <module>contracts/governance</module>
         <module>accounts</module>
         <module>shortlink</module>
         <module>redirect</module>
@@ -71,6 +73,16 @@
             <dependency>
                 <groupId>com.linkforge</groupId>
                 <artifactId>linkforge-contract-shortlink</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-contract-platform</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-contract-governance</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

@@ -1,0 +1,72 @@
+package com.linkforge.governance.application;
+
+import com.linkforge.contract.governance.ApprovalRequestView;
+import com.linkforge.contract.governance.SensitiveOperation;
+import com.linkforge.governance.domain.ApprovalStatus;
+import com.linkforge.governance.domain.SensitiveOperationType;
+import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+class GovernanceApprovalSubmissionAdapterTest {
+
+    @Test
+    void submitRequest_shouldTranslateContractVocabularyToGovernanceService() {
+        GovernanceService governanceService = mock(GovernanceService.class);
+        GovernanceApprovalSubmissionAdapter adapter = new GovernanceApprovalSubmissionAdapter(governanceService);
+
+        when(governanceService.submitRequest(
+                1L,
+                new GovernanceService.SubmitApprovalRequest(
+                        SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE,
+                        2001L,
+                        "before",
+                        "after"
+                )
+        )).thenReturn(new GovernanceService.ApprovalRequestDto(
+                501L,
+                1L,
+                SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE,
+                2001L,
+                7L,
+                "reviewer@example.com",
+                ApprovalStatus.PENDING_APPROVAL,
+                null,
+                null,
+                null
+        ));
+
+        ApprovalRequestView actual = adapter.submitRequest(
+                1L,
+                SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE,
+                2001L,
+                "before",
+                "after"
+        );
+
+        assertThat(actual).isEqualTo(new ApprovalRequestView(
+                501L,
+                1L,
+                SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE,
+                2001L,
+                7L,
+                "reviewer@example.com",
+                "PENDING_APPROVAL",
+                null,
+                null,
+                null
+        ));
+        verify(governanceService).submitRequest(
+                1L,
+                new GovernanceService.SubmitApprovalRequest(
+                        SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE,
+                        2001L,
+                        "before",
+                        "after"
+                )
+        );
+    }
+}

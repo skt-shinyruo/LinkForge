@@ -5,12 +5,12 @@ import com.linkforge.accounts.application.port.AccountsPasswordHasher;
 import com.linkforge.accounts.application.port.AccountsUserRoleStore;
 import com.linkforge.accounts.application.port.AccountsUserStore;
 import com.linkforge.accounts.domain.AccountsConstants;
-import com.linkforge.accounts.domain.Roles;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.contract.accounts.AccountsErrorCode;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.runtime.security.TenantGuard;
+import com.linkforge.foundation.security.StandardRoles;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,8 +24,8 @@ import java.util.Set;
 public class UserAdminService {
 
     private static final Set<String> USER_ROLE_WHITELIST = Set.of(
-            Roles.TENANT_ADMIN,
-            Roles.USER
+            StandardRoles.TENANT_ADMIN,
+            StandardRoles.USER
     );
 
     private final SnowflakeIdGenerator idGenerator;
@@ -178,7 +178,7 @@ public class UserAdminService {
                 .filter(r -> r != null)
                 .map(AccountsUserRoleStore.UserRoleData::roleCode)
                 .collect(java.util.stream.Collectors.toSet());
-        return roles.isEmpty() ? Set.of(Roles.USER) : roles;
+        return roles.isEmpty() ? Set.of(StandardRoles.USER) : roles;
     }
 
     private AccountsUserStore.UserData requireUserInTenant(long tenantId, long userId) {
@@ -214,7 +214,7 @@ public class UserAdminService {
         if (actorUserId == user.id()) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "不能禁用当前管理员");
         }
-        if (!AccountsConstants.STATUS_ACTIVE.equals(user.status()) || !roles.contains(Roles.TENANT_ADMIN)) {
+        if (!AccountsConstants.STATUS_ACTIVE.equals(user.status()) || !roles.contains(StandardRoles.TENANT_ADMIN)) {
             return;
         }
 
@@ -229,7 +229,7 @@ public class UserAdminService {
         Map<Long, Set<String>> rolesByUserId = loadRolesByUserIds(userIds);
         long activeTenantAdminCount = tenantUsers.stream()
                 .filter(u -> AccountsConstants.STATUS_ACTIVE.equals(u.status()))
-                .filter(u -> rolesByUserId.getOrDefault(u.id(), Set.of()).contains(Roles.TENANT_ADMIN))
+                .filter(u -> rolesByUserId.getOrDefault(u.id(), Set.of()).contains(StandardRoles.TENANT_ADMIN))
                 .count();
         if (activeTenantAdminCount <= 1) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "至少保留一个启用中的租户管理员");
@@ -255,7 +255,7 @@ public class UserAdminService {
 
     private static Set<String> normalizeAndValidateRoles(Set<String> roles) {
         if (roles == null || roles.isEmpty()) {
-            return Set.of(Roles.USER);
+            return Set.of(StandardRoles.USER);
         }
 
         Set<String> normalized = new HashSet<>();
@@ -270,6 +270,6 @@ public class UserAdminService {
             normalized.add(r);
         }
 
-        return normalized.isEmpty() ? Set.of(Roles.USER) : Set.copyOf(normalized);
+        return normalized.isEmpty() ? Set.of(StandardRoles.USER) : Set.copyOf(normalized);
     }
 }

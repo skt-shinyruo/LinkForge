@@ -4,15 +4,15 @@ LinkForge is a modular monolith built as a Maven reactor plus a separate Vue fro
 
 ## Backend
 
-- `server/foundation`: shared technical library code used across modules. It provides low-level building blocks such as IDs, configuration objects, utilities, and transaction helpers. The guarded `foundation` packages are intended to stay pure library code rather than becoming implicit runtime bean buckets.
-- `server/contracts/*`: published language between modules. `contract-api` holds common API contracts, `contract-shortlink` carries shortlink integration-event payloads, `contract-redirect` carries redirect read/cache contracts, and `contract-analytics` carries analytics contracts.
+- `server/foundation`: split between pure shared-library packages and explicit runtime support. `foundation.config`, `foundation.id`, `foundation.tx`, and `foundation.util` stay framework-light library code; runtime beans such as `RequestIdFilter`, startup checks, and integration-event MyBatis wiring live under `foundation.runtime..`.
+- `server/contracts/*`: published language between modules. `contract-api` holds common API contracts, `contract-shortlink` carries shortlink integration-event payloads, `contract-redirect` carries redirect read/cache contracts, `contract-analytics` carries analytics contracts, `contract-platform` carries application/domain authorization vocabulary, and `contract-governance` carries approval-submission vocabulary.
 - `server/accounts`: account, tenant, auth, and API-key management. It is still packaged as one Maven module, but its application layer now depends on internal ports instead of directly on infrastructure classes.
 - `server/platform`: control-plane ownership for tenant applications, domains, quotas, and policies. It models `tenant -> application -> domain` relationships and exposes the tenant/platform admin HTTP surfaces used by the self-service console.
 - `server/governance`: approval and audit management. It persists sensitive-operation requests, approval decisions, and audit logs, and is consumed by both the control plane and analytics export flows.
 - `server/shortlink`: write-side shortlink management split into `domain`, `application`, `infrastructure`, and `interfaces`. It owns durable shortlink state and emits integration events for downstream projections.
 - `server/redirect`: read-side redirect serving split into `domain`, `application`, `infrastructure`, and `interfaces`. In monolith mode, redirect correctness uses an authoritative shortlink-backed metadata source on cache miss. Async projectors remain in place to warm Redis and maintain a projection for recovery/backfill scenarios.
 - `server/analytics`: visit recording and read models split into `domain`, `application`, `infrastructure`, and `interfaces`.
-- `server/app`: Spring Boot executable that assembles the modular monolith.
+- `server/app`: Spring Boot executable composition root. `LinkForgeApplication` explicitly imports `FoundationModule`, `AccountsModule`, `ShortlinkModule`, `RedirectModule`, `AnalyticsModule`, `PlatformModule`, and `GovernanceModule` so bootstrap ownership matches the declared module graph.
 - `server/integration-tests`: Testcontainers-based integration verification for cross-module behavior.
 
 ## Redirect Correctness Path

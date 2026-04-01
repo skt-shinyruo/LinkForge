@@ -4,12 +4,13 @@ import com.linkforge.analytics.application.AnalyticsQueryService;
 import com.linkforge.contract.api.ApiResponse;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
+import com.linkforge.contract.governance.ApprovalRequestView;
+import com.linkforge.contract.governance.ApprovalSubmissionPort;
+import com.linkforge.contract.governance.SensitiveOperation;
 import com.linkforge.contract.shortlink.ShortLinkOwnershipLookupPort;
 import com.linkforge.foundation.security.AuthContext;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.web.RequestId;
-import com.linkforge.governance.application.GovernanceService;
-import com.linkforge.governance.domain.SensitiveOperationType;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,7 +31,7 @@ import java.util.Set;
 public class StatsController {
 
     private final AnalyticsQueryService queryService;
-    private final GovernanceService governanceService;
+    private final ApprovalSubmissionPort approvalSubmissionPort;
     private final ShortLinkOwnershipLookupPort shortLinkOwnershipLookupPort;
 
     private static final Set<String> DIM_TYPES = Set.of(
@@ -46,11 +47,11 @@ public class StatsController {
 
     public StatsController(
             AnalyticsQueryService queryService,
-            GovernanceService governanceService,
+            ApprovalSubmissionPort approvalSubmissionPort,
             ShortLinkOwnershipLookupPort shortLinkOwnershipLookupPort
     ) {
         this.queryService = queryService;
-        this.governanceService = governanceService;
+        this.approvalSubmissionPort = approvalSubmissionPort;
         this.shortLinkOwnershipLookupPort = shortLinkOwnershipLookupPort;
     }
 
@@ -253,7 +254,7 @@ public class StatsController {
 
     @PostMapping("/stats/links/{id}/events/export-requests")
     @PreAuthorize("!hasRole('OPENAPI')")
-    public ApiResponse<GovernanceService.ApprovalRequestDto> requestEventExport(
+    public ApiResponse<ApprovalRequestView> requestEventExport(
             @PathVariable("id") long linkId,
             @RequestParam(value = "from", required = false) LocalDateTime from,
             @RequestParam(value = "to", required = false) LocalDateTime to
@@ -265,21 +266,19 @@ public class StatsController {
         }
         AuthPrincipal p = AuthContext.requirePrincipal();
         ShortLinkOwnershipLookupPort.ShortLinkOwnership link = requireLinkScope(p.getTenantId(), linkId);
-        GovernanceService.ApprovalRequestDto dto = governanceService.submitRequest(
+        ApprovalRequestView dto = approvalSubmissionPort.submitRequest(
                 p.getTenantId(),
-                new GovernanceService.SubmitApprovalRequest(
-                        SensitiveOperationType.ANALYTICS_DETAIL_EXPORT,
-                        link.applicationId(),
-                        null,
-                        "linkId=" + linkId + ",from=" + f + ",to=" + t
-                )
+                SensitiveOperation.ANALYTICS_DETAIL_EXPORT,
+                link.applicationId(),
+                null,
+                "linkId=" + linkId + ",from=" + f + ",to=" + t
         );
         return ApiResponse.ok(dto, RequestId.get());
     }
 
     @PostMapping("/applications/{applicationId}/links/{id}/events/export-requests")
     @PreAuthorize("!hasRole('OPENAPI')")
-    public ApiResponse<GovernanceService.ApprovalRequestDto> requestEventExportByApplication(
+    public ApiResponse<ApprovalRequestView> requestEventExportByApplication(
             @PathVariable("applicationId") long applicationId,
             @PathVariable("id") long linkId,
             @RequestParam(value = "from", required = false) LocalDateTime from,
@@ -292,14 +291,12 @@ public class StatsController {
         if (f.isAfter(t)) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "from 不能晚于 to");
         }
-        GovernanceService.ApprovalRequestDto dto = governanceService.submitRequest(
+        ApprovalRequestView dto = approvalSubmissionPort.submitRequest(
                 p.getTenantId(),
-                new GovernanceService.SubmitApprovalRequest(
-                        SensitiveOperationType.ANALYTICS_DETAIL_EXPORT,
-                        link.applicationId(),
-                        null,
-                        "linkId=" + linkId + ",from=" + f + ",to=" + t
-                )
+                SensitiveOperation.ANALYTICS_DETAIL_EXPORT,
+                link.applicationId(),
+                null,
+                "linkId=" + linkId + ",from=" + f + ",to=" + t
         );
         return ApiResponse.ok(dto, RequestId.get());
     }

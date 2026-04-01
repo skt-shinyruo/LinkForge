@@ -3,12 +3,12 @@ package com.linkforge.shortlink.interfaces.web;
 import com.linkforge.contract.api.ApiResponse;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
+import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.foundation.persistence.PageQuery;
 import com.linkforge.foundation.persistence.PageResult;
 import com.linkforge.foundation.security.AuthContext;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.web.RequestId;
-import com.linkforge.platform.application.PlatformControlPlaneService;
 import com.linkforge.shortlink.application.ShortLinkService;
 import com.linkforge.shortlink.application.ShortLinkService.CreatedBy;
 import com.linkforge.shortlink.application.ShortLinkService.CreateLinkRequest;
@@ -41,16 +41,16 @@ public class ShortLinkController {
 
     private final ShortLinkService shortLinkService;
     private final ShortLinkWriteGuard writeGuard;
-    private final PlatformControlPlaneService platformControlPlaneService;
+    private final ApplicationScopePort applicationScopePort;
 
     public ShortLinkController(
             ShortLinkService shortLinkService,
             ShortLinkWriteGuard writeGuard,
-            PlatformControlPlaneService platformControlPlaneService
+            ApplicationScopePort applicationScopePort
     ) {
         this.shortLinkService = shortLinkService;
         this.writeGuard = writeGuard;
-        this.platformControlPlaneService = platformControlPlaneService;
+        this.applicationScopePort = applicationScopePort;
     }
 
     @PostMapping("/links")
@@ -74,7 +74,7 @@ public class ShortLinkController {
     ) {
         writeGuard.requireWriteEnabled();
         AuthPrincipal p = AuthContext.requirePrincipal();
-        platformControlPlaneService.requireApplicationExists(p.getTenantId(), applicationId);
+        applicationScopePort.requireApplicationExists(p.getTenantId(), applicationId);
         CreateLinkRequest createRequest = withApplicationId(ShortLinkHttpMapper.toCreateRequest(req), applicationId, req.applicationId());
         LinkDto dto = shortLinkService.create(p.getTenantId(), CreatedBy.user(p.getUserId()), createRequest);
         return ApiResponse.ok(dto, RequestId.get());
@@ -111,7 +111,7 @@ public class ShortLinkController {
             @RequestParam(defaultValue = "20") int size
     ) {
         AuthPrincipal p = AuthContext.requirePrincipal();
-        platformControlPlaneService.requireApplicationExists(p.getTenantId(), applicationId);
+        applicationScopePort.requireApplicationExists(p.getTenantId(), applicationId);
         PageResult<LinkDto> result = shortLinkService.search(
                 p.getTenantId(),
                 buildSearchQuery(applicationId, archived, enabled, keyword, tag),
@@ -219,7 +219,7 @@ public class ShortLinkController {
             @RequestParam(defaultValue = "200") int size
     ) throws IOException {
         AuthPrincipal p = AuthContext.requirePrincipal();
-        platformControlPlaneService.requireApplicationExists(p.getTenantId(), applicationId);
+        applicationScopePort.requireApplicationExists(p.getTenantId(), applicationId);
         response.setHeader(HttpHeaders.CONTENT_TYPE, "text/csv; charset=utf-8");
         response.setHeader(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"links.csv\"");
         shortLinkService.exportCsv(

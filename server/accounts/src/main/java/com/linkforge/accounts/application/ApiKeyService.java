@@ -8,10 +8,10 @@ import com.linkforge.contract.api.AppErrorCode;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.contract.openapi.OpenApiErrorCode;
+import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.foundation.config.SecurityProperties;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.runtime.security.TenantGuard;
-import com.linkforge.platform.application.PlatformControlPlaneService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -53,7 +53,7 @@ public class ApiKeyService {
     private final SecurityProperties securityProperties;
     private final ApiKeyAuthCache authCache;
     private final Clock clock;
-    private final PlatformControlPlaneService platformControlPlaneService;
+    private final ApplicationScopePort applicationScopePort;
 
     public ApiKeyService(
             SnowflakeIdGenerator idGenerator,
@@ -63,7 +63,7 @@ public class ApiKeyService {
             SecurityProperties securityProperties,
             ApiKeyAuthCache authCache,
             Clock clock,
-            PlatformControlPlaneService platformControlPlaneService
+            ApplicationScopePort applicationScopePort
     ) {
         this.idGenerator = idGenerator;
         this.apiKeyStore = apiKeyStore;
@@ -72,7 +72,7 @@ public class ApiKeyService {
         this.securityProperties = securityProperties;
         this.authCache = authCache;
         this.clock = clock;
-        this.platformControlPlaneService = platformControlPlaneService;
+        this.applicationScopePort = applicationScopePort;
     }
 
     @Transactional
@@ -83,7 +83,7 @@ public class ApiKeyService {
     @Transactional
     public CreatedApiKey create(long tenantId, long applicationId, String name) {
         tenantGuard.requireCurrentTenant(tenantId);
-        platformControlPlaneService.requireApplicationExists(tenantId, applicationId);
+        applicationScopePort.requireApplicationExists(tenantId, applicationId);
         long id = idGenerator.nextId();
         String secret = randomSecret();
         String key = API_KEY_PREFIX + "_" + id + "_" + secret;

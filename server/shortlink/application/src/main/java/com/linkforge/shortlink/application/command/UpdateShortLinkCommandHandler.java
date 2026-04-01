@@ -2,11 +2,11 @@ package com.linkforge.shortlink.application.command;
 
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
+import com.linkforge.contract.governance.ApprovalSubmissionPort;
+import com.linkforge.contract.governance.SensitiveOperation;
 import com.linkforge.contract.shortlink.ShortLinkErrorCode;
 import com.linkforge.foundation.runtime.security.TenantGuard;
 import com.linkforge.foundation.tx.AfterCommit;
-import com.linkforge.governance.application.GovernanceService;
-import com.linkforge.governance.domain.SensitiveOperationType;
 import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
 import com.linkforge.shortlink.application.ShortLinkService.UpdateLinkRequest;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
@@ -40,7 +40,7 @@ public class UpdateShortLinkCommandHandler {
     private final ShortLinkDtoMapper dtoMapper;
     private final TenantGuard tenantGuard;
     private final Clock clock;
-    private final GovernanceService governanceService;
+    private final ApprovalSubmissionPort approvalSubmissionPort;
 
     public UpdateShortLinkCommandHandler(
             ShortLinkRepository shortLinkRepository,
@@ -51,7 +51,7 @@ public class UpdateShortLinkCommandHandler {
             ShortLinkDtoMapper dtoMapper,
             TenantGuard tenantGuard,
             Clock clock,
-            GovernanceService governanceService
+            ApprovalSubmissionPort approvalSubmissionPort
     ) {
         this.shortLinkRepository = shortLinkRepository;
         this.setLinkTagsHandler = setLinkTagsHandler;
@@ -61,7 +61,7 @@ public class UpdateShortLinkCommandHandler {
         this.dtoMapper = dtoMapper;
         this.tenantGuard = tenantGuard;
         this.clock = clock;
-        this.governanceService = governanceService;
+        this.approvalSubmissionPort = approvalSubmissionPort;
     }
 
     @Transactional
@@ -93,14 +93,12 @@ public class UpdateShortLinkCommandHandler {
             if (appAwareLink
                     && persistedLifecycleState == ShortLinkLifecycleState.ACTIVE
                     && !link.originalUrl().value().equals(req.originalUrl())) {
-                governanceService.submitRequest(
+                approvalSubmissionPort.submitRequest(
                         tenantId,
-                        new GovernanceService.SubmitApprovalRequest(
-                                SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE,
-                                link.applicationId(),
-                                "originalUrl=" + link.originalUrl().value(),
-                                "originalUrl=" + req.originalUrl()
-                        )
+                        SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE,
+                        link.applicationId(),
+                        "originalUrl=" + link.originalUrl().value(),
+                        "originalUrl=" + req.originalUrl()
                 );
                 List<String> tags = linkTagRepository.findTagNamesByLinkId(linkId);
                 return dtoMapper.toDto(link, tags);

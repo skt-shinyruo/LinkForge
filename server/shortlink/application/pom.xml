@@ -34,15 +34,11 @@
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-platform-application</artifactId>
+            <artifactId>linkforge-contract-platform</artifactId>
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-governance-application</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-platform-domain</artifactId>
+            <artifactId>linkforge-contract-governance</artifactId>
         </dependency>
 
         <dependency>

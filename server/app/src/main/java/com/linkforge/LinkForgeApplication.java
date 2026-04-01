@@ -3,6 +3,8 @@ package com.linkforge;
 import com.linkforge.app.compose.AccountsModule;
 import com.linkforge.app.compose.AnalyticsModule;
 import com.linkforge.app.compose.FoundationModule;
+import com.linkforge.app.compose.GovernanceModule;
+import com.linkforge.app.compose.PlatformModule;
 import com.linkforge.app.compose.RedirectModule;
 import com.linkforge.app.compose.ShortlinkModule;
 import com.linkforge.foundation.config.AnalyticsProperties;
@@ -22,13 +24,21 @@ import org.springframework.context.annotation.Import;
  *
  * <p>Combines API service and Redirect Edge into a single Spring Boot application.</p>
  */
-@SpringBootApplication(scanBasePackages = "com.linkforge.app")
+@SpringBootApplication(scanBasePackages = {
+        "com.linkforge.app.api",
+        "com.linkforge.app.config",
+        "com.linkforge.app.scheduling",
+        "com.linkforge.app.security",
+        "com.linkforge.app.startup"
+})
 @Import({
         FoundationModule.class,
         AccountsModule.class,
         ShortlinkModule.class,
         RedirectModule.class,
-        AnalyticsModule.class
+        AnalyticsModule.class,
+        PlatformModule.class,
+        GovernanceModule.class
 })
 @EnableConfigurationProperties({
         CoreProperties.class,

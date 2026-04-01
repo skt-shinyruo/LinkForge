@@ -14,6 +14,13 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.UUID;
 
+/**
+ * Runtime-owned servlet filter for request-id propagation.
+ *
+ * <p>This bean lives under {@code foundation.runtime.web} because it is part of the executable
+ * HTTP runtime: it reads request headers, populates logging context, and writes response headers.
+ * The shared-library side of {@code foundation} should expose only reusable types, not servlet beans.
+ */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 10)
 public class RequestIdFilter extends OncePerRequestFilter {

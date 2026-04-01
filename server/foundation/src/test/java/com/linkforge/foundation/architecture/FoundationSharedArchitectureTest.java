@@ -13,9 +13,10 @@ class FoundationSharedArchitectureTest {
     /**
      * Foundation is the in-repo technical library shared inside the modular monolith.
      *
-     * <p>We intentionally narrow the scan scope to the library-only packages instead of importing the
-     * whole `com.linkforge.foundation` namespace, because runtime beans now live under
-     * `com.linkforge.foundation.runtime..` and would create false positives for the shared-library guardrails.
+     * <p>The guarded shared-library surface is intentionally narrow: `config`, `id`, `tx`, and `util`
+     * stay pure library packages, while servlet/MyBatis/startup beans live under
+     * `com.linkforge.foundation.runtime..`. Importing only the library packages keeps the rule aligned
+     * with that explicit split instead of treating runtime support as an accidental exception.
      */
     private static final JavaClasses CLASSES = new ClassFileImporter()
             .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
@@ -47,7 +48,8 @@ class FoundationSharedArchitectureTest {
      *
      * <p>If these shared packages start defining runtime beans, unrelated application modules can pick
      * them up via component scanning and module boundaries become accidental instead of explicit.
-     * Runtime-owned foundation beans must live under `com.linkforge.foundation.runtime..` instead.
+     * Runtime-owned foundation beans must live under `com.linkforge.foundation.runtime..` instead,
+     * where their ownership is explicit in both package name and architecture documentation.
      *
      * <p>Important: detect by annotation <em>type names</em> (strings), so the test keeps compiling even
      * if foundation stays lean and avoids direct runtime-framework dependencies.

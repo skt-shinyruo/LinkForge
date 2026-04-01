@@ -3,12 +3,12 @@ package com.linkforge.shortlink.interfaces.web;
 import com.linkforge.contract.api.ApiResponse;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
+import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.foundation.persistence.PageQuery;
 import com.linkforge.foundation.persistence.PageResult;
 import com.linkforge.foundation.security.AuthContext;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.web.RequestId;
-import com.linkforge.platform.application.PlatformControlPlaneService;
 import com.linkforge.shortlink.application.ShortLinkService;
 import com.linkforge.shortlink.application.ShortLinkService.CreatedBy;
 import com.linkforge.shortlink.application.ShortLinkService.CreateLinkRequest;
@@ -31,16 +31,16 @@ public class OpenApiShortLinkController {
 
     private final ShortLinkService shortLinkService;
     private final ShortLinkWriteGuard writeGuard;
-    private final PlatformControlPlaneService platformControlPlaneService;
+    private final ApplicationScopePort applicationScopePort;
 
     public OpenApiShortLinkController(
             ShortLinkService shortLinkService,
             ShortLinkWriteGuard writeGuard,
-            PlatformControlPlaneService platformControlPlaneService
+            ApplicationScopePort applicationScopePort
     ) {
         this.shortLinkService = shortLinkService;
         this.writeGuard = writeGuard;
-        this.platformControlPlaneService = platformControlPlaneService;
+        this.applicationScopePort = applicationScopePort;
     }
 
     @PostMapping("/links")
@@ -67,7 +67,7 @@ public class OpenApiShortLinkController {
         AuthPrincipal p = AuthContext.requirePrincipal();
         long apiKeyId = requireApiKeyId(p);
         long effectiveApplicationId = resolveAuthorizedApplicationId(p, req.applicationId(), applicationId);
-        platformControlPlaneService.requireApplicationExists(p.getTenantId(), effectiveApplicationId);
+        applicationScopePort.requireApplicationExists(p.getTenantId(), effectiveApplicationId);
         CreateLinkRequest createRequest = withApplicationId(ShortLinkHttpMapper.toCreateRequest(req), effectiveApplicationId);
         LinkDto dto = shortLinkService.create(
                 p.getTenantId(),
@@ -103,7 +103,7 @@ public class OpenApiShortLinkController {
     ) {
         AuthPrincipal p = AuthContext.requirePrincipal();
         long effectiveApplicationId = resolveAuthorizedApplicationId(p, null, applicationId);
-        platformControlPlaneService.requireApplicationExists(p.getTenantId(), effectiveApplicationId);
+        applicationScopePort.requireApplicationExists(p.getTenantId(), effectiveApplicationId);
         PageResult<LinkDto> result = shortLinkService.search(
                 p.getTenantId(),
                 new ShortLinkSearchQuery(false, enabled, keyword, null, effectiveApplicationId),

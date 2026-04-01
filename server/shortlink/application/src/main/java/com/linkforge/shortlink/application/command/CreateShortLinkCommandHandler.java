@@ -1,12 +1,12 @@
 package com.linkforge.shortlink.application.command;
 
 import com.linkforge.contract.api.BusinessException;
+import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.contract.shortlink.ShortLinkErrorCode;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.runtime.security.TenantGuard;
 import com.linkforge.foundation.tx.AfterCommit;
 import com.linkforge.foundation.util.Base62;
-import com.linkforge.platform.application.PlatformControlPlaneService;
 import com.linkforge.shortlink.application.ShortLinkService.CreatedBy;
 import com.linkforge.shortlink.application.ShortLinkService.CreateLinkRequest;
 import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
@@ -44,7 +44,7 @@ public class CreateShortLinkCommandHandler {
     private final ShortLinkDtoMapper dtoMapper;
     private final TenantGuard tenantGuard;
     private final Clock clock;
-    private final PlatformControlPlaneService platformControlPlaneService;
+    private final ApplicationScopePort applicationScopePort;
 
     public CreateShortLinkCommandHandler(
             SnowflakeIdGenerator idGenerator,
@@ -56,7 +56,7 @@ public class CreateShortLinkCommandHandler {
             ShortLinkDtoMapper dtoMapper,
             TenantGuard tenantGuard,
             Clock clock,
-            PlatformControlPlaneService platformControlPlaneService
+            ApplicationScopePort applicationScopePort
     ) {
         this.idGenerator = idGenerator;
         this.shortLinkRepository = shortLinkRepository;
@@ -67,7 +67,7 @@ public class CreateShortLinkCommandHandler {
         this.dtoMapper = dtoMapper;
         this.tenantGuard = tenantGuard;
         this.clock = clock;
-        this.platformControlPlaneService = platformControlPlaneService;
+        this.applicationScopePort = applicationScopePort;
     }
 
     @Transactional
@@ -90,8 +90,8 @@ public class CreateShortLinkCommandHandler {
             throw new BusinessException(com.linkforge.contract.api.ErrorCode.BAD_REQUEST, "applicationId 与 domainId 必须同时提供");
         }
         if (applicationId != null) {
-            platformControlPlaneService.requireApplicationAndDomainAuthorized(tenantId, applicationId, domainId);
-            platformControlPlaneService.findApplicationQuota(tenantId, applicationId).ifPresent(quota -> {
+            applicationScopePort.requireApplicationAndDomainAuthorized(tenantId, applicationId, domainId);
+            applicationScopePort.findApplicationQuota(tenantId, applicationId).ifPresent(quota -> {
                 long monthlyLinkLimit = quota.monthlyLinkLimit();
                 if (monthlyLinkLimit > 0 && shortLinkRepository.countActiveByTenantIdAndApplicationId(tenantId, applicationId) >= monthlyLinkLimit) {
                     throw new BusinessException(com.linkforge.contract.api.ErrorCode.FORBIDDEN, "应用发链额度已用尽");

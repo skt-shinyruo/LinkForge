@@ -6,7 +6,7 @@ import com.linkforge.contract.shortlink.event.ShortLinkCreatedV1;
 import com.linkforge.contract.shortlink.event.ShortLinkDeletedV1;
 import com.linkforge.contract.shortlink.event.ShortLinkRestoredV1;
 import com.linkforge.contract.shortlink.event.ShortLinkUpdatedV1;
-import com.linkforge.platform.application.port.DomainRepository;
+import com.linkforge.contract.platform.DomainHostnameLookupPort;
 import com.linkforge.shortlink.infrastructure.persistence.entity.ShortLinkEntity;
 import org.springframework.stereotype.Component;
 
@@ -19,10 +19,10 @@ import java.util.List;
 @Component
 public class ShortLinkEventFactory {
 
-    private final DomainRepository domainRepository;
+    private final DomainHostnameLookupPort domainHostnameLookupPort;
 
-    public ShortLinkEventFactory(DomainRepository domainRepository) {
-        this.domainRepository = domainRepository;
+    public ShortLinkEventFactory(DomainHostnameLookupPort domainHostnameLookupPort) {
+        this.domainHostnameLookupPort = domainHostnameLookupPort;
     }
 
     public ShortLinkPublicSnapshot toSnapshot(ShortLinkEntity e, Instant archivedAtUtc) {
@@ -49,8 +49,7 @@ public class ShortLinkEventFactory {
         if (e == null || e.getTenantId() == null || e.getTenantId() <= 0 || e.getDomainId() == null || e.getDomainId() <= 0) {
             return null;
         }
-        return domainRepository.findByTenantIdAndId(e.getTenantId(), e.getDomainId())
-                .map(domain -> domain.hostname())
+        return domainHostnameLookupPort.findDomainHostname(e.getTenantId(), e.getDomainId())
                 .orElse(null);
     }
 

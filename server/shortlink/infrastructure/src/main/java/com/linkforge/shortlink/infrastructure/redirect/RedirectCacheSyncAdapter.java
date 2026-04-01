@@ -1,8 +1,8 @@
 package com.linkforge.shortlink.infrastructure.redirect;
 
 import com.linkforge.contract.redirect.LinkCachePort;
+import com.linkforge.contract.platform.DomainHostnameLookupPort;
 import com.linkforge.foundation.config.CoreProperties;
-import com.linkforge.platform.application.port.DomainRepository;
 import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,12 +16,12 @@ public class RedirectCacheSyncAdapter implements RedirectCacheSyncPort {
     private static final Logger log = LoggerFactory.getLogger(RedirectCacheSyncAdapter.class);
 
     private final LinkCachePort linkCache;
-    private final DomainRepository domainRepository;
+    private final DomainHostnameLookupPort domainHostnameLookupPort;
     private final CoreProperties coreProperties;
 
-    public RedirectCacheSyncAdapter(LinkCachePort linkCache, DomainRepository domainRepository, CoreProperties coreProperties) {
+    public RedirectCacheSyncAdapter(LinkCachePort linkCache, DomainHostnameLookupPort domainHostnameLookupPort, CoreProperties coreProperties) {
         this.linkCache = linkCache;
-        this.domainRepository = domainRepository;
+        this.domainHostnameLookupPort = domainHostnameLookupPort;
         this.coreProperties = coreProperties;
     }
 
@@ -35,10 +35,10 @@ public class RedirectCacheSyncAdapter implements RedirectCacheSyncPort {
         if (tenantId <= 0 || domainId == null || domainId <= 0 || code == null || code.isBlank()) {
             return;
         }
-        domainRepository.findByTenantIdAndId(tenantId, domainId).ifPresent(domain -> {
-            evictHost(domain.hostname(), code);
+        domainHostnameLookupPort.findDomainHostname(tenantId, domainId).ifPresent(hostname -> {
+            evictHost(hostname, code);
             String legacyCompatibilityHost = legacyCompatibilityHost(tenantId);
-            if (legacyCompatibilityHost != null && domain.hostname().equalsIgnoreCase(legacyDomainHostname(tenantId, legacyCompatibilityHost))) {
+            if (legacyCompatibilityHost != null && hostname.equalsIgnoreCase(legacyDomainHostname(tenantId, legacyCompatibilityHost))) {
                 evictHost(legacyCompatibilityHost, code);
             }
         });

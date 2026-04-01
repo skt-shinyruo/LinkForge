@@ -21,10 +21,10 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ApplicationProvisioningService {
 
-    private static final String APPLICATION_STATUS_ACTIVE = "ACTIVE";
-    private static final long DEFAULT_MONTHLY_LINK_LIMIT = 10_000L;
-    private static final long DEFAULT_MONTHLY_CLICK_LIMIT = 1_000_000L;
-    private static final int DEFAULT_REDIRECT_STATUS_CODE = 302;
+    static final String APPLICATION_STATUS_ACTIVE = "ACTIVE";
+    static final long DEFAULT_MONTHLY_LINK_LIMIT = 10_000L;
+    static final long DEFAULT_MONTHLY_CLICK_LIMIT = 1_000_000L;
+    static final int DEFAULT_REDIRECT_STATUS_CODE = 302;
 
     private final SnowflakeIdGenerator idGenerator;
     private final TenantGuard tenantGuard;

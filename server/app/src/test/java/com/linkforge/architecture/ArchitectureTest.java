@@ -12,6 +12,8 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -20,6 +22,15 @@ class ArchitectureTest {
     private static final JavaClasses CLASSES = new ClassFileImporter()
             .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
             .importPackages("com.linkforge");
+    private static final String FORBIDDEN_GOVERNANCE_ROLES_REFERENCE = "com.linkforge.accounts.domain.Roles";
+    private static final List<BoundedContext> BOUNDED_CONTEXTS = List.of(
+            new BoundedContext("accounts", "com.linkforge.accounts.."),
+            new BoundedContext("shortlink", "com.linkforge.shortlink.."),
+            new BoundedContext("redirect", "com.linkforge.redirect.."),
+            new BoundedContext("analytics", "com.linkforge.analytics.."),
+            new BoundedContext("platform", "com.linkforge.platform.."),
+            new BoundedContext("governance", "com.linkforge.governance..")
+    );
 
     @Test
     void interfaces_should_not_depend_on_repositories() {
@@ -147,97 +158,41 @@ class ArchitectureTest {
 
     @Test
     void bounded_contexts_should_not_depend_on_each_other_directly() {
-        noClasses()
-                .that().resideInAnyPackage("com.linkforge.accounts..")
-                .should().dependOnClassesThat()
-                .resideInAnyPackage(
-                        "com.linkforge.shortlink..",
-                        "com.linkforge.redirect..",
-                        "com.linkforge.analytics.."
+        List<String> violations = new ArrayList<>();
+        for (BoundedContext from : BOUNDED_CONTEXTS) {
+            for (BoundedContext to : BOUNDED_CONTEXTS) {
+                if (from == to) {
+                    continue;
+                }
+                ArchRule edgeRule = noClasses()
+                        .that().resideInAnyPackage(from.packagePattern())
+                        .should().dependOnClassesThat()
+                        .resideInAnyPackage(to.packagePattern());
+                try {
+                    edgeRule.check(CLASSES);
+                } catch (AssertionError failure) {
+                    violations.add(from.name() + " -> " + to.name() + System.lineSeparator() + failure.getMessage());
+                }
+            }
+        }
+        assertThat(violations)
+                .withFailMessage(
+                        "Bounded-context dependency matrix violations:%n%n%s",
+                        String.join(System.lineSeparator() + System.lineSeparator(), violations)
                 )
-                .check(CLASSES);
-
-        noClasses()
-                .that().resideInAnyPackage("com.linkforge.shortlink..")
-                .should().dependOnClassesThat()
-                .resideInAnyPackage(
-                        "com.linkforge.accounts..",
-                        "com.linkforge.redirect..",
-                        "com.linkforge.analytics.."
-                )
-                .check(CLASSES);
-
-        noClasses()
-                .that().resideInAnyPackage("com.linkforge.redirect..")
-                .should().dependOnClassesThat()
-                .resideInAnyPackage("com.linkforge.accounts..", "com.linkforge.shortlink..", "com.linkforge.analytics..")
-                .check(CLASSES);
-
-        noClasses()
-                .that().resideInAnyPackage("com.linkforge.analytics..")
-                .should().dependOnClassesThat()
-                .resideInAnyPackage(
-                        "com.linkforge.accounts..",
-                        "com.linkforge.shortlink..",
-                        "com.linkforge.redirect.."
-                )
-                .check(CLASSES);
-    }
-
-    @Test
-    void accounts_should_not_depend_on_platform_application() {
-        noClasses()
-                .that().resideInAnyPackage("com.linkforge.accounts..")
-                .should().dependOnClassesThat()
-                .resideInAnyPackage("com.linkforge.platform.application..")
-                .check(CLASSES);
-    }
-
-    @Test
-    void shortlink_should_not_depend_on_platform_or_governance_application() {
-        noClasses()
-                .that().resideInAnyPackage("com.linkforge.shortlink..")
-                .should().dependOnClassesThat()
-                .resideInAnyPackage(
-                        "com.linkforge.platform.application..",
-                        "com.linkforge.governance.application.."
-                )
-                .check(CLASSES);
-    }
-
-    @Test
-    void analytics_should_not_depend_on_governance_application() {
-        noClasses()
-                .that().resideInAnyPackage("com.linkforge.analytics..")
-                .should().dependOnClassesThat()
-                .resideInAnyPackage("com.linkforge.governance.application..")
-                .check(CLASSES);
-    }
-
-    @Test
-    void governance_should_not_depend_on_accounts() {
-        noClasses()
-                .that().resideInAnyPackage("com.linkforge.governance..")
-                .should().dependOnClassesThat()
-                .resideInAnyPackage("com.linkforge.accounts..")
-                .check(CLASSES);
+                .isEmpty();
     }
 
     @Test
     void governance_service_source_should_not_import_accounts_roles() throws Exception {
         // ArchUnit can miss constant-only dependencies after javac inlines static final String fields.
         // Keep this source-level guard until governance stops importing accounts-domain Roles.
-        Path governanceService = Path.of(
-                "governance/application/src/main/java/com/linkforge/governance/application/GovernanceService.java"
+        Path governanceService = resolveFromCurrentWorkspace(
+                "governance/application/src/main/java/com/linkforge/governance/application/GovernanceService.java",
+                "server/governance/application/src/main/java/com/linkforge/governance/application/GovernanceService.java"
         );
-        if (!Files.exists(governanceService)) {
-            governanceService = Path.of(
-                    "../governance/application/src/main/java/com/linkforge/governance/application/GovernanceService.java"
-            );
-        }
-        assertThat(Files.exists(governanceService)).isTrue();
         String source = Files.readString(governanceService);
-        assertThat(source).doesNotContain("import com.linkforge.accounts.domain.Roles;");
+        assertThat(source).doesNotContain(FORBIDDEN_GOVERNANCE_ROLES_REFERENCE);
     }
 
     @Test
@@ -272,5 +227,21 @@ class ArchitectureTest {
                         "org.springframework.data.."
                 );
         rule.check(CLASSES);
+    }
+
+    private static Path resolveFromCurrentWorkspace(String... relativePaths) {
+        Path cwd = Path.of("").toAbsolutePath().normalize();
+        for (Path cursor = cwd; cursor != null; cursor = cursor.getParent()) {
+            for (String relativePath : relativePaths) {
+                Path candidate = cursor.resolve(relativePath).normalize();
+                if (Files.exists(candidate)) {
+                    return candidate;
+                }
+            }
+        }
+        throw new IllegalStateException("Could not resolve any of " + String.join(", ", relativePaths) + " from " + cwd);
+    }
+
+    private record BoundedContext(String name, String packagePattern) {
     }
 }

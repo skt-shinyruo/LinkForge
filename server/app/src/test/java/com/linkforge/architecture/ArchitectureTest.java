@@ -146,13 +146,21 @@ class ArchitectureTest {
         noClasses()
                 .that().resideInAnyPackage("com.linkforge.accounts..")
                 .should().dependOnClassesThat()
-                .resideInAnyPackage("com.linkforge.shortlink..", "com.linkforge.redirect..", "com.linkforge.analytics..")
+                .resideInAnyPackage(
+                        "com.linkforge.shortlink..",
+                        "com.linkforge.redirect..",
+                        "com.linkforge.analytics.."
+                )
                 .check(CLASSES);
 
         noClasses()
                 .that().resideInAnyPackage("com.linkforge.shortlink..")
                 .should().dependOnClassesThat()
-                .resideInAnyPackage("com.linkforge.accounts..", "com.linkforge.redirect..", "com.linkforge.analytics..")
+                .resideInAnyPackage(
+                        "com.linkforge.accounts..",
+                        "com.linkforge.redirect..",
+                        "com.linkforge.analytics.."
+                )
                 .check(CLASSES);
 
         noClasses()
@@ -164,7 +172,50 @@ class ArchitectureTest {
         noClasses()
                 .that().resideInAnyPackage("com.linkforge.analytics..")
                 .should().dependOnClassesThat()
-                .resideInAnyPackage("com.linkforge.accounts..", "com.linkforge.shortlink..", "com.linkforge.redirect..")
+                .resideInAnyPackage(
+                        "com.linkforge.accounts..",
+                        "com.linkforge.shortlink..",
+                        "com.linkforge.redirect.."
+                )
+                .check(CLASSES);
+    }
+
+    @Test
+    void accounts_should_not_depend_on_platform_application() {
+        noClasses()
+                .that().resideInAnyPackage("com.linkforge.accounts..")
+                .should().dependOnClassesThat()
+                .resideInAnyPackage("com.linkforge.platform.application..")
+                .check(CLASSES);
+    }
+
+    @Test
+    void shortlink_should_not_depend_on_platform_or_governance_application() {
+        noClasses()
+                .that().resideInAnyPackage("com.linkforge.shortlink..")
+                .should().dependOnClassesThat()
+                .resideInAnyPackage(
+                        "com.linkforge.platform.application..",
+                        "com.linkforge.governance.application.."
+                )
+                .check(CLASSES);
+    }
+
+    @Test
+    void analytics_should_not_depend_on_governance_application() {
+        noClasses()
+                .that().resideInAnyPackage("com.linkforge.analytics..")
+                .should().dependOnClassesThat()
+                .resideInAnyPackage("com.linkforge.governance.application..")
+                .check(CLASSES);
+    }
+
+    @Test
+    void governance_should_not_depend_on_accounts() {
+        noClasses()
+                .that().resideInAnyPackage("com.linkforge.governance..")
+                .should().dependOnClassesThat()
+                .resideInAnyPackage("com.linkforge.accounts..")
                 .check(CLASSES);
     }
 
@@ -179,7 +230,9 @@ class ArchitectureTest {
                         "com.linkforge.accounts..",
                         "com.linkforge.shortlink..",
                         "com.linkforge.redirect..",
-                        "com.linkforge.analytics.."
+                        "com.linkforge.analytics..",
+                        "com.linkforge.platform..",
+                        "com.linkforge.governance.."
                 );
         rule.check(CLASSES);
     }

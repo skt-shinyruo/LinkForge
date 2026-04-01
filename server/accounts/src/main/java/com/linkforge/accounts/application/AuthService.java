@@ -7,12 +7,12 @@ import com.linkforge.accounts.application.port.AccountsTokenIssuer;
 import com.linkforge.accounts.application.port.AccountsUserRoleStore;
 import com.linkforge.accounts.application.port.AccountsUserStore;
 import com.linkforge.accounts.domain.AccountsConstants;
-import com.linkforge.accounts.domain.Roles;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.contract.accounts.AccountsErrorCode;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.security.AuthPrincipal;
+import com.linkforge.foundation.security.StandardRoles;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -81,9 +81,9 @@ public class AuthService {
             throw new BusinessException(AccountsErrorCode.EMAIL_ALREADY_EXISTS);
         }
 
-        userRoleStore.insert(new AccountsUserRoleStore.UserRoleData(userId, Roles.TENANT_ADMIN));
+        userRoleStore.insert(new AccountsUserRoleStore.UserRoleData(userId, StandardRoles.TENANT_ADMIN));
 
-        Set<String> roles = Set.of(Roles.TENANT_ADMIN);
+        Set<String> roles = Set.of(StandardRoles.TENANT_ADMIN);
         String token = tokenIssuer.issueToken(userId, tenantId, email, roles, 0);
         return new AuthResult(token, new AuthPrincipal(userId, tenantId, email, roles, 0));
     }
@@ -115,7 +115,7 @@ public class AuthService {
                 .collect(Collectors.toUnmodifiableSet());
 
         if (roles.isEmpty()) {
-            roles = Set.of(Roles.USER);
+            roles = Set.of(StandardRoles.USER);
         }
 
         int tokenVersion = user.tokenVersion() == null ? 0 : user.tokenVersion();

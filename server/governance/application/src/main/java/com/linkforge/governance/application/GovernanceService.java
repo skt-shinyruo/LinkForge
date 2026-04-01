@@ -1,12 +1,12 @@
 package com.linkforge.governance.application;
 
-import com.linkforge.accounts.domain.Roles;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.runtime.security.TenantGuard;
 import com.linkforge.foundation.security.AuthContext;
 import com.linkforge.foundation.security.AuthPrincipal;
+import com.linkforge.foundation.security.StandardRoles;
 import com.linkforge.governance.application.port.ApprovalRepository;
 import com.linkforge.governance.application.port.AuditLogRepository;
 import com.linkforge.governance.domain.ApprovalRequest;
@@ -120,8 +120,8 @@ public class GovernanceService {
     }
 
     private void enforceApprovalMatrix(AuthPrincipal principal, ApprovalRequest request) {
-        boolean isPlatformAdmin = principal.getRoles().contains(Roles.PLATFORM_ADMIN);
-        boolean isTenantAdmin = principal.getRoles().contains(Roles.TENANT_ADMIN);
+        boolean isPlatformAdmin = principal.getRoles().contains(StandardRoles.PLATFORM_ADMIN);
+        boolean isTenantAdmin = principal.getRoles().contains(StandardRoles.TENANT_ADMIN);
         if (!isPlatformAdmin && !isTenantAdmin) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "无审批权限");
         }

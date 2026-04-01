@@ -5,11 +5,11 @@ import com.linkforge.accounts.application.port.AccountsPasswordHasher;
 import com.linkforge.accounts.application.port.AccountsUserRoleStore;
 import com.linkforge.accounts.application.port.AccountsUserStore;
 import com.linkforge.accounts.domain.AccountsConstants;
-import com.linkforge.accounts.domain.Roles;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.runtime.security.TenantGuard;
+import com.linkforge.foundation.security.StandardRoles;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -103,7 +103,7 @@ class UserAdminServiceTest {
                 null
         );
         when(userStore.findById(100L)).thenReturn(existing);
-        when(userRoleStore.findAllByUserId(100L)).thenReturn(List.of(new AccountsUserRoleStore.UserRoleData(100L, Roles.USER)));
+        when(userRoleStore.findAllByUserId(100L)).thenReturn(List.of(new AccountsUserRoleStore.UserRoleData(100L, StandardRoles.USER)));
         when(passwordHasher.encode("new-password123")).thenReturn("new-hash");
 
         UserAdminService.UserDto result = service.resetPassword(200L, 100L, "new-password123");
@@ -146,7 +146,7 @@ class UserAdminServiceTest {
                 null
         );
         when(userStore.findById(100L)).thenReturn(existing);
-        when(userRoleStore.findAllByUserId(100L)).thenReturn(List.of(new AccountsUserRoleStore.UserRoleData(100L, Roles.TENANT_ADMIN)));
+        when(userRoleStore.findAllByUserId(100L)).thenReturn(List.of(new AccountsUserRoleStore.UserRoleData(100L, StandardRoles.TENANT_ADMIN)));
 
         assertThatThrownBy(() -> service.disable(200L, 100L, 100L))
                 .isInstanceOf(BusinessException.class)
@@ -206,11 +206,11 @@ class UserAdminServiceTest {
 
         when(userStore.findById(100L)).thenReturn(onlyAdmin);
         when(userStore.findAllByTenantIdOrderByCreatedAtDesc(200L)).thenReturn(List.of(onlyAdmin, disabledAdmin, member));
-        when(userRoleStore.findAllByUserId(100L)).thenReturn(List.of(new AccountsUserRoleStore.UserRoleData(100L, Roles.TENANT_ADMIN)));
+        when(userRoleStore.findAllByUserId(100L)).thenReturn(List.of(new AccountsUserRoleStore.UserRoleData(100L, StandardRoles.TENANT_ADMIN)));
         when(userRoleStore.findAllByUserIdIn(List.of(100L, 101L, 102L))).thenReturn(List.of(
-                new AccountsUserRoleStore.UserRoleData(100L, Roles.TENANT_ADMIN),
-                new AccountsUserRoleStore.UserRoleData(101L, Roles.TENANT_ADMIN),
-                new AccountsUserRoleStore.UserRoleData(102L, Roles.USER)
+                new AccountsUserRoleStore.UserRoleData(100L, StandardRoles.TENANT_ADMIN),
+                new AccountsUserRoleStore.UserRoleData(101L, StandardRoles.TENANT_ADMIN),
+                new AccountsUserRoleStore.UserRoleData(102L, StandardRoles.USER)
         ));
 
         assertThatThrownBy(() -> service.disable(200L, 999L, 100L))

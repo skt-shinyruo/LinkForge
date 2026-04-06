@@ -12,7 +12,6 @@ import org.springframework.stereotype.Service;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.util.Map;
 
 @Service
 public class RedirectService {
@@ -54,28 +53,16 @@ public class RedirectService {
         }
     }
 
-    public void recordVisitIfAvailable(LinkMeta meta, Object visitInput) {
-        recordVisitIfAvailable(meta, coerceVisitInput(visitInput));
-    }
-
     public LinkMeta resolveAndRecord(String code, RedirectVisitInput visitInput) {
         LinkMeta meta = resolveMeta(null, code);
         recordVisitIfAvailable(meta, visitInput);
         return meta;
     }
 
-    public LinkMeta resolveAndRecord(String code, Object visitInput) {
-        return resolveAndRecord(code, coerceVisitInput(visitInput));
-    }
-
     public LinkMeta resolveAndRecord(String host, String code, RedirectVisitInput visitInput) {
         LinkMeta meta = resolveMeta(host, code);
         recordVisitIfAvailable(meta, visitInput);
         return meta;
-    }
-
-    public LinkMeta resolveAndRecord(String host, String code, Object visitInput) {
-        return resolveAndRecord(host, code, coerceVisitInput(visitInput));
     }
 
     private LinkMeta resolveMeta(String host, String code) {
@@ -147,27 +134,5 @@ public class RedirectService {
                 v.acceptLanguage(),
                 v.trackingParams()
         );
-    }
-
-    @SuppressWarnings("unchecked")
-    private static RedirectVisitInput coerceVisitInput(Object raw) {
-        if (raw == null) {
-            return null;
-        }
-        if (raw instanceof RedirectVisitInput input) {
-            return input;
-        }
-        try {
-            Class<?> cls = raw.getClass();
-            return new RedirectVisitInput(
-                    (String) cls.getMethod("ip").invoke(raw),
-                    (String) cls.getMethod("userAgent").invoke(raw),
-                    (String) cls.getMethod("referer").invoke(raw),
-                    (String) cls.getMethod("acceptLanguage").invoke(raw),
-                    (Map<String, String>) cls.getMethod("trackingParams").invoke(raw)
-            );
-        } catch (ReflectiveOperationException ex) {
-            return null;
-        }
     }
 }

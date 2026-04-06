@@ -143,12 +143,14 @@ class ArchitectureTest {
                 .should()
                 .dependOnClassesThat()
                 .resideInAnyPackage(
-                        "com.linkforge.foundation.security.AuthContext",
                         "com.linkforge.foundation.web..",
                         "com.linkforge.foundation.runtime..",
                         "org.springframework.transaction.support..",
                         "org.springframework.security.core.context.."
-                );
+                )
+                .orShould()
+                .dependOnClassesThat()
+                .haveFullyQualifiedName("com.linkforge.foundation.security.AuthContext");
         rule.check(CLASSES);
     }
 

@@ -6,6 +6,7 @@ import com.linkforge.redirect.application.error.RedirectErrorCode;
 import com.linkforge.foundation.web.RequestId;
 import com.linkforge.foundation.web.VisitInfo;
 import com.linkforge.contract.redirect.LinkMeta;
+import com.linkforge.redirect.application.RedirectVisitInput;
 import com.linkforge.redirect.application.RedirectUrlBuilder;
 import com.linkforge.redirect.application.RedirectService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -64,6 +65,7 @@ public class RedirectController {
                     Map.of()
             );
         }
+        RedirectVisitInput visitInput = toRedirectVisitInput(visitInfo);
         try {
             boolean html = isHtmlRequest(request);
             boolean confirmed = hasConfirmParam(request);
@@ -90,7 +92,7 @@ public class RedirectController {
             }
 
             // 确认跳转后再计数
-            redirectService.recordVisitIfAvailable(meta, visitInfo);
+            redirectService.recordVisitIfAvailable(meta, visitInput);
 
             int statusCode = resolveStatusCode(meta);
             HttpStatus status = statusCode == 301 ? HttpStatus.MOVED_PERMANENTLY : HttpStatus.FOUND;
@@ -204,6 +206,19 @@ public class RedirectController {
                 latencyMs,
                 RequestId.get(),
                 visitInfo == null ? null : visitInfo.ip()
+        );
+    }
+
+    private static RedirectVisitInput toRedirectVisitInput(VisitInfo visitInfo) {
+        if (visitInfo == null) {
+            return null;
+        }
+        return new RedirectVisitInput(
+                visitInfo.ip(),
+                visitInfo.userAgent(),
+                visitInfo.referer(),
+                visitInfo.acceptLanguage(),
+                visitInfo.trackingParams()
         );
     }
 }

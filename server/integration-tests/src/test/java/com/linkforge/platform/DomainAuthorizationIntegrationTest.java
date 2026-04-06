@@ -36,16 +36,22 @@ class DomainAuthorizationIntegrationTest extends PlatformPersistenceIntegrationT
     void createTenantSharedDomain_should_allow_authorization_to_multiple_applications() {
         ApplicationProvisioningService.ApplicationDto firstApplication = provisioningService.createApplication(
                 TENANT_ID,
+                tenantAdminActor(TENANT_ID),
                 new ApplicationProvisioningService.CreateApplicationRequest("api-gateway", "API Gateway")
         );
         ApplicationProvisioningService.ApplicationDto secondApplication = provisioningService.createApplication(
                 TENANT_ID,
+                tenantAdminActor(TENANT_ID),
                 new ApplicationProvisioningService.CreateApplicationRequest("campaign-console", "Campaign Console")
         );
-        ApplicationProvisioningService.DomainDto domain = provisioningService.createTenantSharedDomain(TENANT_ID, "go.tenant.example");
+        ApplicationProvisioningService.DomainDto domain = provisioningService.createTenantSharedDomain(
+                TENANT_ID,
+                tenantAdminActor(TENANT_ID),
+                "go.tenant.example"
+        );
 
-        provisioningService.authorizeDomain(TENANT_ID, firstApplication.id(), domain.id());
-        provisioningService.authorizeDomain(TENANT_ID, secondApplication.id(), domain.id());
+        provisioningService.authorizeDomain(TENANT_ID, tenantAdminActor(TENANT_ID), firstApplication.id(), domain.id());
+        provisioningService.authorizeDomain(TENANT_ID, tenantAdminActor(TENANT_ID), secondApplication.id(), domain.id());
 
         Long authorizationCount = jdbcTemplate.queryForObject(
                 """

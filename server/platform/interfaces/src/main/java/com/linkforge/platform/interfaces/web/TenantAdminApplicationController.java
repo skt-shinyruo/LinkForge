@@ -1,7 +1,9 @@
 package com.linkforge.platform.interfaces.web;
 
 import com.linkforge.contract.api.ApiResponse;
+import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.security.AuthContext;
+import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.web.RequestId;
 import com.linkforge.platform.application.ApplicationProvisioningService;
 import com.linkforge.platform.application.PlatformControlPlaneService;
@@ -38,10 +40,17 @@ public class TenantAdminApplicationController {
     @PostMapping
     @PreAuthorize("hasRole('TENANT_ADMIN')")
     public ApiResponse<ApplicationProvisioningService.ApplicationDto> create(@Valid @RequestBody CreateApplicationRequest req) {
-        long tenantId = AuthContext.requirePrincipal().getTenantId();
+        AuthPrincipal principal = AuthContext.requirePrincipal();
+        UserActor actor = new UserActor(
+                principal.getTenantId(),
+                principal.getUserId(),
+                principal.getEmail(),
+                principal.getRoles()
+        );
         return ApiResponse.ok(
                 platformControlPlaneService.createApplication(
-                        tenantId,
+                        principal.getTenantId(),
+                        actor,
                         new ApplicationProvisioningService.CreateApplicationRequest(req.applicationKey(), req.displayName())
                 ),
                 RequestId.get()
@@ -54,8 +63,14 @@ public class TenantAdminApplicationController {
             @PathVariable("applicationId") long applicationId,
             @PathVariable("domainId") long domainId
     ) {
-        long tenantId = AuthContext.requirePrincipal().getTenantId();
-        platformControlPlaneService.authorizeTenantDomainForApplicationUse(tenantId, applicationId, domainId);
+        AuthPrincipal principal = AuthContext.requirePrincipal();
+        UserActor actor = new UserActor(
+                principal.getTenantId(),
+                principal.getUserId(),
+                principal.getEmail(),
+                principal.getRoles()
+        );
+        platformControlPlaneService.authorizeTenantDomainForApplicationUse(principal.getTenantId(), actor, applicationId, domainId);
         return ApiResponse.ok(null, RequestId.get());
     }
 

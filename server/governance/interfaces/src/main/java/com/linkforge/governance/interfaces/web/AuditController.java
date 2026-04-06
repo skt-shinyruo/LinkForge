@@ -1,7 +1,9 @@
 package com.linkforge.governance.interfaces.web;
 
 import com.linkforge.contract.api.ApiResponse;
+import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.security.AuthContext;
+import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.web.RequestId;
 import com.linkforge.governance.application.GovernanceService;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -24,7 +26,13 @@ public class AuditController {
     @GetMapping
     @PreAuthorize("hasRole('TENANT_ADMIN') or hasRole('PLATFORM_ADMIN')")
     public ApiResponse<List<GovernanceService.AuditLogDto>> list() {
-        long tenantId = AuthContext.requirePrincipal().getTenantId();
-        return ApiResponse.ok(governanceService.listAuditLogs(tenantId), RequestId.get());
+        AuthPrincipal principal = AuthContext.requirePrincipal();
+        UserActor actor = new UserActor(
+                principal.getTenantId(),
+                principal.getUserId(),
+                principal.getEmail(),
+                principal.getRoles()
+        );
+        return ApiResponse.ok(governanceService.listAuditLogs(principal.getTenantId(), actor), RequestId.get());
     }
 }

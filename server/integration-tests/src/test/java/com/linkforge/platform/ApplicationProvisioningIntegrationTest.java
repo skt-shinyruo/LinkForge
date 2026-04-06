@@ -44,6 +44,7 @@ class ApplicationProvisioningIntegrationTest extends PlatformPersistenceIntegrat
     void createApplication_should_persist_tenant_scoped_application_with_default_policy() {
         ApplicationProvisioningService.ApplicationDto created = provisioningService.createApplication(
                 TENANT_ID,
+                tenantAdminActor(TENANT_ID),
                 new ApplicationProvisioningService.CreateApplicationRequest("control-plane", "Internal control plane")
         );
 
@@ -93,10 +94,12 @@ class ApplicationProvisioningIntegrationTest extends PlatformPersistenceIntegrat
     void link_create_should_fail_when_application_quota_is_exceeded() {
         ApplicationProvisioningService.ApplicationDto app = provisioningService.createApplication(
                 TENANT_ID,
+                tenantAdminActor(TENANT_ID),
                 new ApplicationProvisioningService.CreateApplicationRequest("quota-app", "Quota App")
         );
         ApplicationProvisioningService.DomainDto domain = provisioningService.createApplicationDedicatedDomain(
                 TENANT_ID,
+                tenantAdminActor(TENANT_ID),
                 app.id(),
                 "quota-app-" + System.nanoTime() + ".example.test"
         );

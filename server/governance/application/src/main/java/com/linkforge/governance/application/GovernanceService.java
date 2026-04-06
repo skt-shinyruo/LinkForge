@@ -93,11 +93,13 @@ public class GovernanceService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_ERROR, "审批请求更新失败"));
     }
 
-    public List<ApprovalRequestDto> listRequests(long tenantId) {
+    public List<ApprovalRequestDto> listRequests(long tenantId, UserActor actor) {
+        requireActor(tenantId, actor);
         return approvalRepository.listByTenantId(tenantId).stream().map(this::toDto).toList();
     }
 
-    public List<AuditLogDto> listAuditLogs(long tenantId) {
+    public List<AuditLogDto> listAuditLogs(long tenantId, UserActor actor) {
+        requireActor(tenantId, actor);
         return auditLogRepository.listByTenantId(tenantId).stream()
                 .map(log -> new AuditLogDto(
                         log.id(),

@@ -33,8 +33,14 @@ public class ApprovalController {
     @GetMapping
     @PreAuthorize("hasRole('TENANT_ADMIN') or hasRole('PLATFORM_ADMIN')")
     public ApiResponse<List<GovernanceService.ApprovalRequestDto>> list() {
-        long tenantId = AuthContext.requirePrincipal().getTenantId();
-        return ApiResponse.ok(governanceService.listRequests(tenantId), RequestId.get());
+        AuthPrincipal principal = AuthContext.requirePrincipal();
+        UserActor actor = new UserActor(
+                principal.getTenantId(),
+                principal.getUserId(),
+                principal.getEmail(),
+                principal.getRoles()
+        );
+        return ApiResponse.ok(governanceService.listRequests(principal.getTenantId(), actor), RequestId.get());
     }
 
     @PostMapping("/{requestId}/approve")

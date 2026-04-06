@@ -11,6 +11,7 @@ public interface ApprovalSubmissionPort {
             Long targetApplicationId,
             String beforeSnapshot,
             String afterSnapshot,
+            long actorTenantId,
             long actorUserId,
             String actorEmail,
             Set<String> actorRoles,

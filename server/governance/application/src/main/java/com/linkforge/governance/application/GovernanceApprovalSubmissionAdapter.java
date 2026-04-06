@@ -1,5 +1,7 @@
 package com.linkforge.governance.application;
 
+import com.linkforge.contract.api.BusinessException;
+import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.contract.governance.ApprovalRequestView;
 import com.linkforge.contract.governance.ApprovalSubmissionPort;
 import com.linkforge.contract.governance.SensitiveOperation;
@@ -26,11 +28,15 @@ public class GovernanceApprovalSubmissionAdapter implements ApprovalSubmissionPo
             Long targetApplicationId,
             String beforeSnapshot,
             String afterSnapshot,
+            long actorTenantId,
             long actorUserId,
             String actorEmail,
             Set<String> actorRoles,
             LocalDateTime requestedAt
     ) {
+        if (actorTenantId != tenantId) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "actor 租户不匹配");
+        }
         GovernanceService.ApprovalRequestDto dto = governanceService.submitRequest(
                 tenantId,
                 new GovernanceService.SubmitApprovalRequest(
@@ -38,7 +44,7 @@ public class GovernanceApprovalSubmissionAdapter implements ApprovalSubmissionPo
                         targetApplicationId,
                         beforeSnapshot,
                         afterSnapshot,
-                        new UserActor(tenantId, actorUserId, actorEmail, actorRoles),
+                        new UserActor(actorTenantId, actorUserId, actorEmail, actorRoles),
                         requestedAt
                 )
         );

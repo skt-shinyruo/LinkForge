@@ -48,14 +48,20 @@ class ApplicationAwareShortLinkIntegrationTest extends ApplicationAwareShortLink
 
         ApplicationProvisioningService.ApplicationDto app = applicationProvisioningService.createApplication(
                 TENANT_ID,
+                tenantAdminActor(),
                 new ApplicationProvisioningService.CreateApplicationRequest("order-center-" + suffix, "Order Center")
         );
         ApplicationProvisioningService.ApplicationDto otherApp = applicationProvisioningService.createApplication(
                 TENANT_ID,
+                tenantAdminActor(),
                 new ApplicationProvisioningService.CreateApplicationRequest("campaign-center-" + suffix, "Campaign Center")
         );
-        ApplicationProvisioningService.DomainDto domain = applicationProvisioningService.createTenantSharedDomain(TENANT_ID, "go-" + suffix + ".tenant.example");
-        applicationProvisioningService.authorizeDomain(TENANT_ID, app.id(), domain.id());
+        ApplicationProvisioningService.DomainDto domain = applicationProvisioningService.createTenantSharedDomain(
+                TENANT_ID,
+                tenantAdminActor(),
+                "go-" + suffix + ".tenant.example"
+        );
+        applicationProvisioningService.authorizeDomain(TENANT_ID, tenantAdminActor(), app.id(), domain.id());
 
         applicationId = app.id();
         authorizedDomainId = domain.id();

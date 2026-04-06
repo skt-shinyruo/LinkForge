@@ -1,5 +1,6 @@
 package com.linkforge.platform;
 
+import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.security.AuthPrincipal;
 import org.junit.jupiter.api.AfterEach;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -59,5 +60,9 @@ abstract class PlatformPersistenceIntegrationTestSupport {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(principal, "N/A", List.of())
         );
+    }
+
+    protected static UserActor tenantAdminActor(long tenantId) {
+        return new UserActor(tenantId, 101L, "tenant-admin@example.com", java.util.Set.of("tenant_admin"));
     }
 }

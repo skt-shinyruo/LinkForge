@@ -2,6 +2,7 @@ package com.linkforge.platform.application;
 
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
+import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.platform.application.port.ApplicationPolicyRepository;
 import com.linkforge.platform.application.port.ApplicationQuotaRepository;
@@ -46,7 +47,8 @@ public class ApplicationProvisioningService {
     }
 
     @Transactional
-    public ApplicationDto createApplication(long tenantId, CreateApplicationRequest request) {
+    public ApplicationDto createApplication(long tenantId, UserActor actor, CreateApplicationRequest request) {
+        requireActor(tenantId, actor);
         validateCreateRequest(request);
 
         long applicationId = idGenerator.nextId();
@@ -79,7 +81,8 @@ public class ApplicationProvisioningService {
     }
 
     @Transactional
-    public DomainDto createTenantSharedDomain(long tenantId, String hostname) {
+    public DomainDto createTenantSharedDomain(long tenantId, UserActor actor, String hostname) {
+        requireActor(tenantId, actor);
         String normalizedHostname = normalizeHostname(hostname);
         long domainId = idGenerator.nextId();
         domainRepository.insert(new Domain(
@@ -97,7 +100,8 @@ public class ApplicationProvisioningService {
     }
 
     @Transactional
-    public DomainDto createApplicationDedicatedDomain(long tenantId, long applicationId, String hostname) {
+    public DomainDto createApplicationDedicatedDomain(long tenantId, UserActor actor, long applicationId, String hostname) {
+        requireActor(tenantId, actor);
         Application application = applicationRepository.findByTenantIdAndId(tenantId, applicationId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "应用不存在"));
         String normalizedHostname = normalizeHostname(hostname);
@@ -117,7 +121,8 @@ public class ApplicationProvisioningService {
     }
 
     @Transactional
-    public void authorizeDomain(long tenantId, long applicationId, long domainId) {
+    public void authorizeDomain(long tenantId, UserActor actor, long applicationId, long domainId) {
+        requireActor(tenantId, actor);
         applicationRepository.findByTenantIdAndId(tenantId, applicationId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "应用不存在"));
         Domain domain = domainRepository.findByTenantIdAndId(tenantId, domainId)
@@ -149,6 +154,16 @@ public class ApplicationProvisioningService {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "hostname 不能为空");
         }
         return value;
+    }
+
+    private static UserActor requireActor(long tenantId, UserActor actor) {
+        if (actor == null || actor.userId() <= 0 || actor.email() == null || actor.email().isBlank()) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "actor 无效");
+        }
+        if (actor.tenantId() != tenantId) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "actor 租户不匹配");
+        }
+        return actor;
     }
 
     public record CreateApplicationRequest(String applicationKey, String displayName) {

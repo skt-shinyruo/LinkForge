@@ -92,6 +92,9 @@ public class UpdateShortLinkCommandHandler {
             if (actor == null || actor.userId() <= 0 || actor.email() == null || actor.email().isBlank()) {
                 throw new BusinessException(ErrorCode.UNAUTHORIZED, "actor 无效");
             }
+            if (actor.tenantId() != tenantId) {
+                throw new BusinessException(ErrorCode.FORBIDDEN, "actor 租户不匹配");
+            }
             existingTags = linkTagRepository.findTagNamesByLinkId(linkId);
             if (hasOtherEffectiveChanges(link, req, existingTags)) {
                 throw new BusinessException(ErrorCode.BAD_REQUEST, "请先单独提交目标地址变更，再保存其他修改");
@@ -102,6 +105,7 @@ public class UpdateShortLinkCommandHandler {
                     link.applicationId(),
                     "originalUrl=" + link.originalUrl().value(),
                     "originalUrl=" + req.originalUrl(),
+                    actor.tenantId(),
                     actor == null ? 0L : actor.userId(),
                     actor == null ? null : actor.email(),
                     actor == null ? Set.of() : actor.roles(),

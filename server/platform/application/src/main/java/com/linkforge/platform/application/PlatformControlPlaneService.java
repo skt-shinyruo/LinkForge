@@ -2,6 +2,7 @@ package com.linkforge.platform.application;
 
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
+import com.linkforge.foundation.context.UserActor;
 import com.linkforge.platform.application.port.ApplicationRepository;
 import com.linkforge.platform.application.port.ApplicationQuotaRepository;
 import com.linkforge.platform.application.port.DomainRepository;
@@ -35,25 +36,27 @@ public class PlatformControlPlaneService {
 
     public ApplicationProvisioningService.ApplicationDto createApplication(
             long tenantId,
+            UserActor actor,
             ApplicationProvisioningService.CreateApplicationRequest request
     ) {
-        return provisioningService.createApplication(tenantId, request);
+        return provisioningService.createApplication(tenantId, actor, request);
     }
 
-    public ApplicationProvisioningService.DomainDto createTenantSharedDomain(long tenantId, String hostname) {
-        return provisioningService.createTenantSharedDomain(tenantId, hostname);
+    public ApplicationProvisioningService.DomainDto createTenantSharedDomain(long tenantId, UserActor actor, String hostname) {
+        return provisioningService.createTenantSharedDomain(tenantId, actor, hostname);
     }
 
     public ApplicationProvisioningService.DomainDto createApplicationDedicatedDomain(
             long tenantId,
+            UserActor actor,
             long applicationId,
             String hostname
     ) {
-        return provisioningService.createApplicationDedicatedDomain(tenantId, applicationId, hostname);
+        return provisioningService.createApplicationDedicatedDomain(tenantId, actor, applicationId, hostname);
     }
 
-    public void authorizeTenantDomainForApplicationUse(long tenantId, long applicationId, long domainId) {
-        provisioningService.authorizeDomain(tenantId, applicationId, domainId);
+    public void authorizeTenantDomainForApplicationUse(long tenantId, UserActor actor, long applicationId, long domainId) {
+        provisioningService.authorizeDomain(tenantId, actor, applicationId, domainId);
     }
 
     public void requireApplicationAndDomainAuthorized(long tenantId, long applicationId, long domainId) {

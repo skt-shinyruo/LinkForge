@@ -1,7 +1,9 @@
 package com.linkforge.platform.interfaces.web;
 
 import com.linkforge.contract.api.ApiResponse;
+import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.security.AuthContext;
+import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.web.RequestId;
 import com.linkforge.platform.application.ApplicationProvisioningService;
 import com.linkforge.platform.application.PlatformControlPlaneService;
@@ -49,8 +51,14 @@ public class TenantAdminDomainController {
     public ApiResponse<ApplicationProvisioningService.DomainDto> createTenantSharedDomain(
             @Valid @RequestBody CreateDomainRequest req
     ) {
-        long tenantId = AuthContext.requirePrincipal().getTenantId();
-        return ApiResponse.ok(platformControlPlaneService.createTenantSharedDomain(tenantId, req.hostname()), RequestId.get());
+        AuthPrincipal principal = AuthContext.requirePrincipal();
+        UserActor actor = new UserActor(
+                principal.getTenantId(),
+                principal.getUserId(),
+                principal.getEmail(),
+                principal.getRoles()
+        );
+        return ApiResponse.ok(platformControlPlaneService.createTenantSharedDomain(principal.getTenantId(), actor, req.hostname()), RequestId.get());
     }
 
     @PostMapping("/applications/{applicationId}/domains")
@@ -59,9 +67,15 @@ public class TenantAdminDomainController {
             @PathVariable("applicationId") long applicationId,
             @Valid @RequestBody CreateDomainRequest req
     ) {
-        long tenantId = AuthContext.requirePrincipal().getTenantId();
+        AuthPrincipal principal = AuthContext.requirePrincipal();
+        UserActor actor = new UserActor(
+                principal.getTenantId(),
+                principal.getUserId(),
+                principal.getEmail(),
+                principal.getRoles()
+        );
         return ApiResponse.ok(
-                platformControlPlaneService.createApplicationDedicatedDomain(tenantId, applicationId, req.hostname()),
+                platformControlPlaneService.createApplicationDedicatedDomain(principal.getTenantId(), actor, applicationId, req.hostname()),
                 RequestId.get()
         );
     }

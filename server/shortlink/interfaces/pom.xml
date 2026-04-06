@@ -21,6 +21,18 @@
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-foundation-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-foundation-runtime-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-foundation-runtime-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
             <artifactId>linkforge-contract-platform</artifactId>
         </dependency>
         <dependency>

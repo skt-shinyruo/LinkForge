@@ -52,7 +52,32 @@
             <!-- internal modules -->
             <dependency>
                 <groupId>com.linkforge</groupId>
-                <artifactId>linkforge-foundation</artifactId>
+                <artifactId>linkforge-foundation-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-foundation-runtime-web</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-foundation-runtime-security</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-foundation-runtime-persistence</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-foundation-runtime-tx</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-foundation-runtime-startup</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

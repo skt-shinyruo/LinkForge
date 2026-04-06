@@ -21,7 +21,7 @@
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-foundation</artifactId>
+            <artifactId>linkforge-foundation-core</artifactId>
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
@@ -30,6 +30,10 @@
         <dependency>
             <groupId>com.linkforge</groupId>
             <artifactId>linkforge-contract-platform</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-tx</artifactId>
         </dependency>
 
         <!-- test -->

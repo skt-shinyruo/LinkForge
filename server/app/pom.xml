@@ -19,7 +19,23 @@
         <!-- internal modules -->
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-foundation</artifactId>
+            <artifactId>linkforge-foundation-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-foundation-runtime-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-foundation-runtime-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-foundation-runtime-tx</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-foundation-runtime-startup</artifactId>
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>

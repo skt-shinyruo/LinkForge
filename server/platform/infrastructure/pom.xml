@@ -21,10 +21,6 @@
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-foundation</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.linkforge</groupId>
             <artifactId>linkforge-contract-api</artifactId>
         </dependency>
 

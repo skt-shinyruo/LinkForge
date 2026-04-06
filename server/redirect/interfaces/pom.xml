@@ -19,6 +19,18 @@
             <groupId>com.linkforge</groupId>
             <artifactId>linkforge-redirect-application</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-foundation-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-foundation-runtime-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-foundation-runtime-startup</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>org.springframework.boot</groupId>

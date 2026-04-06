@@ -29,8 +29,7 @@ import org.springframework.context.annotation.Import;
         "com.linkforge.app.config",
         "com.linkforge.app.scheduling",
         "com.linkforge.app.security",
-        "com.linkforge.app.startup",
-        "com.linkforge.app.tx"
+        "com.linkforge.app.startup"
 })
 @Import({
         FoundationModule.class,

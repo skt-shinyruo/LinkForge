@@ -2,6 +2,7 @@ package com.linkforge.shortlink.application;
 
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.TestTenantFixtures;
+import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.eventing.IntegrationEventStore;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.redirect.application.RedirectService;
@@ -31,6 +32,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Set;
 
@@ -197,7 +200,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
                     null,
                     null
             );
-            shortLinkService.update(TENANT_ID, created.id(), updateReq);
+            shortLinkService.update(TENANT_ID, created.id(), updateReq, currentActor(), LocalDateTime.now(ZoneOffset.UTC));
 
             // BEFORE_COMMIT: projector not run, cache should remain unchanged
             assertThat(redis.opsForValue().get(key)).isEqualTo(before);
@@ -283,7 +286,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
                 null,
                 null
         );
-        shortLinkService.update(TENANT_ID, created.id(), updateReq);
+        shortLinkService.update(TENANT_ID, created.id(), updateReq, currentActor(), LocalDateTime.now(ZoneOffset.UTC));
 
         assertThat(redis.opsForValue().get(key)).isNull();
         assertThat(redirectService.resolve(code).originalUrl()).isEqualTo("https://example.com/new");
@@ -368,6 +371,10 @@ class ShortLinkCacheAfterCommitIntegrationTest {
 
     private static String key(String code) {
         return "link:code:" + code;
+    }
+
+    private static UserActor currentActor() {
+        return new UserActor(TENANT_ID, USER_ID, "admin@example.com", Set.of("tenant_admin"));
     }
 
     private void assertLinkNotFound(String code) {

@@ -2,6 +2,7 @@ package com.linkforge.shortlink.application;
 
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.TestTenantFixtures;
+import com.linkforge.foundation.context.UserActor;
 import com.linkforge.platform.application.ApplicationProvisioningService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,6 +12,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -123,7 +126,9 @@ class ApplicationAwareShortLinkIntegrationTest extends ApplicationAwareShortLink
                         null,
                         null,
                         null
-                )
+                ),
+                tenantAdminActor(),
+                LocalDateTime.now(ZoneOffset.UTC)
         );
 
         String originalUrl = jdbcTemplate.queryForObject(
@@ -182,7 +187,9 @@ class ApplicationAwareShortLinkIntegrationTest extends ApplicationAwareShortLink
                         null,
                         null,
                         null
-                )
+                ),
+                tenantAdminActor(),
+                LocalDateTime.now(ZoneOffset.UTC)
         );
 
         String originalUrl = jdbcTemplate.queryForObject(
@@ -198,5 +205,9 @@ class ApplicationAwareShortLinkIntegrationTest extends ApplicationAwareShortLink
                 applicationId
         );
         assertThat(requestCount).isZero();
+    }
+
+    private static UserActor tenantAdminActor() {
+        return new UserActor(TENANT_ID, USER_ID, "tenant-admin@example.com", Set.of("TENANT_ADMIN"));
     }
 }

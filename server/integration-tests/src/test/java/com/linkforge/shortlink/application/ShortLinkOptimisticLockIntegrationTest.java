@@ -3,6 +3,7 @@ package com.linkforge.shortlink.application;
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.TestTenantFixtures;
 import com.linkforge.contract.api.BusinessException;
+import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.shortlink.infrastructure.persistence.repository.MybatisShortLinkRepository;
 import com.linkforge.shortlink.infrastructure.persistence.mapper.ShortLinkQueryMapper;
@@ -24,6 +25,8 @@ import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;
@@ -119,7 +122,9 @@ class ShortLinkOptimisticLockIntegrationTest {
             Future<ShortLinkService.LinkDto> first = submitWithAuth(executor, () -> shortLinkService.update(
                     TENANT_ID,
                     created.id(),
-                    updateRequest("https://example.com/update-first")
+                    updateRequest("https://example.com/update-first"),
+                    currentActor(),
+                    LocalDateTime.now(ZoneOffset.UTC)
             ));
 
             gate.awaitFirstEntry();
@@ -127,7 +132,9 @@ class ShortLinkOptimisticLockIntegrationTest {
             Future<ShortLinkService.LinkDto> second = submitWithAuth(executor, () -> shortLinkService.update(
                     TENANT_ID,
                     created.id(),
-                    updateRequest("https://example.com/update-second")
+                    updateRequest("https://example.com/update-second"),
+                    currentActor(),
+                    LocalDateTime.now(ZoneOffset.UTC)
             ));
 
             gate.awaitSecondEntry();
@@ -290,6 +297,10 @@ class ShortLinkOptimisticLockIntegrationTest {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(principal, "N/A", List.of())
         );
+    }
+
+    private static UserActor currentActor() {
+        return new UserActor(TENANT_ID, USER_ID, "admin@example.com", Set.of("tenant_admin"));
     }
 
     private static void assertConflict(Future<?> future) {

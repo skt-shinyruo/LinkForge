@@ -1,8 +1,8 @@
 package com.linkforge;
 
 import com.linkforge.LinkForgeApplication;
-import com.linkforge.foundation.web.VisitInfo;
 import com.linkforge.contract.redirect.LinkMeta;
+import com.linkforge.redirect.application.RedirectVisitInput;
 import com.linkforge.redirect.application.RedirectService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -117,7 +117,7 @@ class RedirectRiskControlIntegrationTest {
                 )
                 .andExpect(status().isFound());
 
-        ArgumentCaptor<VisitInfo> cap = ArgumentCaptor.forClass(VisitInfo.class);
+        ArgumentCaptor<RedirectVisitInput> cap = ArgumentCaptor.forClass(RedirectVisitInput.class);
         verify(redirectService).recordVisitIfAvailable(any(LinkMeta.class), cap.capture());
         assertThat(cap.getValue().ip()).isEqualTo("198.51.100.10");
     }
@@ -136,7 +136,7 @@ class RedirectRiskControlIntegrationTest {
                 )
                 .andExpect(status().isFound());
 
-        ArgumentCaptor<VisitInfo> cap = ArgumentCaptor.forClass(VisitInfo.class);
+        ArgumentCaptor<RedirectVisitInput> cap = ArgumentCaptor.forClass(RedirectVisitInput.class);
         verify(redirectService).recordVisitIfAvailable(any(LinkMeta.class), cap.capture());
         assertThat(cap.getValue().ip()).isEqualTo("1.2.3.4");
     }

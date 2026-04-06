@@ -131,6 +131,27 @@ class ArchitectureTest {
     }
 
     @Test
+    void task1_targeted_application_classes_should_not_depend_on_hidden_runtime_context() {
+        ArchRule rule = noClasses()
+                .that()
+                .haveFullyQualifiedName("com.linkforge.shortlink.application.command.CreateShortLinkCommandHandler")
+                .or().haveFullyQualifiedName("com.linkforge.shortlink.application.command.UpdateShortLinkCommandHandler")
+                .or().haveFullyQualifiedName("com.linkforge.governance.application.GovernanceService")
+                .or().haveFullyQualifiedName("com.linkforge.platform.application.ApplicationProvisioningService")
+                .or().haveFullyQualifiedName("com.linkforge.redirect.application.RedirectService")
+                .should()
+                .dependOnClassesThat()
+                .resideInAnyPackage(
+                        "com.linkforge.foundation.security.AuthContext",
+                        "com.linkforge.foundation.web..",
+                        "com.linkforge.foundation.runtime..",
+                        "org.springframework.transaction.support..",
+                        "org.springframework.security.core.context.."
+                );
+        rule.check(CLASSES);
+    }
+
+    @Test
     void domain_should_not_depend_on_outer_layers() {
         ArchRule rule = noClasses()
                 .that()

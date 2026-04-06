@@ -5,8 +5,7 @@ import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.contract.governance.ApprovalSubmissionPort;
 import com.linkforge.contract.governance.SensitiveOperation;
 import com.linkforge.contract.shortlink.ShortLinkErrorCode;
-import com.linkforge.foundation.runtime.security.TenantGuard;
-import com.linkforge.foundation.tx.AfterCommit;
+import com.linkforge.foundation.tx.PostCommitHookPort;
 import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
 import com.linkforge.shortlink.application.ShortLinkService.UpdateLinkRequest;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
@@ -40,7 +39,7 @@ public class UpdateShortLinkCommandHandler {
     private final LinkTagRepository linkTagRepository;
     private final RedirectCacheSyncPort redirectCacheSync;
     private final ShortLinkDtoMapper dtoMapper;
-    private final TenantGuard tenantGuard;
+    private final PostCommitHookPort postCommitHookPort;
     private final Clock clock;
     private final ApprovalSubmissionPort approvalSubmissionPort;
 
@@ -51,7 +50,7 @@ public class UpdateShortLinkCommandHandler {
             LinkTagRepository linkTagRepository,
             RedirectCacheSyncPort redirectCacheSync,
             ShortLinkDtoMapper dtoMapper,
-            TenantGuard tenantGuard,
+            PostCommitHookPort postCommitHookPort,
             Clock clock,
             ApprovalSubmissionPort approvalSubmissionPort
     ) {
@@ -61,14 +60,13 @@ public class UpdateShortLinkCommandHandler {
         this.linkTagRepository = linkTagRepository;
         this.redirectCacheSync = redirectCacheSync;
         this.dtoMapper = dtoMapper;
-        this.tenantGuard = tenantGuard;
+        this.postCommitHookPort = postCommitHookPort;
         this.clock = clock;
         this.approvalSubmissionPort = approvalSubmissionPort;
     }
 
     @Transactional
     public LinkDto handle(long tenantId, long linkId, UpdateLinkRequest req) {
-        tenantGuard.requireCurrentTenant(tenantId);
         if (req == null) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "UpdateLinkRequest 不能为空");
         }
@@ -197,7 +195,7 @@ public class UpdateShortLinkCommandHandler {
         }
 
         eventPublisher.updated(link, clock.instant());
-        AfterCommit.run(() -> redirectCacheSync.evict(link.tenantId(), link.domainId(), link.code().value()));
+        postCommitHookPort.run(() -> redirectCacheSync.evict(link.tenantId(), link.domainId(), link.code().value()));
 
         List<String> tags = linkTagRepository.findTagNamesByLinkId(linkId);
         return dtoMapper.toDto(link, tags);

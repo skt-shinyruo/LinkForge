@@ -3,7 +3,7 @@ package com.linkforge.shortlink.application.command;
 import com.linkforge.contract.governance.ApprovalRequestView;
 import com.linkforge.contract.governance.ApprovalSubmissionPort;
 import com.linkforge.contract.governance.SensitiveOperation;
-import com.linkforge.foundation.runtime.security.TenantGuard;
+import com.linkforge.foundation.tx.PostCommitHookPort;
 import com.linkforge.shortlink.application.ShortLinkService;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
@@ -55,7 +55,7 @@ class UpdateShortLinkCommandHandlerTest {
         LinkTagRepository linkTagRepository = mock(LinkTagRepository.class);
         RedirectCacheSyncPort redirectCacheSync = mock(RedirectCacheSyncPort.class);
         ShortLinkDtoMapper dtoMapper = mock(ShortLinkDtoMapper.class);
-        TenantGuard tenantGuard = mock(TenantGuard.class);
+        PostCommitHookPort postCommitHookPort = mock(PostCommitHookPort.class);
         Clock clock = Clock.fixed(Instant.parse("2026-04-01T00:00:00Z"), ZoneOffset.UTC);
         ApprovalSubmissionPort approvalSubmissionPort = mock(ApprovalSubmissionPort.class);
 
@@ -66,7 +66,7 @@ class UpdateShortLinkCommandHandlerTest {
                 linkTagRepository,
                 redirectCacheSync,
                 dtoMapper,
-                tenantGuard,
+                postCommitHookPort,
                 clock,
                 approvalSubmissionPort
         );
@@ -176,7 +176,7 @@ class UpdateShortLinkCommandHandlerTest {
         LinkTagRepository linkTagRepository = mock(LinkTagRepository.class);
         RedirectCacheSyncPort redirectCacheSync = mock(RedirectCacheSyncPort.class);
         ShortLinkDtoMapper dtoMapper = mock(ShortLinkDtoMapper.class);
-        TenantGuard tenantGuard = mock(TenantGuard.class);
+        PostCommitHookPort postCommitHookPort = mock(PostCommitHookPort.class);
         Clock clock = Clock.fixed(Instant.parse("2026-04-01T00:00:00Z"), ZoneOffset.UTC);
         ApprovalSubmissionPort approvalSubmissionPort = mock(ApprovalSubmissionPort.class);
 
@@ -187,7 +187,7 @@ class UpdateShortLinkCommandHandlerTest {
                 linkTagRepository,
                 redirectCacheSync,
                 dtoMapper,
-                tenantGuard,
+                postCommitHookPort,
                 clock,
                 approvalSubmissionPort
         );

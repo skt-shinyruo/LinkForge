@@ -3,7 +3,7 @@ package com.linkforge.shortlink.application.command;
 import com.linkforge.contract.platform.ApplicationQuotaView;
 import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
-import com.linkforge.foundation.runtime.security.TenantGuard;
+import com.linkforge.foundation.tx.PostCommitHookPort;
 import com.linkforge.shortlink.application.ShortLinkService;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
@@ -53,7 +53,7 @@ class CreateShortLinkCommandHandlerTest {
         ShortLinkEventPublisher eventPublisher = mock(ShortLinkEventPublisher.class);
         RedirectCacheSyncPort redirectCacheSync = mock(RedirectCacheSyncPort.class);
         ShortLinkDtoMapper dtoMapper = mock(ShortLinkDtoMapper.class);
-        TenantGuard tenantGuard = mock(TenantGuard.class);
+        PostCommitHookPort postCommitHookPort = mock(PostCommitHookPort.class);
         Clock clock = Clock.fixed(Instant.parse("2026-04-01T00:00:00Z"), ZoneOffset.UTC);
         ApplicationScopePort applicationScopePort = mock(ApplicationScopePort.class);
 
@@ -65,7 +65,7 @@ class CreateShortLinkCommandHandlerTest {
                 eventPublisher,
                 redirectCacheSync,
                 dtoMapper,
-                tenantGuard,
+                postCommitHookPort,
                 clock,
                 applicationScopePort
         );

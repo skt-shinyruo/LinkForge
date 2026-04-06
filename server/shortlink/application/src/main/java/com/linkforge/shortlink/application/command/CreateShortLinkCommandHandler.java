@@ -4,8 +4,7 @@ import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.contract.shortlink.ShortLinkErrorCode;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
-import com.linkforge.foundation.runtime.security.TenantGuard;
-import com.linkforge.foundation.tx.AfterCommit;
+import com.linkforge.foundation.tx.PostCommitHookPort;
 import com.linkforge.foundation.util.Base62;
 import com.linkforge.shortlink.application.ShortLinkService.CreatedBy;
 import com.linkforge.shortlink.application.ShortLinkService.CreateLinkRequest;
@@ -42,7 +41,7 @@ public class CreateShortLinkCommandHandler {
     private final ShortLinkEventPublisher eventPublisher;
     private final RedirectCacheSyncPort redirectCacheSync;
     private final ShortLinkDtoMapper dtoMapper;
-    private final TenantGuard tenantGuard;
+    private final PostCommitHookPort postCommitHookPort;
     private final Clock clock;
     private final ApplicationScopePort applicationScopePort;
 
@@ -54,7 +53,7 @@ public class CreateShortLinkCommandHandler {
             ShortLinkEventPublisher eventPublisher,
             RedirectCacheSyncPort redirectCacheSync,
             ShortLinkDtoMapper dtoMapper,
-            TenantGuard tenantGuard,
+            PostCommitHookPort postCommitHookPort,
             Clock clock,
             ApplicationScopePort applicationScopePort
     ) {
@@ -65,14 +64,13 @@ public class CreateShortLinkCommandHandler {
         this.eventPublisher = eventPublisher;
         this.redirectCacheSync = redirectCacheSync;
         this.dtoMapper = dtoMapper;
-        this.tenantGuard = tenantGuard;
+        this.postCommitHookPort = postCommitHookPort;
         this.clock = clock;
         this.applicationScopePort = applicationScopePort;
     }
 
     @Transactional
     public LinkDto handle(long tenantId, CreatedBy createdBy, CreateLinkRequest req) {
-        tenantGuard.requireCurrentTenant(tenantId);
         if (createdBy == null || createdBy.id() <= 0 || createdBy.type() == null) {
             throw new BusinessException(com.linkforge.contract.api.ErrorCode.UNAUTHORIZED, "createdBy 无效");
         }
@@ -153,7 +151,7 @@ public class CreateShortLinkCommandHandler {
 
         setLinkTagsHandler.handle(tenantId, id, req.tags());
         eventPublisher.created(persisted, clock.instant());
-        AfterCommit.run(() -> redirectCacheSync.evict(persisted.tenantId(), persisted.domainId(), persisted.code().value()));
+        postCommitHookPort.run(() -> redirectCacheSync.evict(persisted.tenantId(), persisted.domainId(), persisted.code().value()));
 
         List<String> tags = linkTagRepository.findTagNamesByLinkId(id);
         return dtoMapper.toDto(persisted, tags);

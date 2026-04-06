@@ -3,7 +3,6 @@ package com.linkforge.platform.application;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
-import com.linkforge.foundation.runtime.security.TenantGuard;
 import com.linkforge.platform.application.port.ApplicationPolicyRepository;
 import com.linkforge.platform.application.port.ApplicationQuotaRepository;
 import com.linkforge.platform.application.port.ApplicationRepository;
@@ -27,7 +26,6 @@ public class ApplicationProvisioningService {
     static final int DEFAULT_REDIRECT_STATUS_CODE = 302;
 
     private final SnowflakeIdGenerator idGenerator;
-    private final TenantGuard tenantGuard;
     private final ApplicationRepository applicationRepository;
     private final DomainRepository domainRepository;
     private final ApplicationQuotaRepository applicationQuotaRepository;
@@ -35,14 +33,12 @@ public class ApplicationProvisioningService {
 
     public ApplicationProvisioningService(
             SnowflakeIdGenerator idGenerator,
-            TenantGuard tenantGuard,
             ApplicationRepository applicationRepository,
             DomainRepository domainRepository,
             ApplicationQuotaRepository applicationQuotaRepository,
             ApplicationPolicyRepository applicationPolicyRepository
     ) {
         this.idGenerator = idGenerator;
-        this.tenantGuard = tenantGuard;
         this.applicationRepository = applicationRepository;
         this.domainRepository = domainRepository;
         this.applicationQuotaRepository = applicationQuotaRepository;
@@ -51,7 +47,6 @@ public class ApplicationProvisioningService {
 
     @Transactional
     public ApplicationDto createApplication(long tenantId, CreateApplicationRequest request) {
-        tenantGuard.requireCurrentTenant(tenantId);
         validateCreateRequest(request);
 
         long applicationId = idGenerator.nextId();
@@ -85,7 +80,6 @@ public class ApplicationProvisioningService {
 
     @Transactional
     public DomainDto createTenantSharedDomain(long tenantId, String hostname) {
-        tenantGuard.requireCurrentTenant(tenantId);
         String normalizedHostname = normalizeHostname(hostname);
         long domainId = idGenerator.nextId();
         domainRepository.insert(new Domain(
@@ -104,7 +98,6 @@ public class ApplicationProvisioningService {
 
     @Transactional
     public DomainDto createApplicationDedicatedDomain(long tenantId, long applicationId, String hostname) {
-        tenantGuard.requireCurrentTenant(tenantId);
         Application application = applicationRepository.findByTenantIdAndId(tenantId, applicationId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "应用不存在"));
         String normalizedHostname = normalizeHostname(hostname);
@@ -125,7 +118,6 @@ public class ApplicationProvisioningService {
 
     @Transactional
     public void authorizeDomain(long tenantId, long applicationId, long domainId) {
-        tenantGuard.requireCurrentTenant(tenantId);
         applicationRepository.findByTenantIdAndId(tenantId, applicationId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "应用不存在"));
         Domain domain = domainRepository.findByTenantIdAndId(tenantId, domainId)

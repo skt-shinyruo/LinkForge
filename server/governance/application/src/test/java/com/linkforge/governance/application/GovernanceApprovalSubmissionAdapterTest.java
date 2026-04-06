@@ -7,6 +7,7 @@ import com.linkforge.governance.domain.SensitiveOperationType;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -20,12 +21,10 @@ class GovernanceApprovalSubmissionAdapterTest {
 
         when(governanceService.submitRequest(
                 1L,
-                new GovernanceService.SubmitApprovalRequest(
-                        SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE,
-                        2001L,
-                        "before",
-                        "after"
-                )
+                argThat(req -> req.operationType() == SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE
+                        && req.targetApplicationId().equals(2001L)
+                        && "before".equals(req.beforeSnapshot())
+                        && "after".equals(req.afterSnapshot()))
         )).thenReturn(new GovernanceService.ApprovalRequestDto(
                 501L,
                 1L,
@@ -61,12 +60,10 @@ class GovernanceApprovalSubmissionAdapterTest {
         ));
         verify(governanceService).submitRequest(
                 1L,
-                new GovernanceService.SubmitApprovalRequest(
-                        SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE,
-                        2001L,
-                        "before",
-                        "after"
-                )
+                argThat(req -> req.operationType() == SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE
+                        && req.targetApplicationId().equals(2001L)
+                        && "before".equals(req.beforeSnapshot())
+                        && "after".equals(req.afterSnapshot()))
         );
     }
 }

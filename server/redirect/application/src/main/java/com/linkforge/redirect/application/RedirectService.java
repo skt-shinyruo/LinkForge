@@ -7,12 +7,12 @@ import com.linkforge.contract.redirect.LinkMeta;
 import com.linkforge.contract.redirect.LinkMetaSourcePort;
 import com.linkforge.redirect.application.error.RedirectBusinessException;
 import com.linkforge.redirect.application.error.RedirectErrorCode;
-import com.linkforge.foundation.web.VisitInfo;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.Map;
 
 @Service
 public class RedirectService {
@@ -48,22 +48,34 @@ public class RedirectService {
     /**
      * 在“确认跳转”时写统计；若链接不可用则不写入。
      */
-    public void recordVisitIfAvailable(LinkMeta meta, VisitInfo visitInfo) {
+    public void recordVisitIfAvailable(LinkMeta meta, RedirectVisitInput visitInput) {
         if (isAvailable(meta)) {
-            visitRecorder.recordVisit(meta.tenantId(), meta.id(), toVisitContext(visitInfo));
+            visitRecorder.recordVisit(meta.tenantId(), meta.id(), toVisitContext(visitInput));
         }
     }
 
-    public LinkMeta resolveAndRecord(String code, VisitInfo visitInfo) {
+    public void recordVisitIfAvailable(LinkMeta meta, Object visitInput) {
+        recordVisitIfAvailable(meta, coerceVisitInput(visitInput));
+    }
+
+    public LinkMeta resolveAndRecord(String code, RedirectVisitInput visitInput) {
         LinkMeta meta = resolveMeta(null, code);
-        recordVisitIfAvailable(meta, visitInfo);
+        recordVisitIfAvailable(meta, visitInput);
         return meta;
     }
 
-    public LinkMeta resolveAndRecord(String host, String code, VisitInfo visitInfo) {
+    public LinkMeta resolveAndRecord(String code, Object visitInput) {
+        return resolveAndRecord(code, coerceVisitInput(visitInput));
+    }
+
+    public LinkMeta resolveAndRecord(String host, String code, RedirectVisitInput visitInput) {
         LinkMeta meta = resolveMeta(host, code);
-        recordVisitIfAvailable(meta, visitInfo);
+        recordVisitIfAvailable(meta, visitInput);
         return meta;
+    }
+
+    public LinkMeta resolveAndRecord(String host, String code, Object visitInput) {
+        return resolveAndRecord(host, code, coerceVisitInput(visitInput));
     }
 
     private LinkMeta resolveMeta(String host, String code) {
@@ -124,7 +136,7 @@ public class RedirectService {
         return meta.expiresAt() == null || meta.expiresAt().isAfter(nowUtc);
     }
 
-    private static VisitContext toVisitContext(VisitInfo v) {
+    private static VisitContext toVisitContext(RedirectVisitInput v) {
         if (v == null) {
             return null;
         }
@@ -135,5 +147,27 @@ public class RedirectService {
                 v.acceptLanguage(),
                 v.trackingParams()
         );
+    }
+
+    @SuppressWarnings("unchecked")
+    private static RedirectVisitInput coerceVisitInput(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        if (raw instanceof RedirectVisitInput input) {
+            return input;
+        }
+        try {
+            Class<?> cls = raw.getClass();
+            return new RedirectVisitInput(
+                    (String) cls.getMethod("ip").invoke(raw),
+                    (String) cls.getMethod("userAgent").invoke(raw),
+                    (String) cls.getMethod("referer").invoke(raw),
+                    (String) cls.getMethod("acceptLanguage").invoke(raw),
+                    (Map<String, String>) cls.getMethod("trackingParams").invoke(raw)
+            );
+        } catch (ReflectiveOperationException ex) {
+            return null;
+        }
     }
 }

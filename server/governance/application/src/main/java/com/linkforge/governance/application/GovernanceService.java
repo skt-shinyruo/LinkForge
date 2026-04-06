@@ -3,9 +3,7 @@ package com.linkforge.governance.application;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
-import com.linkforge.foundation.runtime.security.TenantGuard;
-import com.linkforge.foundation.security.AuthContext;
-import com.linkforge.foundation.security.AuthPrincipal;
+import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.security.StandardRoles;
 import com.linkforge.governance.application.port.ApprovalRepository;
 import com.linkforge.governance.application.port.AuditLogRepository;
@@ -16,8 +14,10 @@ import com.linkforge.governance.domain.SensitiveOperationType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 
 @Service
 public class GovernanceService {
@@ -25,35 +25,34 @@ public class GovernanceService {
     private static final long TENANT_ADMIN_MONTHLY_LINK_LIMIT_CEILING = 100_000L;
 
     private final SnowflakeIdGenerator idGenerator;
-    private final TenantGuard tenantGuard;
     private final ApprovalRepository approvalRepository;
     private final AuditLogRepository auditLogRepository;
+    private final Clock clock;
 
     public GovernanceService(
             SnowflakeIdGenerator idGenerator,
-            TenantGuard tenantGuard,
             ApprovalRepository approvalRepository,
-            AuditLogRepository auditLogRepository
+            AuditLogRepository auditLogRepository,
+            Clock clock
     ) {
         this.idGenerator = idGenerator;
-        this.tenantGuard = tenantGuard;
         this.approvalRepository = approvalRepository;
         this.auditLogRepository = auditLogRepository;
+        this.clock = clock;
     }
 
     @Transactional
     public ApprovalRequestDto submitRequest(long tenantId, SubmitApprovalRequest request) {
-        tenantGuard.requireCurrentTenant(tenantId);
-        AuthPrincipal principal = AuthContext.requirePrincipal();
-        LocalDateTime now = LocalDateTime.now();
+        UserActor actor = requireActor(tenantId, request.actor());
+        LocalDateTime now = request.requestedAt() == null ? LocalDateTime.now(clock) : request.requestedAt();
         long requestId = idGenerator.nextId();
         ApprovalRequest approvalRequest = new ApprovalRequest(
                 requestId,
                 tenantId,
                 request.operationType(),
                 request.targetApplicationId(),
-                principal.getUserId(),
-                principal.getEmail(),
+                actor.userId(),
+                actor.email(),
                 ApprovalStatus.PENDING_APPROVAL,
                 null,
                 null,
@@ -65,43 +64,45 @@ public class GovernanceService {
                 null
         );
         approvalRepository.insert(approvalRequest);
-        appendAuditLog(tenantId, principal, "SUBMIT_REQUEST", "approval_request", String.valueOf(requestId), requestId, null, request.afterSnapshot(), now);
+        appendAuditLog(tenantId, actor, "SUBMIT_REQUEST", "approval_request", String.valueOf(requestId), requestId, null, request.afterSnapshot(), now);
         return toDto(approvalRequest);
     }
 
     @Transactional
-    public ApprovalRequestDto approveRequest(long tenantId, long requestId, String reason) {
-        tenantGuard.requireCurrentTenant(tenantId);
-        AuthPrincipal principal = AuthContext.requirePrincipal();
+    public ApprovalRequestDto approveRequest(long tenantId, long requestId, String reason, UserActor actor, LocalDateTime requestedAt) {
+        UserActor effectiveActor = requireActor(tenantId, actor);
         ApprovalRequest request = approvalRepository.findByTenantIdAndId(tenantId, requestId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "审批请求不存在"));
-        if (request.requestedByUserId() == principal.getUserId()) {
+        if (request.requestedByUserId() == effectiveActor.userId()) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "申请人与审批人不能是同一人");
         }
-        enforceApprovalMatrix(principal, request);
-        LocalDateTime now = LocalDateTime.now();
+        enforceApprovalMatrix(effectiveActor, request);
+        LocalDateTime now = requestedAt == null ? LocalDateTime.now(clock) : requestedAt;
         approvalRepository.updateDecision(
                 request.id(),
                 ApprovalStatus.EXECUTED.name(),
-                principal.getUserId(),
-                principal.getEmail(),
+                effectiveActor.userId(),
+                effectiveActor.email(),
                 reason,
                 now,
                 now
         );
-        appendAuditLog(tenantId, principal, "APPROVE_REQUEST", "approval_request", String.valueOf(requestId), requestId, request.beforeSnapshot(), request.afterSnapshot(), now);
+        appendAuditLog(tenantId, effectiveActor, "APPROVE_REQUEST", "approval_request", String.valueOf(requestId), requestId, request.beforeSnapshot(), request.afterSnapshot(), now);
         return approvalRepository.findByTenantIdAndId(tenantId, requestId)
                 .map(this::toDto)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_ERROR, "审批请求更新失败"));
     }
 
+    @Transactional
+    public ApprovalRequestDto approveRequest(long tenantId, long requestId, String reason) {
+        return approveRequest(tenantId, requestId, reason, resolveCurrentActorReflectively(), LocalDateTime.now(clock));
+    }
+
     public List<ApprovalRequestDto> listRequests(long tenantId) {
-        tenantGuard.requireCurrentTenant(tenantId);
         return approvalRepository.listByTenantId(tenantId).stream().map(this::toDto).toList();
     }
 
     public List<AuditLogDto> listAuditLogs(long tenantId) {
-        tenantGuard.requireCurrentTenant(tenantId);
         return auditLogRepository.listByTenantId(tenantId).stream()
                 .map(log -> new AuditLogDto(
                         log.id(),
@@ -119,9 +120,10 @@ public class GovernanceService {
                 .toList();
     }
 
-    private void enforceApprovalMatrix(AuthPrincipal principal, ApprovalRequest request) {
-        boolean isPlatformAdmin = principal.getRoles().contains(StandardRoles.PLATFORM_ADMIN);
-        boolean isTenantAdmin = principal.getRoles().contains(StandardRoles.TENANT_ADMIN);
+    private void enforceApprovalMatrix(UserActor actor, ApprovalRequest request) {
+        Set<String> roles = actor.roles() == null ? Set.of() : actor.roles();
+        boolean isPlatformAdmin = roles.contains(StandardRoles.PLATFORM_ADMIN);
+        boolean isTenantAdmin = roles.contains(StandardRoles.TENANT_ADMIN);
         if (!isPlatformAdmin && !isTenantAdmin) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "无审批权限");
         }
@@ -153,7 +155,7 @@ public class GovernanceService {
 
     private void appendAuditLog(
             long tenantId,
-            AuthPrincipal principal,
+            UserActor actor,
             String actionType,
             String resourceType,
             String resourceId,
@@ -165,8 +167,8 @@ public class GovernanceService {
         auditLogRepository.insert(new AuditLog(
                 idGenerator.nextId(),
                 tenantId,
-                principal.getUserId(),
-                principal.getEmail(),
+                actor.userId(),
+                actor.email(),
                 actionType,
                 resourceType,
                 resourceId,
@@ -175,6 +177,32 @@ public class GovernanceService {
                 afterSnapshot,
                 createdAt
         ));
+    }
+
+    private static UserActor requireActor(long tenantId, UserActor actor) {
+        if (actor == null || actor.userId() <= 0 || actor.email() == null || actor.email().isBlank()) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "actor 无效");
+        }
+        if (actor.tenantId() != tenantId) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "actor 租户不匹配");
+        }
+        return actor;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static UserActor resolveCurrentActorReflectively() {
+        try {
+            Class<?> authContextClass = Class.forName("com.linkforge.foundation.security.AuthContext");
+            Object principal = authContextClass.getMethod("requirePrincipal").invoke(null);
+            Class<?> principalClass = principal.getClass();
+            long tenantId = ((Number) principalClass.getMethod("getTenantId").invoke(principal)).longValue();
+            long userId = ((Number) principalClass.getMethod("getUserId").invoke(principal)).longValue();
+            String email = (String) principalClass.getMethod("getEmail").invoke(principal);
+            Set<String> roles = (Set<String>) principalClass.getMethod("getRoles").invoke(principal);
+            return new UserActor(tenantId, userId, email, roles);
+        } catch (ReflectiveOperationException ex) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "无法解析当前用户身份");
+        }
     }
 
     private ApprovalRequestDto toDto(ApprovalRequest request) {
@@ -196,7 +224,9 @@ public class GovernanceService {
             SensitiveOperationType operationType,
             Long targetApplicationId,
             String beforeSnapshot,
-            String afterSnapshot
+            String afterSnapshot,
+            UserActor actor,
+            LocalDateTime requestedAt
     ) {
     }
 

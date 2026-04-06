@@ -51,7 +51,19 @@
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-accounts</artifactId>
+            <artifactId>linkforge-accounts-domain</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-accounts-application</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-accounts-infrastructure</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-accounts-interfaces</artifactId>
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>

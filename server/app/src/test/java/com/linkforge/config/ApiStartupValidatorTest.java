@@ -1,6 +1,6 @@
 package com.linkforge.config;
 
-import com.linkforge.accounts.startup.AccountsStartupCheck;
+import com.linkforge.accounts.interfaces.startup.AccountsStartupCheck;
 import com.linkforge.analytics.infrastructure.startup.AnalyticsStartupCheck;
 import com.linkforge.app.startup.AppStartupValidator;
 import com.linkforge.foundation.config.AnalyticsProperties;

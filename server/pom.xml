@@ -117,6 +117,26 @@
             </dependency>
             <dependency>
                 <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-accounts-domain</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-accounts-application</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-accounts-infrastructure</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-accounts-interfaces</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
                 <artifactId>linkforge-shortlink</artifactId>
                 <version>${project.version}</version>
             </dependency>

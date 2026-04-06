@@ -6,18 +6,18 @@
 
     <parent>
         <groupId>com.linkforge</groupId>
-        <artifactId>linkforge-governance</artifactId>
+        <artifactId>linkforge-accounts</artifactId>
         <version>0.1.0-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>linkforge-governance-application</artifactId>
-    <name>linkforge-governance-application</name>
+    <artifactId>linkforge-accounts-interfaces</artifactId>
+    <name>linkforge-accounts-interfaces</name>
 
     <dependencies>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-governance-domain</artifactId>
+            <artifactId>linkforge-accounts-application</artifactId>
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
@@ -25,17 +25,35 @@
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-contract-api</artifactId>
+            <artifactId>linkforge-foundation-runtime-web</artifactId>
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-contract-governance</artifactId>
+            <artifactId>linkforge-foundation-runtime-security</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.springframework</groupId>
-            <artifactId>spring-tx</artifactId>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-foundation-runtime-startup</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-contract-api</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <!-- test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

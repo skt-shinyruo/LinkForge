@@ -6,22 +6,27 @@
 
     <parent>
         <groupId>com.linkforge</groupId>
-        <artifactId>linkforge-governance</artifactId>
+        <artifactId>linkforge-accounts</artifactId>
         <version>0.1.0-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>linkforge-governance-application</artifactId>
-    <name>linkforge-governance-application</name>
+    <artifactId>linkforge-accounts-application</artifactId>
+    <name>linkforge-accounts-application</name>
 
     <dependencies>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-governance-domain</artifactId>
+            <artifactId>linkforge-accounts-domain</artifactId>
         </dependency>
+
         <dependency>
             <groupId>com.linkforge</groupId>
             <artifactId>linkforge-foundation-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-foundation-runtime-security</artifactId>
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
@@ -29,13 +34,15 @@
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-contract-governance</artifactId>
+            <artifactId>linkforge-contract-platform</artifactId>
         </dependency>
+
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-tx</artifactId>
         </dependency>
 
+        <!-- test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

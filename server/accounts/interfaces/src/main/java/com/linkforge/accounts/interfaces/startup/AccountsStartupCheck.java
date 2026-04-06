@@ -1,4 +1,4 @@
-package com.linkforge.accounts.startup;
+package com.linkforge.accounts.interfaces.startup;
 
 import com.linkforge.foundation.config.CorsProperties;
 import com.linkforge.foundation.config.SecurityProperties;

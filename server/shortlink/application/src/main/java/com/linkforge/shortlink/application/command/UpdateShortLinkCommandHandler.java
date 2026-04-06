@@ -28,6 +28,8 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 
 @Component
 public class UpdateShortLinkCommandHandler {
@@ -81,6 +83,27 @@ public class UpdateShortLinkCommandHandler {
 
         boolean appAwareLink = link.applicationId() != null && link.domainId() != null;
         ShortLinkLifecycleState persistedLifecycleState = link.lifecycleState();
+        boolean requiresDestinationApproval = req.originalUrl() != null
+                && appAwareLink
+                && persistedLifecycleState == ShortLinkLifecycleState.ACTIVE
+                && !link.originalUrl().value().equals(req.originalUrl());
+
+        List<String> existingTags = null;
+        if (requiresDestinationApproval) {
+            existingTags = linkTagRepository.findTagNamesByLinkId(linkId);
+            if (hasOtherEffectiveChanges(link, req, existingTags)) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "请先单独提交目标地址变更，再保存其他修改");
+            }
+            approvalSubmissionPort.submitRequest(
+                    tenantId,
+                    SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE,
+                    link.applicationId(),
+                    "originalUrl=" + link.originalUrl().value(),
+                    "originalUrl=" + req.originalUrl()
+            );
+            return dtoMapper.toDto(link, existingTags);
+        }
+
         if (req.lifecycleState() != null) {
             try {
                 link.setLifecycleState(ShortLinkLifecycleState.parseNullable(req.lifecycleState()));
@@ -90,19 +113,6 @@ public class UpdateShortLinkCommandHandler {
         }
 
         if (req.originalUrl() != null) {
-            if (appAwareLink
-                    && persistedLifecycleState == ShortLinkLifecycleState.ACTIVE
-                    && !link.originalUrl().value().equals(req.originalUrl())) {
-                approvalSubmissionPort.submitRequest(
-                        tenantId,
-                        SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE,
-                        link.applicationId(),
-                        "originalUrl=" + link.originalUrl().value(),
-                        "originalUrl=" + req.originalUrl()
-                );
-                List<String> tags = linkTagRepository.findTagNamesByLinkId(linkId);
-                return dtoMapper.toDto(link, tags);
-            }
             try {
                 link.changeOriginalUrl(HttpUrl.of(req.originalUrl()));
             } catch (ShortLinkDomainException ex) {
@@ -191,6 +201,90 @@ public class UpdateShortLinkCommandHandler {
 
         List<String> tags = linkTagRepository.findTagNamesByLinkId(linkId);
         return dtoMapper.toDto(link, tags);
+    }
+
+    private static boolean hasOtherEffectiveChanges(ShortLink link, UpdateLinkRequest req, List<String> existingTags) {
+        return lifecycleStateChanged(link, req)
+                || noteChanged(link, req)
+                || enabledChanged(link, req)
+                || expiresAtChanged(link, req)
+                || redirectStatusCodeChanged(link, req)
+                || previewEnabledChanged(link, req)
+                || unavailableLandingUrlChanged(link, req)
+                || queryForwardModeChanged(link, req)
+                || queryForwardAllowlistChanged(link, req)
+                || tagsChanged(req, existingTags);
+    }
+
+    private static boolean lifecycleStateChanged(ShortLink link, UpdateLinkRequest req) {
+        if (req.lifecycleState() == null) {
+            return false;
+        }
+        return ShortLinkLifecycleState.parseNullable(req.lifecycleState()) != link.lifecycleState();
+    }
+
+    private static boolean noteChanged(ShortLink link, UpdateLinkRequest req) {
+        return req.note() != null && !Objects.equals(link.note(), req.note());
+    }
+
+    private static boolean enabledChanged(ShortLink link, UpdateLinkRequest req) {
+        return req.enabled() != null && req.enabled() != link.enabled();
+    }
+
+    private static boolean expiresAtChanged(ShortLink link, UpdateLinkRequest req) {
+        if (Boolean.TRUE.equals(req.clearExpiresAt())) {
+            return link.expiresAtUtc() != null;
+        }
+        if (req.expiresAt() == null) {
+            return false;
+        }
+        return !Objects.equals(link.expiresAtUtc(), req.expiresAt().atOffset(ZoneOffset.UTC).toLocalDateTime());
+    }
+
+    private static boolean redirectStatusCodeChanged(ShortLink link, UpdateLinkRequest req) {
+        if (Boolean.TRUE.equals(req.clearRedirectStatusCode())) {
+            return link.redirectStatusCode() != null;
+        }
+        return req.redirectStatusCode() != null && !Objects.equals(link.redirectStatusCode(), req.redirectStatusCode());
+    }
+
+    private static boolean previewEnabledChanged(ShortLink link, UpdateLinkRequest req) {
+        return req.previewEnabled() != null && req.previewEnabled() != link.previewEnabled();
+    }
+
+    private static boolean unavailableLandingUrlChanged(ShortLink link, UpdateLinkRequest req) {
+        if (req.unavailableLandingUrl() == null) {
+            return false;
+        }
+        String current = link.unavailableLandingUrl() == null ? null : link.unavailableLandingUrl().value();
+        return !Objects.equals(current, normalizeNullable(req.unavailableLandingUrl()));
+    }
+
+    private static boolean queryForwardModeChanged(ShortLink link, UpdateLinkRequest req) {
+        if (Boolean.TRUE.equals(req.clearQueryForwardMode())) {
+            return link.queryForwardMode() != null;
+        }
+        if (req.queryForwardMode() == null) {
+            return false;
+        }
+        return QueryForwardMode.parseNullable(req.queryForwardMode()) != link.queryForwardMode();
+    }
+
+    private static boolean queryForwardAllowlistChanged(ShortLink link, UpdateLinkRequest req) {
+        if (req.queryForwardAllowlist() == null) {
+            return false;
+        }
+        Set<String> current = Set.copyOf(link.queryForwardAllowlist().values());
+        Set<String> requested = Set.copyOf(QueryForwardAllowlist.fromRaw(req.queryForwardAllowlist()).values());
+        return !current.equals(requested);
+    }
+
+    private static boolean tagsChanged(UpdateLinkRequest req, List<String> existingTags) {
+        if (req.tags() == null) {
+            return false;
+        }
+        Set<String> current = existingTags == null ? Set.of() : Set.copyOf(existingTags);
+        return !current.equals(req.tags());
     }
 
     private static String normalizeNullable(String s) {

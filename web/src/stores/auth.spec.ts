@@ -57,4 +57,25 @@ describe("useAuthStore", () => {
     expect(auth.tenantId).toBe(7);
     expect(auth.roles).toEqual(["TENANT_ADMIN"]);
   });
+
+  it("calls logout on the server before clearing bearer auth state", async () => {
+    getTokenMock.mockReturnValue("persisted-token");
+    apiFetchMock.mockResolvedValue({ code: 0, data: null });
+
+    const { useAuthStore } = await import("./auth");
+    const auth = useAuthStore();
+    auth.token = "persisted-token";
+    auth.email = "admin@example.com";
+    auth.tenantId = 9;
+    auth.roles = ["TENANT_ADMIN"];
+    auth.initialized = true;
+
+    await auth.logout();
+
+    expect(apiFetchMock).toHaveBeenCalledWith("/api/v1/auth/logout", { method: "POST" });
+    expect(apiFetchMock.mock.invocationCallOrder[0]).toBeLessThan(clearTokenMock.mock.invocationCallOrder[0]!);
+    expect(auth.token).toBeNull();
+    expect(auth.email).toBe("");
+    expect(auth.roles).toEqual([]);
+  });
 });

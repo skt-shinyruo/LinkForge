@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -165,5 +166,82 @@ class UpdateShortLinkCommandHandlerTest {
         verify(shortLinkRepository, never()).update(link);
         verify(eventPublisher, never()).updated(eq(link), eq(clock.instant()));
         verify(redirectCacheSync, never()).evict(eq(1L), eq(3001L), anyString());
+    }
+
+    @Test
+    void handle_shouldRejectMixingDestinationApprovalWithOtherEdits() {
+        ShortLinkRepository shortLinkRepository = mock(ShortLinkRepository.class);
+        SetLinkTagsCommandHandler setLinkTagsHandler = mock(SetLinkTagsCommandHandler.class);
+        ShortLinkEventPublisher eventPublisher = mock(ShortLinkEventPublisher.class);
+        LinkTagRepository linkTagRepository = mock(LinkTagRepository.class);
+        RedirectCacheSyncPort redirectCacheSync = mock(RedirectCacheSyncPort.class);
+        ShortLinkDtoMapper dtoMapper = mock(ShortLinkDtoMapper.class);
+        TenantGuard tenantGuard = mock(TenantGuard.class);
+        Clock clock = Clock.fixed(Instant.parse("2026-04-01T00:00:00Z"), ZoneOffset.UTC);
+        ApprovalSubmissionPort approvalSubmissionPort = mock(ApprovalSubmissionPort.class);
+
+        UpdateShortLinkCommandHandler handler = new UpdateShortLinkCommandHandler(
+                shortLinkRepository,
+                setLinkTagsHandler,
+                eventPublisher,
+                linkTagRepository,
+                redirectCacheSync,
+                dtoMapper,
+                tenantGuard,
+                clock,
+                approvalSubmissionPort
+        );
+
+        ShortLink link = ShortLink.create(
+                102L,
+                1L,
+                2001L,
+                3001L,
+                ShortCode.of("governed2"),
+                ShortLinkLifecycleState.ACTIVE,
+                HttpUrl.of("https://example.com/old"),
+                "old-note",
+                true,
+                null,
+                null,
+                false,
+                null,
+                null,
+                null,
+                CreatedByType.USER,
+                9L
+        );
+        when(shortLinkRepository.findByTenantIdAndId(1L, 102L)).thenReturn(java.util.Optional.of(link));
+
+        assertThatThrownBy(() -> handler.handle(
+                1L,
+                102L,
+                new ShortLinkService.UpdateLinkRequest(
+                        "https://example.com/new",
+                        "new-note",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null
+                )
+        )).hasMessageContaining("请先单独提交目标地址变更");
+
+        verify(approvalSubmissionPort, never()).submitRequest(
+                eq(1L),
+                eq(SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE),
+                eq(2001L),
+                anyString(),
+                anyString()
+        );
+        verify(shortLinkRepository, never()).update(link);
+        verify(eventPublisher, never()).updated(eq(link), eq(clock.instant()));
     }
 }

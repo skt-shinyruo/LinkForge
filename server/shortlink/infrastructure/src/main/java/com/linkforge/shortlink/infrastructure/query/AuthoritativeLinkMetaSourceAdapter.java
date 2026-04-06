@@ -48,9 +48,6 @@ public class AuthoritativeLinkMetaSourceAdapter implements LinkMetaSourcePort {
         ShortLinkEntity row = queryMapper.findActiveByHostnameAndCode(normalizedHost, normalizedCode);
         if (row == null && isLegacyBaseHost(normalizedHost)) {
             row = queryMapper.findActiveByLegacyBaseHostAndCode(normalizedHost, normalizedCode);
-            if (row == null) {
-                row = queryMapper.findActiveByCode(normalizedCode);
-            }
         }
         if (row == null) {
             return Optional.empty();

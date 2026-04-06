@@ -93,14 +93,12 @@ export const useAuthStore = defineStore("auth", {
     },
 
     async logout() {
-      this.clearState();
-
-      if (AUTH_MODE === "cookie") {
-        try {
-          await apiFetch<void>("/api/v1/auth/logout", { method: "POST" });
-        } catch {
-          // ignore
-        }
+      try {
+        await apiFetch<void>("/api/v1/auth/logout", { method: "POST" });
+      } catch {
+        // ignore best-effort logout failures; always clear local auth state
+      } finally {
+        this.clearState();
       }
     },
 

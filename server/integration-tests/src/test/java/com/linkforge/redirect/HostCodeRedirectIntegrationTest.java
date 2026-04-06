@@ -146,6 +146,40 @@ class HostCodeRedirectIntegrationTest {
                 .andExpect(header().string(HttpHeaders.LOCATION, "https://example.com/legacy/" + suffix));
     }
 
+    @Test
+    void legacy_base_host_should_not_fallback_to_non_legacy_domain_link() throws Exception {
+        long tenantId = 103L;
+        TestTenantFixtures.ensureTenantExists(jdbcTemplate, tenantId);
+
+        long suffix = System.nanoTime();
+        String code = "legacymiss" + Long.toHexString(suffix);
+
+        long appId = suffix + 201;
+        long domainId = suffix + 211;
+        long linkId = suffix + 221;
+        String customHost = "campaign-" + suffix + ".example.test";
+
+        insertApplication(appId, tenantId, "campaign-" + suffix, "Campaign");
+        insertDedicatedDomain(domainId, tenantId, appId, customHost);
+        insertShortLink(linkId, tenantId, appId, domainId, code, "https://example.com/campaign-only/" + suffix);
+
+        mockMvc.perform(get("/r/" + code)
+                        .with(host(LEGACY_BASE_HOST))
+                        .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(get("/r/" + code)
+                        .with(host(LEGACY_BASE_HOST))
+                        .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(get("/r/" + code)
+                        .with(host(customHost))
+                        .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE))
+                .andExpect(status().isFound())
+                .andExpect(header().string(HttpHeaders.LOCATION, "https://example.com/campaign-only/" + suffix));
+    }
+
     private void insertApplication(long applicationId, long tenantId, String applicationKey, String displayName) {
         jdbcTemplate.update(
                 """

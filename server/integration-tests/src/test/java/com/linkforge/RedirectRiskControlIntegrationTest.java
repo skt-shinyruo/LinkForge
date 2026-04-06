@@ -2,8 +2,10 @@ package com.linkforge;
 
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.contract.redirect.LinkMeta;
+import com.linkforge.redirect.application.RedirectResolution;
 import com.linkforge.redirect.application.RedirectVisitInput;
 import com.linkforge.redirect.application.RedirectService;
+import com.linkforge.redirect.application.ResolveRedirectRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -26,7 +28,6 @@ import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -83,8 +84,7 @@ class RedirectRiskControlIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        when(redirectService.resolve(anyString(), anyString()))
-                .thenReturn(new LinkMeta(
+        LinkMeta meta = new LinkMeta(
                         1L,
                         1L,
                         "abc",
@@ -97,7 +97,12 @@ class RedirectRiskControlIntegrationTest {
                         null,
                         null,
                         null
-                ));
+                );
+        when(redirectService.resolve(any(ResolveRedirectRequest.class)))
+                .thenAnswer(invocation -> {
+                    ResolveRedirectRequest request = invocation.getArgument(0);
+                    return RedirectResolution.redirect(request.code(), request.htmlRequest(), meta);
+                });
 
         // 避免测试间限流 key 干扰
         redis.getConnectionFactory().getConnection().serverCommands().flushAll();
@@ -117,9 +122,11 @@ class RedirectRiskControlIntegrationTest {
                 )
                 .andExpect(status().isFound());
 
-        ArgumentCaptor<RedirectVisitInput> cap = ArgumentCaptor.forClass(RedirectVisitInput.class);
-        verify(redirectService).recordVisitIfAvailable(any(LinkMeta.class), cap.capture());
-        assertThat(cap.getValue().ip()).isEqualTo("198.51.100.10");
+        ArgumentCaptor<ResolveRedirectRequest> cap = ArgumentCaptor.forClass(ResolveRedirectRequest.class);
+        verify(redirectService).resolve(cap.capture());
+        RedirectVisitInput visitInput = cap.getValue().visitInput();
+        assertThat(visitInput).isNotNull();
+        assertThat(visitInput.ip()).isEqualTo("198.51.100.10");
     }
 
     @Test
@@ -136,9 +143,11 @@ class RedirectRiskControlIntegrationTest {
                 )
                 .andExpect(status().isFound());
 
-        ArgumentCaptor<RedirectVisitInput> cap = ArgumentCaptor.forClass(RedirectVisitInput.class);
-        verify(redirectService).recordVisitIfAvailable(any(LinkMeta.class), cap.capture());
-        assertThat(cap.getValue().ip()).isEqualTo("1.2.3.4");
+        ArgumentCaptor<ResolveRedirectRequest> cap = ArgumentCaptor.forClass(ResolveRedirectRequest.class);
+        verify(redirectService).resolve(cap.capture());
+        RedirectVisitInput visitInput = cap.getValue().visitInput();
+        assertThat(visitInput).isNotNull();
+        assertThat(visitInput.ip()).isEqualTo("1.2.3.4");
     }
 
     @Test

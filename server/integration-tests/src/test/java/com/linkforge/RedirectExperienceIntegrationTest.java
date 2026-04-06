@@ -2,8 +2,9 @@ package com.linkforge;
 
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.contract.redirect.LinkMeta;
+import com.linkforge.redirect.application.RedirectResolution;
+import com.linkforge.redirect.application.ResolveRedirectRequest;
 import com.linkforge.redirect.application.RedirectService;
-import com.linkforge.redirect.application.error.RedirectBusinessException;
 import com.linkforge.redirect.application.error.RedirectErrorCode;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,8 +29,6 @@ import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -81,33 +80,38 @@ class RedirectExperienceIntegrationTest {
 
     @Test
     void should_return_404_html_when_link_not_found_and_accept_html() throws Exception {
-        when(redirectService.resolve(anyString(), anyString()))
-                .thenThrow(new RedirectBusinessException(RedirectErrorCode.LINK_NOT_FOUND));
+        when(redirectService.resolve(any(ResolveRedirectRequest.class)))
+                .thenAnswer(invocation -> {
+                    ResolveRedirectRequest request = invocation.getArgument(0);
+                    return RedirectResolution.notFound(request.code(), request.htmlRequest());
+                });
 
         mockMvc.perform(get("/r/missing").header(HttpHeaders.ACCEPT, "text/html"))
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML));
 
-        verify(redirectService, never()).recordVisitIfAvailable(any(), any());
+        verify(redirectService).resolve(any(ResolveRedirectRequest.class));
     }
 
     @Test
     void should_return_json_when_link_not_found_and_accept_not_html() throws Exception {
-        when(redirectService.resolve(anyString(), anyString()))
-                .thenThrow(new RedirectBusinessException(RedirectErrorCode.LINK_NOT_FOUND));
+        when(redirectService.resolve(any(ResolveRedirectRequest.class)))
+                .thenAnswer(invocation -> {
+                    ResolveRedirectRequest request = invocation.getArgument(0);
+                    return RedirectResolution.notFound(request.code(), request.htmlRequest());
+                });
 
         mockMvc.perform(get("/r/missing").header(HttpHeaders.ACCEPT, "application/json"))
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.code").value(RedirectErrorCode.LINK_NOT_FOUND.getCode()));
 
-        verify(redirectService, never()).recordVisitIfAvailable(any(), any());
+        verify(redirectService).resolve(any(ResolveRedirectRequest.class));
     }
 
     @Test
     void should_return_410_html_when_link_disabled_and_accept_html() throws Exception {
-        when(redirectService.resolve(anyString(), anyString()))
-                .thenReturn(new LinkMeta(
+        LinkMeta meta = new LinkMeta(
                         1L,
                         1L,
                         "abc",
@@ -120,19 +124,23 @@ class RedirectExperienceIntegrationTest {
                         null,
                         null,
                         null
+                );
+        when(redirectService.resolve(any(ResolveRedirectRequest.class)))
+                .thenReturn(RedirectResolution.unavailable(
+                        "abc",
+                        true,
+                        meta,
+                        RedirectResolution.UnavailableReason.DISABLED
                 ));
 
         mockMvc.perform(get("/r/abc").header(HttpHeaders.ACCEPT, "text/html"))
                 .andExpect(status().isGone())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML));
-
-        verify(redirectService, never()).recordVisitIfAvailable(any(), any());
     }
 
     @Test
     void should_return_preview_html_when_preview_enabled_and_not_confirmed() throws Exception {
-        when(redirectService.resolve(anyString(), anyString()))
-                .thenReturn(new LinkMeta(
+        LinkMeta meta = new LinkMeta(
                         1L,
                         1L,
                         "abc",
@@ -145,7 +153,9 @@ class RedirectExperienceIntegrationTest {
                         null,
                         null,
                         null
-                ));
+                );
+        when(redirectService.resolve(any(ResolveRedirectRequest.class)))
+                .thenReturn(RedirectResolution.preview("abc", true, meta));
 
         MvcResult r = mockMvc.perform(get("/r/abc").header(HttpHeaders.ACCEPT, "text/html"))
                 .andExpect(status().isOk())
@@ -154,14 +164,11 @@ class RedirectExperienceIntegrationTest {
 
         String body = r.getResponse().getContentAsString();
         assertThat(body).contains("__lf_confirm=1");
-
-        verify(redirectService, never()).recordVisitIfAvailable(any(), any());
     }
 
     @Test
     void should_redirect_after_confirm_and_forward_allowed_query_only() throws Exception {
-        when(redirectService.resolve(anyString(), anyString()))
-                .thenReturn(new LinkMeta(
+        LinkMeta meta = new LinkMeta(
                         1L,
                         1L,
                         "abc",
@@ -174,7 +181,9 @@ class RedirectExperienceIntegrationTest {
                         "ALLOWLIST",
                         "utm_*",
                         null
-                ));
+                );
+        when(redirectService.resolve(any(ResolveRedirectRequest.class)))
+                .thenReturn(RedirectResolution.redirect("abc", true, meta));
 
         MvcResult r = mockMvc.perform(
                         get("/r/abc")
@@ -192,14 +201,11 @@ class RedirectExperienceIntegrationTest {
         assertThat(location).contains("utm_source=x");
         assertThat(location).doesNotContain("foo=bar");
         assertThat(location).doesNotContain("__lf_confirm");
-
-        verify(redirectService).recordVisitIfAvailable(any(), any());
     }
 
     @Test
     void should_not_override_existing_query_param_in_original_url() throws Exception {
-        when(redirectService.resolve(anyString(), anyString()))
-                .thenReturn(new LinkMeta(
+        LinkMeta meta = new LinkMeta(
                         1L,
                         1L,
                         "abc",
@@ -212,7 +218,9 @@ class RedirectExperienceIntegrationTest {
                         "ALL",
                         null,
                         null
-                ));
+                );
+        when(redirectService.resolve(any(ResolveRedirectRequest.class)))
+                .thenReturn(RedirectResolution.redirect("abc", true, meta));
 
         MvcResult r = mockMvc.perform(
                         get("/r/abc")
@@ -229,8 +237,7 @@ class RedirectExperienceIntegrationTest {
 
     @Test
     void should_return_410_json_when_link_expired_and_accept_not_html() throws Exception {
-        when(redirectService.resolve(anyString(), anyString()))
-                .thenReturn(new LinkMeta(
+        LinkMeta meta = new LinkMeta(
                         1L,
                         1L,
                         "abc",
@@ -243,13 +250,18 @@ class RedirectExperienceIntegrationTest {
                         null,
                         null,
                         null
+                );
+        when(redirectService.resolve(any(ResolveRedirectRequest.class)))
+                .thenReturn(RedirectResolution.unavailable(
+                        "abc",
+                        false,
+                        meta,
+                        RedirectResolution.UnavailableReason.EXPIRED
                 ));
 
         mockMvc.perform(get("/r/abc").header(HttpHeaders.ACCEPT, "application/json"))
                 .andExpect(status().isGone())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.code").value(RedirectErrorCode.LINK_EXPIRED.getCode()));
-
-        verify(redirectService, never()).recordVisitIfAvailable(any(), any());
     }
 }

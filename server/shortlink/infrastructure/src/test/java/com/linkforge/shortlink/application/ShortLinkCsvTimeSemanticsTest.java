@@ -4,6 +4,8 @@ import com.linkforge.foundation.persistence.PageQuery;
 import com.linkforge.foundation.tx.RequiresNewTransactionPort;
 import com.linkforge.shortlink.application.command.CreateShortLinkCommandHandler;
 import com.linkforge.shortlink.application.command.ImportShortLinksCsvCommandHandler;
+import com.linkforge.shortlink.application.csv.ShortLinkCsvExport;
+import com.linkforge.shortlink.application.csv.ShortLinkCsvImportRow;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
 import com.linkforge.shortlink.application.port.ShortLinkRepository;
 import com.linkforge.shortlink.application.query.ExportShortLinksCsvQueryHandler;
@@ -12,19 +14,13 @@ import com.linkforge.shortlink.domain.CreatedByType;
 import com.linkforge.shortlink.domain.HttpUrl;
 import com.linkforge.shortlink.domain.ShortCode;
 import com.linkforge.shortlink.domain.ShortLink;
-import org.apache.commons.csv.CSVFormat;
-import org.apache.commons.csv.CSVParser;
-import org.apache.commons.csv.CSVRecord;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.StringReader;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -46,20 +42,17 @@ class ShortLinkCsvTimeSemanticsTest {
         RequiresNewTransactionPort requiresNewTransactionPort = Runnable::run;
         ImportShortLinksCsvCommandHandler handler = new ImportShortLinksCsvCommandHandler(createHandler, requiresNewTransactionPort);
 
-        String csv = """
-                originalUrl,code,expiresAt,note,tags
-                https://example.com/1,,2026-03-10T12:00:00Z,,
-                https://example.com/2,,2026-03-10T12:00:00+08:00,,
-                https://example.com/3,,2026-03-10T12:00:00,,
-                """;
-
         long tenantId = 1L;
         long userId = 1L;
         ShortLinkService.CreatedBy createdBy = ShortLinkService.CreatedBy.user(userId);
         ShortLinkService.ImportResult result = handler.handle(
                 tenantId,
                 createdBy,
-                new ByteArrayInputStream(csv.getBytes(StandardCharsets.UTF_8))
+                List.of(
+                        new ShortLinkCsvImportRow(1L, "https://example.com/1", null, "2026-03-10T12:00:00Z", null, null),
+                        new ShortLinkCsvImportRow(2L, "https://example.com/2", null, "2026-03-10T04:00:00Z", null, null),
+                        new ShortLinkCsvImportRow(3L, "https://example.com/3", null, "2026-03-10T12:00:00", null, null)
+                )
         );
 
         assertThat(result.failed()).isEqualTo(0);
@@ -86,7 +79,34 @@ class ShortLinkCsvTimeSemanticsTest {
     }
 
     @Test
-    void exportCsv_should_output_expiresAt_as_utc_instant_string_and_blank_when_null() throws Exception {
+    void importCsv_shouldAggregateMalformedRowsWithoutAbortingBatch() {
+        CreateShortLinkCommandHandler createHandler = mock(CreateShortLinkCommandHandler.class);
+        when(createHandler.handle(anyLong(), any(), any())).thenReturn(null);
+
+        RequiresNewTransactionPort requiresNewTransactionPort = Runnable::run;
+        ImportShortLinksCsvCommandHandler handler = new ImportShortLinksCsvCommandHandler(createHandler, requiresNewTransactionPort);
+
+        ShortLinkService.ImportResult result = handler.handle(
+                1L,
+                ShortLinkService.CreatedBy.user(1L),
+                List.of(
+                        new ShortLinkCsvImportRow(1L, "https://example.com/1", "code-1", "2026-03-10T12:00:00Z", null, "marketing,spring"),
+                        new ShortLinkCsvImportRow(2L, "https://example.com/2", "code-2", "not-a-date", null, null),
+                        new ShortLinkCsvImportRow(3L, "https://example.com/3", "code-3", null, null, null)
+                )
+        );
+
+        assertThat(result.success()).isEqualTo(2);
+        assertThat(result.failed()).isEqualTo(1);
+        assertThat(result.errors()).containsExactly(
+                "line 2: expiresAt 格式错误（需 ISO-8601 Instant，例如 2026-03-10T12:00:00Z 或 2026-03-10T12:00:00+08:00；或 legacy LocalDateTime 例如 2026-03-10T12:00:00，按 UTC 处理）"
+        );
+
+        verify(createHandler, times(2)).handle(anyLong(), any(), any());
+    }
+
+    @Test
+    void exportCsv_should_output_expiresAt_as_utc_instant_and_null_when_blank() {
         ShortLinkRepository shortLinkRepository = mock(ShortLinkRepository.class);
         LinkTagRepository linkTagRepository = mock(LinkTagRepository.class);
 
@@ -141,21 +161,11 @@ class ShortLinkCsvTimeSemanticsTest {
                 .thenReturn(List.of(withExpiresAt, noExpiresAt));
         when(linkTagRepository.findTagNamesByLinkIds(any())).thenReturn(List.of());
 
-        ByteArrayOutputStream os = new ByteArrayOutputStream();
-        handler.handle(1L, new ShortLinkSearchQuery(false, null, null, null, null), new PageQuery(0, 10), os);
+        ShortLinkCsvExport export = handler.handle(1L, new ShortLinkSearchQuery(false, null, null, null, null), new PageQuery(0, 10));
 
-        String out = os.toString(StandardCharsets.UTF_8);
-        try (CSVParser parser = CSVFormat.DEFAULT.builder()
-                .setHeader()
-                .setSkipHeaderRecord(true)
-                .build()
-                .parse(new StringReader(out))) {
-            List<CSVRecord> records = parser.getRecords();
-            assertThat(records).hasSize(2);
-
-            assertThat(records.get(0).get("expiresAt")).isEqualTo("2026-03-10T12:00:00Z");
-            assertThat(records.get(1).get("expiresAt")).isBlank();
-        }
+        assertThat(export.rows()).hasSize(2);
+        assertThat(export.rows().get(0).expiresAt()).isEqualTo(Instant.parse("2026-03-10T12:00:00Z"));
+        assertThat(export.rows().get(1).expiresAt()).isNull();
     }
 
 }

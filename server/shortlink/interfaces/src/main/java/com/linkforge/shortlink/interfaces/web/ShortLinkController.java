@@ -1,21 +1,20 @@
 package com.linkforge.shortlink.interfaces.web;
 
 import com.linkforge.contract.api.ApiResponse;
-import com.linkforge.contract.api.BusinessException;
-import com.linkforge.contract.api.ErrorCode;
-import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.foundation.context.UserActor;
-import com.linkforge.foundation.persistence.PageQuery;
 import com.linkforge.foundation.persistence.PageResult;
 import com.linkforge.foundation.security.AuthContext;
 import com.linkforge.foundation.security.AuthPrincipal;
+import com.linkforge.foundation.security.PrincipalActorMapper;
 import com.linkforge.foundation.web.RequestId;
 import com.linkforge.shortlink.application.ShortLinkService;
 import com.linkforge.shortlink.application.ShortLinkService.CreatedBy;
 import com.linkforge.shortlink.application.ShortLinkService.CreateLinkRequest;
 import com.linkforge.shortlink.application.ShortLinkService.ImportResult;
 import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
-import com.linkforge.shortlink.application.query.ShortLinkSearchQuery;
+import com.linkforge.shortlink.application.ShortLinkService.BrowseLinksRequest;
+import com.linkforge.shortlink.application.ShortLinkService.ScopedCreateLinkRequest;
+import com.linkforge.shortlink.application.csv.ShortLinkCsvExport;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkCreateHttpRequest;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkPageHttpResponse;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkUpdateHttpRequest;
@@ -34,7 +33,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 
@@ -44,27 +42,28 @@ public class ShortLinkController {
 
     private final ShortLinkService shortLinkService;
     private final ShortLinkWriteGuard writeGuard;
-    private final ApplicationScopePort applicationScopePort;
+    private final PrincipalActorMapper principalActorMapper;
+    private final ShortLinkCsvHttpMapper shortLinkCsvHttpMapper;
 
     public ShortLinkController(
             ShortLinkService shortLinkService,
             ShortLinkWriteGuard writeGuard,
-            ApplicationScopePort applicationScopePort
+            PrincipalActorMapper principalActorMapper,
+            ShortLinkCsvHttpMapper shortLinkCsvHttpMapper
     ) {
         this.shortLinkService = shortLinkService;
         this.writeGuard = writeGuard;
-        this.applicationScopePort = applicationScopePort;
+        this.principalActorMapper = principalActorMapper;
+        this.shortLinkCsvHttpMapper = shortLinkCsvHttpMapper;
     }
 
     @PostMapping("/links")
     public ApiResponse<LinkDto> create(@Valid @RequestBody ShortLinkCreateHttpRequest req) {
         writeGuard.requireWriteEnabled();
-        AuthPrincipal p = AuthContext.requirePrincipal();
-        CreatedBy createdBy = CreatedBy.user(p.getUserId());
-        LinkDto dto = shortLinkService.create(
-                p.getTenantId(),
-                createdBy,
-                ShortLinkHttpMapper.toCreateRequest(req)
+        UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
+        LinkDto dto = shortLinkService.createForUser(
+                actor,
+                new ScopedCreateLinkRequest(ShortLinkHttpMapper.toCreateRequest(req), null)
         );
         return ApiResponse.ok(dto, RequestId.get());
     }
@@ -76,10 +75,11 @@ public class ShortLinkController {
             @Valid @RequestBody ShortLinkCreateHttpRequest req
     ) {
         writeGuard.requireWriteEnabled();
-        AuthPrincipal p = AuthContext.requirePrincipal();
-        applicationScopePort.requireApplicationExists(p.getTenantId(), applicationId);
-        CreateLinkRequest createRequest = withApplicationId(ShortLinkHttpMapper.toCreateRequest(req), applicationId, req.applicationId());
-        LinkDto dto = shortLinkService.create(p.getTenantId(), CreatedBy.user(p.getUserId()), createRequest);
+        UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
+        LinkDto dto = shortLinkService.createForUser(
+                actor,
+                new ScopedCreateLinkRequest(ShortLinkHttpMapper.toCreateRequest(req), applicationId)
+        );
         return ApiResponse.ok(dto, RequestId.get());
     }
 
@@ -93,11 +93,10 @@ public class ShortLinkController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
-        AuthPrincipal p = AuthContext.requirePrincipal();
-        PageResult<LinkDto> result = shortLinkService.search(
-                p.getTenantId(),
-                buildSearchQuery(applicationId, archived, enabled, keyword, tag),
-                PageQuery.of(page, size, 100)
+        UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
+        PageResult<LinkDto> result = shortLinkService.browseForUser(
+                actor,
+                new BrowseLinksRequest(archived, enabled, keyword, tag, applicationId, null, page, size, 100)
         );
         return ApiResponse.ok(ShortLinkHttpMapper.toPageResponse(result), RequestId.get());
     }
@@ -113,12 +112,10 @@ public class ShortLinkController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
-        AuthPrincipal p = AuthContext.requirePrincipal();
-        applicationScopePort.requireApplicationExists(p.getTenantId(), applicationId);
-        PageResult<LinkDto> result = shortLinkService.search(
-                p.getTenantId(),
-                buildSearchQuery(applicationId, archived, enabled, keyword, tag),
-                PageQuery.of(page, size, 100)
+        UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
+        PageResult<LinkDto> result = shortLinkService.browseForUser(
+                actor,
+                new BrowseLinksRequest(archived, enabled, keyword, tag, null, applicationId, page, size, 100)
         );
         return ApiResponse.ok(ShortLinkHttpMapper.toPageResponse(result), RequestId.get());
     }
@@ -132,13 +129,13 @@ public class ShortLinkController {
     @PutMapping("/links/{id}")
     public ApiResponse<LinkDto> update(@PathVariable("id") long id, @Valid @RequestBody ShortLinkUpdateHttpRequest req) {
         writeGuard.requireWriteEnabled();
-        AuthPrincipal p = AuthContext.requirePrincipal();
+        UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
         return ApiResponse.ok(
                 shortLinkService.update(
-                        p.getTenantId(),
+                        actor.tenantId(),
                         id,
                         ShortLinkHttpMapper.toUpdateRequest(req),
-                        new UserActor(p.getTenantId(), p.getUserId(), p.getEmail(), p.getRoles()),
+                        actor,
                         LocalDateTime.now(ZoneOffset.UTC)
                 ),
                 RequestId.get()
@@ -174,17 +171,9 @@ public class ShortLinkController {
     @PreAuthorize("hasRole('TENANT_ADMIN')")
     public ApiResponse<ImportResult> importCsv(@RequestParam("file") MultipartFile file) {
         writeGuard.requireWriteEnabled();
-        AuthPrincipal p = AuthContext.requirePrincipal();
-        if (file == null || file.isEmpty()) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "文件不能为空");
-        }
-        ImportResult r;
-        try {
-            r = shortLinkService.importCsv(p.getTenantId(), CreatedBy.user(p.getUserId()), file.getInputStream());
-        } catch (IOException e) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "文件读取失败");
-        }
-        return ApiResponse.ok(r, RequestId.get());
+        UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
+        ImportResult result = shortLinkService.importCsv(actor, shortLinkCsvHttpMapper.parse(file));
+        return ApiResponse.ok(result, RequestId.get());
     }
 
     @GetMapping("/links/export")
@@ -198,17 +187,13 @@ public class ShortLinkController {
             @RequestParam(required = false) Long applicationId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "200") int size
-    ) throws IOException {
-        AuthPrincipal p = AuthContext.requirePrincipal();
-
-        response.setHeader(HttpHeaders.CONTENT_TYPE, "text/csv; charset=utf-8");
-        response.setHeader(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"links.csv\"");
-        shortLinkService.exportCsv(
-                p.getTenantId(),
-                buildSearchQuery(applicationId, archived, enabled, keyword, tag),
-                PageQuery.of(page, size, 1000),
-                response.getOutputStream()
+    ) {
+        UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
+        ShortLinkCsvExport export = shortLinkService.exportCsvForUser(
+                actor,
+                new BrowseLinksRequest(archived, enabled, keyword, tag, applicationId, null, page, size, 1000)
         );
+        shortLinkCsvHttpMapper.write(export, response);
     }
 
     @GetMapping("/applications/{applicationId}/links/export")
@@ -222,53 +207,12 @@ public class ShortLinkController {
             @RequestParam(required = false) String tag,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "200") int size
-    ) throws IOException {
-        AuthPrincipal p = AuthContext.requirePrincipal();
-        applicationScopePort.requireApplicationExists(p.getTenantId(), applicationId);
-        response.setHeader(HttpHeaders.CONTENT_TYPE, "text/csv; charset=utf-8");
-        response.setHeader(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"links.csv\"");
-        shortLinkService.exportCsv(
-                p.getTenantId(),
-                buildSearchQuery(applicationId, archived, enabled, keyword, tag),
-                PageQuery.of(page, size, 1000),
-                response.getOutputStream()
-        );
-    }
-
-    private static CreateLinkRequest withApplicationId(
-            CreateLinkRequest createRequest,
-            long applicationId,
-            Long requestApplicationId
     ) {
-        if (requestApplicationId != null && requestApplicationId != applicationId) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "请求体中的 applicationId 与路径不一致");
-        }
-        return new CreateLinkRequest(
-                createRequest.originalUrl(),
-                createRequest.note(),
-                createRequest.expiresAt(),
-                createRequest.enabled(),
-                createRequest.customCode(),
-                createRequest.tags(),
-                createRequest.redirectStatusCode(),
-                createRequest.previewEnabled(),
-                createRequest.unavailableLandingUrl(),
-                createRequest.queryForwardMode(),
-                createRequest.queryForwardAllowlist(),
-                applicationId,
-                createRequest.domainId(),
-                createRequest.lifecycleState()
+        UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
+        ShortLinkCsvExport export = shortLinkService.exportCsvForUser(
+                actor,
+                new BrowseLinksRequest(archived, enabled, keyword, tag, null, applicationId, page, size, 1000)
         );
-    }
-
-    private static ShortLinkSearchQuery buildSearchQuery(
-            Long applicationId,
-            Boolean archived,
-            Boolean enabled,
-            String keyword,
-            String tag
-    ) {
-        boolean archivedFlag = archived != null && archived;
-        return new ShortLinkSearchQuery(archivedFlag, enabled, keyword, tag, applicationId);
+        shortLinkCsvHttpMapper.write(export, response);
     }
 }

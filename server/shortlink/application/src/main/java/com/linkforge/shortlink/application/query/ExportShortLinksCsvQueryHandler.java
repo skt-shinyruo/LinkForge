@@ -1,23 +1,18 @@
 package com.linkforge.shortlink.application.query;
 
-import com.linkforge.contract.api.BusinessException;
-import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.persistence.PageQuery;
+import com.linkforge.shortlink.application.csv.ShortLinkCsvExport;
+import com.linkforge.shortlink.application.csv.ShortLinkCsvExportRow;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
 import com.linkforge.shortlink.application.port.ShortLinkRepository;
 import com.linkforge.shortlink.application.support.OffsetPagingGuard;
 import com.linkforge.shortlink.domain.ShortLink;
-import org.apache.commons.csv.CSVFormat;
-import org.apache.commons.csv.CSVPrinter;
 import org.springframework.stereotype.Component;
 
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.io.Writer;
-import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -37,45 +32,30 @@ public class ExportShortLinksCsvQueryHandler {
         this.linkTagRepository = linkTagRepository;
     }
 
-    public void handle(long tenantId, ShortLinkSearchQuery query, PageQuery pageQuery, OutputStream os) {
-        if (os == null) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "输出流不能为空");
-        }
-        exportCsv(tenantId, query, pageQuery, new OutputStreamWriter(os, StandardCharsets.UTF_8));
-    }
-
-    void exportCsv(long tenantId, ShortLinkSearchQuery query, PageQuery pageQuery, Writer writer) {
+    public ShortLinkCsvExport handle(long tenantId, ShortLinkSearchQuery query, PageQuery pageQuery) {
         long offset = OffsetPagingGuard.requireOffsetWithin(pageQuery, MAX_EXPORT_OFFSET);
         ShortLinkSearchQuery effectiveQuery = query == null ? new ShortLinkSearchQuery(false, null, null, null, null) : query;
         List<ShortLink> links = shortLinkRepository.listSearch(tenantId, effectiveQuery, offset, pageQuery.size());
         Map<Long, List<String>> tags = TagMaps.loadTagsByLinkIds(linkTagRepository, links);
-
-        try (CSVPrinter printer = new CSVPrinter(
-                writer,
-                CSVFormat.DEFAULT.builder()
-                        .setHeader("id", "code", "originalUrl", "note", "enabled", "expiresAt", "tags")
-                        .build()
-        )) {
-            for (ShortLink e : links) {
-                printer.printRecord(
-                        e.id(),
-                        e.code().value(),
-                        e.originalUrl().value(),
-                        e.note(),
-                        e.enabled(),
-                        formatExpiresAtUtc(e.expiresAtUtc()),
-                        String.join(",", tags.getOrDefault(e.id(), List.of()))
-                );
-            }
-        } catch (IOException e) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "导出失败");
+        List<ShortLinkCsvExportRow> rows = new ArrayList<>(links.size());
+        for (ShortLink link : links) {
+            rows.add(new ShortLinkCsvExportRow(
+                    link.id(),
+                    link.code().value(),
+                    link.originalUrl().value(),
+                    link.note(),
+                    link.enabled(),
+                    toInstant(link.expiresAtUtc()),
+                    tags.getOrDefault(link.id(), List.of())
+            ));
         }
+        return new ShortLinkCsvExport(rows);
     }
 
-    private static String formatExpiresAtUtc(LocalDateTime expiresAtUtc) {
+    private static Instant toInstant(LocalDateTime expiresAtUtc) {
         if (expiresAtUtc == null) {
-            return "";
+            return null;
         }
-        return expiresAtUtc.toInstant(ZoneOffset.UTC).toString();
+        return expiresAtUtc.toInstant(ZoneOffset.UTC);
     }
 }

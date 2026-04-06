@@ -131,6 +131,29 @@ class ArchitectureTest {
     }
 
     @Test
+    void application_should_not_depend_on_stream_or_transport_specific_types() {
+        ArchRule rule = noClasses()
+                .that()
+                .resideInAnyPackage("..application..")
+                .should()
+                .dependOnClassesThat()
+                .haveFullyQualifiedName("java.io.InputStream")
+                .orShould()
+                .dependOnClassesThat()
+                .haveFullyQualifiedName("java.io.OutputStream")
+                .orShould()
+                .dependOnClassesThat()
+                .haveFullyQualifiedName("org.springframework.web.multipart.MultipartFile")
+                .orShould()
+                .dependOnClassesThat()
+                .haveFullyQualifiedName("jakarta.servlet.http.HttpServletRequest")
+                .orShould()
+                .dependOnClassesThat()
+                .haveFullyQualifiedName("jakarta.servlet.http.HttpServletResponse");
+        rule.check(CLASSES);
+    }
+
+    @Test
     void task1_targeted_application_packages_should_not_depend_on_hidden_runtime_context() {
         ArchRule rule = noClasses()
                 .that()

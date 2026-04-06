@@ -1,19 +1,15 @@
 package com.linkforge.shortlink.interfaces.web;
 
 import com.linkforge.contract.api.ApiResponse;
-import com.linkforge.contract.api.BusinessException;
-import com.linkforge.contract.api.ErrorCode;
-import com.linkforge.contract.platform.ApplicationScopePort;
-import com.linkforge.foundation.persistence.PageQuery;
+import com.linkforge.foundation.context.ApiKeyActor;
 import com.linkforge.foundation.persistence.PageResult;
 import com.linkforge.foundation.security.AuthContext;
-import com.linkforge.foundation.security.AuthPrincipal;
+import com.linkforge.foundation.security.PrincipalActorMapper;
 import com.linkforge.foundation.web.RequestId;
 import com.linkforge.shortlink.application.ShortLinkService;
-import com.linkforge.shortlink.application.ShortLinkService.CreatedBy;
-import com.linkforge.shortlink.application.ShortLinkService.CreateLinkRequest;
+import com.linkforge.shortlink.application.ShortLinkService.BrowseLinksRequest;
 import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
-import com.linkforge.shortlink.application.query.ShortLinkSearchQuery;
+import com.linkforge.shortlink.application.ShortLinkService.ScopedCreateLinkRequest;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkCreateHttpRequest;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkPageHttpResponse;
 import jakarta.validation.Valid;
@@ -31,29 +27,25 @@ public class OpenApiShortLinkController {
 
     private final ShortLinkService shortLinkService;
     private final ShortLinkWriteGuard writeGuard;
-    private final ApplicationScopePort applicationScopePort;
+    private final PrincipalActorMapper principalActorMapper;
 
     public OpenApiShortLinkController(
             ShortLinkService shortLinkService,
             ShortLinkWriteGuard writeGuard,
-            ApplicationScopePort applicationScopePort
+            PrincipalActorMapper principalActorMapper
     ) {
         this.shortLinkService = shortLinkService;
         this.writeGuard = writeGuard;
-        this.applicationScopePort = applicationScopePort;
+        this.principalActorMapper = principalActorMapper;
     }
 
     @PostMapping("/links")
     public ApiResponse<LinkDto> create(@Valid @RequestBody ShortLinkCreateHttpRequest req) {
         writeGuard.requireWriteEnabled();
-        AuthPrincipal p = AuthContext.requirePrincipal();
-        long apiKeyId = requireApiKeyId(p);
-        Long applicationId = resolveAuthorizedApplicationId(p, req.applicationId(), null);
-        CreateLinkRequest createRequest = withApplicationId(ShortLinkHttpMapper.toCreateRequest(req), applicationId);
-        LinkDto dto = shortLinkService.create(
-                p.getTenantId(),
-                CreatedBy.apiKey(apiKeyId),
-                createRequest
+        ApiKeyActor actor = principalActorMapper.requireApiKey(AuthContext.requirePrincipal());
+        LinkDto dto = shortLinkService.createForApiKey(
+                actor,
+                new ScopedCreateLinkRequest(ShortLinkHttpMapper.toCreateRequest(req), null)
         );
         return ApiResponse.ok(dto, RequestId.get());
     }
@@ -64,15 +56,10 @@ public class OpenApiShortLinkController {
             @Valid @RequestBody ShortLinkCreateHttpRequest req
     ) {
         writeGuard.requireWriteEnabled();
-        AuthPrincipal p = AuthContext.requirePrincipal();
-        long apiKeyId = requireApiKeyId(p);
-        long effectiveApplicationId = resolveAuthorizedApplicationId(p, req.applicationId(), applicationId);
-        applicationScopePort.requireApplicationExists(p.getTenantId(), effectiveApplicationId);
-        CreateLinkRequest createRequest = withApplicationId(ShortLinkHttpMapper.toCreateRequest(req), effectiveApplicationId);
-        LinkDto dto = shortLinkService.create(
-                p.getTenantId(),
-                CreatedBy.apiKey(apiKeyId),
-                createRequest
+        ApiKeyActor actor = principalActorMapper.requireApiKey(AuthContext.requirePrincipal());
+        LinkDto dto = shortLinkService.createForApiKey(
+                actor,
+                new ScopedCreateLinkRequest(ShortLinkHttpMapper.toCreateRequest(req), applicationId)
         );
         return ApiResponse.ok(dto, RequestId.get());
     }
@@ -84,11 +71,10 @@ public class OpenApiShortLinkController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
-        AuthPrincipal p = AuthContext.requirePrincipal();
-        PageResult<LinkDto> result = shortLinkService.search(
-                p.getTenantId(),
-                new ShortLinkSearchQuery(false, enabled, keyword, null, p.getApplicationId()),
-                PageQuery.of(page, size, 100)
+        ApiKeyActor actor = principalActorMapper.requireApiKey(AuthContext.requirePrincipal());
+        PageResult<LinkDto> result = shortLinkService.browseForApiKey(
+                actor,
+                new BrowseLinksRequest(false, enabled, keyword, null, null, null, page, size, 100)
         );
         return ApiResponse.ok(ShortLinkHttpMapper.toPageResponse(result), RequestId.get());
     }
@@ -101,56 +87,11 @@ public class OpenApiShortLinkController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
-        AuthPrincipal p = AuthContext.requirePrincipal();
-        long effectiveApplicationId = resolveAuthorizedApplicationId(p, null, applicationId);
-        applicationScopePort.requireApplicationExists(p.getTenantId(), effectiveApplicationId);
-        PageResult<LinkDto> result = shortLinkService.search(
-                p.getTenantId(),
-                new ShortLinkSearchQuery(false, enabled, keyword, null, effectiveApplicationId),
-                PageQuery.of(page, size, 100)
+        ApiKeyActor actor = principalActorMapper.requireApiKey(AuthContext.requirePrincipal());
+        PageResult<LinkDto> result = shortLinkService.browseForApiKey(
+                actor,
+                new BrowseLinksRequest(false, enabled, keyword, null, null, applicationId, page, size, 100)
         );
         return ApiResponse.ok(ShortLinkHttpMapper.toPageResponse(result), RequestId.get());
-    }
-
-    private static long requireApiKeyId(AuthPrincipal principal) {
-        Long apiKeyId = principal.getApiKeyId();
-        if (apiKeyId == null || apiKeyId <= 0) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED);
-        }
-        return apiKeyId;
-    }
-
-    private static long resolveAuthorizedApplicationId(AuthPrincipal principal, Long requestApplicationId, Long pathApplicationId) {
-        Long principalApplicationId = principal.getApplicationId();
-        Long requestedApplicationId = pathApplicationId != null ? pathApplicationId : requestApplicationId;
-        if (principalApplicationId != null) {
-            if (requestedApplicationId != null && !principalApplicationId.equals(requestedApplicationId)) {
-                throw new BusinessException(ErrorCode.FORBIDDEN, "API Key 无权访问该应用");
-            }
-            return principalApplicationId;
-        }
-        if (requestedApplicationId == null) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "applicationId 不能为空");
-        }
-        return requestedApplicationId;
-    }
-
-    private static CreateLinkRequest withApplicationId(CreateLinkRequest createRequest, long applicationId) {
-        return new CreateLinkRequest(
-                createRequest.originalUrl(),
-                createRequest.note(),
-                createRequest.expiresAt(),
-                createRequest.enabled(),
-                createRequest.customCode(),
-                createRequest.tags(),
-                createRequest.redirectStatusCode(),
-                createRequest.previewEnabled(),
-                createRequest.unavailableLandingUrl(),
-                createRequest.queryForwardMode(),
-                createRequest.queryForwardAllowlist(),
-                applicationId,
-                createRequest.domainId(),
-                createRequest.lifecycleState()
-        );
     }
 }

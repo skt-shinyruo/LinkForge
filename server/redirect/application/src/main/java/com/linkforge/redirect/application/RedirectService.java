@@ -44,6 +44,33 @@ public class RedirectService {
         return resolveMeta(host, code);
     }
 
+    public RedirectResolution resolve(ResolveRedirectRequest request) {
+        if (request == null) {
+            return RedirectResolution.notFound(null, false);
+        }
+        String normalizedCode = normalizeCode(request.code());
+        if (normalizedCode == null) {
+            return RedirectResolution.notFound(request.code(), request.htmlRequest());
+        }
+
+        LinkMeta meta = findMeta(request.host(), normalizedCode);
+        if (meta == null) {
+            return RedirectResolution.notFound(normalizedCode, request.htmlRequest());
+        }
+
+        RedirectResolution.UnavailableReason unavailableReason = unavailableReason(meta);
+        if (unavailableReason != null) {
+            return RedirectResolution.unavailable(normalizedCode, request.htmlRequest(), meta, unavailableReason);
+        }
+
+        if (request.htmlRequest() && meta.previewEnabled() && !request.confirmed()) {
+            return RedirectResolution.preview(normalizedCode, true, meta);
+        }
+
+        recordVisitIfAvailable(meta, request.visitInput());
+        return RedirectResolution.redirect(normalizedCode, request.htmlRequest(), meta);
+    }
+
     /**
      * 在“确认跳转”时写统计；若链接不可用则不写入。
      */
@@ -67,10 +94,17 @@ public class RedirectService {
 
     private LinkMeta resolveMeta(String host, String code) {
         String normalized = normalizeAndValidateCode(code);
+        LinkMeta meta = findMeta(host, normalized);
+        if (meta == null) {
+            throw new RedirectBusinessException(RedirectErrorCode.LINK_NOT_FOUND);
+        }
+        return meta;
+    }
 
+    private LinkMeta findMeta(String host, String normalized) {
         LinkCachePort.LookupResult cached = linkCache.lookup(host, normalized);
         if (cached.notFound()) {
-            throw new RedirectBusinessException(RedirectErrorCode.LINK_NOT_FOUND);
+            return null;
         }
         if (cached.hit()) {
             return cached.meta();
@@ -84,20 +118,28 @@ public class RedirectService {
 
         // Monolith correctness uses the authoritative source. Projectors remain warm/recovery infrastructure.
         linkCache.markNotFound(host, normalized);
-        throw new RedirectBusinessException(RedirectErrorCode.LINK_NOT_FOUND);
+        return null;
     }
 
     private static String normalizeAndValidateCode(String code) {
-        if (code == null) {
+        String normalized = normalizeCode(code);
+        if (normalized == null) {
             throw new RedirectBusinessException(RedirectErrorCode.LINK_NOT_FOUND);
+        }
+        return normalized;
+    }
+
+    private static String normalizeCode(String code) {
+        if (code == null) {
+            return null;
         }
         String v = code.trim();
         if (v.isBlank()) {
-            throw new RedirectBusinessException(RedirectErrorCode.LINK_NOT_FOUND);
+            return null;
         }
         // 约束：短码最大长度为 32
         if (v.length() > 32) {
-            throw new RedirectBusinessException(RedirectErrorCode.LINK_NOT_FOUND);
+            return null;
         }
         // 安全默认：仅允许字母数字，避免异常字符导致 key/日志/路由复杂度上升
         for (int i = 0; i < v.length(); i++) {
@@ -106,21 +148,28 @@ public class RedirectService {
                     || (ch >= 'A' && ch <= 'Z')
                     || (ch >= 'a' && ch <= 'z');
             if (!ok) {
-                throw new RedirectBusinessException(RedirectErrorCode.LINK_NOT_FOUND);
+                return null;
             }
         }
         return v;
     }
 
     private boolean isAvailable(LinkMeta meta) {
+        return unavailableReason(meta) == null;
+    }
+
+    private RedirectResolution.UnavailableReason unavailableReason(LinkMeta meta) {
         if (meta == null) {
-            return false;
+            return null;
         }
         if (!meta.enabled()) {
-            return false;
+            return RedirectResolution.UnavailableReason.DISABLED;
         }
         LocalDateTime nowUtc = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
-        return meta.expiresAt() == null || meta.expiresAt().isAfter(nowUtc);
+        if (meta.expiresAt() != null && !meta.expiresAt().isAfter(nowUtc)) {
+            return RedirectResolution.UnavailableReason.EXPIRED;
+        }
+        return null;
     }
 
     private static VisitContext toVisitContext(RedirectVisitInput v) {

@@ -2,6 +2,8 @@ package com.linkforge.redirect.interfaces.web;
 
 import com.linkforge.contract.redirect.LinkMeta;
 import com.linkforge.foundation.config.RedirectProperties;
+import com.linkforge.redirect.application.RedirectResolution;
+import com.linkforge.redirect.application.ResolveRedirectRequest;
 import com.linkforge.redirect.application.RedirectService;
 import com.linkforge.redirect.application.RedirectUrlBuilder;
 import org.junit.jupiter.api.Test;
@@ -12,6 +14,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import java.time.Clock;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -26,10 +29,12 @@ class RedirectControllerPreviewConfirmHrefLimitTest {
         RedirectUrlBuilder urlBuilder = new RedirectUrlBuilder(props);
         RedirectController controller = new RedirectController(
                 redirectService,
-                props,
-                urlBuilder,
-                new RedirectAvailabilityPolicy(Clock.systemUTC()),
-                new RedirectHtmlPageRenderer(props, new RedirectConfirmHrefBuilder())
+                new RedirectHttpRequestMapper(),
+                new RedirectHttpResponseWriter(
+                        props,
+                        urlBuilder,
+                        new RedirectHtmlPageRenderer(props, new RedirectConfirmHrefBuilder())
+                )
         );
 
         LinkMeta meta = new LinkMeta(
@@ -46,7 +51,9 @@ class RedirectControllerPreviewConfirmHrefLimitTest {
                 null,
                 null
         );
-        when(redirectService.resolve(anyString(), anyString())).thenReturn(meta);
+        when(redirectService.resolve(any(ResolveRedirectRequest.class))).thenReturn(
+                RedirectResolution.preview("abc123", true, meta)
+        );
 
         MockHttpServletRequest req = new MockHttpServletRequest("GET", "/r/abc123");
         req.setRequestURI("/r/abc123");

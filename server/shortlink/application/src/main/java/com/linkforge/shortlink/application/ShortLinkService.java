@@ -2,18 +2,31 @@ package com.linkforge.shortlink.application;
 
 import com.linkforge.foundation.persistence.PageQuery;
 import com.linkforge.foundation.persistence.PageResult;
+import com.linkforge.foundation.context.ApiKeyActor;
 import com.linkforge.foundation.context.UserActor;
+import com.linkforge.shortlink.application.csv.ShortLinkCsvExport;
+import com.linkforge.shortlink.application.csv.ShortLinkCsvImportRow;
 import com.linkforge.shortlink.application.query.ShortLinkSearchQuery;
 import com.linkforge.shortlink.domain.CreatedByType;
 
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 
 public interface ShortLinkService {
+
+    LinkDto createForUser(UserActor actor, ScopedCreateLinkRequest request);
+
+    LinkDto createForApiKey(ApiKeyActor actor, ScopedCreateLinkRequest request);
+
+    PageResult<LinkDto> browseForUser(UserActor actor, BrowseLinksRequest request);
+
+    PageResult<LinkDto> browseForApiKey(ApiKeyActor actor, BrowseLinksRequest request);
+
+    ImportResult importCsv(UserActor actor, List<ShortLinkCsvImportRow> rows);
+
+    ShortLinkCsvExport exportCsvForUser(UserActor actor, BrowseLinksRequest request);
 
     LinkDto create(long tenantId, CreatedBy createdBy, CreateLinkRequest req);
 
@@ -33,9 +46,9 @@ public interface ShortLinkService {
 
     TagDto createTag(long tenantId, String name);
 
-    ImportResult importCsv(long tenantId, CreatedBy createdBy, InputStream inputStream);
+    ImportResult importCsv(long tenantId, CreatedBy createdBy, List<ShortLinkCsvImportRow> rows);
 
-    void exportCsv(long tenantId, ShortLinkSearchQuery query, PageQuery pageQuery, OutputStream os);
+    ShortLinkCsvExport exportCsv(long tenantId, ShortLinkSearchQuery query, PageQuery pageQuery);
 
     record CreatedBy(long id, CreatedByType type) {
         public static CreatedBy user(long userId) {
@@ -62,6 +75,12 @@ public interface ShortLinkService {
             Long applicationId,
             Long domainId,
             String lifecycleState
+    ) {
+    }
+
+    record ScopedCreateLinkRequest(
+            CreateLinkRequest createRequest,
+            Long pathApplicationId
     ) {
     }
 
@@ -110,5 +129,18 @@ public interface ShortLinkService {
     }
 
     record ImportResult(int success, int failed, List<String> errors) {
+    }
+
+    record BrowseLinksRequest(
+            Boolean archived,
+            Boolean enabled,
+            String keyword,
+            String tag,
+            Long requestedApplicationId,
+            Long pathApplicationId,
+            int page,
+            int size,
+            int maxPageSize
+    ) {
     }
 }

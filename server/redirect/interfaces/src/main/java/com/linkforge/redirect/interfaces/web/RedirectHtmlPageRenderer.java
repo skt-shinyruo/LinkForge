@@ -3,6 +3,7 @@ package com.linkforge.redirect.interfaces.web;
 import com.linkforge.contract.redirect.LinkMeta;
 import com.linkforge.foundation.config.RedirectProperties;
 import com.linkforge.foundation.web.RequestId;
+import com.linkforge.redirect.application.RedirectResolution;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -93,11 +94,7 @@ public class RedirectHtmlPageRenderer {
                 .body(renderUnavailableHtml("短链不存在", "你访问的短链不存在或已被删除。", code));
     }
 
-    public ResponseEntity<?> renderUnavailable(String code, LinkMeta meta, RedirectAvailabilityPolicy.UnavailableReason reason) {
-        if (reason == RedirectAvailabilityPolicy.UnavailableReason.NOT_FOUND) {
-            return renderNotFound(code);
-        }
-
+    public ResponseEntity<?> renderUnavailable(String code, LinkMeta meta, RedirectResolution.UnavailableReason reason) {
         String perLink = meta == null ? null : trimToNull(meta.unavailableLandingUrl());
         if (isHttpUrl(perLink)) {
             return ResponseEntity.status(HttpStatus.FOUND)
@@ -113,8 +110,8 @@ public class RedirectHtmlPageRenderer {
                     .build();
         }
 
-        String title = reason == RedirectAvailabilityPolicy.UnavailableReason.DISABLED ? "短链已禁用" : "短链已过期";
-        String message = reason == RedirectAvailabilityPolicy.UnavailableReason.DISABLED
+        String title = reason == RedirectResolution.UnavailableReason.DISABLED ? "短链已禁用" : "短链已过期";
+        String message = reason == RedirectResolution.UnavailableReason.DISABLED
                 ? "该短链已被禁用，请联系链接发布方获取最新链接。"
                 : "该短链已过期，请联系链接发布方获取最新链接。";
         return ResponseEntity.status(HttpStatus.GONE)

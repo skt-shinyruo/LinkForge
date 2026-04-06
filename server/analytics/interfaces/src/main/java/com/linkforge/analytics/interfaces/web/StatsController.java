@@ -1,15 +1,16 @@
 package com.linkforge.analytics.interfaces.web;
 
+import com.linkforge.analytics.application.AnalyticsExportRequestService;
+import com.linkforge.analytics.application.AnalyticsLinkEventsService;
 import com.linkforge.analytics.application.AnalyticsQueryService;
 import com.linkforge.contract.api.ApiResponse;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.contract.governance.ApprovalRequestView;
-import com.linkforge.contract.governance.ApprovalSubmissionPort;
-import com.linkforge.contract.governance.SensitiveOperation;
-import com.linkforge.contract.shortlink.ShortLinkOwnershipLookupPort;
+import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.security.AuthContext;
 import com.linkforge.foundation.security.AuthPrincipal;
+import com.linkforge.foundation.security.PrincipalActorMapper;
 import com.linkforge.foundation.web.RequestId;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -21,7 +22,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
@@ -31,8 +31,9 @@ import java.util.Set;
 public class StatsController {
 
     private final AnalyticsQueryService queryService;
-    private final ApprovalSubmissionPort approvalSubmissionPort;
-    private final ShortLinkOwnershipLookupPort shortLinkOwnershipLookupPort;
+    private final AnalyticsLinkEventsService linkEventsService;
+    private final AnalyticsExportRequestService exportRequestService;
+    private final PrincipalActorMapper principalActorMapper;
 
     private static final Set<String> DIM_TYPES = Set.of(
             "referer_domain",
@@ -47,12 +48,14 @@ public class StatsController {
 
     public StatsController(
             AnalyticsQueryService queryService,
-            ApprovalSubmissionPort approvalSubmissionPort,
-            ShortLinkOwnershipLookupPort shortLinkOwnershipLookupPort
+            AnalyticsLinkEventsService linkEventsService,
+            AnalyticsExportRequestService exportRequestService,
+            PrincipalActorMapper principalActorMapper
     ) {
         this.queryService = queryService;
-        this.approvalSubmissionPort = approvalSubmissionPort;
-        this.shortLinkOwnershipLookupPort = shortLinkOwnershipLookupPort;
+        this.linkEventsService = linkEventsService;
+        this.exportRequestService = exportRequestService;
+        this.principalActorMapper = principalActorMapper;
     }
 
     @GetMapping("/stats/links/{id}/daily")
@@ -234,22 +237,8 @@ public class StatsController {
             @RequestParam(value = "to", required = false) LocalDateTime to,
             @RequestParam(value = "limit", required = false) Integer limit
     ) {
-        LocalDateTime t = (to == null ? LocalDateTime.now(ZoneOffset.UTC) : to);
-        LocalDateTime f = (from == null ? t.minusDays(1) : from);
-        if (f.isAfter(t)) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "from 不能晚于 to");
-        }
-
-        int l = (limit == null ? 50 : limit);
-        if (l < 1) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "limit 必须 >= 1");
-        }
-        if (l > 200) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "limit 最大为 200");
-        }
-
-        AuthPrincipal p = AuthContext.requirePrincipal();
-        return ApiResponse.ok(queryService.linkEvents(p.getTenantId(), linkId, f, t, l), RequestId.get());
+        UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
+        return ApiResponse.ok(linkEventsService.listLinkEvents(actor, linkId, from, to, limit), RequestId.get());
     }
 
     @PostMapping("/stats/links/{id}/events/export-requests")
@@ -259,26 +248,11 @@ public class StatsController {
             @RequestParam(value = "from", required = false) LocalDateTime from,
             @RequestParam(value = "to", required = false) LocalDateTime to
     ) {
-        LocalDateTime t = (to == null ? LocalDateTime.now(ZoneOffset.UTC) : to);
-        LocalDateTime f = (from == null ? t.minusDays(1) : from);
-        if (f.isAfter(t)) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "from 不能晚于 to");
-        }
-        AuthPrincipal p = AuthContext.requirePrincipal();
-        ShortLinkOwnershipLookupPort.ShortLinkOwnership link = requireLinkScope(p.getTenantId(), linkId);
-        ApprovalRequestView dto = approvalSubmissionPort.submitRequest(
-                p.getTenantId(),
-                SensitiveOperation.ANALYTICS_DETAIL_EXPORT,
-                link.applicationId(),
-                null,
-                "linkId=" + linkId + ",from=" + f + ",to=" + t,
-                p.getTenantId(),
-                p.getUserId(),
-                p.getEmail(),
-                p.getRoles(),
-                LocalDateTime.now(ZoneOffset.UTC)
+        UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
+        return ApiResponse.ok(
+                exportRequestService.requestLinkEventExport(actor, linkId, null, from, to),
+                RequestId.get()
         );
-        return ApiResponse.ok(dto, RequestId.get());
     }
 
     @PostMapping("/applications/{applicationId}/links/{id}/events/export-requests")
@@ -289,26 +263,11 @@ public class StatsController {
             @RequestParam(value = "from", required = false) LocalDateTime from,
             @RequestParam(value = "to", required = false) LocalDateTime to
     ) {
-        AuthPrincipal p = AuthContext.requirePrincipal();
-        ShortLinkOwnershipLookupPort.ShortLinkOwnership link = requireLinkWithinApplication(p.getTenantId(), applicationId, linkId);
-        LocalDateTime t = (to == null ? LocalDateTime.now(ZoneOffset.UTC) : to);
-        LocalDateTime f = (from == null ? t.minusDays(1) : from);
-        if (f.isAfter(t)) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "from 不能晚于 to");
-        }
-        ApprovalRequestView dto = approvalSubmissionPort.submitRequest(
-                p.getTenantId(),
-                SensitiveOperation.ANALYTICS_DETAIL_EXPORT,
-                link.applicationId(),
-                null,
-                "linkId=" + linkId + ",from=" + f + ",to=" + t,
-                p.getTenantId(),
-                p.getUserId(),
-                p.getEmail(),
-                p.getRoles(),
-                LocalDateTime.now(ZoneOffset.UTC)
+        UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
+        return ApiResponse.ok(
+                exportRequestService.requestLinkEventExport(actor, linkId, applicationId, from, to),
+                RequestId.get()
         );
-        return ApiResponse.ok(dto, RequestId.get());
     }
 
     private static AnalyticsQueryService.TopSortBy resolveTopSortBy(LocalDate from, LocalDate to, Integer limit, String sortBy) {
@@ -345,16 +304,4 @@ public class StatsController {
         }
     }
 
-    private ShortLinkOwnershipLookupPort.ShortLinkOwnership requireLinkWithinApplication(long tenantId, long applicationId, long linkId) {
-        ShortLinkOwnershipLookupPort.ShortLinkOwnership link = requireLinkScope(tenantId, linkId);
-        if (link.applicationId() == null || link.applicationId() != applicationId) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "链接不属于该应用");
-        }
-        return link;
-    }
-
-    private ShortLinkOwnershipLookupPort.ShortLinkOwnership requireLinkScope(long tenantId, long linkId) {
-        return shortLinkOwnershipLookupPort.findByTenantIdAndId(tenantId, linkId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "链接不存在"));
-    }
 }

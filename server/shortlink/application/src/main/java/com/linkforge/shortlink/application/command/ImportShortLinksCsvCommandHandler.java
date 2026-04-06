@@ -6,25 +6,18 @@ import com.linkforge.foundation.tx.RequiresNewTransactionPort;
 import com.linkforge.shortlink.application.ShortLinkService.CreatedBy;
 import com.linkforge.shortlink.application.ShortLinkService.CreateLinkRequest;
 import com.linkforge.shortlink.application.ShortLinkService.ImportResult;
-import org.apache.commons.csv.CSVFormat;
-import org.apache.commons.csv.CSVParser;
-import org.apache.commons.csv.CSVRecord;
+import com.linkforge.shortlink.application.csv.ShortLinkCsvImportRow;
 import org.springframework.stereotype.Component;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
 
 @Component
 public class ImportShortLinksCsvCommandHandler {
@@ -40,86 +33,55 @@ public class ImportShortLinksCsvCommandHandler {
         this.requiresNewTransactionPort = requiresNewTransactionPort;
     }
 
-    public ImportResult handle(long tenantId, CreatedBy createdBy, InputStream inputStream) {
-        if (inputStream == null) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "CSV 输入流不能为空");
+    public ImportResult handle(long tenantId, CreatedBy createdBy, List<ShortLinkCsvImportRow> rows) {
+        if (rows == null) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "CSV 行不能为空");
         }
 
         List<String> errors = new ArrayList<>();
         int success = 0;
         int failed = 0;
 
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
-             CSVParser parser = CSVFormat.DEFAULT
-                     .builder()
-                     .setHeader()
-                     .setSkipHeaderRecord(true)
-                     .build()
-                     .parse(reader)) {
-            for (CSVRecord r : parser) {
-                long recordNumber = r.getRecordNumber();
-                try {
-                    String originalUrl = r.get("originalUrl");
-                    String code = safeGet(r, "code");
-                    String expiresAt = safeGet(r, "expiresAt");
-                    String note = safeGet(r, "note");
-                    String tags = safeGet(r, "tags");
-
-                    Instant exp = parseExpiresAt(expiresAt);
-                    Set<String> tagSet = splitTags(tags);
-                    CreateLinkRequest req = new CreateLinkRequest(
-                            originalUrl,
-                            note,
-                            exp,
-                            null,
-                            code,
-                            tagSet,
-                            null,
-                            null,
-                            null,
-                            null,
-                            null,
-                            null,
-                            null,
-                            null
-                    );
-                    requiresNewTransactionPort.run(() -> createHandler.handle(tenantId, createdBy, req));
-                    success++;
-                } catch (Exception e) {
-                    failed++;
-                    errors.add("line " + recordNumber + ": " + e.getMessage());
-                }
+        for (ShortLinkCsvImportRow row : rows) {
+            try {
+                CreateLinkRequest req = new CreateLinkRequest(
+                        row.originalUrl(),
+                        row.note(),
+                        parseExpiresAt(row.expiresAt()),
+                        null,
+                        row.code(),
+                        splitTags(row.tags()),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null
+                );
+                requiresNewTransactionPort.run(() -> createHandler.handle(tenantId, createdBy, req));
+                success++;
+            } catch (Exception e) {
+                failed++;
+                errors.add("line " + row.rowNumber() + ": " + e.getMessage());
             }
-        } catch (IOException e) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "CSV 解析失败");
         }
 
         return new ImportResult(success, failed, errors);
     }
 
-    private static String safeGet(CSVRecord r, String key) {
-        try {
-            return r.isMapped(key) ? r.get(key) : null;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
     private static Instant parseExpiresAt(String raw) {
-        String s = normalizeNullable(raw);
-        if (s == null) {
+        String normalized = normalizeNullable(raw);
+        if (normalized == null) {
             return null;
         }
         try {
-            // 1) Preferred: ISO-8601 Instant/OffsetDateTime, e.g. 2026-03-10T12:00:00Z or 2026-03-10T12:00:00+08:00
-            return OffsetDateTime.parse(s).toInstant();
+            return OffsetDateTime.parse(normalized).toInstant();
         } catch (DateTimeParseException ignored) {
-            // fallthrough to legacy format
         }
         try {
-            // 2) Legacy: ISO-8601 LocalDateTime, treated as UTC (historical behavior for MySQL DATETIME fields).
-            LocalDateTime utc = LocalDateTime.parse(s);
-            return utc.toInstant(ZoneOffset.UTC);
+            return LocalDateTime.parse(normalized).toInstant(ZoneOffset.UTC);
         } catch (DateTimeParseException e) {
             throw new BusinessException(
                     ErrorCode.BAD_REQUEST,
@@ -129,26 +91,25 @@ public class ImportShortLinksCsvCommandHandler {
     }
 
     private static Set<String> splitTags(String raw) {
-        String s = normalizeNullable(raw);
-        if (s == null) {
+        String normalized = normalizeNullable(raw);
+        if (normalized == null) {
             return Set.of();
         }
-        String[] parts = s.split(",");
         Set<String> out = new HashSet<>();
-        for (String p : parts) {
-            String n = normalizeNullable(p);
-            if (n != null && !n.isBlank()) {
-                out.add(n);
+        for (String part : normalized.split(",")) {
+            String tag = normalizeNullable(part);
+            if (tag != null) {
+                out.add(tag);
             }
         }
         return out;
     }
 
-    private static String normalizeNullable(String s) {
-        if (s == null) {
+    private static String normalizeNullable(String value) {
+        if (value == null) {
             return null;
         }
-        String t = s.trim();
-        return t.isBlank() ? null : t;
+        String trimmed = value.trim();
+        return trimmed.isBlank() ? null : trimmed;
     }
 }

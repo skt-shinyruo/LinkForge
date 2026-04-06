@@ -9,6 +9,7 @@ import com.linkforge.redirect.application.RedirectService;
 import com.linkforge.redirect.application.error.RedirectBusinessException;
 import com.linkforge.redirect.application.error.RedirectErrorCode;
 import com.linkforge.redirect.infrastructure.projection.ShortLinkEventProjectorJob;
+import com.linkforge.shortlink.application.csv.ShortLinkCsvImportRow;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,8 +30,6 @@ import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.io.ByteArrayInputStream;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -349,15 +348,13 @@ class ShortLinkCacheAfterCommitIntegrationTest {
             assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isTrue();
             int before = TransactionSynchronizationManager.getSynchronizations().size();
 
-            String csv = """
-                    originalUrl,code,expiresAt,note,tags
-                    https://example.com/a,,,,
-                    https://example.com/b,,,,
-                    """;
             ShortLinkService.ImportResult r = shortLinkService.importCsv(
                     TENANT_ID,
                     ShortLinkService.CreatedBy.user(USER_ID),
-                    new ByteArrayInputStream(csv.getBytes(StandardCharsets.UTF_8))
+                    List.of(
+                            new ShortLinkCsvImportRow(1L, "https://example.com/a", null, null, null, null),
+                            new ShortLinkCsvImportRow(2L, "https://example.com/b", null, null, null, null)
+                    )
             );
             assertThat(r.success()).isEqualTo(2);
             assertThat(r.failed()).isEqualTo(0);

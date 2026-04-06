@@ -11,8 +11,6 @@ import com.linkforge.shortlink.application.query.ExportShortLinksCsvQueryHandler
 import com.linkforge.shortlink.application.query.SearchShortLinksQueryHandler;
 import org.junit.jupiter.api.Test;
 
-import java.io.ByteArrayOutputStream;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
@@ -59,8 +57,7 @@ class ShortLinkServiceOffsetOverflowTest {
         assertThatThrownBy(() -> handler.handle(
                 1L,
                 new ShortLinkSearchQuery(false, null, null, null, null),
-                new PageQuery(page, size),
-                new ByteArrayOutputStream()
+                new PageQuery(page, size)
         ))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> {

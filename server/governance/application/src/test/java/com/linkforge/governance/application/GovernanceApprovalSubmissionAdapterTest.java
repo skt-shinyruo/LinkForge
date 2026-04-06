@@ -11,6 +11,7 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -23,7 +24,7 @@ class GovernanceApprovalSubmissionAdapterTest {
         GovernanceApprovalSubmissionAdapter adapter = new GovernanceApprovalSubmissionAdapter(governanceService);
 
         when(governanceService.submitRequest(
-                1L,
+                eq(1L),
                 argThat(req -> req.operationType() == SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE
                         && req.targetApplicationId().equals(2001L)
                         && "before".equals(req.beforeSnapshot())
@@ -66,7 +67,7 @@ class GovernanceApprovalSubmissionAdapterTest {
                 null
         ));
         verify(governanceService).submitRequest(
-                1L,
+                eq(1L),
                 argThat(req -> req.operationType() == SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE
                         && req.targetApplicationId().equals(2001L)
                         && "before".equals(req.beforeSnapshot())

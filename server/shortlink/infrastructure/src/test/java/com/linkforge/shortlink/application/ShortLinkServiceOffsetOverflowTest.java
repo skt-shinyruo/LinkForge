@@ -3,7 +3,6 @@ package com.linkforge.shortlink.application;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.persistence.PageQuery;
-import com.linkforge.foundation.runtime.security.TenantGuard;
 import com.linkforge.shortlink.application.query.ShortLinkSearchQuery;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
@@ -27,8 +26,7 @@ class ShortLinkServiceOffsetOverflowTest {
         SearchShortLinksQueryHandler handler = new SearchShortLinksQueryHandler(
                 shortLinkRepository,
                 mock(LinkTagRepository.class),
-                mock(ShortLinkDtoMapper.class),
-                mock(TenantGuard.class)
+                mock(ShortLinkDtoMapper.class)
         );
 
         int page = Integer.MAX_VALUE;
@@ -53,8 +51,7 @@ class ShortLinkServiceOffsetOverflowTest {
         ShortLinkRepository shortLinkRepository = mock(ShortLinkRepository.class);
         ExportShortLinksCsvQueryHandler handler = new ExportShortLinksCsvQueryHandler(
                 shortLinkRepository,
-                mock(LinkTagRepository.class),
-                mock(TenantGuard.class)
+                mock(LinkTagRepository.class)
         );
 
         int page = Integer.MAX_VALUE;

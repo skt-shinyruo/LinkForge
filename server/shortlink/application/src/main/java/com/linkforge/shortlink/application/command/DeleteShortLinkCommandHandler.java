@@ -2,8 +2,7 @@ package com.linkforge.shortlink.application.command;
 
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.shortlink.ShortLinkErrorCode;
-import com.linkforge.foundation.runtime.security.TenantGuard;
-import com.linkforge.foundation.tx.AfterCommit;
+import com.linkforge.foundation.tx.PostCommitHookPort;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
 import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
 import com.linkforge.shortlink.application.port.ShortLinkEventPublisher;
@@ -23,7 +22,7 @@ public class DeleteShortLinkCommandHandler {
     private final LinkTagRepository linkTagRepository;
     private final ShortLinkEventPublisher eventPublisher;
     private final RedirectCacheSyncPort redirectCacheSync;
-    private final TenantGuard tenantGuard;
+    private final PostCommitHookPort postCommitHookPort;
     private final Clock clock;
 
     public DeleteShortLinkCommandHandler(
@@ -31,20 +30,19 @@ public class DeleteShortLinkCommandHandler {
             LinkTagRepository linkTagRepository,
             ShortLinkEventPublisher eventPublisher,
             RedirectCacheSyncPort redirectCacheSync,
-            TenantGuard tenantGuard,
+            PostCommitHookPort postCommitHookPort,
             Clock clock
     ) {
         this.shortLinkRepository = shortLinkRepository;
         this.linkTagRepository = linkTagRepository;
         this.eventPublisher = eventPublisher;
         this.redirectCacheSync = redirectCacheSync;
-        this.tenantGuard = tenantGuard;
+        this.postCommitHookPort = postCommitHookPort;
         this.clock = clock;
     }
 
     @Transactional
     public void handle(long tenantId, long linkId) {
-        tenantGuard.requireCurrentTenant(tenantId);
         ShortLink link = shortLinkRepository.findByTenantIdAndId(tenantId, linkId)
                 .orElseThrow(() -> new BusinessException(ShortLinkErrorCode.LINK_NOT_FOUND));
 
@@ -59,6 +57,6 @@ public class DeleteShortLinkCommandHandler {
         if (!shortLinkRepository.deleteByTenantIdAndId(tenantId, linkId, link.version())) {
             throw new BusinessException(ShortLinkErrorCode.LINK_STALE_WRITE);
         }
-        AfterCommit.run(() -> redirectCacheSync.evict(link.tenantId(), link.domainId(), link.code().value()));
+        postCommitHookPort.run(() -> redirectCacheSync.evict(link.tenantId(), link.domainId(), link.code().value()));
     }
 }

@@ -3,7 +3,6 @@ package com.linkforge.shortlink.application.command;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
-import com.linkforge.foundation.runtime.security.TenantGuard;
 import com.linkforge.shortlink.application.ShortLinkService.TagDto;
 import com.linkforge.shortlink.application.port.TagRepository;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -15,22 +14,17 @@ public class CreateTagCommandHandler {
 
     private final SnowflakeIdGenerator idGenerator;
     private final TagRepository tagRepository;
-    private final TenantGuard tenantGuard;
 
     public CreateTagCommandHandler(
             SnowflakeIdGenerator idGenerator,
-            TagRepository tagRepository,
-            TenantGuard tenantGuard
+            TagRepository tagRepository
     ) {
         this.idGenerator = idGenerator;
         this.tagRepository = tagRepository;
-        this.tenantGuard = tenantGuard;
     }
 
     @Transactional
     public TagDto handle(long tenantId, String name) {
-        tenantGuard.requireCurrentTenant(tenantId);
-
         String n = normalizeNullable(name);
         if (n == null) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "标签名不能为空");

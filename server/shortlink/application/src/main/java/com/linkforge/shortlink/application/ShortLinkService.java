@@ -2,12 +2,14 @@ package com.linkforge.shortlink.application;
 
 import com.linkforge.foundation.persistence.PageQuery;
 import com.linkforge.foundation.persistence.PageResult;
+import com.linkforge.foundation.context.UserActor;
 import com.linkforge.shortlink.application.query.ShortLinkSearchQuery;
 import com.linkforge.shortlink.domain.CreatedByType;
 
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 
@@ -25,7 +27,7 @@ public interface ShortLinkService {
 
     void delete(long tenantId, long linkId);
 
-    LinkDto update(long tenantId, long linkId, UpdateLinkRequest req);
+    LinkDto update(long tenantId, long linkId, UpdateLinkRequest req, UserActor actor, LocalDateTime requestedAt);
 
     List<TagDto> listTags(long tenantId);
 

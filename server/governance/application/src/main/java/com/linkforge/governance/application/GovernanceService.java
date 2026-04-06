@@ -93,11 +93,6 @@ public class GovernanceService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_ERROR, "审批请求更新失败"));
     }
 
-    @Transactional
-    public ApprovalRequestDto approveRequest(long tenantId, long requestId, String reason) {
-        return approveRequest(tenantId, requestId, reason, resolveCurrentActorReflectively(), LocalDateTime.now(clock));
-    }
-
     public List<ApprovalRequestDto> listRequests(long tenantId) {
         return approvalRepository.listByTenantId(tenantId).stream().map(this::toDto).toList();
     }
@@ -187,22 +182,6 @@ public class GovernanceService {
             throw new BusinessException(ErrorCode.FORBIDDEN, "actor 租户不匹配");
         }
         return actor;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static UserActor resolveCurrentActorReflectively() {
-        try {
-            Class<?> authContextClass = Class.forName("com.linkforge.foundation.security.AuthContext");
-            Object principal = authContextClass.getMethod("requirePrincipal").invoke(null);
-            Class<?> principalClass = principal.getClass();
-            long tenantId = ((Number) principalClass.getMethod("getTenantId").invoke(principal)).longValue();
-            long userId = ((Number) principalClass.getMethod("getUserId").invoke(principal)).longValue();
-            String email = (String) principalClass.getMethod("getEmail").invoke(principal);
-            Set<String> roles = (Set<String>) principalClass.getMethod("getRoles").invoke(principal);
-            return new UserActor(tenantId, userId, email, roles);
-        } catch (ReflectiveOperationException ex) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "无法解析当前用户身份");
-        }
     }
 
     private ApprovalRequestDto toDto(ApprovalRequest request) {

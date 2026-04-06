@@ -19,6 +19,8 @@ import java.util.Optional;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -74,11 +76,15 @@ class StatsControllerTest {
                 null
         );
         when(approvalSubmissionPort.submitRequest(
-                1L,
-                SensitiveOperation.ANALYTICS_DETAIL_EXPORT,
-                2001L,
-                null,
-                "linkId=101,from=2026-03-30T00:00,to=2026-03-31T00:00"
+                eq(1L),
+                eq(SensitiveOperation.ANALYTICS_DETAIL_EXPORT),
+                eq(2001L),
+                eq(null),
+                eq("linkId=101,from=2026-03-30T00:00,to=2026-03-31T00:00"),
+                eq(9L),
+                eq("tenant-admin@example.com"),
+                eq(Set.of("TENANT_ADMIN")),
+                any(LocalDateTime.class)
         )).thenReturn(expected);
 
         ApiResponse<ApprovalRequestView> response = controller.requestEventExport(101L, from, to);
@@ -86,11 +92,15 @@ class StatsControllerTest {
         assertThat(response.getData()).isSameAs(expected);
         assertThat(response.getRequestId()).isEqualTo("req-123");
         verify(approvalSubmissionPort).submitRequest(
-                1L,
-                SensitiveOperation.ANALYTICS_DETAIL_EXPORT,
-                2001L,
-                null,
-                "linkId=101,from=2026-03-30T00:00,to=2026-03-31T00:00"
+                eq(1L),
+                eq(SensitiveOperation.ANALYTICS_DETAIL_EXPORT),
+                eq(2001L),
+                eq(null),
+                eq("linkId=101,from=2026-03-30T00:00,to=2026-03-31T00:00"),
+                eq(9L),
+                eq("tenant-admin@example.com"),
+                eq(Set.of("TENANT_ADMIN")),
+                any(LocalDateTime.class)
         );
     }
 }

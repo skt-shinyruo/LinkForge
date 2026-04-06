@@ -131,14 +131,15 @@ class ArchitectureTest {
     }
 
     @Test
-    void task1_targeted_application_classes_should_not_depend_on_hidden_runtime_context() {
+    void task1_targeted_application_packages_should_not_depend_on_hidden_runtime_context() {
         ArchRule rule = noClasses()
                 .that()
-                .haveFullyQualifiedName("com.linkforge.shortlink.application.command.CreateShortLinkCommandHandler")
-                .or().haveFullyQualifiedName("com.linkforge.shortlink.application.command.UpdateShortLinkCommandHandler")
-                .or().haveFullyQualifiedName("com.linkforge.governance.application.GovernanceService")
-                .or().haveFullyQualifiedName("com.linkforge.platform.application.ApplicationProvisioningService")
-                .or().haveFullyQualifiedName("com.linkforge.redirect.application.RedirectService")
+                .resideInAnyPackage(
+                        "com.linkforge.shortlink.application..",
+                        "com.linkforge.platform.application..",
+                        "com.linkforge.governance.application..",
+                        "com.linkforge.redirect.application.."
+                )
                 .should()
                 .dependOnClassesThat()
                 .resideInAnyPackage(

@@ -2,6 +2,7 @@ package com.linkforge.shortlink.application;
 
 import com.linkforge.foundation.persistence.PageQuery;
 import com.linkforge.foundation.persistence.PageResult;
+import com.linkforge.foundation.context.UserActor;
 import com.linkforge.shortlink.application.command.ArchiveShortLinkCommandHandler;
 import com.linkforge.shortlink.application.command.CreateShortLinkCommandHandler;
 import com.linkforge.shortlink.application.command.CreateTagCommandHandler;
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -92,8 +94,8 @@ public class ShortLinkApplicationService implements ShortLinkService {
     }
 
     @Override
-    public LinkDto update(long tenantId, long linkId, UpdateLinkRequest req) {
-        return updateHandler.handle(tenantId, linkId, req);
+    public LinkDto update(long tenantId, long linkId, UpdateLinkRequest req, UserActor actor, LocalDateTime requestedAt) {
+        return updateHandler.handle(tenantId, linkId, req, actor, requestedAt);
     }
 
     @Override

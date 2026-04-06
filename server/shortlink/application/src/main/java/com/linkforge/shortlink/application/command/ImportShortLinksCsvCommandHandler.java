@@ -2,7 +2,7 @@ package com.linkforge.shortlink.application.command;
 
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
-import com.linkforge.foundation.runtime.security.TenantGuard;
+import com.linkforge.foundation.tx.RequiresNewTransactionPort;
 import com.linkforge.shortlink.application.ShortLinkService.CreatedBy;
 import com.linkforge.shortlink.application.ShortLinkService.CreateLinkRequest;
 import com.linkforge.shortlink.application.ShortLinkService.ImportResult;
@@ -10,9 +10,6 @@ import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.TransactionDefinition;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -33,23 +30,17 @@ import java.util.Set;
 public class ImportShortLinksCsvCommandHandler {
 
     private final CreateShortLinkCommandHandler createHandler;
-    private final TenantGuard tenantGuard;
-    private final TransactionTemplate importRowTx;
+    private final RequiresNewTransactionPort requiresNewTransactionPort;
 
     public ImportShortLinksCsvCommandHandler(
             CreateShortLinkCommandHandler createHandler,
-            TenantGuard tenantGuard,
-            PlatformTransactionManager transactionManager
+            RequiresNewTransactionPort requiresNewTransactionPort
     ) {
         this.createHandler = createHandler;
-        this.tenantGuard = tenantGuard;
-        TransactionTemplate tx = new TransactionTemplate(transactionManager);
-        tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-        this.importRowTx = tx;
+        this.requiresNewTransactionPort = requiresNewTransactionPort;
     }
 
     public ImportResult handle(long tenantId, CreatedBy createdBy, InputStream inputStream) {
-        tenantGuard.requireCurrentTenant(tenantId);
         if (inputStream == null) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "CSV 输入流不能为空");
         }
@@ -92,7 +83,7 @@ public class ImportShortLinksCsvCommandHandler {
                             null,
                             null
                     );
-                    importRowTx.executeWithoutResult(status -> createHandler.handle(tenantId, createdBy, req));
+                    requiresNewTransactionPort.run(() -> createHandler.handle(tenantId, createdBy, req));
                     success++;
                 } catch (Exception e) {
                     failed++;

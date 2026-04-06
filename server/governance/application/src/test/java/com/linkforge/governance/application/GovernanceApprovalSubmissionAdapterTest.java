@@ -6,6 +6,9 @@ import com.linkforge.governance.domain.ApprovalStatus;
 import com.linkforge.governance.domain.SensitiveOperationType;
 import org.junit.jupiter.api.Test;
 
+import java.time.LocalDateTime;
+import java.util.Set;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
@@ -43,7 +46,11 @@ class GovernanceApprovalSubmissionAdapterTest {
                 SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE,
                 2001L,
                 "before",
-                "after"
+                "after",
+                7L,
+                "reviewer@example.com",
+                Set.of("TENANT_ADMIN"),
+                LocalDateTime.parse("2026-04-01T00:00:00")
         );
 
         assertThat(actual).isEqualTo(new ApprovalRequestView(

@@ -1,5 +1,8 @@
 package com.linkforge.contract.governance;
 
+import java.time.LocalDateTime;
+import java.util.Set;
+
 public interface ApprovalSubmissionPort {
 
     ApprovalRequestView submitRequest(
@@ -7,6 +10,10 @@ public interface ApprovalSubmissionPort {
             SensitiveOperation operation,
             Long targetApplicationId,
             String beforeSnapshot,
-            String afterSnapshot
+            String afterSnapshot,
+            long actorUserId,
+            String actorEmail,
+            Set<String> actorRoles,
+            LocalDateTime requestedAt
     );
 }

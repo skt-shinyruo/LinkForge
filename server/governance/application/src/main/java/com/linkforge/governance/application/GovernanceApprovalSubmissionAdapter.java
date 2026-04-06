@@ -25,7 +25,11 @@ public class GovernanceApprovalSubmissionAdapter implements ApprovalSubmissionPo
             SensitiveOperation operation,
             Long targetApplicationId,
             String beforeSnapshot,
-            String afterSnapshot
+            String afterSnapshot,
+            long actorUserId,
+            String actorEmail,
+            Set<String> actorRoles,
+            LocalDateTime requestedAt
     ) {
         GovernanceService.ApprovalRequestDto dto = governanceService.submitRequest(
                 tenantId,
@@ -34,8 +38,8 @@ public class GovernanceApprovalSubmissionAdapter implements ApprovalSubmissionPo
                         targetApplicationId,
                         beforeSnapshot,
                         afterSnapshot,
-                        resolveCurrentActorReflectively(),
-                        LocalDateTime.now()
+                        new UserActor(tenantId, actorUserId, actorEmail, actorRoles),
+                        requestedAt
                 )
         );
         return new ApprovalRequestView(
@@ -50,21 +54,5 @@ public class GovernanceApprovalSubmissionAdapter implements ApprovalSubmissionPo
                 dto.approverEmail(),
                 dto.decisionReason()
         );
-    }
-
-    @SuppressWarnings("unchecked")
-    private static UserActor resolveCurrentActorReflectively() {
-        try {
-            Class<?> authContextClass = Class.forName("com.linkforge.foundation.security.AuthContext");
-            Object principal = authContextClass.getMethod("requirePrincipal").invoke(null);
-            Class<?> principalClass = principal.getClass();
-            long tenantId = ((Number) principalClass.getMethod("getTenantId").invoke(principal)).longValue();
-            long userId = ((Number) principalClass.getMethod("getUserId").invoke(principal)).longValue();
-            String email = (String) principalClass.getMethod("getEmail").invoke(principal);
-            Set<String> roles = (Set<String>) principalClass.getMethod("getRoles").invoke(principal);
-            return new UserActor(tenantId, userId, email, roles);
-        } catch (ReflectiveOperationException ex) {
-            throw new IllegalStateException("Cannot resolve current actor", ex);
-        }
     }
 }

@@ -1,7 +1,7 @@
 package com.linkforge.shortlink.application;
 
 import com.linkforge.foundation.persistence.PageQuery;
-import com.linkforge.foundation.runtime.security.TenantGuard;
+import com.linkforge.foundation.tx.RequiresNewTransactionPort;
 import com.linkforge.shortlink.application.command.CreateShortLinkCommandHandler;
 import com.linkforge.shortlink.application.command.ImportShortLinksCsvCommandHandler;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
@@ -17,10 +17,6 @@ import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.TransactionDefinition;
-import org.springframework.transaction.TransactionStatus;
-import org.springframework.transaction.support.SimpleTransactionStatus;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -47,9 +43,8 @@ class ShortLinkCsvTimeSemanticsTest {
         CreateShortLinkCommandHandler createHandler = mock(CreateShortLinkCommandHandler.class);
         when(createHandler.handle(anyLong(), any(), any())).thenReturn(null);
 
-        TenantGuard tenantGuard = mock(TenantGuard.class);
-        PlatformTransactionManager txManager = new NoOpTransactionManager();
-        ImportShortLinksCsvCommandHandler handler = new ImportShortLinksCsvCommandHandler(createHandler, tenantGuard, txManager);
+        RequiresNewTransactionPort requiresNewTransactionPort = Runnable::run;
+        ImportShortLinksCsvCommandHandler handler = new ImportShortLinksCsvCommandHandler(createHandler, requiresNewTransactionPort);
 
         String csv = """
                 originalUrl,code,expiresAt,note,tags
@@ -94,12 +89,10 @@ class ShortLinkCsvTimeSemanticsTest {
     void exportCsv_should_output_expiresAt_as_utc_instant_string_and_blank_when_null() throws Exception {
         ShortLinkRepository shortLinkRepository = mock(ShortLinkRepository.class);
         LinkTagRepository linkTagRepository = mock(LinkTagRepository.class);
-        TenantGuard tenantGuard = mock(TenantGuard.class);
 
         ExportShortLinksCsvQueryHandler handler = new ExportShortLinksCsvQueryHandler(
                 shortLinkRepository,
-                linkTagRepository,
-                tenantGuard
+                linkTagRepository
         );
 
         LocalDateTime expiresAtUtc = LocalDateTime.of(2026, 3, 10, 12, 0, 0);
@@ -165,18 +158,4 @@ class ShortLinkCsvTimeSemanticsTest {
         }
     }
 
-    private static final class NoOpTransactionManager implements PlatformTransactionManager {
-        @Override
-        public TransactionStatus getTransaction(TransactionDefinition definition) {
-            return new SimpleTransactionStatus();
-        }
-
-        @Override
-        public void commit(TransactionStatus status) {
-        }
-
-        @Override
-        public void rollback(TransactionStatus status) {
-        }
-    }
 }

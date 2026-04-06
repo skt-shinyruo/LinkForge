@@ -5,6 +5,7 @@ import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.contract.governance.ApprovalSubmissionPort;
 import com.linkforge.contract.governance.SensitiveOperation;
 import com.linkforge.contract.shortlink.ShortLinkErrorCode;
+import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.tx.PostCommitHookPort;
 import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
 import com.linkforge.shortlink.application.ShortLinkService.UpdateLinkRequest;
@@ -66,7 +67,7 @@ public class UpdateShortLinkCommandHandler {
     }
 
     @Transactional
-    public LinkDto handle(long tenantId, long linkId, UpdateLinkRequest req) {
+    public LinkDto handle(long tenantId, long linkId, UpdateLinkRequest req, UserActor actor, LocalDateTime requestedAt) {
         if (req == null) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "UpdateLinkRequest 不能为空");
         }
@@ -88,6 +89,9 @@ public class UpdateShortLinkCommandHandler {
 
         List<String> existingTags = null;
         if (requiresDestinationApproval) {
+            if (actor == null || actor.userId() <= 0 || actor.email() == null || actor.email().isBlank()) {
+                throw new BusinessException(ErrorCode.UNAUTHORIZED, "actor 无效");
+            }
             existingTags = linkTagRepository.findTagNamesByLinkId(linkId);
             if (hasOtherEffectiveChanges(link, req, existingTags)) {
                 throw new BusinessException(ErrorCode.BAD_REQUEST, "请先单独提交目标地址变更，再保存其他修改");
@@ -97,7 +101,11 @@ public class UpdateShortLinkCommandHandler {
                     SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE,
                     link.applicationId(),
                     "originalUrl=" + link.originalUrl().value(),
-                    "originalUrl=" + req.originalUrl()
+                    "originalUrl=" + req.originalUrl(),
+                    actor == null ? 0L : actor.userId(),
+                    actor == null ? null : actor.email(),
+                    actor == null ? Set.of() : actor.roles(),
+                    requestedAt
             );
             return dtoMapper.toDto(link, existingTags);
         }

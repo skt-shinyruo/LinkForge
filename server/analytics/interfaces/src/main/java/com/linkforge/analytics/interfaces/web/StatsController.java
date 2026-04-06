@@ -271,7 +271,11 @@ public class StatsController {
                 SensitiveOperation.ANALYTICS_DETAIL_EXPORT,
                 link.applicationId(),
                 null,
-                "linkId=" + linkId + ",from=" + f + ",to=" + t
+                "linkId=" + linkId + ",from=" + f + ",to=" + t,
+                p.getUserId(),
+                p.getEmail(),
+                p.getRoles(),
+                LocalDateTime.now(ZoneOffset.UTC)
         );
         return ApiResponse.ok(dto, RequestId.get());
     }
@@ -296,7 +300,11 @@ public class StatsController {
                 SensitiveOperation.ANALYTICS_DETAIL_EXPORT,
                 link.applicationId(),
                 null,
-                "linkId=" + linkId + ",from=" + f + ",to=" + t
+                "linkId=" + linkId + ",from=" + f + ",to=" + t,
+                p.getUserId(),
+                p.getEmail(),
+                p.getRoles(),
+                LocalDateTime.now(ZoneOffset.UTC)
         );
         return ApiResponse.ok(dto, RequestId.get());
     }

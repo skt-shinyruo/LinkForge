@@ -3,7 +3,6 @@ package com.linkforge.shortlink.application.command;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
-import com.linkforge.foundation.runtime.security.TenantGuard;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
 import com.linkforge.shortlink.application.port.TagRepository;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -24,23 +23,19 @@ public class SetLinkTagsCommandHandler {
     private final SnowflakeIdGenerator idGenerator;
     private final TagRepository tagRepository;
     private final LinkTagRepository linkTagRepository;
-    private final TenantGuard tenantGuard;
 
     public SetLinkTagsCommandHandler(
             SnowflakeIdGenerator idGenerator,
             TagRepository tagRepository,
-            LinkTagRepository linkTagRepository,
-            TenantGuard tenantGuard
+            LinkTagRepository linkTagRepository
     ) {
         this.idGenerator = idGenerator;
         this.tagRepository = tagRepository;
         this.linkTagRepository = linkTagRepository;
-        this.tenantGuard = tenantGuard;
     }
 
     @Transactional
     public void handle(long tenantId, long linkId, Set<String> tags) {
-        tenantGuard.requireCurrentTenant(tenantId);
         linkTagRepository.deleteAllByLinkId(linkId);
         if (tags == null || tags.isEmpty()) {
             return;

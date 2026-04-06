@@ -3,6 +3,7 @@ package com.linkforge.shortlink.application.command;
 import com.linkforge.contract.governance.ApprovalRequestView;
 import com.linkforge.contract.governance.ApprovalSubmissionPort;
 import com.linkforge.contract.governance.SensitiveOperation;
+import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.tx.PostCommitHookPort;
 import com.linkforge.shortlink.application.ShortLinkService;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
@@ -120,7 +121,11 @@ class UpdateShortLinkCommandHandlerTest {
                 SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE,
                 2001L,
                 "originalUrl=https://example.com/old",
-                "originalUrl=https://example.com/new"
+                "originalUrl=https://example.com/new",
+                7L,
+                "reviewer@example.com",
+                Set.of("TENANT_ADMIN"),
+                LocalDateTime.parse("2026-04-01T00:00:00")
         )).thenReturn(new ApprovalRequestView(
                 501L,
                 1L,
@@ -152,7 +157,9 @@ class UpdateShortLinkCommandHandlerTest {
                         null,
                         null,
                         null
-                )
+                ),
+                new UserActor(1L, 7L, "reviewer@example.com", Set.of("TENANT_ADMIN")),
+                LocalDateTime.parse("2026-04-01T00:00:00")
         );
 
         assertThat(actual).isSameAs(expected);
@@ -161,7 +168,11 @@ class UpdateShortLinkCommandHandlerTest {
                 SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE,
                 2001L,
                 "originalUrl=https://example.com/old",
-                "originalUrl=https://example.com/new"
+                "originalUrl=https://example.com/new",
+                7L,
+                "reviewer@example.com",
+                Set.of("TENANT_ADMIN"),
+                LocalDateTime.parse("2026-04-01T00:00:00")
         );
         verify(shortLinkRepository, never()).update(link);
         verify(eventPublisher, never()).updated(eq(link), eq(clock.instant()));
@@ -231,7 +242,9 @@ class UpdateShortLinkCommandHandlerTest {
                         null,
                         null,
                         null
-                )
+                ),
+                new UserActor(1L, 7L, "reviewer@example.com", Set.of("TENANT_ADMIN")),
+                LocalDateTime.parse("2026-04-01T00:00:00")
         )).hasMessageContaining("请先单独提交目标地址变更");
 
         verify(approvalSubmissionPort, never()).submitRequest(
@@ -239,7 +252,11 @@ class UpdateShortLinkCommandHandlerTest {
                 eq(SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE),
                 eq(2001L),
                 anyString(),
-                anyString()
+                anyString(),
+                eq(7L),
+                eq("reviewer@example.com"),
+                eq(Set.of("TENANT_ADMIN")),
+                eq(LocalDateTime.parse("2026-04-01T00:00:00"))
         );
         verify(shortLinkRepository, never()).update(link);
         verify(eventPublisher, never()).updated(eq(link), eq(clock.instant()));

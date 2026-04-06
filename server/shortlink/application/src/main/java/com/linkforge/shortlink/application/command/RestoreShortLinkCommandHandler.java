@@ -2,8 +2,7 @@ package com.linkforge.shortlink.application.command;
 
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.shortlink.ShortLinkErrorCode;
-import com.linkforge.foundation.runtime.security.TenantGuard;
-import com.linkforge.foundation.tx.AfterCommit;
+import com.linkforge.foundation.tx.PostCommitHookPort;
 import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
@@ -25,7 +24,7 @@ public class RestoreShortLinkCommandHandler {
     private final LinkTagRepository linkTagRepository;
     private final RedirectCacheSyncPort redirectCacheSync;
     private final ShortLinkDtoMapper dtoMapper;
-    private final TenantGuard tenantGuard;
+    private final PostCommitHookPort postCommitHookPort;
     private final Clock clock;
 
     public RestoreShortLinkCommandHandler(
@@ -34,7 +33,7 @@ public class RestoreShortLinkCommandHandler {
             LinkTagRepository linkTagRepository,
             RedirectCacheSyncPort redirectCacheSync,
             ShortLinkDtoMapper dtoMapper,
-            TenantGuard tenantGuard,
+            PostCommitHookPort postCommitHookPort,
             Clock clock
     ) {
         this.shortLinkRepository = shortLinkRepository;
@@ -42,13 +41,12 @@ public class RestoreShortLinkCommandHandler {
         this.linkTagRepository = linkTagRepository;
         this.redirectCacheSync = redirectCacheSync;
         this.dtoMapper = dtoMapper;
-        this.tenantGuard = tenantGuard;
+        this.postCommitHookPort = postCommitHookPort;
         this.clock = clock;
     }
 
     @Transactional
     public LinkDto handle(long tenantId, long linkId) {
-        tenantGuard.requireCurrentTenant(tenantId);
         ShortLink link = shortLinkRepository.findByTenantIdAndId(tenantId, linkId)
                 .orElseThrow(() -> new BusinessException(ShortLinkErrorCode.LINK_NOT_FOUND));
 
@@ -64,7 +62,7 @@ public class RestoreShortLinkCommandHandler {
 
         if (restored) {
             eventPublisher.restored(link, clock.instant());
-            AfterCommit.run(() -> redirectCacheSync.evict(link.tenantId(), link.domainId(), link.code().value()));
+            postCommitHookPort.run(() -> redirectCacheSync.evict(link.tenantId(), link.domainId(), link.code().value()));
         }
 
         List<String> tags = linkTagRepository.findTagNamesByLinkId(linkId);

@@ -4,6 +4,7 @@ import com.linkforge.contract.api.ApiResponse;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.contract.platform.ApplicationScopePort;
+import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.persistence.PageQuery;
 import com.linkforge.foundation.persistence.PageResult;
 import com.linkforge.foundation.security.AuthContext;
@@ -34,6 +35,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -134,7 +137,9 @@ public class ShortLinkController {
                 shortLinkService.update(
                         p.getTenantId(),
                         id,
-                        ShortLinkHttpMapper.toUpdateRequest(req)
+                        ShortLinkHttpMapper.toUpdateRequest(req),
+                        new UserActor(p.getTenantId(), p.getUserId(), p.getEmail(), p.getRoles()),
+                        LocalDateTime.now(ZoneOffset.UTC)
                 ),
                 RequestId.get()
         );

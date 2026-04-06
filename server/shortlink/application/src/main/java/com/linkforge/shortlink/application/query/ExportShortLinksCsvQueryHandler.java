@@ -3,7 +3,6 @@ package com.linkforge.shortlink.application.query;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.persistence.PageQuery;
-import com.linkforge.foundation.runtime.security.TenantGuard;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
 import com.linkforge.shortlink.application.port.ShortLinkRepository;
 import com.linkforge.shortlink.application.support.OffsetPagingGuard;
@@ -29,20 +28,16 @@ public class ExportShortLinksCsvQueryHandler {
 
     private final ShortLinkRepository shortLinkRepository;
     private final LinkTagRepository linkTagRepository;
-    private final TenantGuard tenantGuard;
 
     public ExportShortLinksCsvQueryHandler(
             ShortLinkRepository shortLinkRepository,
-            LinkTagRepository linkTagRepository,
-            TenantGuard tenantGuard
+            LinkTagRepository linkTagRepository
     ) {
         this.shortLinkRepository = shortLinkRepository;
         this.linkTagRepository = linkTagRepository;
-        this.tenantGuard = tenantGuard;
     }
 
     public void handle(long tenantId, ShortLinkSearchQuery query, PageQuery pageQuery, OutputStream os) {
-        tenantGuard.requireCurrentTenant(tenantId);
         if (os == null) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "输出流不能为空");
         }
@@ -50,7 +45,6 @@ public class ExportShortLinksCsvQueryHandler {
     }
 
     void exportCsv(long tenantId, ShortLinkSearchQuery query, PageQuery pageQuery, Writer writer) {
-        tenantGuard.requireCurrentTenant(tenantId);
         long offset = OffsetPagingGuard.requireOffsetWithin(pageQuery, MAX_EXPORT_OFFSET);
         ShortLinkSearchQuery effectiveQuery = query == null ? new ShortLinkSearchQuery(false, null, null, null, null) : query;
         List<ShortLink> links = shortLinkRepository.listSearch(tenantId, effectiveQuery, offset, pageQuery.size());

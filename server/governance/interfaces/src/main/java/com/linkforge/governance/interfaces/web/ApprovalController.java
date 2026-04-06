@@ -1,7 +1,9 @@
 package com.linkforge.governance.interfaces.web;
 
 import com.linkforge.contract.api.ApiResponse;
+import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.security.AuthContext;
+import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.web.RequestId;
 import com.linkforge.governance.application.GovernanceService;
 import jakarta.validation.Valid;
@@ -14,6 +16,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 
 @RestController
@@ -39,8 +43,17 @@ public class ApprovalController {
             @PathVariable("requestId") long requestId,
             @Valid @RequestBody ApproveRequest req
     ) {
-        long tenantId = AuthContext.requirePrincipal().getTenantId();
-        return ApiResponse.ok(governanceService.approveRequest(tenantId, requestId, req.reason()), RequestId.get());
+        AuthPrincipal principal = AuthContext.requirePrincipal();
+        UserActor actor = new UserActor(
+                principal.getTenantId(),
+                principal.getUserId(),
+                principal.getEmail(),
+                principal.getRoles()
+        );
+        return ApiResponse.ok(
+                governanceService.approveRequest(principal.getTenantId(), requestId, req.reason(), actor, LocalDateTime.now(ZoneOffset.UTC)),
+                RequestId.get()
+        );
     }
 
     public record ApproveRequest(

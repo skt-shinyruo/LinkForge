@@ -2,7 +2,6 @@ package com.linkforge.shortlink.application.query;
 
 import com.linkforge.foundation.persistence.PageQuery;
 import com.linkforge.foundation.persistence.PageResult;
-import com.linkforge.foundation.runtime.security.TenantGuard;
 import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
@@ -22,22 +21,18 @@ public class SearchShortLinksQueryHandler {
     private final ShortLinkRepository shortLinkRepository;
     private final LinkTagRepository linkTagRepository;
     private final ShortLinkDtoMapper dtoMapper;
-    private final TenantGuard tenantGuard;
 
     public SearchShortLinksQueryHandler(
             ShortLinkRepository shortLinkRepository,
             LinkTagRepository linkTagRepository,
-            ShortLinkDtoMapper dtoMapper,
-            TenantGuard tenantGuard
+            ShortLinkDtoMapper dtoMapper
     ) {
         this.shortLinkRepository = shortLinkRepository;
         this.linkTagRepository = linkTagRepository;
         this.dtoMapper = dtoMapper;
-        this.tenantGuard = tenantGuard;
     }
 
     public PageResult<LinkDto> handle(long tenantId, ShortLinkSearchQuery query, PageQuery pageQuery) {
-        tenantGuard.requireCurrentTenant(tenantId);
         long offset = OffsetPagingGuard.requireOffsetWithin(pageQuery, MAX_SEARCH_OFFSET);
 
         long total = shortLinkRepository.countSearch(tenantId, query);

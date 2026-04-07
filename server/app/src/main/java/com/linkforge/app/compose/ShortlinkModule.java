@@ -1,10 +1,16 @@
 package com.linkforge.app.compose;
 
-import org.springframework.context.annotation.ComponentScan;
+import com.linkforge.shortlink.application.ShortlinkApplicationConfig;
+import com.linkforge.shortlink.infrastructure.ShortlinkInfrastructureConfig;
+import com.linkforge.shortlink.interfaces.ShortlinkInterfacesConfig;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 
-@Configuration
-@ComponentScan("com.linkforge.shortlink")
+@Configuration(proxyBeanMethods = false)
+@Import({
+        ShortlinkApplicationConfig.class,
+        ShortlinkInfrastructureConfig.class,
+        ShortlinkInterfacesConfig.class
+})
 public class ShortlinkModule {
 }
-

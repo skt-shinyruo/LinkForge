@@ -1,9 +1,16 @@
 package com.linkforge.app.compose;
 
-import org.springframework.context.annotation.ComponentScan;
+import com.linkforge.platform.application.PlatformApplicationConfig;
+import com.linkforge.platform.infrastructure.PlatformInfrastructureConfig;
+import com.linkforge.platform.interfaces.PlatformInterfacesConfig;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 
-@Configuration
-@ComponentScan("com.linkforge.platform")
+@Configuration(proxyBeanMethods = false)
+@Import({
+        PlatformApplicationConfig.class,
+        PlatformInfrastructureConfig.class,
+        PlatformInterfacesConfig.class
+})
 public class PlatformModule {
 }

@@ -76,7 +76,6 @@
         <dependency>
             <groupId>com.linkforge</groupId>
             <artifactId>linkforge-platform-infrastructure</artifactId>
-            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
@@ -93,7 +92,10 @@
         <dependency>
             <groupId>com.linkforge</groupId>
             <artifactId>linkforge-governance-infrastructure</artifactId>
-            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-shortlink-application</artifactId>
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
@@ -102,7 +104,10 @@
         <dependency>
             <groupId>com.linkforge</groupId>
             <artifactId>linkforge-shortlink-infrastructure</artifactId>
-            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-redirect-application</artifactId>
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
@@ -111,7 +116,10 @@
         <dependency>
             <groupId>com.linkforge</groupId>
             <artifactId>linkforge-redirect-infrastructure</artifactId>
-            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-analytics-application</artifactId>
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
@@ -120,7 +128,6 @@
         <dependency>
             <groupId>com.linkforge</groupId>
             <artifactId>linkforge-analytics-infrastructure</artifactId>
-            <scope>runtime</scope>
         </dependency>
 
         <!-- web -->

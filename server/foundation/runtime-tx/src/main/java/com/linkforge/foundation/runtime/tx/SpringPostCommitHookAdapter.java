@@ -1,6 +1,6 @@
 package com.linkforge.foundation.runtime.tx;
 
-import com.linkforge.foundation.tx.AfterCommit;
+import com.linkforge.foundation.runtime.tx.AfterCommit;
 import com.linkforge.foundation.tx.PostCommitHookPort;
 import org.springframework.stereotype.Component;
 

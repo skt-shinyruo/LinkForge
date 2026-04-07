@@ -2,7 +2,7 @@ package com.linkforge.foundation.runtime.security;
 
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
-import com.linkforge.foundation.security.AuthContext;
+import com.linkforge.foundation.runtime.security.AuthContext;
 import org.springframework.stereotype.Component;
 
 @Component

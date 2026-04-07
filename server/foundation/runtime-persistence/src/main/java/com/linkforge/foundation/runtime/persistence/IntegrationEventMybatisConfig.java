@@ -12,6 +12,6 @@ import org.springframework.context.annotation.Configuration;
  * free of runtime bean registration so bounded-context dependencies stay explicit.
  */
 @Configuration(proxyBeanMethods = false)
-@MapperScan(basePackages = "com.linkforge.foundation.eventing.mapper", annotationClass = Mapper.class)
+@MapperScan(basePackages = "com.linkforge.foundation.runtime.persistence.mapper", annotationClass = Mapper.class)
 public class IntegrationEventMybatisConfig {
 }

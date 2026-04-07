@@ -1,7 +1,7 @@
 package com.linkforge.foundation.runtime.eventing;
 
 import com.linkforge.foundation.eventing.IntegrationCheckpointRepository;
-import com.linkforge.foundation.eventing.mapper.IntegrationCheckpointMapper;
+import com.linkforge.foundation.runtime.persistence.mapper.IntegrationCheckpointMapper;
 import org.springframework.stereotype.Repository;
 
 @Repository

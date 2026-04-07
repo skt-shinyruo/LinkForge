@@ -1,4 +1,4 @@
-package com.linkforge.foundation.tx;
+package com.linkforge.foundation.runtime.tx;
 
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;

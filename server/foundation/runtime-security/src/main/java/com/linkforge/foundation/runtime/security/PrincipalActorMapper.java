@@ -1,9 +1,10 @@
-package com.linkforge.foundation.security;
+package com.linkforge.foundation.runtime.security;
 
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.context.ApiKeyActor;
 import com.linkforge.foundation.context.UserActor;
+import com.linkforge.foundation.security.AuthPrincipal;
 import org.springframework.stereotype.Component;
 
 @Component

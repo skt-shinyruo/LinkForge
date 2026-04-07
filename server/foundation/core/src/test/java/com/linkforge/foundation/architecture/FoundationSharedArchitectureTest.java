@@ -23,6 +23,7 @@ class FoundationSharedArchitectureTest {
             .importPackages(
                     "com.linkforge.foundation.config",
                     "com.linkforge.foundation.context",
+                    "com.linkforge.foundation.eventing",
                     "com.linkforge.foundation.id",
                     "com.linkforge.foundation.persistence",
                     "com.linkforge.foundation.security",
@@ -33,6 +34,7 @@ class FoundationSharedArchitectureTest {
     private static final String[] SHARED_PACKAGES = {
             "com.linkforge.foundation.config..",
             "com.linkforge.foundation.context..",
+            "com.linkforge.foundation.eventing..",
             "com.linkforge.foundation.id..",
             "com.linkforge.foundation.persistence..",
             "com.linkforge.foundation.security..",

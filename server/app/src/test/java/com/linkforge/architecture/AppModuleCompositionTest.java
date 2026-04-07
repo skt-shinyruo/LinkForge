@@ -1,6 +1,12 @@
 package com.linkforge.architecture;
 
 import com.linkforge.LinkForgeApplication;
+import com.linkforge.app.compose.FoundationModule;
+import com.linkforge.foundation.runtime.persistence.FoundationRuntimePersistenceModule;
+import com.linkforge.foundation.runtime.security.FoundationRuntimeSecurityModule;
+import com.linkforge.foundation.runtime.startup.FoundationRuntimeStartupModule;
+import com.linkforge.foundation.runtime.tx.FoundationRuntimeTxModule;
+import com.linkforge.foundation.runtime.web.FoundationRuntimeWebModule;
 import com.linkforge.governance.interfaces.web.ApprovalController;
 import com.linkforge.governance.interfaces.web.AuditController;
 import com.linkforge.platform.interfaces.web.TenantAdminApplicationController;
@@ -8,7 +14,9 @@ import com.linkforge.platform.interfaces.web.TenantAdminDomainController;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -36,6 +44,21 @@ class AppModuleCompositionTest {
             assertThat(context.getBeanNamesForType(ApprovalController.class)).isNotEmpty();
             assertThat(context.getBeanNamesForType(AuditController.class)).isNotEmpty();
         });
+    }
+
+    @Test
+    void foundation_module_should_import_explicit_runtime_modules_instead_of_scanning_foundation() {
+        assertThat(FoundationModule.class.getAnnotation(ComponentScan.class)).isNull();
+
+        Import importAnnotation = FoundationModule.class.getAnnotation(Import.class);
+        assertThat(importAnnotation).isNotNull();
+        assertThat(importAnnotation.value()).containsExactlyInAnyOrder(
+                FoundationRuntimeWebModule.class,
+                FoundationRuntimeSecurityModule.class,
+                FoundationRuntimePersistenceModule.class,
+                FoundationRuntimeTxModule.class,
+                FoundationRuntimeStartupModule.class
+        );
     }
 
     @Configuration(proxyBeanMethods = false)

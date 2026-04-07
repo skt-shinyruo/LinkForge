@@ -31,6 +31,10 @@
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-foundation-runtime-persistence</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
             <artifactId>linkforge-foundation-runtime-tx</artifactId>
         </dependency>
         <dependency>

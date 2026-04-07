@@ -1,4 +1,4 @@
-package com.linkforge.foundation.eventing.mapper;
+package com.linkforge.foundation.runtime.persistence.mapper;
 
 import com.linkforge.foundation.eventing.IntegrationEventRow;
 import org.apache.ibatis.annotations.Mapper;

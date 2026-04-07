@@ -1,4 +1,4 @@
-package com.linkforge.foundation.eventing.mapper;
+package com.linkforge.foundation.runtime.persistence.mapper;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;

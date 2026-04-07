@@ -2,7 +2,7 @@
 <!DOCTYPE mapper
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.linkforge.foundation.eventing.mapper.IntegrationDeadLetterMapper">
+<mapper namespace="com.linkforge.foundation.runtime.persistence.mapper.IntegrationDeadLetterMapper">
 
     <insert id="upsertFailure">
         INSERT INTO integration_consumer_dead_letter (

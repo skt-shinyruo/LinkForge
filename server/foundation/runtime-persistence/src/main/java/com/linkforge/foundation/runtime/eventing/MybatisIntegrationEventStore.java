@@ -2,7 +2,7 @@ package com.linkforge.foundation.runtime.eventing;
 
 import com.linkforge.foundation.eventing.IntegrationEventRow;
 import com.linkforge.foundation.eventing.IntegrationEventStore;
-import com.linkforge.foundation.eventing.mapper.IntegrationEventMapper;
+import com.linkforge.foundation.runtime.persistence.mapper.IntegrationEventMapper;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;

@@ -2,7 +2,7 @@ package com.linkforge.foundation.runtime.eventing;
 
 import com.linkforge.foundation.eventing.IntegrationDeadLetterRepository;
 import com.linkforge.foundation.eventing.IntegrationEventRow;
-import com.linkforge.foundation.eventing.mapper.IntegrationDeadLetterMapper;
+import com.linkforge.foundation.runtime.persistence.mapper.IntegrationDeadLetterMapper;
 import org.springframework.stereotype.Repository;
 
 @Repository

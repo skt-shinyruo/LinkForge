@@ -9,7 +9,6 @@ import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.contract.accounts.AccountsErrorCode;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
-import com.linkforge.foundation.runtime.security.TenantGuard;
 import com.linkforge.foundation.security.StandardRoles;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -32,7 +31,6 @@ public class UserAdminService {
     private final AccountsUserStore userStore;
     private final AccountsUserRoleStore userRoleStore;
     private final AccountsPasswordHasher passwordHasher;
-    private final TenantGuard tenantGuard;
     private final AccountStatusCache statusCache;
 
     public UserAdminService(
@@ -40,19 +38,16 @@ public class UserAdminService {
             AccountsUserStore userStore,
             AccountsUserRoleStore userRoleStore,
             AccountsPasswordHasher passwordHasher,
-            TenantGuard tenantGuard,
             AccountStatusCache statusCache
     ) {
         this.idGenerator = idGenerator;
         this.userStore = userStore;
         this.userRoleStore = userRoleStore;
         this.passwordHasher = passwordHasher;
-        this.tenantGuard = tenantGuard;
         this.statusCache = statusCache;
     }
 
     public List<UserDto> list(long tenantId) {
-        tenantGuard.requireCurrentTenant(tenantId);
         List<AccountsUserStore.UserData> users = userStore.findAllByTenantIdOrderByCreatedAtDesc(tenantId);
         if (users.isEmpty()) {
             return List.of();
@@ -74,7 +69,6 @@ public class UserAdminService {
 
     @Transactional
     public UserDto create(long tenantId, CreateUserRequest req) {
-        tenantGuard.requireCurrentTenant(tenantId);
         if (req == null) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "请求不能为空");
         }
@@ -111,7 +105,6 @@ public class UserAdminService {
 
     @Transactional
     public UserDto disable(long tenantId, long actorUserId, long userId) {
-        tenantGuard.requireCurrentTenant(tenantId);
         AccountsUserStore.UserData user = requireUserInTenant(tenantId, userId);
         Set<String> roles = loadRolesByUserId(userId);
         requireDisableAllowed(tenantId, actorUserId, user, roles);
@@ -124,7 +117,6 @@ public class UserAdminService {
 
     @Transactional
     public UserDto enable(long tenantId, long userId) {
-        tenantGuard.requireCurrentTenant(tenantId);
         AccountsUserStore.UserData user = requireUserInTenant(tenantId, userId);
         if (!AccountsConstants.STATUS_ACTIVE.equals(user.status())) {
             userStore.update(withStatus(user, AccountsConstants.STATUS_ACTIVE));
@@ -136,7 +128,6 @@ public class UserAdminService {
 
     @Transactional
     public UserDto resetPassword(long tenantId, long userId, String newPassword) {
-        tenantGuard.requireCurrentTenant(tenantId);
         if (newPassword == null || newPassword.isBlank()) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "密码不能为空");
         }

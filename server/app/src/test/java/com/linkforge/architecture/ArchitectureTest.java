@@ -158,6 +158,7 @@ class ArchitectureTest {
         ArchRule rule = noClasses()
                 .that()
                 .resideInAnyPackage(
+                        "com.linkforge.accounts.application..",
                         "com.linkforge.shortlink.application..",
                         "com.linkforge.platform.application..",
                         "com.linkforge.governance.application..",
@@ -173,10 +174,10 @@ class ArchitectureTest {
                 )
                 .orShould()
                 .dependOnClassesThat()
-                .haveFullyQualifiedName("com.linkforge.foundation.security.AuthContext")
+                .haveFullyQualifiedName("com.linkforge.foundation.runtime.security.AuthContext")
                 .orShould()
                 .dependOnClassesThat()
-                .haveFullyQualifiedName("com.linkforge.foundation.tx.AfterCommit");
+                .haveFullyQualifiedName("com.linkforge.foundation.runtime.tx.AfterCommit");
         rule.check(CLASSES);
     }
 

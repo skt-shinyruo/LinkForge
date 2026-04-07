@@ -11,7 +11,6 @@ import com.linkforge.contract.openapi.OpenApiErrorCode;
 import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.foundation.config.SecurityProperties;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
-import com.linkforge.foundation.runtime.security.TenantGuard;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -49,7 +48,6 @@ public class ApiKeyService {
     private final SnowflakeIdGenerator idGenerator;
     private final AccountsApiKeyStore apiKeyStore;
     private final AccountsPasswordHasher passwordHasher;
-    private final TenantGuard tenantGuard;
     private final SecurityProperties securityProperties;
     private final ApiKeyAuthCache authCache;
     private final Clock clock;
@@ -59,7 +57,6 @@ public class ApiKeyService {
             SnowflakeIdGenerator idGenerator,
             AccountsApiKeyStore apiKeyStore,
             AccountsPasswordHasher passwordHasher,
-            TenantGuard tenantGuard,
             SecurityProperties securityProperties,
             ApiKeyAuthCache authCache,
             Clock clock,
@@ -68,7 +65,6 @@ public class ApiKeyService {
         this.idGenerator = idGenerator;
         this.apiKeyStore = apiKeyStore;
         this.passwordHasher = passwordHasher;
-        this.tenantGuard = tenantGuard;
         this.securityProperties = securityProperties;
         this.authCache = authCache;
         this.clock = clock;
@@ -82,7 +78,6 @@ public class ApiKeyService {
 
     @Transactional
     public CreatedApiKey create(long tenantId, long applicationId, String name) {
-        tenantGuard.requireCurrentTenant(tenantId);
         applicationScopePort.requireApplicationExists(tenantId, applicationId);
         long id = idGenerator.nextId();
         String secret = randomSecret();
@@ -167,7 +162,6 @@ public class ApiKeyService {
     }
 
     public List<ApiKeyInfo> list(long tenantId, Long applicationId) {
-        tenantGuard.requireCurrentTenant(tenantId);
         return apiKeyStore.findAllByTenantIdOrderByCreatedAtDesc(tenantId).stream()
                 .filter(e -> applicationId == null || applicationId.equals(e.applicationId()))
                 .map(e -> new ApiKeyInfo(e.id(), e.applicationId(), e.name(), e.status(), e.lastUsedAt(), e.createdAt()))
@@ -176,7 +170,6 @@ public class ApiKeyService {
 
     @Transactional
     public ApiKeyInfo disable(long tenantId, long apiKeyId) {
-        tenantGuard.requireCurrentTenant(tenantId);
         AccountsApiKeyStore.ApiKey apiKey = apiKeyStore.findById(apiKeyId);
         if (apiKey == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "API Key 不存在");
@@ -202,7 +195,6 @@ public class ApiKeyService {
 
     @Transactional
     public ApiKeyInfo enable(long tenantId, long apiKeyId) {
-        tenantGuard.requireCurrentTenant(tenantId);
         AccountsApiKeyStore.ApiKey apiKey = apiKeyStore.findById(apiKeyId);
         if (apiKey == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "API Key 不存在");
@@ -220,7 +212,6 @@ public class ApiKeyService {
 
     @Transactional
     public CreatedApiKey rotate(long tenantId, long apiKeyId) {
-        tenantGuard.requireCurrentTenant(tenantId);
         AccountsApiKeyStore.ApiKey apiKey = apiKeyStore.findById(apiKeyId);
         if (apiKey == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "API Key 不存在");

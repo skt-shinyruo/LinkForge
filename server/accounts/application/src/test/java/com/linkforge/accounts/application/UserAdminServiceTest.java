@@ -8,7 +8,6 @@ import com.linkforge.accounts.domain.AccountsConstants;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
-import com.linkforge.foundation.runtime.security.TenantGuard;
 import com.linkforge.foundation.security.StandardRoles;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -36,6 +35,7 @@ class UserAdminServiceTest {
         assertThat(Arrays.stream(constructor.getParameterTypes()).map(Class::getName))
                 .contains("com.linkforge.accounts.application.port.AccountsPasswordHasher")
                 .contains("com.linkforge.accounts.application.port.AccountStatusCache")
+                .doesNotContain("com.linkforge.foundation.runtime.security.TenantGuard")
                 .doesNotContain("org.springframework.security.crypto.password.PasswordEncoder");
     }
 
@@ -45,7 +45,6 @@ class UserAdminServiceTest {
         AccountsUserStore userStore = mock(AccountsUserStore.class);
         AccountsUserRoleStore userRoleStore = mock(AccountsUserRoleStore.class);
         AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
-        TenantGuard tenantGuard = mock(TenantGuard.class);
         AccountStatusCache statusCache = mock(AccountStatusCache.class);
 
         UserAdminService service = new UserAdminService(
@@ -53,7 +52,6 @@ class UserAdminServiceTest {
                 userStore,
                 userRoleStore,
                 passwordHasher,
-                tenantGuard,
                 statusCache
         );
 
@@ -80,7 +78,6 @@ class UserAdminServiceTest {
         AccountsUserStore userStore = mock(AccountsUserStore.class);
         AccountsUserRoleStore userRoleStore = mock(AccountsUserRoleStore.class);
         AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
-        TenantGuard tenantGuard = mock(TenantGuard.class);
         AccountStatusCache statusCache = mock(AccountStatusCache.class);
 
         UserAdminService service = new UserAdminService(
@@ -88,7 +85,6 @@ class UserAdminServiceTest {
                 userStore,
                 userRoleStore,
                 passwordHasher,
-                tenantGuard,
                 statusCache
         );
 
@@ -123,7 +119,6 @@ class UserAdminServiceTest {
         AccountsUserStore userStore = mock(AccountsUserStore.class);
         AccountsUserRoleStore userRoleStore = mock(AccountsUserRoleStore.class);
         AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
-        TenantGuard tenantGuard = mock(TenantGuard.class);
         AccountStatusCache statusCache = mock(AccountStatusCache.class);
 
         UserAdminService service = new UserAdminService(
@@ -131,7 +126,6 @@ class UserAdminServiceTest {
                 userStore,
                 userRoleStore,
                 passwordHasher,
-                tenantGuard,
                 statusCache
         );
 
@@ -161,7 +155,6 @@ class UserAdminServiceTest {
         AccountsUserStore userStore = mock(AccountsUserStore.class);
         AccountsUserRoleStore userRoleStore = mock(AccountsUserRoleStore.class);
         AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
-        TenantGuard tenantGuard = mock(TenantGuard.class);
         AccountStatusCache statusCache = mock(AccountStatusCache.class);
 
         UserAdminService service = new UserAdminService(
@@ -169,7 +162,6 @@ class UserAdminServiceTest {
                 userStore,
                 userRoleStore,
                 passwordHasher,
-                tenantGuard,
                 statusCache
         );
 

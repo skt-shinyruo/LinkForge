@@ -9,7 +9,6 @@ import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.contract.openapi.OpenApiErrorCode;
 import com.linkforge.foundation.config.SecurityProperties;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
-import com.linkforge.foundation.runtime.security.TenantGuard;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -71,6 +70,7 @@ class ApiKeyServiceTest {
                         "com.linkforge.accounts.application.port.ApiKeyAuthCache",
                         "com.linkforge.contract.platform.ApplicationScopePort"
                 )
+                .doesNotContain("com.linkforge.foundation.runtime.security.TenantGuard")
                 .doesNotContain("org.springframework.data.redis.core.StringRedisTemplate")
                 .doesNotContain("org.springframework.security.crypto.password.PasswordEncoder")
                 .doesNotContain("com.linkforge.platform.application.PlatformControlPlaneService");
@@ -426,7 +426,6 @@ class ApiKeyServiceTest {
                     SnowflakeIdGenerator.class,
                     AccountsApiKeyStore.class,
                     AccountsPasswordHasher.class,
-                    TenantGuard.class,
                     SecurityProperties.class,
                     ApiKeyAuthCache.class,
                     Clock.class,
@@ -436,35 +435,11 @@ class ApiKeyServiceTest {
                     idGenerator,
                     store,
                     passwordHasher,
-                    mock(TenantGuard.class),
                     props,
                     authCache,
                     clock,
                     applicationScopePort
             );
-        } catch (NoSuchMethodException ignored) {
-            try {
-                SnowflakeIdGenerator idGenerator = mock(SnowflakeIdGenerator.class);
-                when(idGenerator.nextId()).thenReturn(123L);
-                Constructor<ApiKeyService> constructor = ApiKeyService.class.getConstructor(
-                        SnowflakeIdGenerator.class,
-                        AccountsApiKeyStore.class,
-                        AccountsPasswordHasher.class,
-                        TenantGuard.class,
-                        SecurityProperties.class,
-                        ApiKeyAuthCache.class
-                );
-                return constructor.newInstance(
-                        idGenerator,
-                        store,
-                        passwordHasher,
-                        mock(TenantGuard.class),
-                        props,
-                        authCache
-                );
-            } catch (ReflectiveOperationException ex) {
-                throw new IllegalStateException(ex);
-            }
         } catch (ReflectiveOperationException ex) {
             throw new IllegalStateException(ex);
         }

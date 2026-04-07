@@ -12,7 +12,7 @@ LinkForge is a modular monolith built as a Maven reactor plus a separate Vue fro
 - `server/shortlink`: write-side shortlink management split into `domain`, `application`, `infrastructure`, and `interfaces`. It owns durable shortlink state and emits integration events for downstream projections.
 - `server/redirect`: read-side redirect serving split into `domain`, `application`, `infrastructure`, and `interfaces`. In monolith mode, redirect correctness uses an authoritative shortlink-backed metadata source on cache miss. Async projectors remain in place to warm Redis and maintain a projection for recovery/backfill scenarios.
 - `server/analytics`: visit recording and read models split into `domain`, `application`, `infrastructure`, and `interfaces`.
-- `server/app`: Spring Boot executable composition root. `LinkForgeApplication` explicitly imports `FoundationModule`, `AccountsModule`, `ShortlinkModule`, `RedirectModule`, `AnalyticsModule`, `PlatformModule`, and `GovernanceModule`, and each compose module now imports explicit per-layer context configs instead of broad package scans.
+- `server/app`: Spring Boot executable composition root. `LinkForgeApplication` explicitly imports context-owned runtime modules (`FoundationRuntimeModule`, `AccountsRuntimeModule`, `ShortlinkRuntimeModule`, `RedirectRuntimeModule`, `AnalyticsRuntimeModule`, `PlatformRuntimeModule`, and `GovernanceRuntimeModule`) instead of package scans or app-owned wrappers; the bounded-context runtime modules now live with the context export surface in `interfaces`.
 - `server/integration-tests`: Testcontainers-based integration verification for cross-module behavior.
 
 ## Redirect Correctness Path

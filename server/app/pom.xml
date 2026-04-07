@@ -71,18 +71,6 @@
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-platform-application</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-platform-infrastructure</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-governance-application</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.linkforge</groupId>
             <artifactId>linkforge-platform-interfaces</artifactId>
         </dependency>
         <dependency>
@@ -91,23 +79,7 @@
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-governance-infrastructure</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-shortlink-application</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.linkforge</groupId>
             <artifactId>linkforge-shortlink-interfaces</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-shortlink-infrastructure</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-redirect-application</artifactId>
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
@@ -115,19 +87,7 @@
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-redirect-infrastructure</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-analytics-application</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.linkforge</groupId>
             <artifactId>linkforge-analytics-interfaces</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-analytics-infrastructure</artifactId>
         </dependency>
 
         <!-- web -->

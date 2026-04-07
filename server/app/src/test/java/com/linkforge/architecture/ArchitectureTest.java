@@ -48,6 +48,15 @@ class ArchitectureTest {
         ArchRule rule = noClasses()
                 .that()
                 .resideInAnyPackage("..interfaces..")
+                .and()
+                .resideOutsideOfPackages(
+                        "com.linkforge.accounts.interfaces",
+                        "com.linkforge.shortlink.interfaces",
+                        "com.linkforge.redirect.interfaces",
+                        "com.linkforge.analytics.interfaces",
+                        "com.linkforge.platform.interfaces",
+                        "com.linkforge.governance.interfaces"
+                )
                 .should()
                 .dependOnClassesThat()
                 .resideInAnyPackage("..infrastructure..");

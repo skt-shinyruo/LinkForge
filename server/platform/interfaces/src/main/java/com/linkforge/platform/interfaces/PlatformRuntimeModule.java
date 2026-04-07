@@ -1,8 +1,7 @@
-package com.linkforge.app.compose;
+package com.linkforge.platform.interfaces;
 
 import com.linkforge.platform.application.PlatformApplicationConfig;
 import com.linkforge.platform.infrastructure.PlatformInfrastructureConfig;
-import com.linkforge.platform.interfaces.PlatformInterfacesConfig;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 
@@ -12,5 +11,5 @@ import org.springframework.context.annotation.Import;
         PlatformInfrastructureConfig.class,
         PlatformInterfacesConfig.class
 })
-public class PlatformModule {
+public class PlatformRuntimeModule {
 }

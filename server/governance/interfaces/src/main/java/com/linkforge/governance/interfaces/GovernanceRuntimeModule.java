@@ -1,8 +1,7 @@
-package com.linkforge.app.compose;
+package com.linkforge.governance.interfaces;
 
 import com.linkforge.governance.application.GovernanceApplicationConfig;
 import com.linkforge.governance.infrastructure.GovernanceInfrastructureConfig;
-import com.linkforge.governance.interfaces.GovernanceInterfacesConfig;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 
@@ -12,5 +11,5 @@ import org.springframework.context.annotation.Import;
         GovernanceInfrastructureConfig.class,
         GovernanceInterfacesConfig.class
 })
-public class GovernanceModule {
+public class GovernanceRuntimeModule {
 }

@@ -21,6 +21,10 @@
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-redirect-infrastructure</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
             <artifactId>linkforge-foundation-core</artifactId>
         </dependency>
         <dependency>

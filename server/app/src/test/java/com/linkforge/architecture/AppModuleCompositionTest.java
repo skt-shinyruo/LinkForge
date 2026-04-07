@@ -3,17 +3,13 @@ package com.linkforge.architecture;
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.accounts.application.AccountsApplicationConfig;
 import com.linkforge.accounts.infrastructure.AccountsInfrastructureConfig;
+import com.linkforge.accounts.interfaces.AccountsRuntimeModule;
 import com.linkforge.accounts.interfaces.AccountsInterfacesConfig;
 import com.linkforge.analytics.application.AnalyticsApplicationConfig;
 import com.linkforge.analytics.infrastructure.AnalyticsInfrastructureConfig;
+import com.linkforge.analytics.interfaces.AnalyticsRuntimeModule;
 import com.linkforge.analytics.interfaces.AnalyticsInterfacesConfig;
-import com.linkforge.app.compose.AccountsModule;
-import com.linkforge.app.compose.AnalyticsModule;
-import com.linkforge.app.compose.FoundationModule;
-import com.linkforge.app.compose.GovernanceModule;
-import com.linkforge.app.compose.PlatformModule;
-import com.linkforge.app.compose.RedirectModule;
-import com.linkforge.app.compose.ShortlinkModule;
+import com.linkforge.foundation.runtime.FoundationRuntimeModule;
 import com.linkforge.foundation.runtime.persistence.FoundationRuntimePersistenceModule;
 import com.linkforge.foundation.runtime.security.FoundationRuntimeSecurityModule;
 import com.linkforge.foundation.runtime.startup.FoundationRuntimeStartupModule;
@@ -21,19 +17,23 @@ import com.linkforge.foundation.runtime.tx.FoundationRuntimeTxModule;
 import com.linkforge.foundation.runtime.web.FoundationRuntimeWebModule;
 import com.linkforge.governance.application.GovernanceApplicationConfig;
 import com.linkforge.governance.infrastructure.GovernanceInfrastructureConfig;
+import com.linkforge.governance.interfaces.GovernanceRuntimeModule;
 import com.linkforge.governance.interfaces.GovernanceInterfacesConfig;
 import com.linkforge.governance.interfaces.web.ApprovalController;
 import com.linkforge.governance.interfaces.web.AuditController;
 import com.linkforge.platform.application.PlatformApplicationConfig;
 import com.linkforge.platform.infrastructure.PlatformInfrastructureConfig;
+import com.linkforge.platform.interfaces.PlatformRuntimeModule;
 import com.linkforge.platform.interfaces.PlatformInterfacesConfig;
 import com.linkforge.platform.interfaces.web.TenantAdminApplicationController;
 import com.linkforge.platform.interfaces.web.TenantAdminDomainController;
 import com.linkforge.redirect.application.RedirectApplicationConfig;
 import com.linkforge.redirect.infrastructure.RedirectInfrastructureConfig;
+import com.linkforge.redirect.interfaces.RedirectRuntimeModule;
 import com.linkforge.redirect.interfaces.RedirectInterfacesConfig;
 import com.linkforge.shortlink.application.ShortlinkApplicationConfig;
 import com.linkforge.shortlink.infrastructure.ShortlinkInfrastructureConfig;
+import com.linkforge.shortlink.interfaces.ShortlinkRuntimeModule;
 import com.linkforge.shortlink.interfaces.ShortlinkInterfacesConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
@@ -60,17 +60,17 @@ class AppModuleCompositionTest {
             );
 
     @Test
-    void app_should_import_explicit_context_modules_only() {
+    void app_should_import_explicit_context_exports_only() {
         Import importAnnotation = LinkForgeApplication.class.getAnnotation(Import.class);
         assertThat(importAnnotation).isNotNull();
         assertThat(importAnnotation.value()).containsExactlyInAnyOrder(
-                FoundationModule.class,
-                AccountsModule.class,
-                ShortlinkModule.class,
-                RedirectModule.class,
-                AnalyticsModule.class,
-                PlatformModule.class,
-                GovernanceModule.class
+                FoundationRuntimeModule.class,
+                AccountsRuntimeModule.class,
+                ShortlinkRuntimeModule.class,
+                RedirectRuntimeModule.class,
+                AnalyticsRuntimeModule.class,
+                PlatformRuntimeModule.class,
+                GovernanceRuntimeModule.class
         );
     }
 
@@ -86,9 +86,9 @@ class AppModuleCompositionTest {
     }
 
     @Test
-    void foundation_module_should_import_explicit_runtime_modules_instead_of_scanning_foundation() {
+    void foundation_runtime_module_should_import_explicit_runtime_modules() {
         assertExplicitImports(
-                FoundationModule.class,
+                FoundationRuntimeModule.class,
                 FoundationRuntimeWebModule.class,
                 FoundationRuntimeSecurityModule.class,
                 FoundationRuntimePersistenceModule.class,
@@ -98,9 +98,9 @@ class AppModuleCompositionTest {
     }
 
     @Test
-    void accounts_module_should_import_explicit_layer_configs() {
+    void accounts_runtime_module_should_import_explicit_layer_configs() {
         assertExplicitImports(
-                AccountsModule.class,
+                AccountsRuntimeModule.class,
                 AccountsApplicationConfig.class,
                 AccountsInfrastructureConfig.class,
                 AccountsInterfacesConfig.class
@@ -108,9 +108,9 @@ class AppModuleCompositionTest {
     }
 
     @Test
-    void shortlink_module_should_import_explicit_layer_configs() {
+    void shortlink_runtime_module_should_import_explicit_layer_configs() {
         assertExplicitImports(
-                ShortlinkModule.class,
+                ShortlinkRuntimeModule.class,
                 ShortlinkApplicationConfig.class,
                 ShortlinkInfrastructureConfig.class,
                 ShortlinkInterfacesConfig.class
@@ -118,9 +118,9 @@ class AppModuleCompositionTest {
     }
 
     @Test
-    void redirect_module_should_import_explicit_layer_configs() {
+    void redirect_runtime_module_should_import_explicit_layer_configs() {
         assertExplicitImports(
-                RedirectModule.class,
+                RedirectRuntimeModule.class,
                 RedirectApplicationConfig.class,
                 RedirectInfrastructureConfig.class,
                 RedirectInterfacesConfig.class
@@ -128,9 +128,9 @@ class AppModuleCompositionTest {
     }
 
     @Test
-    void analytics_module_should_import_explicit_layer_configs() {
+    void analytics_runtime_module_should_import_explicit_layer_configs() {
         assertExplicitImports(
-                AnalyticsModule.class,
+                AnalyticsRuntimeModule.class,
                 AnalyticsApplicationConfig.class,
                 AnalyticsInfrastructureConfig.class,
                 AnalyticsInterfacesConfig.class
@@ -138,9 +138,9 @@ class AppModuleCompositionTest {
     }
 
     @Test
-    void platform_module_should_import_explicit_layer_configs() {
+    void platform_runtime_module_should_import_explicit_layer_configs() {
         assertExplicitImports(
-                PlatformModule.class,
+                PlatformRuntimeModule.class,
                 PlatformApplicationConfig.class,
                 PlatformInfrastructureConfig.class,
                 PlatformInterfacesConfig.class
@@ -148,9 +148,9 @@ class AppModuleCompositionTest {
     }
 
     @Test
-    void governance_module_should_import_explicit_layer_configs() {
+    void governance_runtime_module_should_import_explicit_layer_configs() {
         assertExplicitImports(
-                GovernanceModule.class,
+                GovernanceRuntimeModule.class,
                 GovernanceApplicationConfig.class,
                 GovernanceInfrastructureConfig.class,
                 GovernanceInterfacesConfig.class

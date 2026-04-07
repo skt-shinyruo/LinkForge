@@ -19,6 +19,10 @@
             <groupId>com.linkforge</groupId>
             <artifactId>linkforge-analytics-application</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-analytics-infrastructure</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>com.linkforge</groupId>

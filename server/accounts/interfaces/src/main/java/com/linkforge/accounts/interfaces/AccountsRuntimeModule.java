@@ -1,8 +1,7 @@
-package com.linkforge.app.compose;
+package com.linkforge.accounts.interfaces;
 
 import com.linkforge.accounts.application.AccountsApplicationConfig;
 import com.linkforge.accounts.infrastructure.AccountsInfrastructureConfig;
-import com.linkforge.accounts.interfaces.AccountsInterfacesConfig;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 
@@ -12,5 +11,5 @@ import org.springframework.context.annotation.Import;
         AccountsInfrastructureConfig.class,
         AccountsInterfacesConfig.class
 })
-public class AccountsModule {
+public class AccountsRuntimeModule {
 }

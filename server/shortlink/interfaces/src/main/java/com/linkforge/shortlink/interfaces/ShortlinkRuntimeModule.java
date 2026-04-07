@@ -1,8 +1,7 @@
-package com.linkforge.app.compose;
+package com.linkforge.shortlink.interfaces;
 
 import com.linkforge.shortlink.application.ShortlinkApplicationConfig;
 import com.linkforge.shortlink.infrastructure.ShortlinkInfrastructureConfig;
-import com.linkforge.shortlink.interfaces.ShortlinkInterfacesConfig;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 
@@ -12,5 +11,5 @@ import org.springframework.context.annotation.Import;
         ShortlinkInfrastructureConfig.class,
         ShortlinkInterfacesConfig.class
 })
-public class ShortlinkModule {
+public class ShortlinkRuntimeModule {
 }

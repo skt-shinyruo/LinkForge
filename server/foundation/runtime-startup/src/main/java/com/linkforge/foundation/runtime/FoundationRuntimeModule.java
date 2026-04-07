@@ -1,4 +1,4 @@
-package com.linkforge.app.compose;
+package com.linkforge.foundation.runtime;
 
 import com.linkforge.foundation.runtime.persistence.FoundationRuntimePersistenceModule;
 import com.linkforge.foundation.runtime.security.FoundationRuntimeSecurityModule;
@@ -16,5 +16,5 @@ import org.springframework.context.annotation.Import;
         FoundationRuntimeTxModule.class,
         FoundationRuntimeStartupModule.class
 })
-public class FoundationModule {
+public class FoundationRuntimeModule {
 }

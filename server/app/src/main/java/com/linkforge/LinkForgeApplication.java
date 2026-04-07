@@ -1,12 +1,12 @@
 package com.linkforge;
 
-import com.linkforge.app.compose.AccountsModule;
-import com.linkforge.app.compose.AnalyticsModule;
-import com.linkforge.app.compose.FoundationModule;
-import com.linkforge.app.compose.GovernanceModule;
-import com.linkforge.app.compose.PlatformModule;
-import com.linkforge.app.compose.RedirectModule;
-import com.linkforge.app.compose.ShortlinkModule;
+import com.linkforge.accounts.interfaces.AccountsRuntimeModule;
+import com.linkforge.analytics.interfaces.AnalyticsRuntimeModule;
+import com.linkforge.foundation.runtime.FoundationRuntimeModule;
+import com.linkforge.governance.interfaces.GovernanceRuntimeModule;
+import com.linkforge.platform.interfaces.PlatformRuntimeModule;
+import com.linkforge.redirect.interfaces.RedirectRuntimeModule;
+import com.linkforge.shortlink.interfaces.ShortlinkRuntimeModule;
 import com.linkforge.foundation.config.AnalyticsProperties;
 import com.linkforge.foundation.config.CorsProperties;
 import com.linkforge.foundation.config.CoreProperties;
@@ -32,13 +32,13 @@ import org.springframework.context.annotation.Import;
         "com.linkforge.app.startup"
 })
 @Import({
-        FoundationModule.class,
-        AccountsModule.class,
-        ShortlinkModule.class,
-        RedirectModule.class,
-        AnalyticsModule.class,
-        PlatformModule.class,
-        GovernanceModule.class
+        FoundationRuntimeModule.class,
+        AccountsRuntimeModule.class,
+        ShortlinkRuntimeModule.class,
+        RedirectRuntimeModule.class,
+        AnalyticsRuntimeModule.class,
+        PlatformRuntimeModule.class,
+        GovernanceRuntimeModule.class
 })
 @EnableConfigurationProperties({
         CoreProperties.class,

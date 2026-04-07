@@ -649,7 +649,7 @@ At this point the old broad-scan compose wrappers should either be deleted or re
 Run: `cd server && mvn -q -f server/pom.xml test`
 Expected: PASS.
 
-Run: `cd server && mvn -q -pl integration-tests -P it -Dtest=ControlPlaneEndToEndIntegrationTest,RedirectRiskControlIntegrationTest test`
+Run: `cd server && mvn -q -pl integration-tests -P it -am -Dtest=ControlPlaneEndToEndIntegrationTest,RedirectRiskControlIntegrationTest test`
 Expected: PASS.
 
 - [ ] **Step 5: Update architecture documentation**
@@ -669,7 +669,7 @@ git commit -m "refactor: make module composition explicit"
 
 - [ ] `cd server && mvn -q -pl app -am -Dtest=ArchitectureTest,AppModuleCompositionTest,FoundationSharedArchitectureTest -Dsurefire.failIfNoSpecifiedTests=false test`
 - [ ] `cd server && mvn -q -f server/pom.xml test`
-- [ ] `cd server && mvn -q -pl integration-tests -P it -Dtest=ControlPlaneEndToEndIntegrationTest,RedirectRiskControlIntegrationTest test`
+- [ ] `cd server && mvn -q -pl integration-tests -P it -am -Dtest=ControlPlaneEndToEndIntegrationTest,RedirectRiskControlIntegrationTest test`
 - [ ] Confirm `application` packages no longer import `AuthContext`, `RequestId`, `VisitInfo`, `foundation.runtime..`, or Spring transaction/security context holders
 - [ ] Confirm `ShortLinkService` and peer application APIs no longer expose stream/servlet transport types
 - [ ] Confirm `accounts` and `foundation` reactor structures match the documented architecture

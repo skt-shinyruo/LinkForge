@@ -7,7 +7,7 @@ import com.linkforge.contract.api.ApiResponse;
 import com.linkforge.contract.governance.ApprovalRequestView;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.security.AuthPrincipal;
-import com.linkforge.foundation.security.PrincipalActorMapper;
+import com.linkforge.foundation.runtime.security.PrincipalActorMapper;
 import com.linkforge.foundation.web.RequestId;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;

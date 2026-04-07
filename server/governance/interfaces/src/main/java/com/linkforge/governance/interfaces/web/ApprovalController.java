@@ -2,7 +2,7 @@ package com.linkforge.governance.interfaces.web;
 
 import com.linkforge.contract.api.ApiResponse;
 import com.linkforge.foundation.context.UserActor;
-import com.linkforge.foundation.security.AuthContext;
+import com.linkforge.foundation.runtime.security.AuthContext;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.web.RequestId;
 import com.linkforge.governance.application.GovernanceService;

@@ -1,7 +1,7 @@
 package com.linkforge.accounts.interfaces.web;
 
 import com.linkforge.contract.api.ApiResponse;
-import com.linkforge.foundation.security.AuthContext;
+import com.linkforge.foundation.runtime.security.AuthContext;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.web.RequestId;
 import org.springframework.web.bind.annotation.GetMapping;

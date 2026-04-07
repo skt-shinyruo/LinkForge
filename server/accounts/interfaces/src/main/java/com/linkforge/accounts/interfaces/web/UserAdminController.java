@@ -2,7 +2,7 @@ package com.linkforge.accounts.interfaces.web;
 
 import com.linkforge.accounts.application.UserAdminService;
 import com.linkforge.contract.api.ApiResponse;
-import com.linkforge.foundation.security.AuthContext;
+import com.linkforge.foundation.runtime.security.AuthContext;
 import com.linkforge.foundation.web.RequestId;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;

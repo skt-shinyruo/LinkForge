@@ -1,0 +1,104 @@
+package com.linkforge.shortlink.infrastructure.query;
+
+import com.linkforge.foundation.config.CoreProperties;
+import com.linkforge.shortlink.application.ShortLinkReadService;
+import com.linkforge.shortlink.infrastructure.persistence.entity.ShortLinkEntity;
+import com.linkforge.shortlink.infrastructure.persistence.mapper.ShortLinkQueryMapper;
+import org.junit.jupiter.api.Test;
+
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.when;
+
+class MybatisShortLinkReadRepositoryTest {
+
+    @Test
+    void findRedirectMetaByHostAndCode_shouldNormalizeHostAndUseHostAwareLookup() {
+        ShortLinkQueryMapper queryMapper = mock(ShortLinkQueryMapper.class);
+        CoreProperties coreProperties = mock(CoreProperties.class);
+        MybatisShortLinkReadRepository repository = new MybatisShortLinkReadRepository(queryMapper, coreProperties);
+
+        ShortLinkEntity row = redirectRow();
+        row.setHostname("Alpha.Example.Test");
+        when(queryMapper.findActiveByHostnameAndCode("alpha.example.test", "AbC123"))
+                .thenReturn(row);
+
+        Optional<ShortLinkReadService.RedirectLinkMeta> actual =
+                repository.findRedirectMetaByHostAndCode(" Alpha.Example.Test:8443 ", "  AbC123  ");
+
+        assertThat(actual).hasValueSatisfying(meta -> {
+            assertThat(meta.tenantId()).isEqualTo(22L);
+            assertThat(meta.linkId()).isEqualTo(11L);
+            assertThat(meta.code()).isEqualTo("AbC123");
+            assertThat(meta.hostname()).isEqualTo("alpha.example.test");
+            assertThat(meta.originalUrl()).isEqualTo("https://example.com/live");
+            assertThat(meta.enabled()).isTrue();
+            assertThat(meta.expiresAtUtc()).isEqualTo(Instant.parse("2026-03-18T10:15:30Z"));
+            assertThat(meta.redirectStatusCode()).isEqualTo(302);
+            assertThat(meta.previewEnabled()).isTrue();
+            assertThat(meta.unavailableLandingUrl()).isEqualTo("https://example.com/unavailable");
+            assertThat(meta.queryForwardMode()).isEqualTo("ALLOWLIST");
+            assertThat(meta.queryForwardAllowlist()).isEqualTo("utm_source,utm_medium");
+            assertThat(meta.applicationId()).isEqualTo(33L);
+            assertThat(meta.domainId()).isEqualTo(44L);
+        });
+
+        verify(queryMapper).findActiveByHostnameAndCode("alpha.example.test", "AbC123");
+        verifyNoMoreInteractions(queryMapper, coreProperties);
+    }
+
+    @Test
+    void findRedirectMetaByHostAndCode_shouldFallbackToLegacyBaseHostLookup() {
+        ShortLinkQueryMapper queryMapper = mock(ShortLinkQueryMapper.class);
+        CoreProperties coreProperties = mock(CoreProperties.class);
+        when(coreProperties.getBaseUrl()).thenReturn(" https://Go.Example.Test/base-path ");
+        MybatisShortLinkReadRepository repository = new MybatisShortLinkReadRepository(queryMapper, coreProperties);
+
+        when(queryMapper.findActiveByHostnameAndCode("go.example.test", "abc123"))
+                .thenReturn(null);
+
+        ShortLinkEntity row = redirectRow();
+        row.setCode("abc123");
+        row.setHostname("   ");
+        when(queryMapper.findActiveByLegacyBaseHostAndCode("go.example.test", "abc123"))
+                .thenReturn(row);
+
+        Optional<ShortLinkReadService.RedirectLinkMeta> actual =
+                repository.findRedirectMetaByHostAndCode("Go.Example.Test:443", "abc123");
+
+        assertThat(actual).hasValueSatisfying(meta -> {
+            assertThat(meta.hostname()).isEqualTo("go.example.test");
+            assertThat(meta.applicationId()).isEqualTo(33L);
+            assertThat(meta.domainId()).isEqualTo(44L);
+        });
+
+        verify(queryMapper).findActiveByHostnameAndCode("go.example.test", "abc123");
+        verify(coreProperties).getBaseUrl();
+        verify(queryMapper).findActiveByLegacyBaseHostAndCode("go.example.test", "abc123");
+        verifyNoMoreInteractions(queryMapper, coreProperties);
+    }
+
+    private static ShortLinkEntity redirectRow() {
+        ShortLinkEntity row = new ShortLinkEntity();
+        row.setId(11L);
+        row.setTenantId(22L);
+        row.setApplicationId(33L);
+        row.setDomainId(44L);
+        row.setCode("AbC123");
+        row.setOriginalUrl("https://example.com/live");
+        row.setEnabled(true);
+        row.setExpiresAt(LocalDateTime.parse("2026-03-18T10:15:30"));
+        row.setRedirectStatusCode(302);
+        row.setPreviewEnabled(true);
+        row.setUnavailableLandingUrl("https://example.com/unavailable");
+        row.setQueryForwardMode("ALLOWLIST");
+        row.setQueryForwardAllowlist("utm_source,utm_medium");
+        return row;
+    }
+}

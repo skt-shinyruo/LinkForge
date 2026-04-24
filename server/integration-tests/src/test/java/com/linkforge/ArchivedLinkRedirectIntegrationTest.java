@@ -1,13 +1,8 @@
 package com.linkforge;
 
 import com.linkforge.LinkForgeApplication;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linkforge.contract.shortlink.ShortLinkEventTypes;
-import com.linkforge.contract.shortlink.ShortLinkPublicSnapshot;
-import com.linkforge.contract.shortlink.event.ShortLinkArchivedV1;
-import com.linkforge.contract.shortlink.event.ShortLinkCreatedV1;
-import com.linkforge.foundation.eventing.IntegrationEventStore;
-import com.linkforge.redirect.infrastructure.projection.ShortLinkEventProjectorJob;
+import com.linkforge.TestTenantFixtures;
+import com.linkforge.shortlink.application.ShortLinkService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,20 +11,23 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.time.Instant;
 import java.time.Duration;
-import java.util.List;
+import java.util.Set;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -81,103 +79,115 @@ class ArchivedLinkRedirectIntegrationTest {
     StringRedisTemplate redis;
 
     @Autowired
-    IntegrationEventStore eventStore;
+    ShortLinkService shortLinkService;
 
     @Autowired
-    ObjectMapper objectMapper;
-
-    @Autowired
-    ShortLinkEventProjectorJob projectorJob;
+    JdbcTemplate jdbcTemplate;
 
     private String code;
     private long linkId;
+    private String host;
+    private String originalUrl;
+
+    private static final long TENANT_ID = 1L;
+    private static final long USER_ID = 1L;
 
     @BeforeEach
     void setUp() {
         redis.getConnectionFactory().getConnection().serverCommands().flushAll();
+        TestTenantFixtures.ensureTenantExists(jdbcTemplate, TENANT_ID);
 
         long suffix = System.nanoTime();
-        linkId = (suffix & Long.MAX_VALUE) <= 0 ? 1L : (suffix & Long.MAX_VALUE);
         code = "archived" + Long.toUnsignedString(suffix);
+        host = "archived-" + suffix + ".example.test";
+        originalUrl = "https://example.com/" + code;
 
-        Instant t1 = Instant.now();
-        ShortLinkPublicSnapshot createdSnapshot = new ShortLinkPublicSnapshot(
-                1L,
-                linkId,
-                code,
-                "localhost",
-                "https://example.com",
-                true,
-                null,
-                null,
-                false,
-                null,
-                null,
-                List.of(),
-                null,
-                null,
-                null
-        );
-        String createdEventId = "it-created-" + code;
-        ShortLinkCreatedV1 created = new ShortLinkCreatedV1(createdEventId, t1, 1L, linkId, code, createdSnapshot);
+        long applicationId = suffix + 11;
+        long domainId = suffix + 21;
 
-        Instant t2 = t1.plusSeconds(1);
-        ShortLinkPublicSnapshot archivedSnapshot = new ShortLinkPublicSnapshot(
-                1L,
-                linkId,
-                code,
-                "localhost",
-                "https://example.com",
-                true,
-                null,
-                null,
-                false,
-                null,
-                null,
-                List.of(),
-                t2,
-                null,
-                null
-        );
-        String archivedEventId = "it-archived-" + code;
-        ShortLinkArchivedV1 archived = new ShortLinkArchivedV1(archivedEventId, t2, 1L, linkId, code, archivedSnapshot);
+        insertApplication(applicationId, TENANT_ID, "app-" + suffix, "App " + suffix);
+        insertDedicatedDomain(domainId, TENANT_ID, applicationId, host);
 
-        eventStore.append(
-                createdEventId,
-                "shortlink",
-                ShortLinkEventTypes.SHORT_LINK_CREATED_V1,
-                1L,
-                "shortlink",
-                linkId,
-                t1,
-                toJson(created)
+        ShortLinkService.LinkDto created = shortLinkService.create(
+                TENANT_ID,
+                ShortLinkService.CreatedBy.user(USER_ID),
+                new ShortLinkService.CreateLinkRequest(
+                        originalUrl,
+                        null,
+                        null,
+                        null,
+                        code,
+                        Set.of(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        applicationId,
+                        domainId,
+                        null
+                )
         );
-        eventStore.append(
-                archivedEventId,
-                "shortlink",
-                ShortLinkEventTypes.SHORT_LINK_ARCHIVED_V1,
-                1L,
-                "shortlink",
-                linkId,
-                t2,
-                toJson(archived)
-        );
-
-        projectorJob.drain();
+        linkId = created.id();
     }
 
     @Test
     void should_return_404_html_when_link_archived() throws Exception {
-        mockMvc.perform(get("/r/" + code).header(HttpHeaders.ACCEPT, "text/html"))
+        mockMvc.perform(get("/r/" + code)
+                        .with(host(host))
+                        .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE))
+                .andExpect(status().isFound())
+                .andExpect(header().string(HttpHeaders.LOCATION, originalUrl));
+
+        assertThat(redis.opsForValue().get(key(host, code))).isNotNull();
+
+        shortLinkService.archive(TENANT_ID, linkId);
+        assertThat(redis.opsForValue().get(key(host, code))).isNull();
+
+        mockMvc.perform(get("/r/" + code)
+                        .with(host(host))
+                        .header(HttpHeaders.ACCEPT, "text/html"))
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML));
+
+        assertThat(redis.opsForValue().get(key(host, code))).isNotNull();
     }
 
-    private String toJson(Object payload) {
-        try {
-            return objectMapper.writeValueAsString(payload);
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
-        }
+    private void insertApplication(long applicationId, long tenantId, String applicationKey, String displayName) {
+        jdbcTemplate.update(
+                """
+                        INSERT INTO applications (id, tenant_id, application_key, display_name, status)
+                        VALUES (?, ?, ?, ?, 'ACTIVE')
+                        """,
+                applicationId,
+                tenantId,
+                applicationKey,
+                displayName
+        );
+    }
+
+    private void insertDedicatedDomain(long domainId, long tenantId, long applicationId, String hostname) {
+        jdbcTemplate.update(
+                """
+                        INSERT INTO domains (id, tenant_id, application_id, hostname, scope, status, trust_class)
+                        VALUES (?, ?, ?, ?, 'APPLICATION_DEDICATED', 'ACTIVE', 'FIRST_PARTY')
+                        """,
+                domainId,
+                tenantId,
+                applicationId,
+                hostname
+        );
+    }
+
+    private static String key(String host, String code) {
+        return "link:host:" + host + ":code:" + code;
+    }
+
+    private static RequestPostProcessor host(String hostname) {
+        return request -> {
+            request.setServerName(hostname);
+            request.addHeader(HttpHeaders.HOST, hostname);
+            return request;
+        };
     }
 }

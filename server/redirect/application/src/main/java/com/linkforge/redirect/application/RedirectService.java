@@ -1,8 +1,6 @@
 package com.linkforge.redirect.application;
 
 import com.linkforge.analytics.application.AnalyticsVisitEventService;
-import com.linkforge.contract.analytics.VisitContext;
-import com.linkforge.contract.analytics.VisitRecorderPort;
 import com.linkforge.contract.redirect.LinkCachePort;
 import com.linkforge.contract.redirect.LinkMeta;
 import com.linkforge.contract.redirect.LinkMetaSourcePort;
@@ -40,15 +38,6 @@ public class RedirectService {
 
     public RedirectService(
             LinkCachePort linkCache,
-            ShortLinkReadService shortLinkReadService,
-            VisitRecorderPort visitRecorder,
-            Clock clock
-    ) {
-        this(linkCache, shortLinkReadService, legacyAnalyticsVisitEventService(visitRecorder), clock);
-    }
-
-    public RedirectService(
-            LinkCachePort linkCache,
             LinkMetaSourcePort linkMetaSource,
             AnalyticsVisitEventService analyticsVisitEventService,
             Clock clock
@@ -59,15 +48,6 @@ public class RedirectService {
                 analyticsVisitEventService,
                 clock
         );
-    }
-
-    public RedirectService(
-            LinkCachePort linkCache,
-            LinkMetaSourcePort linkMetaSource,
-            VisitRecorderPort visitRecorder,
-            Clock clock
-    ) {
-        this(linkCache, linkMetaSource, legacyAnalyticsVisitEventService(visitRecorder), clock);
     }
 
     /**
@@ -249,19 +229,6 @@ public class RedirectService {
         return null;
     }
 
-    private static VisitContext toVisitContext(RedirectVisitInput v) {
-        if (v == null) {
-            return null;
-        }
-        return new VisitContext(
-                v.ip(),
-                v.userAgent(),
-                v.referer(),
-                v.acceptLanguage(),
-                v.trackingParams()
-        );
-    }
-
     private AnalyticsVisitEventService.RedirectVisitEvent toRedirectVisitEvent(LinkMeta meta, RedirectVisitInput visitInput) {
         return new AnalyticsVisitEventService.RedirectVisitEvent(
                 meta.tenantId(),
@@ -277,22 +244,6 @@ public class RedirectService {
                 visitInput == null ? null : visitInput.acceptLanguage(),
                 visitInput == null ? null : visitInput.trackingParams()
         );
-    }
-
-    private static AnalyticsVisitEventService legacyAnalyticsVisitEventService(VisitRecorderPort visitRecorder) {
-        return new AnalyticsVisitEventService(event -> {
-            if (visitRecorder == null || event == null) {
-                return;
-            }
-            VisitContext visitContext = new VisitContext(
-                    event.ip(),
-                    event.userAgent(),
-                    event.referer(),
-                    event.acceptLanguage(),
-                    event.trackingParams()
-            );
-            visitRecorder.recordVisit(event.tenantId(), event.linkId(), visitContext);
-        });
     }
 
     private static LocalDateTime toUtcLocalDateTime(Instant instant) {

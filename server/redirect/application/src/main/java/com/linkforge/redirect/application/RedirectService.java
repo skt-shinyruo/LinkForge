@@ -1,5 +1,6 @@
 package com.linkforge.redirect.application;
 
+import com.linkforge.analytics.application.AnalyticsVisitEventService;
 import com.linkforge.contract.analytics.VisitContext;
 import com.linkforge.contract.analytics.VisitRecorderPort;
 import com.linkforge.contract.redirect.LinkCachePort;
@@ -21,20 +22,43 @@ public class RedirectService {
 
     private final LinkCachePort linkCache;
     private final ShortLinkReadService shortLinkReadService;
-    private final VisitRecorderPort visitRecorder;
+    private final AnalyticsVisitEventService analyticsVisitEventService;
     private final Clock clock;
 
     @Autowired
     public RedirectService(
             LinkCachePort linkCache,
             ShortLinkReadService shortLinkReadService,
-            VisitRecorderPort visitRecorder,
+            AnalyticsVisitEventService analyticsVisitEventService,
             Clock clock
     ) {
         this.linkCache = linkCache;
         this.shortLinkReadService = shortLinkReadService;
-        this.visitRecorder = visitRecorder;
+        this.analyticsVisitEventService = analyticsVisitEventService;
         this.clock = clock;
+    }
+
+    public RedirectService(
+            LinkCachePort linkCache,
+            ShortLinkReadService shortLinkReadService,
+            VisitRecorderPort visitRecorder,
+            Clock clock
+    ) {
+        this(linkCache, shortLinkReadService, legacyAnalyticsVisitEventService(visitRecorder), clock);
+    }
+
+    public RedirectService(
+            LinkCachePort linkCache,
+            LinkMetaSourcePort linkMetaSource,
+            AnalyticsVisitEventService analyticsVisitEventService,
+            Clock clock
+    ) {
+        this(
+                linkCache,
+                (host, code) -> linkMetaSource.findByHostAndCode(host, code).map(RedirectService::toRedirectLinkMeta),
+                analyticsVisitEventService,
+                clock
+        );
     }
 
     public RedirectService(
@@ -43,12 +67,7 @@ public class RedirectService {
             VisitRecorderPort visitRecorder,
             Clock clock
     ) {
-        this(
-                linkCache,
-                (host, code) -> linkMetaSource.findByHostAndCode(host, code).map(RedirectService::toRedirectLinkMeta),
-                visitRecorder,
-                clock
-        );
+        this(linkCache, linkMetaSource, legacyAnalyticsVisitEventService(visitRecorder), clock);
     }
 
     /**
@@ -94,7 +113,7 @@ public class RedirectService {
      */
     public void recordVisitIfAvailable(LinkMeta meta, RedirectVisitInput visitInput) {
         if (isAvailable(meta)) {
-            visitRecorder.recordVisit(meta.tenantId(), meta.id(), toVisitContext(visitInput));
+            analyticsVisitEventService.append(toRedirectVisitEvent(meta, visitInput));
         }
     }
 
@@ -241,6 +260,39 @@ public class RedirectService {
                 v.acceptLanguage(),
                 v.trackingParams()
         );
+    }
+
+    private AnalyticsVisitEventService.RedirectVisitEvent toRedirectVisitEvent(LinkMeta meta, RedirectVisitInput visitInput) {
+        return new AnalyticsVisitEventService.RedirectVisitEvent(
+                meta.tenantId(),
+                meta.id(),
+                clock.instant().toEpochMilli(),
+                meta.applicationId(),
+                meta.domainId(),
+                meta.code(),
+                meta.originalUrl(),
+                visitInput == null ? null : visitInput.ip(),
+                visitInput == null ? null : visitInput.userAgent(),
+                visitInput == null ? null : visitInput.referer(),
+                visitInput == null ? null : visitInput.acceptLanguage(),
+                visitInput == null ? null : visitInput.trackingParams()
+        );
+    }
+
+    private static AnalyticsVisitEventService legacyAnalyticsVisitEventService(VisitRecorderPort visitRecorder) {
+        return new AnalyticsVisitEventService(event -> {
+            if (visitRecorder == null || event == null) {
+                return;
+            }
+            VisitContext visitContext = new VisitContext(
+                    event.ip(),
+                    event.userAgent(),
+                    event.referer(),
+                    event.acceptLanguage(),
+                    event.trackingParams()
+            );
+            visitRecorder.recordVisit(event.tenantId(), event.linkId(), visitContext);
+        });
     }
 
     private static LocalDateTime toUtcLocalDateTime(Instant instant) {

@@ -1,6 +1,6 @@
 package com.linkforge.redirect.application;
 
-import com.linkforge.contract.analytics.VisitRecorderPort;
+import com.linkforge.analytics.application.AnalyticsVisitEventService;
 import com.linkforge.contract.redirect.LinkCachePort;
 import com.linkforge.contract.redirect.LinkMeta;
 import com.linkforge.shortlink.application.ShortLinkReadService;
@@ -57,13 +57,13 @@ class RedirectServiceAuthoritativeFallbackTest {
                 33L,
                 44L
         );
-        VisitRecorderPort recorder = (tenantId, linkId, visitContext) -> {
-        };
+        AnalyticsVisitEventService analyticsVisitEventService = new AnalyticsVisitEventService(event -> {
+        });
 
         RedirectService service = new RedirectService(
                 cache,
                 shortLinkReadService,
-                recorder,
+                analyticsVisitEventService,
                 Clock.systemUTC()
         );
 

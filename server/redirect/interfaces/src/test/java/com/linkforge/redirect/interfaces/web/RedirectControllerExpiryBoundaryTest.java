@@ -1,6 +1,6 @@
 package com.linkforge.redirect.interfaces.web;
 
-import com.linkforge.contract.analytics.VisitRecorderPort;
+import com.linkforge.analytics.application.AnalyticsVisitEventService;
 import com.linkforge.contract.redirect.LinkCachePort;
 import com.linkforge.contract.redirect.LinkMeta;
 import com.linkforge.contract.redirect.LinkMetaSourcePort;
@@ -46,7 +46,7 @@ class RedirectControllerExpiryBoundaryTest {
         );
 
         AtomicInteger recorded = new AtomicInteger();
-        VisitRecorderPort recorder = (tenantId, linkId, visitContext) -> recorded.incrementAndGet();
+        AnalyticsVisitEventService analyticsVisitEventService = new AnalyticsVisitEventService(event -> recorded.incrementAndGet());
 
         RedirectService redirectService = new RedirectService(
                 new LinkCachePort() {
@@ -71,7 +71,7 @@ class RedirectControllerExpiryBoundaryTest {
                     }
                 },
                 (LinkMetaSourcePort) code -> Optional.of(meta),
-                recorder,
+                analyticsVisitEventService,
                 clock
         );
 
@@ -137,8 +137,8 @@ class RedirectControllerExpiryBoundaryTest {
                     }
                 },
                 (LinkMetaSourcePort) code -> Optional.of(meta),
-                (tenantId, linkId, visitContext) -> {
-                },
+                new AnalyticsVisitEventService(event -> {
+                }),
                 clock
         );
 

@@ -32,6 +32,10 @@
             <groupId>com.linkforge</groupId>
             <artifactId>linkforge-contract-analytics</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-shortlink-application</artifactId>
+        </dependency>
 
         <!-- test -->
         <dependency>

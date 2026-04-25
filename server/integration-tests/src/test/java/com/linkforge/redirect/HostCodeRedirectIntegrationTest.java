@@ -180,6 +180,29 @@ class HostCodeRedirectIntegrationTest {
                 .andExpect(header().string(HttpHeaders.LOCATION, "https://example.com/campaign-only/" + suffix));
     }
 
+    @Test
+    void legacy_base_host_should_resolve_unscoped_links_without_exposing_them_on_custom_hosts() throws Exception {
+        long tenantId = 104L;
+        TestTenantFixtures.ensureTenantExists(jdbcTemplate, tenantId);
+
+        long suffix = System.nanoTime();
+        String code = "plain" + Long.toHexString(suffix);
+        String originalUrl = "https://example.com/plain/" + suffix;
+
+        insertUnscopedShortLink(suffix + 301, tenantId, code, originalUrl);
+
+        mockMvc.perform(get("/r/" + code)
+                        .with(host(LEGACY_BASE_HOST))
+                        .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE))
+                .andExpect(status().isFound())
+                .andExpect(header().string(HttpHeaders.LOCATION, originalUrl));
+
+        mockMvc.perform(get("/r/" + code)
+                        .with(host("custom-" + suffix + ".example.test"))
+                        .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE))
+                .andExpect(status().isNotFound());
+    }
+
     private void insertApplication(long applicationId, long tenantId, String applicationKey, String displayName) {
         jdbcTemplate.update(
                 """
@@ -242,6 +265,43 @@ class HostCodeRedirectIntegrationTest {
                 tenantId,
                 applicationId,
                 domainId,
+                code,
+                originalUrl
+        );
+    }
+
+    private void insertUnscopedShortLink(
+            long linkId,
+            long tenantId,
+            String code,
+            String originalUrl
+    ) {
+        jdbcTemplate.update(
+                """
+                        INSERT INTO short_links (
+                            id,
+                            tenant_id,
+                            application_id,
+                            domain_id,
+                            code,
+                            lifecycle_state,
+                            original_url,
+                            note,
+                            enabled,
+                            expires_at,
+                            archived_at,
+                            redirect_status_code,
+                            preview_enabled,
+                            unavailable_landing_url,
+                            query_forward_mode,
+                            query_forward_allowlist,
+                            created_by_type,
+                            created_by,
+                            version
+                        ) VALUES (?, ?, NULL, NULL, ?, 'ACTIVE', ?, NULL, 1, NULL, NULL, 302, 0, NULL, NULL, NULL, 'USER', 1, 0)
+                        """,
+                linkId,
+                tenantId,
                 code,
                 originalUrl
         );

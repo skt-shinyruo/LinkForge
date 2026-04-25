@@ -46,8 +46,14 @@ public class AuthoritativeLinkMetaSourceAdapter implements LinkMetaSourcePort {
         }
 
         ShortLinkEntity row = queryMapper.findActiveByHostnameAndCode(normalizedHost, normalizedCode);
-        if (row == null && isLegacyBaseHost(normalizedHost)) {
-            row = queryMapper.findActiveByLegacyBaseHostAndCode(normalizedHost, normalizedCode);
+        if (row == null) {
+            boolean baseHost = isBaseHost(normalizedHost);
+            if (baseHost) {
+                row = queryMapper.findActiveByLegacyBaseHostAndCode(normalizedHost, normalizedCode);
+            }
+            if (row == null && baseHost) {
+                row = queryMapper.findActiveUnscopedByCode(normalizedCode);
+            }
         }
         if (row == null) {
             return Optional.empty();
@@ -66,7 +72,7 @@ public class AuthoritativeLinkMetaSourceAdapter implements LinkMetaSourcePort {
         return normalized.isBlank() ? null : normalized;
     }
 
-    private boolean isLegacyBaseHost(String host) {
+    private boolean isBaseHost(String host) {
         String baseHost = resolveBaseHost();
         return baseHost != null && baseHost.equalsIgnoreCase(host);
     }

@@ -14,6 +14,9 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 @Service
 public class RedirectService {
@@ -44,7 +47,7 @@ public class RedirectService {
     ) {
         this(
                 linkCache,
-                (host, code) -> linkMetaSource.findByHostAndCode(host, code).map(RedirectService::toRedirectLinkMeta),
+                readServiceFrom(linkMetaSource),
                 analyticsVisitEventService,
                 clock
         );
@@ -209,6 +212,36 @@ public class RedirectService {
                 meta.applicationId(),
                 meta.domainId()
         );
+    }
+
+    private static ShortLinkReadService readServiceFrom(LinkMetaSourcePort linkMetaSource) {
+        return new ShortLinkReadService() {
+            @Override
+            public Optional<RedirectLinkMeta> findRedirectMetaByHostAndCode(String host, String code) {
+                return linkMetaSource.findByHostAndCode(host, code)
+                        .map(RedirectService::toRedirectLinkMeta);
+            }
+
+            @Override
+            public Optional<LinkOwnership> findOwnership(long tenantId, long linkId) {
+                return Optional.empty();
+            }
+
+            @Override
+            public Map<Long, LinkSummary> listSummaries(long tenantId, List<Long> linkIds) {
+                return Map.of();
+            }
+
+            @Override
+            public List<Long> listLinkIdsByApplication(long tenantId, long applicationId) {
+                return List.of();
+            }
+
+            @Override
+            public List<Long> listLinkIdsByDomain(long tenantId, long domainId) {
+                return List.of();
+            }
+        };
     }
 
     private boolean isAvailable(LinkMeta meta) {

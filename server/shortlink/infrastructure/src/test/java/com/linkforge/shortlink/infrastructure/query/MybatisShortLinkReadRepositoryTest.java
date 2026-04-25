@@ -87,6 +87,36 @@ class MybatisShortLinkReadRepositoryTest {
     }
 
     @Test
+    void findRedirectMetaByHostAndCode_shouldFallbackToUnscopedLinkOnBaseHost() {
+        ShortLinkEntity row = redirectRow();
+        row.setCode("abc123");
+        row.setApplicationId(null);
+        row.setDomainId(null);
+        row.setHostname(null);
+        ShortLinkQueryMapper queryMapper = mock(ShortLinkQueryMapper.class);
+        CoreProperties coreProperties = mock(CoreProperties.class);
+        when(coreProperties.getBaseUrl()).thenReturn(" https://Go.Example.Test/base-path ");
+        when(queryMapper.findActiveUnscopedByCode("abc123")).thenReturn(row);
+        MybatisShortLinkReadRepository repository = new MybatisShortLinkReadRepository(queryMapper, coreProperties);
+
+        Optional<ShortLinkReadService.RedirectLinkMeta> actual =
+                repository.findRedirectMetaByHostAndCode("Go.Example.Test:443", "abc123");
+
+        assertThat(actual).hasValueSatisfying(meta -> {
+            assertThat(meta.hostname()).isEqualTo("go.example.test");
+            assertThat(meta.applicationId()).isNull();
+            assertThat(meta.domainId()).isNull();
+            assertThat(meta.originalUrl()).isEqualTo("https://example.com/live");
+        });
+
+        verify(queryMapper).findActiveByHostnameAndCode("go.example.test", "abc123");
+        verify(coreProperties).getBaseUrl();
+        verify(queryMapper).findActiveByLegacyBaseHostAndCode("go.example.test", "abc123");
+        verify(queryMapper).findActiveUnscopedByCode("abc123");
+        verifyNoMoreInteractions(queryMapper, coreProperties);
+    }
+
+    @Test
     void findOwnership_shouldMapApplicationAndDomainIds() {
         ShortLinkQueryMapper queryMapper = mock(ShortLinkQueryMapper.class);
         CoreProperties coreProperties = mock(CoreProperties.class);

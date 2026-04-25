@@ -32,7 +32,14 @@ public class RedirectCacheSyncAdapter implements RedirectCacheSyncPort {
         } else {
             log.debug("redirect cache evict failed: code={}", code);
         }
-        if (tenantId <= 0 || domainId == null || domainId <= 0 || code == null || code.isBlank()) {
+        if (tenantId <= 0 || code == null || code.isBlank()) {
+            return;
+        }
+        if (domainId == null || domainId <= 0) {
+            String baseHost = legacyCompatibilityHost(tenantId);
+            if (baseHost != null) {
+                evictHost(baseHost, code);
+            }
             return;
         }
         domainHostnameLookupPort.findDomainHostname(tenantId, domainId).ifPresent(hostname -> {

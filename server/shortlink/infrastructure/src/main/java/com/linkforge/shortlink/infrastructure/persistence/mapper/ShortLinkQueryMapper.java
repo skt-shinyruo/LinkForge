@@ -21,6 +21,12 @@ public interface ShortLinkQueryMapper {
 
     ShortLinkEntity findActiveByLegacyBaseHostAndCode(@Param("baseHost") String baseHost, @Param("code") String code);
 
+    List<ShortLinkEntity> listByTenantIdAndIds(@Param("tenantId") long tenantId, @Param("ids") List<Long> ids);
+
+    List<Long> listIdsByTenantIdAndApplicationId(@Param("tenantId") long tenantId, @Param("applicationId") long applicationId);
+
+    List<Long> listIdsByTenantIdAndDomainId(@Param("tenantId") long tenantId, @Param("domainId") long domainId);
+
     long countActiveByTenantIdAndApplicationId(@Param("tenantId") long tenantId, @Param("applicationId") long applicationId);
 
     long countSearch(ShortLinkSearchParam param);

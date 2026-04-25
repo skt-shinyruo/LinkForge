@@ -8,6 +8,8 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -81,6 +83,59 @@ class MybatisShortLinkReadRepositoryTest {
         verify(queryMapper).findActiveByHostnameAndCode("go.example.test", "abc123");
         verify(coreProperties).getBaseUrl();
         verify(queryMapper).findActiveByLegacyBaseHostAndCode("go.example.test", "abc123");
+        verifyNoMoreInteractions(queryMapper, coreProperties);
+    }
+
+    @Test
+    void findOwnership_shouldMapApplicationAndDomainIds() {
+        ShortLinkQueryMapper queryMapper = mock(ShortLinkQueryMapper.class);
+        CoreProperties coreProperties = mock(CoreProperties.class);
+        MybatisShortLinkReadRepository repository = new MybatisShortLinkReadRepository(queryMapper, coreProperties);
+        ShortLinkEntity row = redirectRow();
+        when(queryMapper.findByTenantIdAndId(22L, 11L)).thenReturn(row);
+
+        Optional<ShortLinkReadService.LinkOwnership> actual = repository.findOwnership(22L, 11L);
+
+        assertThat(actual).contains(new ShortLinkReadService.LinkOwnership(33L, 44L));
+        verify(queryMapper).findByTenantIdAndId(22L, 11L);
+        verifyNoMoreInteractions(queryMapper, coreProperties);
+    }
+
+    @Test
+    void listSummaries_shouldReturnCurrentLinkMetadataByIds() {
+        ShortLinkQueryMapper queryMapper = mock(ShortLinkQueryMapper.class);
+        CoreProperties coreProperties = mock(CoreProperties.class);
+        MybatisShortLinkReadRepository repository = new MybatisShortLinkReadRepository(queryMapper, coreProperties);
+        ShortLinkEntity row1 = redirectRow();
+        ShortLinkEntity row2 = redirectRow();
+        row2.setId(12L);
+        row2.setCode("xyz789");
+        row2.setOriginalUrl("https://example.com/other");
+        when(queryMapper.listByTenantIdAndIds(22L, List.of(11L, 12L))).thenReturn(List.of(row1, row2));
+
+        Map<Long, ShortLinkReadService.LinkSummary> actual = repository.listSummaries(22L, List.of(11L, 12L));
+
+        assertThat(actual).containsExactlyInAnyOrderEntriesOf(Map.of(
+                11L, new ShortLinkReadService.LinkSummary(11L, "AbC123", "https://example.com/live", false),
+                12L, new ShortLinkReadService.LinkSummary(12L, "xyz789", "https://example.com/other", false)
+        ));
+        verify(queryMapper).listByTenantIdAndIds(22L, List.of(11L, 12L));
+        verifyNoMoreInteractions(queryMapper, coreProperties);
+    }
+
+    @Test
+    void scopeLookups_shouldReturnCurrentLinkIds() {
+        ShortLinkQueryMapper queryMapper = mock(ShortLinkQueryMapper.class);
+        CoreProperties coreProperties = mock(CoreProperties.class);
+        MybatisShortLinkReadRepository repository = new MybatisShortLinkReadRepository(queryMapper, coreProperties);
+        when(queryMapper.listIdsByTenantIdAndApplicationId(22L, 33L)).thenReturn(List.of(11L, 12L));
+        when(queryMapper.listIdsByTenantIdAndDomainId(22L, 44L)).thenReturn(List.of(11L));
+
+        assertThat(repository.listLinkIdsByApplication(22L, 33L)).containsExactly(11L, 12L);
+        assertThat(repository.listLinkIdsByDomain(22L, 44L)).containsExactly(11L);
+
+        verify(queryMapper).listIdsByTenantIdAndApplicationId(22L, 33L);
+        verify(queryMapper).listIdsByTenantIdAndDomainId(22L, 44L);
         verifyNoMoreInteractions(queryMapper, coreProperties);
     }
 

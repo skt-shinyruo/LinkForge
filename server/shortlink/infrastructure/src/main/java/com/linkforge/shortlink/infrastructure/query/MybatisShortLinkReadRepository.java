@@ -11,6 +11,9 @@ import java.net.URI;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Repository
@@ -46,6 +49,42 @@ public class MybatisShortLinkReadRepository implements ShortLinkReadRepository {
             row.setHostname(normalizedHost);
         }
         return Optional.of(toRedirectLinkMeta(row));
+    }
+
+    @Override
+    public Optional<ShortLinkReadService.LinkOwnership> findOwnership(long tenantId, long linkId) {
+        return Optional.ofNullable(queryMapper.findByTenantIdAndId(tenantId, linkId))
+                .map(row -> new ShortLinkReadService.LinkOwnership(row.getApplicationId(), row.getDomainId()));
+    }
+
+    @Override
+    public Map<Long, ShortLinkReadService.LinkSummary> listSummaries(long tenantId, List<Long> linkIds) {
+        if (linkIds == null || linkIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, ShortLinkReadService.LinkSummary> summaries = new LinkedHashMap<>();
+        for (ShortLinkEntity row : safeList(queryMapper.listByTenantIdAndIds(tenantId, linkIds))) {
+            if (row == null || row.getId() == null) {
+                continue;
+            }
+            summaries.put(row.getId(), new ShortLinkReadService.LinkSummary(
+                    row.getId(),
+                    row.getCode(),
+                    row.getOriginalUrl(),
+                    false
+            ));
+        }
+        return Map.copyOf(summaries);
+    }
+
+    @Override
+    public List<Long> listLinkIdsByApplication(long tenantId, long applicationId) {
+        return List.copyOf(safeList(queryMapper.listIdsByTenantIdAndApplicationId(tenantId, applicationId)));
+    }
+
+    @Override
+    public List<Long> listLinkIdsByDomain(long tenantId, long domainId) {
+        return List.copyOf(safeList(queryMapper.listIdsByTenantIdAndDomainId(tenantId, domainId)));
     }
 
     private boolean isLegacyBaseHost(String host) {
@@ -116,5 +155,9 @@ public class MybatisShortLinkReadRepository implements ShortLinkReadRepository {
             return null;
         }
         return value.toInstant(ZoneOffset.UTC);
+    }
+
+    private static <T> List<T> safeList(List<T> rows) {
+        return rows == null ? List.of() : rows;
     }
 }

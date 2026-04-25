@@ -136,6 +136,34 @@
         LIMIT 1
     </select>
 
+    <select id="listByTenantIdAndIds" resultMap="ShortLinkResultMap">
+        SELECT
+        <include refid="shortLinkColumns"/>
+        FROM short_links
+        WHERE tenant_id = #{tenantId}
+          AND id IN
+          <foreach collection="ids" item="id" open="(" separator="," close=")">
+              #{id}
+          </foreach>
+        ORDER BY id ASC
+    </select>
+
+    <select id="listIdsByTenantIdAndApplicationId" resultType="long">
+        SELECT id
+        FROM short_links
+        WHERE tenant_id = #{tenantId}
+          AND application_id = #{applicationId}
+        ORDER BY id ASC
+    </select>
+
+    <select id="listIdsByTenantIdAndDomainId" resultType="long">
+        SELECT id
+        FROM short_links
+        WHERE tenant_id = #{tenantId}
+          AND domain_id = #{domainId}
+        ORDER BY id ASC
+    </select>
+
     <select id="countActiveByTenantIdAndApplicationId" resultType="long">
         SELECT COUNT(*)
         FROM short_links

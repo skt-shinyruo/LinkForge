@@ -3,7 +3,6 @@ package com.linkforge.platform;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkforge.LinkForgeApplication;
-import com.linkforge.analytics.infrastructure.catalog.ShortLinkCatalogProjectorJob;
 import com.linkforge.analytics.infrastructure.job.AnalyticsFlushJob;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -67,7 +66,6 @@ class ControlPlaneEndToEndIntegrationTest {
         r.add("app.analytics.events.enabled", () -> "false");
         r.add("app.analytics.events.sample-rate", () -> "1");
         r.add("APP_ANALYTICS_FLUSH_DELAY_MS", () -> "9999999");
-        r.add("APP_ANALYTICS_SHORTLINK_CATALOG_PROJECTOR_DELAY_MS", () -> "9999999");
     }
 
     @Autowired
@@ -81,9 +79,6 @@ class ControlPlaneEndToEndIntegrationTest {
 
     @Autowired
     AnalyticsFlushJob analyticsFlushJob;
-
-    @Autowired
-    ShortLinkCatalogProjectorJob shortLinkCatalogProjectorJob;
 
     @BeforeEach
     void resetRedis() {
@@ -139,8 +134,6 @@ class ControlPlaneEndToEndIntegrationTest {
         );
         long linkId = createdLink.get("data").get("id").asLong();
         String code = createdLink.get("data").get("code").asText();
-
-        shortLinkCatalogProjectorJob.project();
 
         LocalDateTimeRange range = LocalDateTimeRange.lastDayUtc();
         JsonNode approvalRequest = postJson(

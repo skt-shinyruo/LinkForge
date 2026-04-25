@@ -1,23 +1,24 @@
 package com.linkforge.analytics.interfaces.web;
 
+import com.linkforge.analytics.application.AnalyticsReportingService;
 import com.linkforge.analytics.application.AnalyticsQueryService;
 import com.linkforge.analytics.application.AnalyticsExportRequestService;
 import com.linkforge.analytics.application.AnalyticsLinkEventsService;
 import com.linkforge.contract.api.ApiResponse;
-import com.linkforge.contract.governance.ApprovalRequestView;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.runtime.security.PrincipalActorMapper;
 import com.linkforge.foundation.web.RequestId;
+import com.linkforge.governance.application.GovernanceApprovalRequestService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.lang.reflect.Constructor;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -36,16 +37,21 @@ class StatsControllerTest {
     }
 
     @Test
-    void constructor_shouldDependOnApprovalSubmissionPort_insteadOfGovernanceService() {
+    void constructor_shouldKeepGovernanceDetailsOutOfControllerDependencies() {
         Constructor<?> constructor = StatsController.class.getDeclaredConstructors()[0];
 
         assertThat(constructor.getParameterTypes())
-                .contains(AnalyticsExportRequestService.class, AnalyticsLinkEventsService.class, PrincipalActorMapper.class);
+                .contains(
+                        AnalyticsReportingService.class,
+                        AnalyticsExportRequestService.class,
+                        AnalyticsLinkEventsService.class,
+                        PrincipalActorMapper.class
+                );
         assertThat(constructor.getParameterTypes())
                 .extracting(Class::getName)
                 .doesNotContain(
                         "com.linkforge.governance.application.GovernanceService",
-                        "com.linkforge.contract.governance.ApprovalSubmissionPort",
+                        "com.linkforge.governance.application.GovernanceApprovalRequestService",
                         "com.linkforge.contract.shortlink.ShortLinkOwnershipLookupPort"
                 );
     }
@@ -53,10 +59,17 @@ class StatsControllerTest {
     @Test
     void requestEventExport_shouldDelegateToAnalyticsExportRequestService() {
         AnalyticsQueryService queryService = mock(AnalyticsQueryService.class);
+        AnalyticsReportingService reportingService = mock(AnalyticsReportingService.class);
         AnalyticsLinkEventsService linkEventsService = mock(AnalyticsLinkEventsService.class);
         AnalyticsExportRequestService exportRequestService = mock(AnalyticsExportRequestService.class);
         PrincipalActorMapper principalActorMapper = mock(PrincipalActorMapper.class);
-        StatsController controller = new StatsController(queryService, linkEventsService, exportRequestService, principalActorMapper);
+        StatsController controller = new StatsController(
+                queryService,
+                reportingService,
+                linkEventsService,
+                exportRequestService,
+                principalActorMapper
+        );
 
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
                 new AuthPrincipal(9L, 1L, "tenant-admin@example.com", Set.of("TENANT_ADMIN")),
@@ -70,10 +83,10 @@ class StatsControllerTest {
         LocalDateTime to = LocalDateTime.parse("2026-03-31T00:00:00");
         when(principalActorMapper.requireUser(any(AuthPrincipal.class))).thenReturn(actor);
 
-        ApprovalRequestView expected = new ApprovalRequestView(
+        GovernanceApprovalRequestService.ApprovalRequestResult expected = new GovernanceApprovalRequestService.ApprovalRequestResult(
                 501L,
                 1L,
-                null,
+                "ANALYTICS_DETAIL_EXPORT",
                 2001L,
                 9L,
                 "tenant-admin@example.com",
@@ -84,7 +97,7 @@ class StatsControllerTest {
         );
         when(exportRequestService.requestLinkEventExport(actor, 101L, null, from, to)).thenReturn(expected);
 
-        ApiResponse<ApprovalRequestView> response = controller.requestEventExport(101L, from, to);
+        ApiResponse<GovernanceApprovalRequestService.ApprovalRequestResult> response = controller.requestEventExport(101L, from, to);
 
         assertThat(response.getData()).isSameAs(expected);
         assertThat(response.getRequestId()).isEqualTo("req-123");
@@ -94,10 +107,17 @@ class StatsControllerTest {
     @Test
     void requestEventExportByApplication_shouldDelegateExpectedApplicationScope() {
         AnalyticsQueryService queryService = mock(AnalyticsQueryService.class);
+        AnalyticsReportingService reportingService = mock(AnalyticsReportingService.class);
         AnalyticsLinkEventsService linkEventsService = mock(AnalyticsLinkEventsService.class);
         AnalyticsExportRequestService exportRequestService = mock(AnalyticsExportRequestService.class);
         PrincipalActorMapper principalActorMapper = mock(PrincipalActorMapper.class);
-        StatsController controller = new StatsController(queryService, linkEventsService, exportRequestService, principalActorMapper);
+        StatsController controller = new StatsController(
+                queryService,
+                reportingService,
+                linkEventsService,
+                exportRequestService,
+                principalActorMapper
+        );
 
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
                 new AuthPrincipal(9L, 1L, "tenant-admin@example.com", Set.of("TENANT_ADMIN")),
@@ -109,10 +129,10 @@ class StatsControllerTest {
         LocalDateTime from = LocalDateTime.parse("2026-03-30T00:00:00");
         LocalDateTime to = LocalDateTime.parse("2026-03-31T00:00:00");
         when(principalActorMapper.requireUser(any(AuthPrincipal.class))).thenReturn(actor);
-        ApprovalRequestView expected = new ApprovalRequestView(
+        GovernanceApprovalRequestService.ApprovalRequestResult expected = new GovernanceApprovalRequestService.ApprovalRequestResult(
                 502L,
                 1L,
-                null,
+                "ANALYTICS_DETAIL_EXPORT",
                 2001L,
                 9L,
                 "tenant-admin@example.com",
@@ -123,7 +143,7 @@ class StatsControllerTest {
         );
         when(exportRequestService.requestLinkEventExport(actor, 101L, 2001L, from, to)).thenReturn(expected);
 
-        ApiResponse<ApprovalRequestView> response = controller.requestEventExportByApplication(2001L, 101L, from, to);
+        ApiResponse<GovernanceApprovalRequestService.ApprovalRequestResult> response = controller.requestEventExportByApplication(2001L, 101L, from, to);
 
         assertThat(response.getData()).isSameAs(expected);
         verify(exportRequestService).requestLinkEventExport(actor, 101L, 2001L, from, to);
@@ -132,10 +152,17 @@ class StatsControllerTest {
     @Test
     void linkEvents_shouldDelegateToApplicationServiceWithoutControllerDefaulting() {
         AnalyticsQueryService queryService = mock(AnalyticsQueryService.class);
+        AnalyticsReportingService reportingService = mock(AnalyticsReportingService.class);
         AnalyticsLinkEventsService linkEventsService = mock(AnalyticsLinkEventsService.class);
         AnalyticsExportRequestService exportRequestService = mock(AnalyticsExportRequestService.class);
         PrincipalActorMapper principalActorMapper = mock(PrincipalActorMapper.class);
-        StatsController controller = new StatsController(queryService, linkEventsService, exportRequestService, principalActorMapper);
+        StatsController controller = new StatsController(
+                queryService,
+                reportingService,
+                linkEventsService,
+                exportRequestService,
+                principalActorMapper
+        );
 
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
                 new AuthPrincipal(9L, 1L, "tenant-admin@example.com", Set.of("TENANT_ADMIN")),
@@ -156,5 +183,41 @@ class StatsControllerTest {
         assertThat(response.getData()).isSameAs(expected);
         assertThat(response.getRequestId()).isEqualTo("req-456");
         verify(linkEventsService).listLinkEvents(actor, 101L, from, to, 123);
+    }
+
+    @Test
+    void topLinks_shouldDelegateToAnalyticsReportingService() {
+        AnalyticsQueryService queryService = mock(AnalyticsQueryService.class);
+        AnalyticsReportingService reportingService = mock(AnalyticsReportingService.class);
+        AnalyticsLinkEventsService linkEventsService = mock(AnalyticsLinkEventsService.class);
+        AnalyticsExportRequestService exportRequestService = mock(AnalyticsExportRequestService.class);
+        PrincipalActorMapper principalActorMapper = mock(PrincipalActorMapper.class);
+        StatsController controller = new StatsController(
+                queryService,
+                reportingService,
+                linkEventsService,
+                exportRequestService,
+                principalActorMapper
+        );
+
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                new AuthPrincipal(9L, 1L, "tenant-admin@example.com", Set.of("TENANT_ADMIN")),
+                "N/A",
+                java.util.List.of()
+        ));
+        RequestId.set("req-top");
+
+        LocalDate from = LocalDate.parse("2026-04-01");
+        LocalDate to = LocalDate.parse("2026-04-24");
+        List<AnalyticsQueryService.TopLinkStat> expected = List.of(
+                new AnalyticsQueryService.TopLinkStat(101L, "abc123", "https://example.com/a", 50L, 40L, false)
+        );
+        when(reportingService.topLinks(1L, from, to, 10, AnalyticsQueryService.TopSortBy.PV)).thenReturn(expected);
+
+        ApiResponse<List<AnalyticsQueryService.TopLinkStat>> response = controller.topLinks(from, to, null, null);
+
+        assertThat(response.getData()).isSameAs(expected);
+        assertThat(response.getRequestId()).isEqualTo("req-top");
+        verify(reportingService).topLinks(1L, from, to, 10, AnalyticsQueryService.TopSortBy.PV);
     }
 }

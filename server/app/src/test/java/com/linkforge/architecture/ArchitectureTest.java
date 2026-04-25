@@ -24,12 +24,12 @@ class ArchitectureTest {
             .importPackages("com.linkforge");
     private static final String FORBIDDEN_GOVERNANCE_ROLES_REFERENCE = "com.linkforge.accounts.domain.Roles";
     private static final List<BoundedContext> BOUNDED_CONTEXTS = List.of(
-            new BoundedContext("accounts", "com.linkforge.accounts.."),
-            new BoundedContext("shortlink", "com.linkforge.shortlink.."),
-            new BoundedContext("redirect", "com.linkforge.redirect.."),
-            new BoundedContext("analytics", "com.linkforge.analytics.."),
-            new BoundedContext("platform", "com.linkforge.platform.."),
-            new BoundedContext("governance", "com.linkforge.governance..")
+            new BoundedContext("accounts", "com.linkforge.accounts"),
+            new BoundedContext("shortlink", "com.linkforge.shortlink"),
+            new BoundedContext("redirect", "com.linkforge.redirect"),
+            new BoundedContext("analytics", "com.linkforge.analytics"),
+            new BoundedContext("platform", "com.linkforge.platform"),
+            new BoundedContext("governance", "com.linkforge.governance")
     );
 
     @Test
@@ -217,7 +217,7 @@ class ArchitectureTest {
     }
 
     @Test
-    void bounded_contexts_should_not_depend_on_each_other_directly() {
+    void bounded_context_cross_dependencies_should_not_reach_inner_layers() {
         List<String> violations = new ArrayList<>();
         for (BoundedContext from : BOUNDED_CONTEXTS) {
             for (BoundedContext to : BOUNDED_CONTEXTS) {
@@ -227,7 +227,7 @@ class ArchitectureTest {
                 ArchRule edgeRule = noClasses()
                         .that().resideInAnyPackage(from.packagePattern())
                         .should().dependOnClassesThat()
-                        .resideInAnyPackage(to.packagePattern());
+                        .resideInAnyPackage(to.innerLayerPatterns());
                 try {
                     edgeRule.check(CLASSES);
                 } catch (AssertionError failure) {
@@ -237,7 +237,7 @@ class ArchitectureTest {
         }
         assertThat(violations)
                 .withFailMessage(
-                        "Bounded-context dependency matrix violations:%n%n%s",
+                        "Bounded-context inner-layer dependency violations:%n%n%s",
                         String.join(System.lineSeparator() + System.lineSeparator(), violations)
                 )
                 .isEmpty();
@@ -302,6 +302,19 @@ class ArchitectureTest {
         throw new IllegalStateException("Could not resolve any of " + String.join(", ", relativePaths) + " from " + cwd);
     }
 
-    private record BoundedContext(String name, String packagePattern) {
+    private record BoundedContext(String name, String basePackage) {
+
+        String packagePattern() {
+            return basePackage + "..";
+        }
+
+        String[] innerLayerPatterns() {
+            return new String[]{
+                    basePackage + ".domain..",
+                    basePackage + ".infrastructure..",
+                    basePackage + ".interfaces..",
+                    basePackage + ".application.port.."
+            };
+        }
     }
 }

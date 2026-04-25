@@ -37,12 +37,12 @@ public class MybatisShortLinkRepository implements ShortLinkRepository {
     }
 
     @Override
-    public Optional<ShortLink> findByCode(String code) {
+    public Optional<ShortLink> findUnscopedByCode(String code) {
         String c = normalizeNullable(code);
         if (c == null) {
             return Optional.empty();
         }
-        ShortLinkEntity e = queryMapper.findByCode(c);
+        ShortLinkEntity e = queryMapper.findUnscopedByCode(c);
         return Optional.ofNullable(ShortLinkEntityMapper.toDomain(e));
     }
 

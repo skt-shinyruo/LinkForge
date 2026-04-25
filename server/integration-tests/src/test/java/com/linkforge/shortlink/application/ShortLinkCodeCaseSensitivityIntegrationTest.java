@@ -11,6 +11,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -28,6 +29,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @Testcontainers
 @SpringBootTest(
@@ -144,11 +146,11 @@ class ShortLinkCodeCaseSensitivityIntegrationTest {
         assertThat(a.code()).isEqualTo("Abcdef");
         assertThat(b.code()).isEqualTo("abcdef");
 
-        ShortLinkEntity linkA = shortLinkQueryMapper.findByCode("Abcdef");
+        ShortLinkEntity linkA = shortLinkQueryMapper.findUnscopedByCode("Abcdef");
         assertThat(linkA).isNotNull();
         assertThat(linkA.getCode()).isEqualTo("Abcdef");
 
-        ShortLinkEntity linkB = shortLinkQueryMapper.findByCode("abcdef");
+        ShortLinkEntity linkB = shortLinkQueryMapper.findUnscopedByCode("abcdef");
         assertThat(linkB).isNotNull();
         assertThat(linkB.getCode()).isEqualTo("abcdef");
         assertThat(linkA.getId()).isNotEqualTo(linkB.getId());
@@ -157,6 +159,160 @@ class ShortLinkCodeCaseSensitivityIntegrationTest {
         assertThat(redirectService.resolve("abcdef").originalUrl()).isEqualTo("https://example.com/b");
         assertThat(redis.opsForValue().get(key("Abcdef"))).isNotNull();
         assertThat(redis.opsForValue().get(key("abcdef"))).isNotNull();
+    }
+
+    @Test
+    void unscopedCustomCode_shouldNotConflictWithSameCodeOnCustomDomain() {
+        long suffix = System.nanoTime();
+        String code = "route" + Long.toHexString(suffix);
+        long appId = suffix + 11;
+        long domainId = suffix + 21;
+
+        insertApplication(appId, TENANT_ID, "app-" + suffix);
+        insertDedicatedDomain(domainId, TENANT_ID, appId, "custom-" + suffix + ".example.test");
+        insertScopedShortLink(suffix + 31, TENANT_ID, appId, domainId, code, "https://example.com/custom");
+
+        ShortLinkService.LinkDto created = shortLinkService.create(
+                TENANT_ID,
+                ShortLinkService.CreatedBy.user(USER_ID),
+                new ShortLinkService.CreateLinkRequest(
+                        "https://example.com/base",
+                        null,
+                        null,
+                        null,
+                        code,
+                        Set.of(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null
+                )
+        );
+
+        assertThat(created.code()).isEqualTo(code);
+        ShortLinkEntity unscoped = shortLinkQueryMapper.findUnscopedByCode(code);
+        assertThat(unscoped).isNotNull();
+        assertThat(unscoped.getDomainId()).isNull();
+        assertThat(unscoped.getOriginalUrl()).isEqualTo("https://example.com/base");
+    }
+
+    @Test
+    void unscopedCustomCode_shouldBeUniqueAtDatabaseLevel() {
+        long suffix = System.nanoTime();
+        String code = "plain" + Long.toHexString(suffix);
+
+        insertUnscopedShortLink(suffix + 41, TENANT_ID, code, "https://example.com/one");
+
+        assertThatThrownBy(() -> insertUnscopedShortLink(suffix + 42, TENANT_ID, code, "https://example.com/two"))
+                .isInstanceOf(DuplicateKeyException.class);
+    }
+
+    private void insertApplication(long applicationId, long tenantId, String applicationKey) {
+        jdbcTemplate.update(
+                """
+                        INSERT INTO applications (id, tenant_id, application_key, display_name, status)
+                        VALUES (?, ?, ?, ?, 'ACTIVE')
+                        """,
+                applicationId,
+                tenantId,
+                applicationKey,
+                applicationKey
+        );
+    }
+
+    private void insertDedicatedDomain(long domainId, long tenantId, long applicationId, String hostname) {
+        jdbcTemplate.update(
+                """
+                        INSERT INTO domains (id, tenant_id, application_id, hostname, scope, status, trust_class)
+                        VALUES (?, ?, ?, ?, 'APPLICATION_DEDICATED', 'ACTIVE', 'FIRST_PARTY')
+                        """,
+                domainId,
+                tenantId,
+                applicationId,
+                hostname
+        );
+    }
+
+    private void insertScopedShortLink(
+            long linkId,
+            long tenantId,
+            long applicationId,
+            long domainId,
+            String code,
+            String originalUrl
+    ) {
+        jdbcTemplate.update(
+                """
+                        INSERT INTO short_links (
+                            id,
+                            tenant_id,
+                            application_id,
+                            domain_id,
+                            code,
+                            lifecycle_state,
+                            original_url,
+                            note,
+                            enabled,
+                            expires_at,
+                            archived_at,
+                            redirect_status_code,
+                            preview_enabled,
+                            unavailable_landing_url,
+                            query_forward_mode,
+                            query_forward_allowlist,
+                            created_by_type,
+                            created_by,
+                            version
+                        ) VALUES (?, ?, ?, ?, ?, 'ACTIVE', ?, NULL, 1, NULL, NULL, 302, 0, NULL, NULL, NULL, 'USER', 1, 0)
+                        """,
+                linkId,
+                tenantId,
+                applicationId,
+                domainId,
+                code,
+                originalUrl
+        );
+    }
+
+    private void insertUnscopedShortLink(
+            long linkId,
+            long tenantId,
+            String code,
+            String originalUrl
+    ) {
+        jdbcTemplate.update(
+                """
+                        INSERT INTO short_links (
+                            id,
+                            tenant_id,
+                            application_id,
+                            domain_id,
+                            code,
+                            lifecycle_state,
+                            original_url,
+                            note,
+                            enabled,
+                            expires_at,
+                            archived_at,
+                            redirect_status_code,
+                            preview_enabled,
+                            unavailable_landing_url,
+                            query_forward_mode,
+                            query_forward_allowlist,
+                            created_by_type,
+                            created_by,
+                            version
+                        ) VALUES (?, ?, NULL, NULL, ?, 'ACTIVE', ?, NULL, 1, NULL, NULL, 302, 0, NULL, NULL, NULL, 'USER', 1, 0)
+                        """,
+                linkId,
+                tenantId,
+                code,
+                originalUrl
+        );
     }
 
     private static String key(String code) {

@@ -10,7 +10,7 @@ public interface ShortLinkRepository {
 
     Optional<ShortLink> findByTenantIdAndId(long tenantId, long linkId);
 
-    Optional<ShortLink> findByCode(String code);
+    Optional<ShortLink> findUnscopedByCode(String code);
 
     Optional<ShortLink> findByDomainIdAndCode(long domainId, String code);
 

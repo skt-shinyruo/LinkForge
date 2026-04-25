@@ -104,7 +104,7 @@ public class CreateShortLinkCommandHandler {
         if (custom) {
             ShortCode code = parseCode(codeRaw);
             boolean exists = domainId == null
-                    ? shortLinkRepository.findByCode(code.value()).isPresent()
+                    ? shortLinkRepository.findUnscopedByCode(code.value()).isPresent()
                     : shortLinkRepository.findByDomainIdAndCode(domainId, code.value()).isPresent();
             if (exists) {
                 throw new BusinessException(ShortLinkErrorCode.CODE_ALREADY_EXISTS);

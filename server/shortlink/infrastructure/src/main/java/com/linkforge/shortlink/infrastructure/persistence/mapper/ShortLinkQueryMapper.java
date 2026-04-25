@@ -11,7 +11,7 @@ public interface ShortLinkQueryMapper {
 
     ShortLinkEntity findByTenantIdAndId(long tenantId, long id);
 
-    ShortLinkEntity findByCode(String code);
+    ShortLinkEntity findUnscopedByCode(String code);
 
     ShortLinkEntity findByDomainIdAndCode(@Param("domainId") long domainId, @Param("code") String code);
 

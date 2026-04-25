@@ -86,11 +86,12 @@
         LIMIT 1
     </select>
 
-    <select id="findByCode" resultMap="ShortLinkResultMap">
+    <select id="findUnscopedByCode" resultMap="ShortLinkResultMap">
         SELECT
         <include refid="shortLinkColumns"/>
         FROM short_links
         WHERE code = #{param1}
+          AND domain_id IS NULL
         LIMIT 1
     </select>
 

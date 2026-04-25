@@ -5,6 +5,7 @@ import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.security.StandardRoles;
+import com.linkforge.governance.application.port.ApprovalExecutionPort;
 import com.linkforge.governance.application.port.ApprovalRepository;
 import com.linkforge.governance.application.port.AuditLogRepository;
 import com.linkforge.governance.domain.ApprovalRequest;
@@ -28,17 +29,20 @@ public class GovernanceService {
     private final ApprovalRepository approvalRepository;
     private final AuditLogRepository auditLogRepository;
     private final Clock clock;
+    private final List<ApprovalExecutionPort> approvalExecutionPorts;
 
     public GovernanceService(
             SnowflakeIdGenerator idGenerator,
             ApprovalRepository approvalRepository,
             AuditLogRepository auditLogRepository,
-            Clock clock
+            Clock clock,
+            List<ApprovalExecutionPort> approvalExecutionPorts
     ) {
         this.idGenerator = idGenerator;
         this.approvalRepository = approvalRepository;
         this.auditLogRepository = auditLogRepository;
         this.clock = clock;
+        this.approvalExecutionPorts = approvalExecutionPorts == null ? List.of() : List.copyOf(approvalExecutionPorts);
     }
 
     @Transactional
@@ -78,6 +82,7 @@ public class GovernanceService {
         }
         enforceApprovalMatrix(effectiveActor, request);
         LocalDateTime now = requestedAt == null ? LocalDateTime.now(clock) : requestedAt;
+        executeApprovedRequest(request, now);
         approvalRepository.updateDecision(
                 request.id(),
                 ApprovalStatus.EXECUTED.name(),
@@ -91,6 +96,13 @@ public class GovernanceService {
         return approvalRepository.findByTenantIdAndId(tenantId, requestId)
                 .map(this::toDto)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_ERROR, "审批请求更新失败"));
+    }
+
+    private void executeApprovedRequest(ApprovalRequest request, LocalDateTime executedAt) {
+        approvalExecutionPorts.stream()
+                .filter(port -> port.supports(request.operationType()))
+                .findFirst()
+                .ifPresent(port -> port.execute(request, executedAt));
     }
 
     public List<ApprovalRequestDto> listRequests(long tenantId, UserActor actor) {

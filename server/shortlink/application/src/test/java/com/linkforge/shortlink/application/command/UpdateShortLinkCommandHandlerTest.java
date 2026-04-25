@@ -143,6 +143,7 @@ class UpdateShortLinkCommandHandlerTest {
         verify(governanceApprovalRequestService).requestLinkDestinationChangeApproval(
                 1L,
                 new GovernanceApprovalRequestService.LinkDestinationChangeApprovalRequest(
+                        101L,
                         2001L,
                         "https://example.com/old",
                         "https://example.com/new",
@@ -226,6 +227,7 @@ class UpdateShortLinkCommandHandlerTest {
         verify(governanceApprovalRequestService, never()).requestLinkDestinationChangeApproval(
                 eq(1L),
                 eq(new GovernanceApprovalRequestService.LinkDestinationChangeApprovalRequest(
+                        102L,
                         2001L,
                         "https://example.com/old",
                         "https://example.com/new",

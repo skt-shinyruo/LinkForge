@@ -101,6 +101,7 @@ public class UpdateShortLinkCommandHandler {
             governanceApprovalRequestService.requestLinkDestinationChangeApproval(
                     tenantId,
                     new GovernanceApprovalRequestService.LinkDestinationChangeApprovalRequest(
+                            linkId,
                             link.applicationId(),
                             link.originalUrl().value(),
                             req.originalUrl(),

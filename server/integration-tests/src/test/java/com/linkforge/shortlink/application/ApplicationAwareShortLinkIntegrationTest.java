@@ -3,6 +3,8 @@ package com.linkforge.shortlink.application;
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.TestTenantFixtures;
 import com.linkforge.foundation.context.UserActor;
+import com.linkforge.governance.application.GovernanceService;
+import com.linkforge.governance.domain.ApprovalStatus;
 import com.linkforge.platform.application.ApplicationProvisioningService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,6 +37,9 @@ class ApplicationAwareShortLinkIntegrationTest extends ApplicationAwareShortLink
 
     @Autowired
     ShortLinkService shortLinkService;
+
+    @Autowired
+    GovernanceService governanceService;
 
     private long applicationId;
     private long authorizedDomainId;
@@ -150,6 +155,89 @@ class ApplicationAwareShortLinkIntegrationTest extends ApplicationAwareShortLink
                 applicationId
         );
         assertThat(requestCount).isEqualTo(1);
+    }
+
+    @Test
+    void approved_public_link_destination_change_should_mutate_original_url() {
+        ShortLinkService.LinkDto created = shortLinkService.create(
+                TENANT_ID,
+                ShortLinkService.CreatedBy.user(USER_ID),
+                new ShortLinkService.CreateLinkRequest(
+                        "https://example.com/original-for-approval",
+                        "note",
+                        null,
+                        null,
+                        null,
+                        Set.of(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        applicationId,
+                        authorizedDomainId,
+                        "ACTIVE"
+                )
+        );
+
+        shortLinkService.update(
+                TENANT_ID,
+                created.id(),
+                new ShortLinkService.UpdateLinkRequest(
+                        "https://example.com/approved-change",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null
+                ),
+                tenantAdminActor(),
+                LocalDateTime.now(ZoneOffset.UTC)
+        );
+        Long approvalId = jdbcTemplate.queryForObject(
+                """
+                        SELECT id
+                        FROM approval_requests
+                        WHERE operation_type = 'PUBLIC_LINK_DESTINATION_CHANGE'
+                          AND target_application_id = ?
+                        ORDER BY created_at DESC, id DESC
+                        LIMIT 1
+                        """,
+                Long.class,
+                applicationId
+        );
+        String afterSnapshot = jdbcTemplate.queryForObject(
+                "SELECT after_snapshot FROM approval_requests WHERE id = ?",
+                String.class,
+                approvalId
+        );
+        assertThat(afterSnapshot)
+                .contains("linkId=" + created.id())
+                .contains("originalUrl=https://example.com/approved-change");
+
+        GovernanceService.ApprovalRequestDto approved = governanceService.approveRequest(
+                TENANT_ID,
+                approvalId,
+                "approved",
+                new UserActor(TENANT_ID, USER_ID + 1, "approver@example.com", Set.of("TENANT_ADMIN")),
+                LocalDateTime.now(ZoneOffset.UTC)
+        );
+
+        assertThat(approved.status()).isEqualTo(ApprovalStatus.EXECUTED);
+        String originalUrl = jdbcTemplate.queryForObject(
+                "SELECT original_url FROM short_links WHERE id = ?",
+                String.class,
+                created.id()
+        );
+        assertThat(originalUrl).isEqualTo("https://example.com/approved-change");
     }
 
     @Test

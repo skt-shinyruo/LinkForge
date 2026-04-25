@@ -17,6 +17,7 @@ public interface GovernanceApprovalRequestService {
     );
 
     record LinkDestinationChangeApprovalRequest(
+            long linkId,
             Long targetApplicationId,
             String currentOriginalUrl,
             String requestedOriginalUrl,

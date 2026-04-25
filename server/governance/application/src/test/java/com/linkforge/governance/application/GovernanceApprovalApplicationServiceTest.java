@@ -28,8 +28,8 @@ class GovernanceApprovalApplicationServiceTest {
                 eq(1L),
                 argThat(req -> req.operationType() == SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE
                         && req.targetApplicationId().equals(2001L)
-                        && "originalUrl=https://example.com/old".equals(req.beforeSnapshot())
-                        && "originalUrl=https://example.com/new".equals(req.afterSnapshot())
+                        && "linkId=101\noriginalUrl=https://example.com/old".equals(req.beforeSnapshot())
+                        && "linkId=101\noriginalUrl=https://example.com/new".equals(req.afterSnapshot())
                         && req.actor().equals(actor)
                         && requestedAt.equals(req.requestedAt()))
         )).thenReturn(new GovernanceService.ApprovalRequestDto(
@@ -48,6 +48,7 @@ class GovernanceApprovalApplicationServiceTest {
         GovernanceApprovalRequestService.ApprovalRequestResult actual = service.requestLinkDestinationChangeApproval(
                 1L,
                 new GovernanceApprovalRequestService.LinkDestinationChangeApprovalRequest(
+                        101L,
                         2001L,
                         "https://example.com/old",
                         "https://example.com/new",
@@ -72,8 +73,8 @@ class GovernanceApprovalApplicationServiceTest {
                 eq(1L),
                 argThat(req -> req.operationType() == SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE
                         && req.targetApplicationId().equals(2001L)
-                        && "originalUrl=https://example.com/old".equals(req.beforeSnapshot())
-                        && "originalUrl=https://example.com/new".equals(req.afterSnapshot())
+                        && "linkId=101\noriginalUrl=https://example.com/old".equals(req.beforeSnapshot())
+                        && "linkId=101\noriginalUrl=https://example.com/new".equals(req.afterSnapshot())
                         && req.actor().equals(actor)
                         && requestedAt.equals(req.requestedAt()))
         );

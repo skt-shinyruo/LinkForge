@@ -22,8 +22,8 @@ public class GovernanceApprovalApplicationService implements GovernanceApprovalR
                 new GovernanceService.SubmitApprovalRequest(
                         SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE,
                         request.targetApplicationId(),
-                        "originalUrl=" + request.currentOriginalUrl(),
-                        "originalUrl=" + request.requestedOriginalUrl(),
+                        linkDestinationSnapshot(request.linkId(), request.currentOriginalUrl()),
+                        linkDestinationSnapshot(request.linkId(), request.requestedOriginalUrl()),
                         request.actor(),
                         request.requestedAt()
                 )
@@ -48,6 +48,10 @@ public class GovernanceApprovalApplicationService implements GovernanceApprovalR
                 )
         );
         return toResult(dto);
+    }
+
+    private static String linkDestinationSnapshot(long linkId, String originalUrl) {
+        return "linkId=" + linkId + "\noriginalUrl=" + originalUrl;
     }
 
     private static ApprovalRequestResult toResult(GovernanceService.ApprovalRequestDto dto) {

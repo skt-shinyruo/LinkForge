@@ -28,6 +28,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -92,7 +93,19 @@ public class CreateShortLinkCommandHandler {
             applicationScopePort.requireApplicationAndDomainAuthorized(tenantId, applicationId, domainId);
             applicationScopePort.findApplicationQuota(tenantId, applicationId).ifPresent(quota -> {
                 long monthlyLinkLimit = quota.monthlyLinkLimit();
-                if (monthlyLinkLimit > 0 && shortLinkRepository.countActiveByTenantIdAndApplicationId(tenantId, applicationId) >= monthlyLinkLimit) {
+                if (monthlyLinkLimit <= 0) {
+                    return;
+                }
+                LocalDate monthStart = LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC).withDayOfMonth(1);
+                LocalDateTime fromInclusiveUtc = monthStart.atStartOfDay();
+                LocalDateTime toExclusiveUtc = monthStart.plusMonths(1).atStartOfDay();
+                long currentMonthCreated = shortLinkRepository.countCreatedByTenantIdAndApplicationIdAndCreatedAtRange(
+                        tenantId,
+                        applicationId,
+                        fromInclusiveUtc,
+                        toExclusiveUtc
+                );
+                if (currentMonthCreated >= monthlyLinkLimit) {
                     throw new BusinessException(com.linkforge.contract.api.ErrorCode.FORBIDDEN, "应用发链额度已用尽");
                 }
             });

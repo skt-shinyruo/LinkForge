@@ -60,82 +60,204 @@
         ORDER BY day ASC
     </select>
 
-    <select id="dailyByLinkIds" resultMap="DailyStatRowResultMap">
-        SELECT day, SUM(pv) AS pv, SUM(uv) AS uv
-        FROM link_stats_daily
-        WHERE tenant_id = #{tenantId}
-          AND day &gt;= #{from}
-          AND day &lt;= #{to}
-          AND link_id IN
-          <foreach collection="linkIds" item="linkId" open="(" separator="," close=")">
-              #{linkId}
-          </foreach>
-        GROUP BY day
-        ORDER BY day ASC
+    <select id="applicationDaily" resultMap="DailyStatRowResultMap">
+        SELECT s.day, SUM(s.pv) AS pv, SUM(s.uv) AS uv
+        FROM link_stats_daily s
+        JOIN analytics_link_catalog c
+          ON c.tenant_id = s.tenant_id
+         AND c.link_id = s.link_id
+        WHERE s.tenant_id = #{param1}
+          AND c.application_id = #{param2}
+          AND s.day &gt;= #{param3}
+          AND s.day &lt;= #{param4}
+        GROUP BY s.day
+        ORDER BY s.day ASC
+    </select>
+
+    <select id="domainDaily" resultMap="DailyStatRowResultMap">
+        SELECT s.day, SUM(s.pv) AS pv, SUM(s.uv) AS uv
+        FROM link_stats_daily s
+        JOIN analytics_link_catalog c
+          ON c.tenant_id = s.tenant_id
+         AND c.link_id = s.link_id
+        WHERE s.tenant_id = #{param1}
+          AND c.domain_id = #{param2}
+          AND s.day &gt;= #{param3}
+          AND s.day &lt;= #{param4}
+        GROUP BY s.day
+        ORDER BY s.day ASC
+    </select>
+
+    <select id="countApplicationPv" resultType="long">
+        SELECT COALESCE(SUM(s.pv), 0) AS total_pv
+        FROM link_stats_daily s
+        JOIN analytics_link_catalog c
+          ON c.tenant_id = s.tenant_id
+         AND c.link_id = s.link_id
+        WHERE s.tenant_id = #{tenantId}
+          AND c.application_id = #{applicationId}
+          AND s.day &gt;= #{fromInclusiveUtc}
+          AND s.day &lt; #{toExclusiveUtc}
     </select>
 
     <select id="topLinksOrderByPv" resultMap="TopLinkRowResultMap">
         SELECT
-            s.link_id AS link_id,
-            SUM(s.pv) AS pv,
-            SUM(s.uv) AS uv
-        FROM link_stats_daily s
-        WHERE s.tenant_id = #{param1}
-          AND s.day &gt;= #{param2}
-          AND s.day &lt;= #{param3}
-        GROUP BY s.link_id
-        ORDER BY pv DESC, uv DESC, s.link_id ASC
-        LIMIT #{param4}
+            agg.link_id AS link_id,
+            agg.pv AS pv,
+            agg.uv AS uv,
+            c.code AS code,
+            c.original_url AS original_url,
+            c.deleted AS deleted
+        FROM (
+            SELECT s.link_id AS link_id, SUM(s.pv) AS pv, SUM(s.uv) AS uv
+            FROM link_stats_daily s
+            WHERE s.tenant_id = #{param1}
+              AND s.day &gt;= #{param2}
+              AND s.day &lt;= #{param3}
+            GROUP BY s.link_id
+            ORDER BY pv DESC, uv DESC, s.link_id ASC
+            LIMIT #{param4}
+        ) agg
+        LEFT JOIN analytics_link_catalog c
+          ON c.tenant_id = #{param1}
+         AND c.link_id = agg.link_id
+        ORDER BY agg.pv DESC, agg.uv DESC, agg.link_id ASC
     </select>
 
     <select id="topLinksOrderByUv" resultMap="TopLinkRowResultMap">
         SELECT
-            s.link_id AS link_id,
-            SUM(s.pv) AS pv,
-            SUM(s.uv) AS uv
-        FROM link_stats_daily s
-        WHERE s.tenant_id = #{param1}
-          AND s.day &gt;= #{param2}
-          AND s.day &lt;= #{param3}
-        GROUP BY s.link_id
-        ORDER BY uv DESC, pv DESC, s.link_id ASC
-        LIMIT #{param4}
+            agg.link_id AS link_id,
+            agg.pv AS pv,
+            agg.uv AS uv,
+            c.code AS code,
+            c.original_url AS original_url,
+            c.deleted AS deleted
+        FROM (
+            SELECT s.link_id AS link_id, SUM(s.pv) AS pv, SUM(s.uv) AS uv
+            FROM link_stats_daily s
+            WHERE s.tenant_id = #{param1}
+              AND s.day &gt;= #{param2}
+              AND s.day &lt;= #{param3}
+            GROUP BY s.link_id
+            ORDER BY uv DESC, pv DESC, s.link_id ASC
+            LIMIT #{param4}
+        ) agg
+        LEFT JOIN analytics_link_catalog c
+          ON c.tenant_id = #{param1}
+         AND c.link_id = agg.link_id
+        ORDER BY agg.uv DESC, agg.pv DESC, agg.link_id ASC
     </select>
 
-    <select id="topLinksOrderByPvForLinkIds" resultMap="TopLinkRowResultMap">
+    <select id="applicationTopLinksOrderByPv" resultMap="TopLinkRowResultMap">
         SELECT
-            s.link_id AS link_id,
-            SUM(s.pv) AS pv,
-            SUM(s.uv) AS uv
-        FROM link_stats_daily s
-        WHERE s.tenant_id = #{tenantId}
-          AND s.day &gt;= #{from}
-          AND s.day &lt;= #{to}
-          AND s.link_id IN
-          <foreach collection="linkIds" item="linkId" open="(" separator="," close=")">
-              #{linkId}
-          </foreach>
-        GROUP BY s.link_id
-        ORDER BY pv DESC, uv DESC, s.link_id ASC
-        LIMIT #{limit}
+            agg.link_id AS link_id,
+            agg.pv AS pv,
+            agg.uv AS uv,
+            c.code AS code,
+            c.original_url AS original_url,
+            c.deleted AS deleted
+        FROM (
+            SELECT s.link_id AS link_id, SUM(s.pv) AS pv, SUM(s.uv) AS uv
+            FROM link_stats_daily s
+            JOIN analytics_link_catalog c
+              ON c.tenant_id = s.tenant_id
+             AND c.link_id = s.link_id
+            WHERE s.tenant_id = #{param1}
+              AND c.application_id = #{param2}
+              AND s.day &gt;= #{param3}
+              AND s.day &lt;= #{param4}
+            GROUP BY s.link_id
+            ORDER BY pv DESC, uv DESC, s.link_id ASC
+            LIMIT #{param5}
+        ) agg
+        LEFT JOIN analytics_link_catalog c
+          ON c.tenant_id = #{param1}
+         AND c.link_id = agg.link_id
+        ORDER BY agg.pv DESC, agg.uv DESC, agg.link_id ASC
     </select>
 
-    <select id="topLinksOrderByUvForLinkIds" resultMap="TopLinkRowResultMap">
+    <select id="applicationTopLinksOrderByUv" resultMap="TopLinkRowResultMap">
         SELECT
-            s.link_id AS link_id,
-            SUM(s.pv) AS pv,
-            SUM(s.uv) AS uv
-        FROM link_stats_daily s
-        WHERE s.tenant_id = #{tenantId}
-          AND s.day &gt;= #{from}
-          AND s.day &lt;= #{to}
-          AND s.link_id IN
-          <foreach collection="linkIds" item="linkId" open="(" separator="," close=")">
-              #{linkId}
-          </foreach>
-        GROUP BY s.link_id
-        ORDER BY uv DESC, pv DESC, s.link_id ASC
-        LIMIT #{limit}
+            agg.link_id AS link_id,
+            agg.pv AS pv,
+            agg.uv AS uv,
+            c.code AS code,
+            c.original_url AS original_url,
+            c.deleted AS deleted
+        FROM (
+            SELECT s.link_id AS link_id, SUM(s.pv) AS pv, SUM(s.uv) AS uv
+            FROM link_stats_daily s
+            JOIN analytics_link_catalog c
+              ON c.tenant_id = s.tenant_id
+             AND c.link_id = s.link_id
+            WHERE s.tenant_id = #{param1}
+              AND c.application_id = #{param2}
+              AND s.day &gt;= #{param3}
+              AND s.day &lt;= #{param4}
+            GROUP BY s.link_id
+            ORDER BY uv DESC, pv DESC, s.link_id ASC
+            LIMIT #{param5}
+        ) agg
+        LEFT JOIN analytics_link_catalog c
+          ON c.tenant_id = #{param1}
+         AND c.link_id = agg.link_id
+        ORDER BY agg.uv DESC, agg.pv DESC, agg.link_id ASC
+    </select>
+
+    <select id="domainTopLinksOrderByPv" resultMap="TopLinkRowResultMap">
+        SELECT
+            agg.link_id AS link_id,
+            agg.pv AS pv,
+            agg.uv AS uv,
+            c.code AS code,
+            c.original_url AS original_url,
+            c.deleted AS deleted
+        FROM (
+            SELECT s.link_id AS link_id, SUM(s.pv) AS pv, SUM(s.uv) AS uv
+            FROM link_stats_daily s
+            JOIN analytics_link_catalog c
+              ON c.tenant_id = s.tenant_id
+             AND c.link_id = s.link_id
+            WHERE s.tenant_id = #{param1}
+              AND c.domain_id = #{param2}
+              AND s.day &gt;= #{param3}
+              AND s.day &lt;= #{param4}
+            GROUP BY s.link_id
+            ORDER BY pv DESC, uv DESC, s.link_id ASC
+            LIMIT #{param5}
+        ) agg
+        LEFT JOIN analytics_link_catalog c
+          ON c.tenant_id = #{param1}
+         AND c.link_id = agg.link_id
+        ORDER BY agg.pv DESC, agg.uv DESC, agg.link_id ASC
+    </select>
+
+    <select id="domainTopLinksOrderByUv" resultMap="TopLinkRowResultMap">
+        SELECT
+            agg.link_id AS link_id,
+            agg.pv AS pv,
+            agg.uv AS uv,
+            c.code AS code,
+            c.original_url AS original_url,
+            c.deleted AS deleted
+        FROM (
+            SELECT s.link_id AS link_id, SUM(s.pv) AS pv, SUM(s.uv) AS uv
+            FROM link_stats_daily s
+            JOIN analytics_link_catalog c
+              ON c.tenant_id = s.tenant_id
+             AND c.link_id = s.link_id
+            WHERE s.tenant_id = #{param1}
+              AND c.domain_id = #{param2}
+              AND s.day &gt;= #{param3}
+              AND s.day &lt;= #{param4}
+            GROUP BY s.link_id
+            ORDER BY uv DESC, pv DESC, s.link_id ASC
+            LIMIT #{param5}
+        ) agg
+        LEFT JOIN analytics_link_catalog c
+          ON c.tenant_id = #{param1}
+         AND c.link_id = agg.link_id
+        ORDER BY agg.uv DESC, agg.pv DESC, agg.link_id ASC
     </select>
 
     <select id="linkDimTotalPv" resultType="long">

@@ -95,6 +95,17 @@ public class RedirectHtmlPageRenderer {
     }
 
     public ResponseEntity<?> renderUnavailable(String code, LinkMeta meta, RedirectResolution.UnavailableReason reason) {
+        if (reason == RedirectResolution.UnavailableReason.QUOTA_EXCEEDED) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .contentType(MediaType.TEXT_HTML)
+                    .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                    .body(renderUnavailableHtml(
+                            "短链访问额度已用尽",
+                            "该应用本月访问额度已用尽，请联系链接发布方获取最新链接。",
+                            code
+                    ));
+        }
+
         String perLink = meta == null ? null : trimToNull(meta.unavailableLandingUrl());
         if (isHttpUrl(perLink)) {
             return ResponseEntity.status(HttpStatus.FOUND)

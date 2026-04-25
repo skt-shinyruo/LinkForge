@@ -6,7 +6,10 @@ import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
 @MapperScan(
-        basePackages = "com.linkforge.analytics.infrastructure.persistence.mapper",
+        basePackages = {
+                "com.linkforge.analytics.infrastructure.persistence.mapper",
+                "com.linkforge.analytics.infrastructure.catalog"
+        },
         annotationClass = Mapper.class
 )
 public class AnalyticsMybatisConfig {

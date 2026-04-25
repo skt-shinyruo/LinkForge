@@ -10,6 +10,7 @@ import com.linkforge.shortlink.infrastructure.persistence.mapper.ShortLinkQueryM
 import com.linkforge.shortlink.infrastructure.persistence.mapper.ShortLinkSearchParam;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -57,11 +58,22 @@ public class MybatisShortLinkRepository implements ShortLinkRepository {
     }
 
     @Override
-    public long countActiveByTenantIdAndApplicationId(long tenantId, long applicationId) {
-        if (tenantId <= 0 || applicationId <= 0) {
+    public long countCreatedByTenantIdAndApplicationIdAndCreatedAtRange(
+            long tenantId,
+            long applicationId,
+            LocalDateTime fromInclusiveUtc,
+            LocalDateTime toExclusiveUtc
+    ) {
+        if (tenantId <= 0 || applicationId <= 0 || fromInclusiveUtc == null || toExclusiveUtc == null
+                || !toExclusiveUtc.isAfter(fromInclusiveUtc)) {
             return 0L;
         }
-        return queryMapper.countActiveByTenantIdAndApplicationId(tenantId, applicationId);
+        return queryMapper.countCreatedByTenantIdAndApplicationIdAndCreatedAtRange(
+                tenantId,
+                applicationId,
+                fromInclusiveUtc,
+                toExclusiveUtc
+        );
     }
 
     @Override

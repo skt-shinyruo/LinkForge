@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.analytics.infrastructure.job.AnalyticsFlushJob;
+import com.linkforge.analytics.infrastructure.catalog.ShortLinkCatalogProjectorJob;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +30,7 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -83,6 +85,9 @@ class ApplicationScopedStatsIntegrationTest {
     @Autowired
     AnalyticsFlushJob analyticsFlushJob;
 
+    @Autowired
+    ShortLinkCatalogProjectorJob shortLinkCatalogProjectorJob;
+
     @BeforeEach
     void resetRedis() {
         redis.getConnectionFactory().getConnection().serverCommands().flushAll();
@@ -105,6 +110,8 @@ class ApplicationScopedStatsIntegrationTest {
         String linkOneCode = appOneLinkOne.get("data").get("code").asText();
         String linkTwoCode = appOneLinkTwo.get("data").get("code").asText();
         String otherLinkCode = appTwoLink.get("data").get("code").asText();
+
+        shortLinkCatalogProjectorJob.project();
 
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
         seedStats(principal.tenantId(), linkOneId, today, 10, 2);
@@ -145,6 +152,45 @@ class ApplicationScopedStatsIntegrationTest {
         assertThat(domainOverview.get("data")).hasSize(1);
         assertThat(domainOverview.get("data").get(0).get("pv").asLong()).isEqualTo(10L);
         assertThat(domainOverview.get("data").get(0).get("uv").asLong()).isEqualTo(2L);
+
+        archiveLink(principal.token(), linkOneId);
+        deleteLink(principal.token(), linkOneId);
+        shortLinkCatalogProjectorJob.project();
+
+        JsonNode appOverviewAfterDelete = getJson(
+                get("/api/v1/stats/applications/" + appOneDomainOne.applicationId() + "/overview")
+                        .header("Authorization", "Bearer " + principal.token())
+                        .param("from", today.toString())
+                        .param("to", today.toString())
+        );
+        assertThat(appOverviewAfterDelete.get("data")).hasSize(1);
+        assertThat(appOverviewAfterDelete.get("data").get(0).get("pv").asLong()).isEqualTo(14L);
+        assertThat(appOverviewAfterDelete.get("data").get(0).get("uv").asLong()).isEqualTo(6L);
+
+        JsonNode domainOverviewAfterDelete = getJson(
+                get("/api/v1/stats/domains/" + appOneDomainOne.domainId() + "/overview")
+                        .header("Authorization", "Bearer " + principal.token())
+                        .param("from", today.toString())
+                        .param("to", today.toString())
+        );
+        assertThat(domainOverviewAfterDelete.get("data")).hasSize(1);
+        assertThat(domainOverviewAfterDelete.get("data").get(0).get("pv").asLong()).isEqualTo(10L);
+        assertThat(domainOverviewAfterDelete.get("data").get(0).get("uv").asLong()).isEqualTo(2L);
+
+        JsonNode appTopLinksAfterDelete = getJson(
+                get("/api/v1/stats/applications/" + appOneDomainOne.applicationId() + "/top-links")
+                        .header("Authorization", "Bearer " + principal.token())
+                        .param("from", today.toString())
+                        .param("to", today.toString())
+                        .param("limit", "10")
+        );
+        assertThat(appTopLinksAfterDelete.get("data")).hasSize(2);
+        assertThat(appTopLinksAfterDelete.get("data").toString()).contains(linkOneCode, linkTwoCode);
+        assertThat(appTopLinksAfterDelete.get("data").toString()).doesNotContain(otherLinkCode);
+        assertThat(appTopLinksAfterDelete.get("data")).anySatisfy(row -> {
+            assertThat(row.get("linkId").asLong()).isEqualTo(linkOneId);
+            assertThat(row.get("deleted").asBoolean()).isTrue();
+        });
     }
 
     @Test
@@ -271,6 +317,20 @@ class ApplicationScopedStatsIntegrationTest {
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(createLinkBody))
+        );
+    }
+
+    private void archiveLink(String token, long linkId) throws Exception {
+        getJson(
+                post("/api/v1/links/" + linkId + "/archive")
+                        .header("Authorization", "Bearer " + token)
+        );
+    }
+
+    private void deleteLink(String token, long linkId) throws Exception {
+        getJson(
+                delete("/api/v1/links/" + linkId)
+                        .header("Authorization", "Bearer " + token)
         );
     }
 

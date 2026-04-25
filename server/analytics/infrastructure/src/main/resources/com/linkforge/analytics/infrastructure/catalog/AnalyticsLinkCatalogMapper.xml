@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.linkforge.analytics.infrastructure.catalog.AnalyticsLinkCatalogMapper">
+
+    <insert id="upsert">
+        INSERT INTO analytics_link_catalog (
+            tenant_id,
+            link_id,
+            application_id,
+            domain_id,
+            code,
+            original_url,
+            archived_at,
+            deleted
+        ) VALUES (
+            #{tenantId},
+            #{linkId},
+            #{applicationId},
+            #{domainId},
+            #{code},
+            #{originalUrl},
+            #{archivedAt},
+            #{deleted}
+        )
+        ON DUPLICATE KEY UPDATE
+            application_id = VALUES(application_id),
+            domain_id = VALUES(domain_id),
+            code = VALUES(code),
+            original_url = VALUES(original_url),
+            archived_at = VALUES(archived_at),
+            deleted = VALUES(deleted)
+    </insert>
+</mapper>

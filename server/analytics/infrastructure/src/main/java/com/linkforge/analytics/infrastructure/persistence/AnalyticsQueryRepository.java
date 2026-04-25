@@ -31,13 +31,21 @@ public class AnalyticsQueryRepository {
                 .toList();
     }
 
-    public List<DailyStatRow> dailyByLinkIds(long tenantId, List<Long> linkIds, LocalDate from, LocalDate to) {
-        if (linkIds == null || linkIds.isEmpty()) {
-            return List.of();
-        }
-        return safeList(queryMapper.dailyByLinkIds(tenantId, linkIds, from, to)).stream()
+    public List<DailyStatRow> applicationDaily(long tenantId, long applicationId, LocalDate from, LocalDate to) {
+        return safeList(queryMapper.applicationDaily(tenantId, applicationId, from, to)).stream()
                 .map(r -> new DailyStatRow(r.getDay(), safeLong(r.getPv()), safeLong(r.getUv())))
                 .toList();
+    }
+
+    public List<DailyStatRow> domainDaily(long tenantId, long domainId, LocalDate from, LocalDate to) {
+        return safeList(queryMapper.domainDaily(tenantId, domainId, from, to)).stream()
+                .map(r -> new DailyStatRow(r.getDay(), safeLong(r.getPv()), safeLong(r.getUv())))
+                .toList();
+    }
+
+    public long countApplicationPv(long tenantId, long applicationId, LocalDate fromInclusiveUtc, LocalDate toExclusiveUtc) {
+        Long value = queryMapper.countApplicationPv(tenantId, applicationId, fromInclusiveUtc, toExclusiveUtc);
+        return safeLong(value);
     }
 
     public List<TopLinkRow> topLinksOrderByPv(long tenantId, LocalDate from, LocalDate to, int limit) {
@@ -52,20 +60,26 @@ public class AnalyticsQueryRepository {
                 .toList();
     }
 
-    public List<TopLinkRow> topLinksOrderByPvForLinkIds(long tenantId, List<Long> linkIds, LocalDate from, LocalDate to, int limit) {
-        if (linkIds == null || linkIds.isEmpty()) {
-            return List.of();
-        }
-        return safeList(queryMapper.topLinksOrderByPvForLinkIds(tenantId, linkIds, from, to, limit)).stream()
+    public List<TopLinkRow> applicationTopLinksOrderByPv(long tenantId, long applicationId, LocalDate from, LocalDate to, int limit) {
+        return safeList(queryMapper.applicationTopLinksOrderByPv(tenantId, applicationId, from, to, limit)).stream()
                 .map(AnalyticsQueryRepository::toTopLinkRow)
                 .toList();
     }
 
-    public List<TopLinkRow> topLinksOrderByUvForLinkIds(long tenantId, List<Long> linkIds, LocalDate from, LocalDate to, int limit) {
-        if (linkIds == null || linkIds.isEmpty()) {
-            return List.of();
-        }
-        return safeList(queryMapper.topLinksOrderByUvForLinkIds(tenantId, linkIds, from, to, limit)).stream()
+    public List<TopLinkRow> applicationTopLinksOrderByUv(long tenantId, long applicationId, LocalDate from, LocalDate to, int limit) {
+        return safeList(queryMapper.applicationTopLinksOrderByUv(tenantId, applicationId, from, to, limit)).stream()
+                .map(AnalyticsQueryRepository::toTopLinkRow)
+                .toList();
+    }
+
+    public List<TopLinkRow> domainTopLinksOrderByPv(long tenantId, long domainId, LocalDate from, LocalDate to, int limit) {
+        return safeList(queryMapper.domainTopLinksOrderByPv(tenantId, domainId, from, to, limit)).stream()
+                .map(AnalyticsQueryRepository::toTopLinkRow)
+                .toList();
+    }
+
+    public List<TopLinkRow> domainTopLinksOrderByUv(long tenantId, long domainId, LocalDate from, LocalDate to, int limit) {
+        return safeList(queryMapper.domainTopLinksOrderByUv(tenantId, domainId, from, to, limit)).stream()
                 .map(AnalyticsQueryRepository::toTopLinkRow)
                 .toList();
     }

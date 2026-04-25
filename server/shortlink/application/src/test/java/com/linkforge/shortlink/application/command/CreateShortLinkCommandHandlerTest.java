@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import java.lang.reflect.Constructor;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
@@ -76,7 +77,12 @@ class CreateShortLinkCommandHandlerTest {
 
         when(applicationScopePort.findApplicationQuota(1L, 2001L))
                 .thenReturn(Optional.of(new ApplicationQuotaView(2001L, 10L, 100L)));
-        when(shortLinkRepository.countActiveByTenantIdAndApplicationId(1L, 2001L)).thenReturn(2L);
+        when(shortLinkRepository.countCreatedByTenantIdAndApplicationIdAndCreatedAtRange(
+                1L,
+                2001L,
+                LocalDateTime.parse("2026-04-01T00:00:00"),
+                LocalDateTime.parse("2026-05-01T00:00:00")
+        )).thenReturn(2L);
         doAnswer(invocation -> {
             ShortLink inserted = invocation.getArgument(0);
             when(shortLinkRepository.findByTenantIdAndId(1L, inserted.id())).thenReturn(Optional.of(inserted));
@@ -131,7 +137,67 @@ class CreateShortLinkCommandHandlerTest {
         assertThat(actual).isSameAs(expected);
         verify(applicationScopePort).requireApplicationAndDomainAuthorized(1L, 2001L, 3001L);
         verify(applicationScopePort).findApplicationQuota(1L, 2001L);
-        verify(shortLinkRepository).countActiveByTenantIdAndApplicationId(1L, 2001L);
+        verify(shortLinkRepository).countCreatedByTenantIdAndApplicationIdAndCreatedAtRange(
+                1L,
+                2001L,
+                LocalDateTime.parse("2026-04-01T00:00:00"),
+                LocalDateTime.parse("2026-05-01T00:00:00")
+        );
+    }
+
+    @Test
+    void handle_shouldRejectWhenMonthlyLinkQuotaReachedWithinCurrentUtcMonth() {
+        SnowflakeIdGenerator idGenerator = mock(SnowflakeIdGenerator.class);
+        ShortLinkRepository shortLinkRepository = mock(ShortLinkRepository.class);
+        ApplicationScopePort applicationScopePort = mock(ApplicationScopePort.class);
+        Clock clock = Clock.fixed(Instant.parse("2026-04-30T23:59:59Z"), ZoneOffset.UTC);
+        CreateShortLinkCommandHandler handler = new CreateShortLinkCommandHandler(
+                idGenerator,
+                shortLinkRepository,
+                mock(SetLinkTagsCommandHandler.class),
+                mock(LinkTagRepository.class),
+                mock(ShortLinkEventPublisher.class),
+                mock(RedirectCacheSyncPort.class),
+                mock(ShortLinkDtoMapper.class),
+                mock(PostCommitHookPort.class),
+                clock,
+                applicationScopePort
+        );
+
+        when(applicationScopePort.findApplicationQuota(1L, 2001L))
+                .thenReturn(Optional.of(new ApplicationQuotaView(2001L, 2L, 100L)));
+        when(shortLinkRepository.countCreatedByTenantIdAndApplicationIdAndCreatedAtRange(
+                1L,
+                2001L,
+                LocalDateTime.parse("2026-04-01T00:00:00"),
+                LocalDateTime.parse("2026-05-01T00:00:00")
+        )).thenReturn(2L);
+
+        assertThatThrownBy(() -> handler.handle(
+                1L,
+                ShortLinkService.CreatedBy.user(99L),
+                new ShortLinkService.CreateLinkRequest(
+                        "https://example.com",
+                        "note",
+                        null,
+                        true,
+                        "abc123",
+                        Set.of("alpha"),
+                        302,
+                        false,
+                        null,
+                        null,
+                        List.of(),
+                        2001L,
+                        3001L,
+                        "ACTIVE"
+                )
+        ))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN));
+
+        verify(applicationScopePort).requireApplicationAndDomainAuthorized(1L, 2001L, 3001L);
+        verifyNoInteractions(idGenerator);
     }
 
     @Test

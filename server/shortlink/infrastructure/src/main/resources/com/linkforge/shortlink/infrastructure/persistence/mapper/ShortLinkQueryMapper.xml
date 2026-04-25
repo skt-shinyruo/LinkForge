@@ -175,12 +175,13 @@
         ORDER BY id ASC
     </select>
 
-    <select id="countActiveByTenantIdAndApplicationId" resultType="long">
+    <select id="countCreatedByTenantIdAndApplicationIdAndCreatedAtRange" resultType="long">
         SELECT COUNT(*)
         FROM short_links
         WHERE tenant_id = #{tenantId}
           AND application_id = #{applicationId}
-          AND archived_at IS NULL
+          AND created_at &gt;= #{fromInclusiveUtc}
+          AND created_at &lt; #{toExclusiveUtc}
     </select>
 
     <sql id="searchWhere">

@@ -30,6 +30,10 @@
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-contract-platform</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.linkforge</groupId>
             <artifactId>linkforge-analytics-application</artifactId>
         </dependency>
         <dependency>

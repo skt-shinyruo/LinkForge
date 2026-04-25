@@ -20,7 +20,8 @@ public record RedirectResolution(
 
     public enum UnavailableReason {
         DISABLED(RedirectErrorCode.LINK_DISABLED),
-        EXPIRED(RedirectErrorCode.LINK_EXPIRED);
+        EXPIRED(RedirectErrorCode.LINK_EXPIRED),
+        QUOTA_EXCEEDED(RedirectErrorCode.TOO_MANY_REQUESTS);
 
         private final RedirectErrorCode errorCode;
 

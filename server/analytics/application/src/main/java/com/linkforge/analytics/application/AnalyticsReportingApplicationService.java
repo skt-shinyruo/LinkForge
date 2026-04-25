@@ -75,7 +75,7 @@ public class AnalyticsReportingApplicationService implements AnalyticsReportingS
 
     private static TopLinkStat enrichRow(TopLinkStat row, ShortLinkReadService.LinkSummary summary) {
         if (summary == null) {
-            return new TopLinkStat(row.linkId(), null, null, row.pv(), row.uv(), true);
+            return new TopLinkStat(row.linkId(), row.code(), row.originalUrl(), row.pv(), row.uv(), true);
         }
         return new TopLinkStat(
                 row.linkId(),

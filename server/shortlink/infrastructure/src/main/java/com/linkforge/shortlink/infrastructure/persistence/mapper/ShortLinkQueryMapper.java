@@ -4,6 +4,7 @@ import com.linkforge.shortlink.infrastructure.persistence.entity.ShortLinkEntity
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Mapper
@@ -29,7 +30,12 @@ public interface ShortLinkQueryMapper {
 
     List<Long> listIdsByTenantIdAndDomainId(@Param("tenantId") long tenantId, @Param("domainId") long domainId);
 
-    long countActiveByTenantIdAndApplicationId(@Param("tenantId") long tenantId, @Param("applicationId") long applicationId);
+    long countCreatedByTenantIdAndApplicationIdAndCreatedAtRange(
+            @Param("tenantId") long tenantId,
+            @Param("applicationId") long applicationId,
+            @Param("fromInclusiveUtc") LocalDateTime fromInclusiveUtc,
+            @Param("toExclusiveUtc") LocalDateTime toExclusiveUtc
+    );
 
     long countSearch(ShortLinkSearchParam param);
 

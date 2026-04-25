@@ -1,6 +1,9 @@
 package com.linkforge.redirect.application;
 
 import com.linkforge.analytics.application.AnalyticsVisitEventService;
+import com.linkforge.analytics.application.ApplicationClickUsagePort;
+import com.linkforge.contract.platform.ApplicationQuotaView;
+import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.contract.redirect.LinkCachePort;
 import com.linkforge.contract.redirect.LinkMeta;
 import com.linkforge.contract.redirect.LinkMetaSourcePort;
@@ -12,6 +15,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -25,18 +29,40 @@ public class RedirectService {
     private final ShortLinkReadService shortLinkReadService;
     private final AnalyticsVisitEventService analyticsVisitEventService;
     private final Clock clock;
+    private final ApplicationScopePort applicationScopePort;
+    private final ApplicationClickUsagePort applicationClickUsagePort;
 
     @Autowired
     public RedirectService(
             LinkCachePort linkCache,
             ShortLinkReadService shortLinkReadService,
             AnalyticsVisitEventService analyticsVisitEventService,
-            Clock clock
+            Clock clock,
+            ApplicationScopePort applicationScopePort,
+            ApplicationClickUsagePort applicationClickUsagePort
     ) {
         this.linkCache = linkCache;
         this.shortLinkReadService = shortLinkReadService;
         this.analyticsVisitEventService = analyticsVisitEventService;
         this.clock = clock;
+        this.applicationScopePort = applicationScopePort == null ? noQuotaApplicationScopePort() : applicationScopePort;
+        this.applicationClickUsagePort = applicationClickUsagePort == null ? noClickUsagePort() : applicationClickUsagePort;
+    }
+
+    public RedirectService(
+            LinkCachePort linkCache,
+            ShortLinkReadService shortLinkReadService,
+            AnalyticsVisitEventService analyticsVisitEventService,
+            Clock clock
+    ) {
+        this(
+                linkCache,
+                shortLinkReadService,
+                analyticsVisitEventService,
+                clock,
+                noQuotaApplicationScopePort(),
+                noClickUsagePort()
+        );
     }
 
     public RedirectService(
@@ -47,9 +73,29 @@ public class RedirectService {
     ) {
         this(
                 linkCache,
+                linkMetaSource,
+                analyticsVisitEventService,
+                clock,
+                noQuotaApplicationScopePort(),
+                noClickUsagePort()
+        );
+    }
+
+    public RedirectService(
+            LinkCachePort linkCache,
+            LinkMetaSourcePort linkMetaSource,
+            AnalyticsVisitEventService analyticsVisitEventService,
+            Clock clock,
+            ApplicationScopePort applicationScopePort,
+            ApplicationClickUsagePort applicationClickUsagePort
+    ) {
+        this(
+                linkCache,
                 readServiceFrom(linkMetaSource),
                 analyticsVisitEventService,
-                clock
+                clock,
+                applicationScopePort,
+                applicationClickUsagePort
         );
     }
 
@@ -87,7 +133,7 @@ public class RedirectService {
             return RedirectResolution.preview(normalizedCode, true, meta);
         }
 
-        recordVisitIfAvailable(meta, request.visitInput());
+        analyticsVisitEventService.append(toRedirectVisitEvent(meta, request.visitInput()));
         return RedirectResolution.redirect(normalizedCode, request.htmlRequest(), meta);
     }
 
@@ -264,7 +310,7 @@ public class RedirectService {
         if (meta.expiresAt() != null && !meta.expiresAt().isAfter(nowUtc)) {
             return RedirectResolution.UnavailableReason.EXPIRED;
         }
-        return null;
+        return quotaUnavailableReason(meta);
     }
 
     private AnalyticsVisitEventService.RedirectVisitEvent toRedirectVisitEvent(LinkMeta meta, RedirectVisitInput visitInput) {
@@ -296,5 +342,51 @@ public class RedirectService {
             return null;
         }
         return value.toInstant(ZoneOffset.UTC);
+    }
+
+    private RedirectResolution.UnavailableReason quotaUnavailableReason(LinkMeta meta) {
+        Long applicationId = meta.applicationId();
+        if (applicationId == null || applicationId <= 0) {
+            return null;
+        }
+        Optional<ApplicationQuotaView> quota = applicationScopePort.findApplicationQuota(meta.tenantId(), applicationId);
+        if (quota.isEmpty()) {
+            return null;
+        }
+        long monthlyClickLimit = quota.get().monthlyClickLimit();
+        if (monthlyClickLimit <= 0) {
+            return null;
+        }
+        LocalDate monthStart = LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC).withDayOfMonth(1);
+        long currentMonthClicks = applicationClickUsagePort.countApplicationClicks(
+                meta.tenantId(),
+                applicationId,
+                monthStart,
+                monthStart.plusMonths(1)
+        );
+        return currentMonthClicks >= monthlyClickLimit
+                ? RedirectResolution.UnavailableReason.QUOTA_EXCEEDED
+                : null;
+    }
+
+    private static ApplicationClickUsagePort noClickUsagePort() {
+        return (tenantId, applicationId, fromInclusiveUtc, toExclusiveUtc) -> 0L;
+    }
+
+    private static ApplicationScopePort noQuotaApplicationScopePort() {
+        return new ApplicationScopePort() {
+            @Override
+            public void requireApplicationExists(long tenantId, long applicationId) {
+            }
+
+            @Override
+            public void requireApplicationAndDomainAuthorized(long tenantId, long applicationId, long domainId) {
+            }
+
+            @Override
+            public Optional<ApplicationQuotaView> findApplicationQuota(long tenantId, long applicationId) {
+                return Optional.empty();
+            }
+        };
     }
 }

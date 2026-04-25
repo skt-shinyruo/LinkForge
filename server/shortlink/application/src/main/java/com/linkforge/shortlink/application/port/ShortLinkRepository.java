@@ -3,6 +3,7 @@ package com.linkforge.shortlink.application.port;
 import com.linkforge.shortlink.application.query.ShortLinkSearchQuery;
 import com.linkforge.shortlink.domain.ShortLink;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -14,7 +15,12 @@ public interface ShortLinkRepository {
 
     Optional<ShortLink> findByDomainIdAndCode(long domainId, String code);
 
-    long countActiveByTenantIdAndApplicationId(long tenantId, long applicationId);
+    long countCreatedByTenantIdAndApplicationIdAndCreatedAtRange(
+            long tenantId,
+            long applicationId,
+            LocalDateTime fromInclusiveUtc,
+            LocalDateTime toExclusiveUtc
+    );
 
     void insert(ShortLink link);
 

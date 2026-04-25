@@ -65,4 +65,36 @@ class AnalyticsReportingApplicationServiceTest {
         verify(queryService).applicationTopLinks(1L, 2001L, from, to, 5, AnalyticsQueryService.TopSortBy.UV);
         verify(shortLinkReadService).listSummaries(1L, List.of(201L));
     }
+
+    @Test
+    void topLinks_shouldKeepCatalogMetadataWhenShortlinkSummaryIsMissingAfterDelete() {
+        AnalyticsQueryService queryService = mock(AnalyticsQueryService.class);
+        ShortLinkReadService shortLinkReadService = mock(ShortLinkReadService.class);
+        AnalyticsReportingService service = new AnalyticsReportingApplicationService(queryService, shortLinkReadService);
+
+        LocalDate from = LocalDate.parse("2026-04-01");
+        LocalDate to = LocalDate.parse("2026-04-24");
+        when(queryService.topLinks(1L, from, to, 10, AnalyticsQueryService.TopSortBy.PV))
+                .thenReturn(List.of(new AnalyticsQueryService.TopLinkStat(
+                        301L,
+                        "gone301",
+                        "https://example.com/deleted",
+                        12L,
+                        7L,
+                        true
+                )));
+        when(shortLinkReadService.listSummaries(1L, List.of(301L))).thenReturn(Map.of());
+
+        List<AnalyticsQueryService.TopLinkStat> actual =
+                service.topLinks(1L, from, to, 10, AnalyticsQueryService.TopSortBy.PV);
+
+        assertThat(actual).containsExactly(new AnalyticsQueryService.TopLinkStat(
+                301L,
+                "gone301",
+                "https://example.com/deleted",
+                12L,
+                7L,
+                true
+        ));
+    }
 }

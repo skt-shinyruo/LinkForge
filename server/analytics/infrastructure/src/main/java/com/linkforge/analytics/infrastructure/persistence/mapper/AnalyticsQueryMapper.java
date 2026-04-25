@@ -14,32 +14,28 @@ public interface AnalyticsQueryMapper {
 
     List<AnalyticsDailyStatRow> tenantDaily(long tenantId, LocalDate from, LocalDate to);
 
-    List<AnalyticsDailyStatRow> dailyByLinkIds(
+    List<AnalyticsDailyStatRow> applicationDaily(long tenantId, long applicationId, LocalDate from, LocalDate to);
+
+    List<AnalyticsDailyStatRow> domainDaily(long tenantId, long domainId, LocalDate from, LocalDate to);
+
+    Long countApplicationPv(
             @Param("tenantId") long tenantId,
-            @Param("linkIds") List<Long> linkIds,
-            @Param("from") LocalDate from,
-            @Param("to") LocalDate to
+            @Param("applicationId") long applicationId,
+            @Param("fromInclusiveUtc") LocalDate fromInclusiveUtc,
+            @Param("toExclusiveUtc") LocalDate toExclusiveUtc
     );
 
     List<AnalyticsTopLinkRow> topLinksOrderByPv(long tenantId, LocalDate from, LocalDate to, int limit);
 
     List<AnalyticsTopLinkRow> topLinksOrderByUv(long tenantId, LocalDate from, LocalDate to, int limit);
 
-    List<AnalyticsTopLinkRow> topLinksOrderByPvForLinkIds(
-            @Param("tenantId") long tenantId,
-            @Param("linkIds") List<Long> linkIds,
-            @Param("from") LocalDate from,
-            @Param("to") LocalDate to,
-            @Param("limit") int limit
-    );
+    List<AnalyticsTopLinkRow> applicationTopLinksOrderByPv(long tenantId, long applicationId, LocalDate from, LocalDate to, int limit);
 
-    List<AnalyticsTopLinkRow> topLinksOrderByUvForLinkIds(
-            @Param("tenantId") long tenantId,
-            @Param("linkIds") List<Long> linkIds,
-            @Param("from") LocalDate from,
-            @Param("to") LocalDate to,
-            @Param("limit") int limit
-    );
+    List<AnalyticsTopLinkRow> applicationTopLinksOrderByUv(long tenantId, long applicationId, LocalDate from, LocalDate to, int limit);
+
+    List<AnalyticsTopLinkRow> domainTopLinksOrderByPv(long tenantId, long domainId, LocalDate from, LocalDate to, int limit);
+
+    List<AnalyticsTopLinkRow> domainTopLinksOrderByUv(long tenantId, long domainId, LocalDate from, LocalDate to, int limit);
 
     Long linkDimTotalPv(long tenantId, long linkId, LocalDate from, LocalDate to, String dimType);
 

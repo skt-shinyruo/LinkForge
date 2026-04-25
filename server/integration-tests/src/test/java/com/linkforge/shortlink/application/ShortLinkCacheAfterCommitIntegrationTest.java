@@ -8,7 +8,6 @@ import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.redirect.application.RedirectService;
 import com.linkforge.redirect.application.error.RedirectBusinessException;
 import com.linkforge.redirect.application.error.RedirectErrorCode;
-import com.linkforge.redirect.infrastructure.projection.ShortLinkEventProjectorJob;
 import com.linkforge.shortlink.application.csv.ShortLinkCsvImportRow;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -89,9 +88,6 @@ class ShortLinkCacheAfterCommitIntegrationTest {
     IntegrationEventStore integrationEventStore;
 
     @Autowired
-    ShortLinkEventProjectorJob redirectProjector;
-
-    @Autowired
     RedirectService redirectService;
 
     @Autowired
@@ -141,7 +137,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
             );
             ShortLinkService.LinkDto dto = shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), req);
 
-            // BEFORE_COMMIT: nothing should be visible yet (event + projection + cache are transactional / async)
+            // BEFORE_COMMIT: cache write is after-commit only.
             assertThat(redis.opsForValue().get(key(dto.code()))).isNull();
 
             status.setRollbackOnly();
@@ -174,7 +170,6 @@ class ShortLinkCacheAfterCommitIntegrationTest {
         ShortLinkService.LinkDto created = shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), createReq);
         String key = key(created.code());
 
-        redirectProjector.drain();
         assertThat(redirectService.resolve(created.code()).originalUrl()).isEqualTo("https://example.com/old");
         String before = redis.opsForValue().get(key);
         assertThat(before).isNotNull();
@@ -201,15 +196,14 @@ class ShortLinkCacheAfterCommitIntegrationTest {
             );
             shortLinkService.update(TENANT_ID, created.id(), updateReq, currentActor(), LocalDateTime.now(ZoneOffset.UTC));
 
-            // BEFORE_COMMIT: projector not run, cache should remain unchanged
+            // BEFORE_COMMIT: cache eviction is after-commit only.
             assertThat(redis.opsForValue().get(key)).isEqualTo(before);
 
             status.setRollbackOnly();
         });
 
-        // ROLLBACK: no event appended, projector drains nothing, cache still unchanged
+        // ROLLBACK: no event appended and cache remains unchanged.
         assertThat(integrationEventStore.loadMaxSeq()).isEqualTo(maxSeqBefore);
-        redirectProjector.drain();
         assertThat(redis.opsForValue().get(key)).isEqualTo(before);
     }
 
@@ -267,7 +261,8 @@ class ShortLinkCacheAfterCommitIntegrationTest {
         String key = key(code);
 
         assertThat(redirectService.resolve(code).originalUrl()).isEqualTo("https://example.com/old");
-        assertThat(redis.opsForValue().get(key)).isNotNull();
+        String before = redis.opsForValue().get(key);
+        assertThat(before).isNotNull();
 
         ShortLinkService.UpdateLinkRequest updateReq = new ShortLinkService.UpdateLinkRequest(
                 "https://example.com/new",
@@ -289,7 +284,10 @@ class ShortLinkCacheAfterCommitIntegrationTest {
 
         assertThat(redis.opsForValue().get(key)).isNull();
         assertThat(redirectService.resolve(code).originalUrl()).isEqualTo("https://example.com/new");
-        assertThat(redis.opsForValue().get(key)).isNotNull();
+        String after = redis.opsForValue().get(key);
+        assertThat(after).isNotNull();
+        assertThat(after).contains("https://example.com/new");
+        assertThat(after).isNotEqualTo(before);
     }
 
     @Test

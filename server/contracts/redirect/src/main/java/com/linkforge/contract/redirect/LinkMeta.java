@@ -14,6 +14,40 @@ public record LinkMeta(
         String unavailableLandingUrl,
         String queryForwardMode,
         String queryForwardAllowlist,
-        String hostname
+        String hostname,
+        Long applicationId,
+        Long domainId
 ) {
+
+    public LinkMeta(
+            long id,
+            long tenantId,
+            String code,
+            String originalUrl,
+            boolean enabled,
+            LocalDateTime expiresAt,
+            Integer redirectStatusCode,
+            boolean previewEnabled,
+            String unavailableLandingUrl,
+            String queryForwardMode,
+            String queryForwardAllowlist,
+            String hostname
+    ) {
+        this(
+                id,
+                tenantId,
+                code,
+                originalUrl,
+                enabled,
+                expiresAt,
+                redirectStatusCode,
+                previewEnabled,
+                unavailableLandingUrl,
+                queryForwardMode,
+                queryForwardAllowlist,
+                hostname,
+                null,
+                null
+        );
+    }
 }

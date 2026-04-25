@@ -42,11 +42,7 @@
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-contract-shortlink</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-contract-governance</artifactId>
+            <artifactId>linkforge-governance-application</artifactId>
         </dependency>
 
         <dependency>

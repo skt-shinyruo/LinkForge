@@ -1,6 +1,6 @@
 package com.linkforge.redirect.application;
 
-import com.linkforge.contract.analytics.VisitRecorderPort;
+import com.linkforge.analytics.application.AnalyticsVisitEventService;
 import com.linkforge.contract.redirect.LinkCachePort;
 import com.linkforge.contract.redirect.LinkMeta;
 import com.linkforge.contract.redirect.LinkMetaSourcePort;
@@ -9,11 +9,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.TimeZone;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -50,8 +51,8 @@ class RedirectServiceTimezoneTest {
                 null
         );
 
-        AtomicInteger calls = new AtomicInteger();
-        VisitRecorderPort recorder = (tenantId, linkId, visitContext) -> calls.incrementAndGet();
+        AtomicReference<AnalyticsVisitEventService.RedirectVisitEvent> recorded = new AtomicReference<>();
+        AnalyticsVisitEventService analyticsVisitEventService = new AnalyticsVisitEventService(recorded::set);
 
         RedirectService service = new RedirectService(
                 new LinkCachePort() {
@@ -76,12 +77,33 @@ class RedirectServiceTimezoneTest {
                     }
                 },
                 (LinkMetaSourcePort) code -> Optional.empty(),
-                recorder,
-                Clock.systemUTC()
+                analyticsVisitEventService,
+                Clock.fixed(Instant.parse("2026-04-24T10:15:30Z"), ZoneOffset.UTC)
         );
 
-        service.recordVisitIfAvailable(meta, null);
+        RedirectVisitInput visitInput = new RedirectVisitInput(
+                "1.2.3.4",
+                "Mozilla/5.0",
+                "https://ref.example.com/path",
+                "zh-CN,zh;q=0.9",
+                java.util.Map.of("utm_source", "newsletter")
+        );
 
-        assertThat(calls.get()).isEqualTo(1);
+        service.recordVisitIfAvailable(meta, visitInput);
+
+        assertThat(recorded.get()).isEqualTo(new AnalyticsVisitEventService.RedirectVisitEvent(
+                1L,
+                1L,
+                Instant.parse("2026-04-24T10:15:30Z").toEpochMilli(),
+                null,
+                null,
+                "abc123",
+                "https://example.com",
+                "1.2.3.4",
+                "Mozilla/5.0",
+                "https://ref.example.com/path",
+                "zh-CN,zh;q=0.9",
+                java.util.Map.of("utm_source", "newsletter")
+        ));
     }
 }

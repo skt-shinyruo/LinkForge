@@ -33,11 +33,11 @@
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-contract-shortlink</artifactId>
+            <artifactId>linkforge-shortlink-application</artifactId>
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-contract-governance</artifactId>
+            <artifactId>linkforge-governance-application</artifactId>
         </dependency>
 
         <!-- test -->

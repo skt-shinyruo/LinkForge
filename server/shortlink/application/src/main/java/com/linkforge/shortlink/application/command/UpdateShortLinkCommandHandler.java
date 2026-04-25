@@ -2,11 +2,10 @@ package com.linkforge.shortlink.application.command;
 
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
-import com.linkforge.contract.governance.ApprovalSubmissionPort;
-import com.linkforge.contract.governance.SensitiveOperation;
 import com.linkforge.contract.shortlink.ShortLinkErrorCode;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.tx.PostCommitHookPort;
+import com.linkforge.governance.application.GovernanceApprovalRequestService;
 import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
 import com.linkforge.shortlink.application.ShortLinkService.UpdateLinkRequest;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
@@ -42,7 +41,7 @@ public class UpdateShortLinkCommandHandler {
     private final ShortLinkDtoMapper dtoMapper;
     private final PostCommitHookPort postCommitHookPort;
     private final Clock clock;
-    private final ApprovalSubmissionPort approvalSubmissionPort;
+    private final GovernanceApprovalRequestService governanceApprovalRequestService;
 
     public UpdateShortLinkCommandHandler(
             ShortLinkRepository shortLinkRepository,
@@ -53,7 +52,7 @@ public class UpdateShortLinkCommandHandler {
             ShortLinkDtoMapper dtoMapper,
             PostCommitHookPort postCommitHookPort,
             Clock clock,
-            ApprovalSubmissionPort approvalSubmissionPort
+            GovernanceApprovalRequestService governanceApprovalRequestService
     ) {
         this.shortLinkRepository = shortLinkRepository;
         this.setLinkTagsHandler = setLinkTagsHandler;
@@ -63,7 +62,7 @@ public class UpdateShortLinkCommandHandler {
         this.dtoMapper = dtoMapper;
         this.postCommitHookPort = postCommitHookPort;
         this.clock = clock;
-        this.approvalSubmissionPort = approvalSubmissionPort;
+        this.governanceApprovalRequestService = governanceApprovalRequestService;
     }
 
     @Transactional
@@ -99,17 +98,15 @@ public class UpdateShortLinkCommandHandler {
             if (hasOtherEffectiveChanges(link, req, existingTags)) {
                 throw new BusinessException(ErrorCode.BAD_REQUEST, "请先单独提交目标地址变更，再保存其他修改");
             }
-            approvalSubmissionPort.submitRequest(
+            governanceApprovalRequestService.requestLinkDestinationChangeApproval(
                     tenantId,
-                    SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE,
-                    link.applicationId(),
-                    "originalUrl=" + link.originalUrl().value(),
-                    "originalUrl=" + req.originalUrl(),
-                    actor.tenantId(),
-                    actor == null ? 0L : actor.userId(),
-                    actor == null ? null : actor.email(),
-                    actor == null ? Set.of() : actor.roles(),
-                    requestedAt
+                    new GovernanceApprovalRequestService.LinkDestinationChangeApprovalRequest(
+                            link.applicationId(),
+                            link.originalUrl().value(),
+                            req.originalUrl(),
+                            actor,
+                            requestedAt
+                    )
             );
             return dtoMapper.toDto(link, existingTags);
         }

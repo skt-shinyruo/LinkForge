@@ -1,15 +1,17 @@
 package com.linkforge.redirect.application;
 
-import com.linkforge.contract.analytics.VisitContext;
-import com.linkforge.contract.analytics.VisitRecorderPort;
+import com.linkforge.analytics.application.AnalyticsVisitEventService;
 import com.linkforge.contract.redirect.LinkCachePort;
 import com.linkforge.contract.redirect.LinkMeta;
 import com.linkforge.contract.redirect.LinkMetaSourcePort;
+import com.linkforge.shortlink.application.ShortLinkReadService;
+import org.springframework.beans.factory.annotation.Autowired;
 import com.linkforge.redirect.application.error.RedirectBusinessException;
 import com.linkforge.redirect.application.error.RedirectErrorCode;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 
@@ -17,20 +19,35 @@ import java.time.ZoneOffset;
 public class RedirectService {
 
     private final LinkCachePort linkCache;
-    private final LinkMetaSourcePort linkMetaSource;
-    private final VisitRecorderPort visitRecorder;
+    private final ShortLinkReadService shortLinkReadService;
+    private final AnalyticsVisitEventService analyticsVisitEventService;
     private final Clock clock;
+
+    @Autowired
+    public RedirectService(
+            LinkCachePort linkCache,
+            ShortLinkReadService shortLinkReadService,
+            AnalyticsVisitEventService analyticsVisitEventService,
+            Clock clock
+    ) {
+        this.linkCache = linkCache;
+        this.shortLinkReadService = shortLinkReadService;
+        this.analyticsVisitEventService = analyticsVisitEventService;
+        this.clock = clock;
+    }
 
     public RedirectService(
             LinkCachePort linkCache,
             LinkMetaSourcePort linkMetaSource,
-            VisitRecorderPort visitRecorder,
+            AnalyticsVisitEventService analyticsVisitEventService,
             Clock clock
     ) {
-        this.linkCache = linkCache;
-        this.linkMetaSource = linkMetaSource;
-        this.visitRecorder = visitRecorder;
-        this.clock = clock;
+        this(
+                linkCache,
+                (host, code) -> linkMetaSource.findByHostAndCode(host, code).map(RedirectService::toRedirectLinkMeta),
+                analyticsVisitEventService,
+                clock
+        );
     }
 
     /**
@@ -76,7 +93,7 @@ public class RedirectService {
      */
     public void recordVisitIfAvailable(LinkMeta meta, RedirectVisitInput visitInput) {
         if (isAvailable(meta)) {
-            visitRecorder.recordVisit(meta.tenantId(), meta.id(), toVisitContext(visitInput));
+            analyticsVisitEventService.append(toRedirectVisitEvent(meta, visitInput));
         }
     }
 
@@ -110,7 +127,9 @@ public class RedirectService {
             return cached.meta();
         }
 
-        LinkMeta meta = linkMetaSource.findByHostAndCode(host, normalized).orElse(null);
+        LinkMeta meta = shortLinkReadService.findRedirectMetaByHostAndCode(host, normalized)
+                .map(RedirectService::toLinkMeta)
+                .orElse(null);
         if (meta != null) {
             linkCache.tryPut(host, meta);
             return meta;
@@ -154,6 +173,44 @@ public class RedirectService {
         return v;
     }
 
+    private static LinkMeta toLinkMeta(ShortLinkReadService.RedirectLinkMeta meta) {
+        return new LinkMeta(
+                meta.linkId(),
+                meta.tenantId(),
+                meta.code(),
+                meta.originalUrl(),
+                meta.enabled(),
+                toUtcLocalDateTime(meta.expiresAtUtc()),
+                meta.redirectStatusCode(),
+                meta.previewEnabled(),
+                meta.unavailableLandingUrl(),
+                meta.queryForwardMode(),
+                meta.queryForwardAllowlist(),
+                meta.hostname(),
+                meta.applicationId(),
+                meta.domainId()
+        );
+    }
+
+    private static ShortLinkReadService.RedirectLinkMeta toRedirectLinkMeta(LinkMeta meta) {
+        return new ShortLinkReadService.RedirectLinkMeta(
+                meta.tenantId(),
+                meta.id(),
+                meta.code(),
+                meta.hostname(),
+                meta.originalUrl(),
+                meta.enabled(),
+                toInstant(meta.expiresAt()),
+                meta.redirectStatusCode(),
+                meta.previewEnabled(),
+                meta.unavailableLandingUrl(),
+                meta.queryForwardMode(),
+                meta.queryForwardAllowlist(),
+                meta.applicationId(),
+                meta.domainId()
+        );
+    }
+
     private boolean isAvailable(LinkMeta meta) {
         return unavailableReason(meta) == null;
     }
@@ -172,16 +229,34 @@ public class RedirectService {
         return null;
     }
 
-    private static VisitContext toVisitContext(RedirectVisitInput v) {
-        if (v == null) {
+    private AnalyticsVisitEventService.RedirectVisitEvent toRedirectVisitEvent(LinkMeta meta, RedirectVisitInput visitInput) {
+        return new AnalyticsVisitEventService.RedirectVisitEvent(
+                meta.tenantId(),
+                meta.id(),
+                clock.instant().toEpochMilli(),
+                meta.applicationId(),
+                meta.domainId(),
+                meta.code(),
+                meta.originalUrl(),
+                visitInput == null ? null : visitInput.ip(),
+                visitInput == null ? null : visitInput.userAgent(),
+                visitInput == null ? null : visitInput.referer(),
+                visitInput == null ? null : visitInput.acceptLanguage(),
+                visitInput == null ? null : visitInput.trackingParams()
+        );
+    }
+
+    private static LocalDateTime toUtcLocalDateTime(Instant instant) {
+        if (instant == null) {
             return null;
         }
-        return new VisitContext(
-                v.ip(),
-                v.userAgent(),
-                v.referer(),
-                v.acceptLanguage(),
-                v.trackingParams()
-        );
+        return LocalDateTime.ofInstant(instant, ZoneOffset.UTC);
+    }
+
+    private static Instant toInstant(LocalDateTime value) {
+        if (value == null) {
+            return null;
+        }
+        return value.toInstant(ZoneOffset.UTC);
     }
 }

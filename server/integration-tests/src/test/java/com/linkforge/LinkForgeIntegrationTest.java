@@ -6,7 +6,6 @@ import com.linkforge.app.config.MybatisConfig;
 import com.linkforge.analytics.infrastructure.job.AnalyticsDimensionFlushJob;
 import com.linkforge.analytics.infrastructure.job.AnalyticsEventIngestJob;
 import com.linkforge.analytics.infrastructure.job.AnalyticsFlushJob;
-import com.linkforge.analytics.infrastructure.catalog.ShortLinkCatalogProjectorJob;
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.contract.accounts.AccountsErrorCode;
 import com.linkforge.contract.openapi.OpenApiErrorCode;
@@ -80,8 +79,6 @@ abstract class LinkForgeIntegrationTestSupport {
 
         r.add("APP_ANALYTICS_FLUSH_DELAY_MS", () -> "9999999");
 
-        // Integration events projector: keep deterministic and invoke manually in tests.
-        r.add("APP_ANALYTICS_SHORTLINK_CATALOG_PROJECTOR_DELAY_MS", () -> "9999999");
     }
 }
 
@@ -107,9 +104,6 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
 
     @Autowired
     AnalyticsEventIngestJob analyticsEventIngestJob;
-
-    @Autowired
-    ShortLinkCatalogProjectorJob shortLinkCatalogProjectorJob;
 
     @Autowired
     StringRedisTemplate redis;
@@ -249,9 +243,6 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
         String code2 = createLinkJson2.get("data").get("code").asText();
         assertThat(linkId2).isPositive();
         assertThat(code2).isNotBlank();
-
-        // Ensure analytics link catalog is projected before querying top links (removes cross-BC sync lookups).
-        shortLinkCatalogProjectorJob.project();
 
         // 5) 模拟 Redirect 统计写入（在拆分架构下由 Edge 服务写入 Redis，这里直接写入用于测试 API 侧 flush/report）
         // - code: PV 高但 UV 低
@@ -421,9 +412,6 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
         JsonNode createLinkJson3 = objectMapper.readTree(createLinkResp3);
         assertThat(createLinkJson3.get("code").asInt()).isEqualTo(0);
         String code3 = createLinkJson3.get("data").get("code").asText();
-
-        // Project the new link into analytics catalog for tenant2 before querying top links.
-        shortLinkCatalogProjectorJob.project();
 
         long tenantId2 = createLinkJson3.get("data").get("tenantId").asLong();
         long linkId3 = createLinkJson3.get("data").get("id").asLong();

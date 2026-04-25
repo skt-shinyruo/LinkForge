@@ -1,6 +1,6 @@
 package com.linkforge.redirect.interfaces.web;
 
-import com.linkforge.contract.analytics.VisitRecorderPort;
+import com.linkforge.analytics.application.AnalyticsVisitEventService;
 import com.linkforge.contract.redirect.LinkCachePort;
 import com.linkforge.contract.redirect.LinkMeta;
 import com.linkforge.contract.redirect.LinkMetaSourcePort;
@@ -57,7 +57,7 @@ class RedirectControllerTimezoneTest {
         );
 
         AtomicInteger recorded = new AtomicInteger();
-        VisitRecorderPort recorder = (tenantId, linkId, visitContext) -> recorded.incrementAndGet();
+        AnalyticsVisitEventService analyticsVisitEventService = new AnalyticsVisitEventService(event -> recorded.incrementAndGet());
 
         RedirectService redirectService = new RedirectService(
                 new LinkCachePort() {
@@ -82,7 +82,7 @@ class RedirectControllerTimezoneTest {
                     }
                 },
                 (LinkMetaSourcePort) code -> Optional.of(meta),
-                recorder,
+                analyticsVisitEventService,
                 Clock.systemUTC()
         );
 

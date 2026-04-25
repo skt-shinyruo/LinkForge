@@ -4,7 +4,6 @@ import com.linkforge.LinkForgeApplication;
 import com.linkforge.TestTenantFixtures;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.redirect.application.RedirectService;
-import com.linkforge.redirect.infrastructure.projection.ShortLinkEventProjectorJob;
 import com.linkforge.shortlink.infrastructure.persistence.entity.ShortLinkEntity;
 import com.linkforge.shortlink.infrastructure.persistence.mapper.ShortLinkQueryMapper;
 import org.junit.jupiter.api.AfterEach;
@@ -79,9 +78,6 @@ class ShortLinkCodeCaseSensitivityIntegrationTest {
     ShortLinkQueryMapper shortLinkQueryMapper;
 
     @Autowired
-    ShortLinkEventProjectorJob redirectProjector;
-
-    @Autowired
     StringRedisTemplate redis;
 
     @Autowired
@@ -108,7 +104,7 @@ class ShortLinkCodeCaseSensitivityIntegrationTest {
     }
 
     @Test
-    void customCode_shouldBeCaseSensitive_andProjectionShouldNotCollapse() {
+    void customCode_shouldBeCaseSensitive_andReadThroughShouldNotCollapse() {
         ShortLinkService.CreateLinkRequest req1 = new ShortLinkService.CreateLinkRequest(
                 "https://example.com/a",
                 null,
@@ -157,7 +153,6 @@ class ShortLinkCodeCaseSensitivityIntegrationTest {
         assertThat(linkB.getCode()).isEqualTo("abcdef");
         assertThat(linkA.getId()).isNotEqualTo(linkB.getId());
 
-        redirectProjector.drain();
         assertThat(redirectService.resolve("Abcdef").originalUrl()).isEqualTo("https://example.com/a");
         assertThat(redirectService.resolve("abcdef").originalUrl()).isEqualTo("https://example.com/b");
         assertThat(redis.opsForValue().get(key("Abcdef"))).isNotNull();

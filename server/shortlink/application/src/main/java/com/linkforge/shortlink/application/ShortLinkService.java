@@ -26,6 +26,8 @@ public interface ShortLinkService {
 
     ImportResult importCsv(UserActor actor, List<ShortLinkCsvImportRow> rows);
 
+    ImportResult importCsv(UserActor actor, ScopedImportCsvRequest request);
+
     ShortLinkCsvExport exportCsvForUser(UserActor actor, BrowseLinksRequest request);
 
     LinkDto create(long tenantId, CreatedBy createdBy, CreateLinkRequest req);
@@ -81,6 +83,13 @@ public interface ShortLinkService {
     record ScopedCreateLinkRequest(
             CreateLinkRequest createRequest,
             Long pathApplicationId
+    ) {
+    }
+
+    record ScopedImportCsvRequest(
+            List<ShortLinkCsvImportRow> rows,
+            Long pathApplicationId,
+            Long domainId
     ) {
     }
 

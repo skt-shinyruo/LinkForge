@@ -171,6 +171,15 @@ export function useLinksPage() {
       error.value = message;
     },
     getErrorMessage,
+    getImportQuery: () => {
+      if (selectedApplicationId.value != null && selectedDomainId.value == null) {
+        throw new Error("请选择应用域名");
+      }
+      return {
+        applicationId: selectedApplicationId.value ?? undefined,
+        domainId: selectedDomainId.value ?? undefined,
+      };
+    },
     getExportQuery: () => ({
       applicationId: selectedApplicationId.value ?? undefined,
       archived: filters.showArchived,

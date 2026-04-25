@@ -1,16 +1,17 @@
 import { computed, type Ref } from "vue";
 import { exportLinksCsv, importLinksCsv } from "../../services/links";
-import type { LinkExportQuery } from "../../services/types";
+import type { LinkExportQuery, LinkImportQuery } from "../../services/types";
 
 export function useLinkImportExport(args: {
   importFile: Ref<File | null>;
   importing: Ref<boolean>;
   setError: (message: string | null) => void;
   getErrorMessage: (error: unknown, fallbackMessage: string) => string;
+  getImportQuery?: () => LinkImportQuery;
   getExportQuery: () => LinkExportQuery;
   reload: () => Promise<void>;
 }) {
-  const { importFile, importing, setError, getErrorMessage, getExportQuery, reload } = args;
+  const { importFile, importing, setError, getErrorMessage, getImportQuery, getExportQuery, reload } = args;
 
   const importFileName = computed(() => importFile.value?.name ?? "");
 
@@ -27,7 +28,7 @@ export function useLinkImportExport(args: {
     setError(null);
 
     try {
-      await importLinksCsv(importFile.value);
+      await importLinksCsv(importFile.value, getImportQuery?.() ?? {});
       importFile.value = null;
       await reload();
     } catch (caught) {

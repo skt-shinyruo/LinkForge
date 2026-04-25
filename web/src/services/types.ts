@@ -102,6 +102,11 @@ export type LinkExportQuery = {
   size?: number;
 };
 
+export type LinkImportQuery = {
+  applicationId?: number;
+  domainId?: number;
+};
+
 export type LinkImportResult = {
   success: number;
   failed: number;

@@ -28,34 +28,21 @@ describe("useAuthStore", () => {
     vi.unstubAllEnvs();
   });
 
-  it("retries init after a transient /me failure instead of pinning initialized=true forever", async () => {
+  it("clears auth state and finishes initialization after /me bootstrap failure", async () => {
     getTokenMock.mockReturnValue("persisted-token");
-    apiFetchMock
-      .mockRejectedValueOnce(new Error("temporary network failure"))
-      .mockResolvedValueOnce({
-        code: 0,
-        data: {
-          email: "admin@example.com",
-          tenantId: 7,
-          roles: ["TENANT_ADMIN"],
-        },
-      });
+    apiFetchMock.mockRejectedValueOnce(new Error("401 Unauthorized"));
 
     const { useAuthStore } = await import("./auth");
     const auth = useAuthStore();
 
     await auth.init();
 
-    expect(auth.initialized).toBe(false);
-    expect(auth.email).toBe("");
-
-    await auth.init();
-
-    expect(apiFetchMock).toHaveBeenCalledTimes(2);
     expect(auth.initialized).toBe(true);
-    expect(auth.email).toBe("admin@example.com");
-    expect(auth.tenantId).toBe(7);
-    expect(auth.roles).toEqual(["TENANT_ADMIN"]);
+    expect(auth.token).toBeNull();
+    expect(auth.email).toBe("");
+    expect(auth.tenantId).toBe(0);
+    expect(auth.roles).toEqual([]);
+    expect(clearTokenMock).toHaveBeenCalled();
   });
 
   it("calls logout on the server before clearing bearer auth state", async () => {

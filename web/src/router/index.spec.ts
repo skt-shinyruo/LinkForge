@@ -29,17 +29,8 @@ describe("router auth bootstrap", () => {
     vi.unstubAllEnvs();
   });
 
-  it("does not redirect an authenticated cookie-mode user to /login after one failed bootstrap request", async () => {
-    apiFetchMock
-      .mockRejectedValueOnce(new Error("temporary network failure"))
-      .mockResolvedValueOnce({
-        code: 0,
-        data: {
-          email: "cookie-user@example.com",
-          tenantId: 11,
-          roles: ["TENANT_ADMIN"],
-        },
-      });
+  it("redirects protected routes to login when bootstrap cannot authenticate the session", async () => {
+    apiFetchMock.mockRejectedValueOnce(new Error("401 Unauthorized"));
 
     const [{ router }, { useAuthStore }] = await Promise.all([import("./index"), import("../stores/auth")]);
     const auth = useAuthStore();
@@ -47,14 +38,9 @@ describe("router auth bootstrap", () => {
     await router.push("/links");
     await router.isReady();
 
-    expect(router.currentRoute.value.fullPath).toBe("/links");
-    expect(auth.initialized).toBe(false);
-
-    await auth.init();
-
-    expect(apiFetchMock).toHaveBeenCalledTimes(2);
-    expect(auth.email).toBe("cookie-user@example.com");
+    expect(router.currentRoute.value.fullPath).toBe("/login?redirect=/links");
     expect(auth.initialized).toBe(true);
+    expect(auth.email).toBe("");
   });
 
   it("redirects authenticated admins into the control-plane overview and exposes self-service routes", async () => {

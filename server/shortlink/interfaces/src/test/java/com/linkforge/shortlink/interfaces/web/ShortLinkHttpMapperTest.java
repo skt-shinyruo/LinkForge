@@ -170,6 +170,33 @@ class ShortLinkHttpMapperTest {
     }
 
     @Test
+    void parseImportRows_shouldPreserveScopeColumnsForRoundTrip() {
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "links.csv",
+                "text/csv",
+                """
+                applicationId,domainId,hostname,originalUrl,code,expiresAt,note,tags
+                2001,3001,go.example.test,https://example.com/1,code-1,2026-03-10T12:00:00Z,launch,"marketing,spring"
+                """.getBytes()
+        );
+
+        assertThat(csvHttpMapper.parse(file)).containsExactly(
+                new ShortLinkCsvImportRow(
+                        1L,
+                        "2001",
+                        "3001",
+                        "go.example.test",
+                        "https://example.com/1",
+                        "code-1",
+                        "2026-03-10T12:00:00Z",
+                        "launch",
+                        "marketing,spring"
+                )
+        );
+    }
+
+    @Test
     void parseImportRows_shouldPreserveMalformedRowTokensForApplicationValidation() {
         MockMultipartFile file = new MockMultipartFile(
                 "file",
@@ -208,6 +235,9 @@ class ShortLinkHttpMapperTest {
         ShortLinkCsvExport export = new ShortLinkCsvExport(List.of(
                 new ShortLinkCsvExportRow(
                         42L,
+                        2001L,
+                        3001L,
+                        "go.example.test",
                         "launch",
                         "https://example.com/source",
                         "launch note",
@@ -221,7 +251,7 @@ class ShortLinkHttpMapperTest {
 
         assertThat(response.getHeader("Content-Type")).isEqualTo("text/csv; charset=utf-8");
         assertThat(response.getHeader("Content-Disposition")).isEqualTo("attachment; filename=\"links.csv\"");
-        assertThat(response.getContentAsString()).contains("id,code,originalUrl,note,enabled,expiresAt,tags");
-        assertThat(response.getContentAsString()).contains("42,launch,https://example.com/source,launch note,true,2026-03-18T09:10:11Z,\"marketing,spring\"");
+        assertThat(response.getContentAsString()).contains("id,applicationId,domainId,hostname,code,originalUrl,note,enabled,expiresAt,tags");
+        assertThat(response.getContentAsString()).contains("42,2001,3001,go.example.test,launch,https://example.com/source,launch note,true,2026-03-18T09:10:11Z,\"marketing,spring\"");
     }
 }

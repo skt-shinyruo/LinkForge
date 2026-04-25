@@ -13,6 +13,7 @@ import com.linkforge.shortlink.application.command.DeleteShortLinkCommandHandler
 import com.linkforge.shortlink.application.command.ImportShortLinksCsvCommandHandler;
 import com.linkforge.shortlink.application.command.RestoreShortLinkCommandHandler;
 import com.linkforge.shortlink.application.command.UpdateShortLinkCommandHandler;
+import com.linkforge.shortlink.application.csv.ShortLinkCsvImportRow;
 import com.linkforge.shortlink.application.query.ExportShortLinksCsvQueryHandler;
 import com.linkforge.shortlink.application.query.GetShortLinkDetailQueryHandler;
 import com.linkforge.shortlink.application.query.ListTagsQueryHandler;
@@ -28,6 +29,7 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -167,6 +169,37 @@ class ShortLinkApplicationServiceTest {
         assertThat(requestCaptor.getValue().applicationId()).isEqualTo(2001L);
     }
 
+    @Test
+    void importCsvForUser_shouldInjectPathApplicationAndSelectedDomainScope() {
+        ApplicationScopePort applicationScopePort = mock(ApplicationScopePort.class);
+        ImportShortLinksCsvCommandHandler importHandler = mock(ImportShortLinksCsvCommandHandler.class);
+        ShortLinkApplicationService service = newService(
+                applicationScopePort,
+                mock(SearchShortLinksQueryHandler.class),
+                mock(CreateShortLinkCommandHandler.class),
+                importHandler
+        );
+        ShortLinkService.ImportResult expected = new ShortLinkService.ImportResult(1, 0, List.of());
+        when(importHandler.handle(anyLong(), any(), any(), any(), any())).thenReturn(expected);
+
+        List<ShortLinkCsvImportRow> rows = List.of(new ShortLinkCsvImportRow(1L, "https://example.com/source", "launch", null, null, null));
+
+        ShortLinkService.ImportResult actual = service.importCsv(
+                new UserActor(1L, 9L, "tenant-admin@example.com", Set.of("TENANT_ADMIN")),
+                new ShortLinkService.ScopedImportCsvRequest(rows, 2001L, 3001L)
+        );
+
+        assertThat(actual).isSameAs(expected);
+        verify(applicationScopePort).requireApplicationExists(1L, 2001L);
+        verify(importHandler).handle(
+                eq(1L),
+                eq(ShortLinkService.CreatedBy.user(9L)),
+                eq(rows),
+                eq(2001L),
+                eq(3001L)
+        );
+    }
+
     private static ShortLinkApplicationService newService(ApplicationScopePort applicationScopePort) {
         return newService(applicationScopePort, mock(SearchShortLinksQueryHandler.class), mock(CreateShortLinkCommandHandler.class));
     }
@@ -175,6 +208,15 @@ class ShortLinkApplicationServiceTest {
             ApplicationScopePort applicationScopePort,
             SearchShortLinksQueryHandler searchHandler,
             CreateShortLinkCommandHandler createHandler
+    ) {
+        return newService(applicationScopePort, searchHandler, createHandler, mock(ImportShortLinksCsvCommandHandler.class));
+    }
+
+    private static ShortLinkApplicationService newService(
+            ApplicationScopePort applicationScopePort,
+            SearchShortLinksQueryHandler searchHandler,
+            CreateShortLinkCommandHandler createHandler,
+            ImportShortLinksCsvCommandHandler importHandler
     ) {
         return new ShortLinkApplicationService(
                 createHandler,
@@ -186,7 +228,7 @@ class ShortLinkApplicationServiceTest {
                 searchHandler,
                 mock(ListTagsQueryHandler.class),
                 mock(CreateTagCommandHandler.class),
-                mock(ImportShortLinksCsvCommandHandler.class),
+                importHandler,
                 mock(ExportShortLinksCsvQueryHandler.class),
                 applicationScopePort
         );

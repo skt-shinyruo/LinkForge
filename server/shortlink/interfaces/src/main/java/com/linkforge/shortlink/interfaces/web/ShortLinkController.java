@@ -14,6 +14,7 @@ import com.linkforge.shortlink.application.ShortLinkService.ImportResult;
 import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
 import com.linkforge.shortlink.application.ShortLinkService.BrowseLinksRequest;
 import com.linkforge.shortlink.application.ShortLinkService.ScopedCreateLinkRequest;
+import com.linkforge.shortlink.application.ShortLinkService.ScopedImportCsvRequest;
 import com.linkforge.shortlink.application.csv.ShortLinkCsvExport;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkCreateHttpRequest;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkPageHttpResponse;
@@ -173,6 +174,22 @@ public class ShortLinkController {
         writeGuard.requireWriteEnabled();
         UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
         ImportResult result = shortLinkService.importCsv(actor, shortLinkCsvHttpMapper.parse(file));
+        return ApiResponse.ok(result, RequestId.get());
+    }
+
+    @PostMapping(value = "/applications/{applicationId}/links/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('TENANT_ADMIN')")
+    public ApiResponse<ImportResult> importCsvByApplication(
+            @PathVariable("applicationId") long applicationId,
+            @RequestParam("domainId") long domainId,
+            @RequestParam("file") MultipartFile file
+    ) {
+        writeGuard.requireWriteEnabled();
+        UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
+        ImportResult result = shortLinkService.importCsv(
+                actor,
+                new ScopedImportCsvRequest(shortLinkCsvHttpMapper.parse(file), applicationId, domainId)
+        );
         return ApiResponse.ok(result, RequestId.get());
     }
 

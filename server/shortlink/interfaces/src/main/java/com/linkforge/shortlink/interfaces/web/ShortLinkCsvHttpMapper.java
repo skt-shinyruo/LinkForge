@@ -40,6 +40,9 @@ public class ShortLinkCsvHttpMapper {
             for (CSVRecord record : parser) {
                 rows.add(new ShortLinkCsvImportRow(
                         record.getRecordNumber(),
+                        safeGet(record, "applicationId"),
+                        safeGet(record, "domainId"),
+                        safeGet(record, "hostname"),
                         safeGet(record, "originalUrl"),
                         safeGet(record, "code"),
                         safeGet(record, "expiresAt"),
@@ -63,13 +66,16 @@ public class ShortLinkCsvHttpMapper {
              CSVPrinter printer = new CSVPrinter(
                      writer,
                      CSVFormat.DEFAULT.builder()
-                             .setHeader("id", "code", "originalUrl", "note", "enabled", "expiresAt", "tags")
+                             .setHeader("id", "applicationId", "domainId", "hostname", "code", "originalUrl", "note", "enabled", "expiresAt", "tags")
                              .build()
              )) {
             List<ShortLinkCsvExportRow> rows = export == null ? List.of() : export.rows();
             for (ShortLinkCsvExportRow row : rows) {
                 printer.printRecord(
                         row.id(),
+                        row.applicationId(),
+                        row.domainId(),
+                        row.hostname(),
                         row.code(),
                         row.originalUrl(),
                         row.note(),

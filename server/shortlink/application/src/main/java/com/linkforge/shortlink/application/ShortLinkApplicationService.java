@@ -106,6 +106,28 @@ public class ShortLinkApplicationService implements ShortLinkService {
     }
 
     @Override
+    public ImportResult importCsv(UserActor actor, ScopedImportCsvRequest request) {
+        if (request == null) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "导入请求不能为空");
+        }
+        Long pathApplicationId = request.pathApplicationId();
+        if (pathApplicationId == null) {
+            return importCsv(actor.tenantId(), CreatedBy.user(actor.userId()), request.rows());
+        }
+        applicationScopePort.requireApplicationExists(actor.tenantId(), pathApplicationId);
+        if (request.domainId() == null) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "domainId 不能为空");
+        }
+        return importCsvHandler.handle(
+                actor.tenantId(),
+                CreatedBy.user(actor.userId()),
+                request.rows(),
+                pathApplicationId,
+                request.domainId()
+        );
+    }
+
+    @Override
     public ShortLinkCsvExport exportCsvForUser(UserActor actor, BrowseLinksRequest request) {
         return exportCsv(
                 actor.tenantId(),

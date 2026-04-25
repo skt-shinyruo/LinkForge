@@ -4,6 +4,7 @@ import type {
   CreateLinkRequest,
   LinkDto,
   LinkExportQuery,
+  LinkImportQuery,
   LinkImportResult,
   LinkListQuery,
   PageResponse,
@@ -117,11 +118,25 @@ export async function deleteLink(linkId: number): Promise<void> {
   ensureApiSuccess(response, "删除失败");
 }
 
-export async function importLinksCsv(file: File): Promise<LinkImportResult> {
+export async function importLinksCsv(
+  file: File,
+  query: LinkImportQuery = {},
+): Promise<LinkImportResult> {
+  const scoped = query.applicationId != null;
+  if (scoped && query.domainId == null) {
+    throw new Error("请选择应用域名");
+  }
+
   const formData = new FormData();
   formData.append("file", file);
 
-  const response = await authFetch("/api/v1/links/import", {
+  const path = scoped
+    ? `/api/v1/applications/${query.applicationId}/links/import?${buildQueryString({
+        domainId: query.domainId,
+      })}`
+    : "/api/v1/links/import";
+
+  const response = await authFetch(path, {
     method: "POST",
     body: formData,
   });

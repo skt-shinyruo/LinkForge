@@ -1,5 +1,7 @@
 package com.linkforge.shortlink.application.command;
 
+import com.linkforge.contract.api.BusinessException;
+import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.contract.platform.ApplicationQuotaView;
 import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
@@ -22,11 +24,13 @@ import java.util.Optional;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class CreateShortLinkCommandHandlerTest {
@@ -128,5 +132,48 @@ class CreateShortLinkCommandHandlerTest {
         verify(applicationScopePort).requireApplicationAndDomainAuthorized(1L, 2001L, 3001L);
         verify(applicationScopePort).findApplicationQuota(1L, 2001L);
         verify(shortLinkRepository).countActiveByTenantIdAndApplicationId(1L, 2001L);
+    }
+
+    @Test
+    void handle_shouldRejectInvalidLifecycleStateAsBadRequestBeforeCreatingLink() {
+        SnowflakeIdGenerator idGenerator = mock(SnowflakeIdGenerator.class);
+        ShortLinkRepository shortLinkRepository = mock(ShortLinkRepository.class);
+        CreateShortLinkCommandHandler handler = new CreateShortLinkCommandHandler(
+                idGenerator,
+                shortLinkRepository,
+                mock(SetLinkTagsCommandHandler.class),
+                mock(LinkTagRepository.class),
+                mock(ShortLinkEventPublisher.class),
+                mock(RedirectCacheSyncPort.class),
+                mock(ShortLinkDtoMapper.class),
+                mock(PostCommitHookPort.class),
+                Clock.fixed(Instant.parse("2026-04-01T00:00:00Z"), ZoneOffset.UTC),
+                mock(ApplicationScopePort.class)
+        );
+
+        assertThatThrownBy(() -> handler.handle(
+                1L,
+                ShortLinkService.CreatedBy.user(99L),
+                new ShortLinkService.CreateLinkRequest(
+                        "https://example.com",
+                        "note",
+                        null,
+                        true,
+                        "abc123",
+                        Set.of("alpha"),
+                        302,
+                        false,
+                        null,
+                        null,
+                        List.of(),
+                        null,
+                        null,
+                        "NOT_A_STATE"
+                )
+        ))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.BAD_REQUEST));
+
+        verifyNoInteractions(idGenerator, shortLinkRepository);
     }
 }

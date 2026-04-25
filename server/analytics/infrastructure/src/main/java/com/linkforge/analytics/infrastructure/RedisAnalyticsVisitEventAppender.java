@@ -17,6 +17,7 @@ import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Component
 public class RedisAnalyticsVisitEventAppender implements AnalyticsVisitEventAppender {
@@ -35,6 +36,11 @@ public class RedisAnalyticsVisitEventAppender implements AnalyticsVisitEventAppe
             return;
         }
 
+        AnalyticsProperties.Events cfg = analyticsProperties == null ? null : analyticsProperties.getEvents();
+        if (!shouldAppend(cfg)) {
+            return;
+        }
+
         long occurredAtMillis = event.occurredAtMillis() > 0 ? event.occurredAtMillis() : System.currentTimeMillis();
         LocalDate day = Instant.ofEpochMilli(occurredAtMillis).atOffset(ZoneOffset.UTC).toLocalDate();
         VisitContext visitContext = new VisitContext(
@@ -45,7 +51,6 @@ public class RedisAnalyticsVisitEventAppender implements AnalyticsVisitEventAppe
                 event.trackingParams()
         );
 
-        AnalyticsProperties.Events cfg = analyticsProperties == null ? null : analyticsProperties.getEvents();
         int maxUaLen = cfg == null
                 ? VisitDimensionNormalizer.DEFAULT_MAX_UA_RAW_LEN
                 : cfg.getMaxUserAgentLength();
@@ -87,6 +92,20 @@ public class RedisAnalyticsVisitEventAppender implements AnalyticsVisitEventAppe
         if (maxLen > 0) {
             redis.opsForStream().trim(streamKey, maxLen, true);
         }
+    }
+
+    private static boolean shouldAppend(AnalyticsProperties.Events cfg) {
+        if (cfg == null || !cfg.isEnabled()) {
+            return false;
+        }
+        double sampleRate = cfg.getSampleRate();
+        if (Double.isNaN(sampleRate) || sampleRate <= 0) {
+            return false;
+        }
+        if (sampleRate >= 1) {
+            return true;
+        }
+        return ThreadLocalRandom.current().nextDouble() < sampleRate;
     }
 
     private static void putIfNonBlank(Map<String, String> fields, String key, String value) {

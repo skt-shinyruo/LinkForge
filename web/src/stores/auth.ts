@@ -53,12 +53,13 @@ export const useAuthStore = defineStore("auth", {
         try {
           const r: ApiResponse<any> = await apiFetch<any>("/api/v1/me");
           if (r.code !== 0 || !r.data) {
+            this.clearState();
             return;
           }
           this.applyUser(r.data);
           this.initialized = true;
         } catch {
-          // ignore transient bootstrap failures so a later navigation can retry
+          this.clearState();
         } finally {
           this.initInFlight = null;
         }

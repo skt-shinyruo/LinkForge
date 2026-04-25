@@ -34,6 +34,16 @@ public class ImportShortLinksCsvCommandHandler {
     }
 
     public ImportResult handle(long tenantId, CreatedBy createdBy, List<ShortLinkCsvImportRow> rows) {
+        return handle(tenantId, createdBy, rows, null, null);
+    }
+
+    public ImportResult handle(
+            long tenantId,
+            CreatedBy createdBy,
+            List<ShortLinkCsvImportRow> rows,
+            Long scopedApplicationId,
+            Long scopedDomainId
+    ) {
         if (rows == null) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "CSV 行不能为空");
         }
@@ -44,6 +54,12 @@ public class ImportShortLinksCsvCommandHandler {
 
         for (ShortLinkCsvImportRow row : rows) {
             try {
+                Long applicationId = scopedApplicationId != null
+                        ? scopedApplicationId
+                        : parseOptionalId(row.applicationId(), "applicationId");
+                Long domainId = scopedDomainId != null
+                        ? scopedDomainId
+                        : parseOptionalId(row.domainId(), "domainId");
                 CreateLinkRequest req = new CreateLinkRequest(
                         row.originalUrl(),
                         row.note(),
@@ -56,8 +72,8 @@ public class ImportShortLinksCsvCommandHandler {
                         null,
                         null,
                         null,
-                        null,
-                        null,
+                        applicationId,
+                        domainId,
                         null
                 );
                 requiresNewTransactionPort.run(() -> createHandler.handle(tenantId, createdBy, req));
@@ -69,6 +85,22 @@ public class ImportShortLinksCsvCommandHandler {
         }
 
         return new ImportResult(success, failed, errors);
+    }
+
+    private static Long parseOptionalId(String raw, String fieldName) {
+        String s = normalizeNullable(raw);
+        if (s == null) {
+            return null;
+        }
+        try {
+            long value = Long.parseLong(s);
+            if (value <= 0) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, fieldName + " 必须 > 0");
+            }
+            return value;
+        } catch (NumberFormatException e) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, fieldName + " 格式错误");
+        }
     }
 
     private static Instant parseExpiresAt(String raw) {

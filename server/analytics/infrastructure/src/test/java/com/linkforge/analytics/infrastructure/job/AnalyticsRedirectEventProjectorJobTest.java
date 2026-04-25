@@ -41,6 +41,7 @@ class AnalyticsRedirectEventProjectorJobTest {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         AnalyticsProperties properties = new AnalyticsProperties();
         properties.setRedisKeyTtlDays(7);
+        properties.getEvents().setEnabled(true);
         properties.getDimensions().setEnabled(true);
         properties.getDimensions().setTypes(List.of("referer_domain"));
 
@@ -116,6 +117,7 @@ class AnalyticsRedirectEventProjectorJobTest {
     void project_should_ack_legacy_records_without_projection_marker_and_skip_aggregate_writes() {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         AnalyticsProperties properties = new AnalyticsProperties();
+        properties.getEvents().setEnabled(true);
 
         @SuppressWarnings("unchecked")
         StreamOperations<String, Object, Object> streamOps = mock(StreamOperations.class);
@@ -142,6 +144,23 @@ class AnalyticsRedirectEventProjectorJobTest {
 
         verify(streamOps).acknowledge(eq(AnalyticsKeys.visitEventStreamKey()), eq("lf-visit-projector"), any(RecordId[].class));
         verify(streamOps, never()).add(any());
+    }
+
+    @Test
+    void project_shouldSkipRedisWhenEventsAreDisabled() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        AnalyticsProperties properties = new AnalyticsProperties();
+
+        AnalyticsRedirectEventProjectorJob job = new AnalyticsRedirectEventProjectorJob(
+                redis,
+                properties,
+                mock(AnalyticsRedisAggregateWriter.class)
+        );
+
+        job.project();
+
+        verify(redis, never()).hasKey(anyString());
+        verify(redis, never()).opsForStream();
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})

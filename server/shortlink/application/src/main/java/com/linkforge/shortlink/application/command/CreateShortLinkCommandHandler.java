@@ -1,6 +1,7 @@
 package com.linkforge.shortlink.application.command;
 
 import com.linkforge.contract.api.BusinessException;
+import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.contract.shortlink.ShortLinkErrorCode;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
@@ -82,7 +83,7 @@ public class CreateShortLinkCommandHandler {
         boolean custom = customCodeRaw != null;
         Long applicationId = req.applicationId();
         Long domainId = req.domainId();
-        ShortLinkLifecycleState lifecycleState = ShortLinkLifecycleState.parseNullable(req.lifecycleState());
+        ShortLinkLifecycleState lifecycleState = parseLifecycleState(req.lifecycleState());
 
         if ((applicationId == null) != (domainId == null)) {
             throw new BusinessException(com.linkforge.contract.api.ErrorCode.BAD_REQUEST, "applicationId 与 domainId 必须同时提供");
@@ -183,5 +184,13 @@ public class CreateShortLinkCommandHandler {
         }
         String t = s.trim();
         return t.isBlank() ? null : t;
+    }
+
+    private static ShortLinkLifecycleState parseLifecycleState(String raw) {
+        try {
+            return ShortLinkLifecycleState.parseNullable(raw);
+        } catch (IllegalArgumentException ex) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "lifecycleState 无效");
+        }
     }
 }

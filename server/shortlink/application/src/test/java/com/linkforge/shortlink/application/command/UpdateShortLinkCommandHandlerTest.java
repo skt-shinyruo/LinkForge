@@ -1,8 +1,8 @@
 package com.linkforge.shortlink.application.command;
 
+import com.linkforge.contract.governance.ApprovalSubmissionPort;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.tx.PostCommitHookPort;
-import com.linkforge.governance.application.GovernanceApprovalRequestService;
 import com.linkforge.shortlink.application.ShortLinkService;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
@@ -36,15 +36,16 @@ import static org.mockito.Mockito.when;
 class UpdateShortLinkCommandHandlerTest {
 
     @Test
-    void constructor_shouldDependOnNarrowGovernanceApprovalRequestService() {
+    void constructor_shouldDependOnGovernanceApprovalSubmissionContract() {
         Constructor<?> constructor = UpdateShortLinkCommandHandler.class.getDeclaredConstructors()[0];
 
         assertThat(constructor.getParameterTypes())
-                .contains(GovernanceApprovalRequestService.class);
+                .contains(ApprovalSubmissionPort.class);
         assertThat(constructor.getParameterTypes())
                 .extracting(Class::getName)
                 .doesNotContain(
-                        "com.linkforge.governance.application.GovernanceService"
+                        "com.linkforge.governance.application.GovernanceService",
+                        "com.linkforge.governance.application.GovernanceApprovalRequestService"
                 );
     }
 
@@ -58,7 +59,7 @@ class UpdateShortLinkCommandHandlerTest {
         ShortLinkDtoMapper dtoMapper = mock(ShortLinkDtoMapper.class);
         PostCommitHookPort postCommitHookPort = mock(PostCommitHookPort.class);
         Clock clock = Clock.fixed(Instant.parse("2026-04-01T00:00:00Z"), ZoneOffset.UTC);
-        GovernanceApprovalRequestService governanceApprovalRequestService = mock(GovernanceApprovalRequestService.class);
+        ApprovalSubmissionPort governanceApprovalRequestService = mock(ApprovalSubmissionPort.class);
 
         UpdateShortLinkCommandHandler handler = new UpdateShortLinkCommandHandler(
                 shortLinkRepository,
@@ -142,7 +143,7 @@ class UpdateShortLinkCommandHandlerTest {
         assertThat(actual).isSameAs(expected);
         verify(governanceApprovalRequestService).requestLinkDestinationChangeApproval(
                 1L,
-                new GovernanceApprovalRequestService.LinkDestinationChangeApprovalRequest(
+                new ApprovalSubmissionPort.LinkDestinationChangeApprovalRequest(
                         101L,
                         2001L,
                         "https://example.com/old",
@@ -166,7 +167,7 @@ class UpdateShortLinkCommandHandlerTest {
         ShortLinkDtoMapper dtoMapper = mock(ShortLinkDtoMapper.class);
         PostCommitHookPort postCommitHookPort = mock(PostCommitHookPort.class);
         Clock clock = Clock.fixed(Instant.parse("2026-04-01T00:00:00Z"), ZoneOffset.UTC);
-        GovernanceApprovalRequestService governanceApprovalRequestService = mock(GovernanceApprovalRequestService.class);
+        ApprovalSubmissionPort governanceApprovalRequestService = mock(ApprovalSubmissionPort.class);
 
         UpdateShortLinkCommandHandler handler = new UpdateShortLinkCommandHandler(
                 shortLinkRepository,
@@ -226,7 +227,7 @@ class UpdateShortLinkCommandHandlerTest {
 
         verify(governanceApprovalRequestService, never()).requestLinkDestinationChangeApproval(
                 eq(1L),
-                eq(new GovernanceApprovalRequestService.LinkDestinationChangeApprovalRequest(
+                eq(new ApprovalSubmissionPort.LinkDestinationChangeApprovalRequest(
                         102L,
                         2001L,
                         "https://example.com/old",

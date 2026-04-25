@@ -1,10 +1,12 @@
 package com.linkforge.governance.application;
 
+import com.linkforge.contract.governance.ApprovalRequestView;
+import com.linkforge.contract.governance.ApprovalSubmissionPort;
 import com.linkforge.governance.domain.SensitiveOperationType;
 import org.springframework.stereotype.Service;
 
 @Service
-public class GovernanceApprovalApplicationService implements GovernanceApprovalRequestService {
+public class GovernanceApprovalApplicationService implements ApprovalSubmissionPort {
 
     private final GovernanceService governanceService;
 
@@ -13,7 +15,7 @@ public class GovernanceApprovalApplicationService implements GovernanceApprovalR
     }
 
     @Override
-    public ApprovalRequestResult requestLinkDestinationChangeApproval(
+    public ApprovalRequestView requestLinkDestinationChangeApproval(
             long tenantId,
             LinkDestinationChangeApprovalRequest request
     ) {
@@ -32,7 +34,7 @@ public class GovernanceApprovalApplicationService implements GovernanceApprovalR
     }
 
     @Override
-    public ApprovalRequestResult requestAnalyticsDetailExportApproval(
+    public ApprovalRequestView requestAnalyticsDetailExportApproval(
             long tenantId,
             AnalyticsDetailExportApprovalRequest request
     ) {
@@ -54,8 +56,8 @@ public class GovernanceApprovalApplicationService implements GovernanceApprovalR
         return "linkId=" + linkId + "\noriginalUrl=" + originalUrl;
     }
 
-    private static ApprovalRequestResult toResult(GovernanceService.ApprovalRequestDto dto) {
-        return new ApprovalRequestResult(
+    private static ApprovalRequestView toResult(GovernanceService.ApprovalRequestDto dto) {
+        return new ApprovalRequestView(
                 dto.id(),
                 dto.tenantId(),
                 dto.operationType().name(),

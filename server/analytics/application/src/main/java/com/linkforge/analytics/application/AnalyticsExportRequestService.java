@@ -2,8 +2,9 @@ package com.linkforge.analytics.application;
 
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
+import com.linkforge.contract.governance.ApprovalRequestView;
+import com.linkforge.contract.governance.ApprovalSubmissionPort;
 import com.linkforge.foundation.context.UserActor;
-import com.linkforge.governance.application.GovernanceApprovalRequestService;
 import com.linkforge.shortlink.application.ShortLinkReadService;
 import org.springframework.stereotype.Service;
 
@@ -14,21 +15,21 @@ import java.time.ZoneOffset;
 @Service
 public class AnalyticsExportRequestService {
 
-    private final GovernanceApprovalRequestService governanceApprovalRequestService;
+    private final ApprovalSubmissionPort approvalSubmissionPort;
     private final ShortLinkReadService shortLinkReadService;
     private final Clock clock;
 
     public AnalyticsExportRequestService(
-            GovernanceApprovalRequestService governanceApprovalRequestService,
+            ApprovalSubmissionPort approvalSubmissionPort,
             ShortLinkReadService shortLinkReadService,
             Clock clock
     ) {
-        this.governanceApprovalRequestService = governanceApprovalRequestService;
+        this.approvalSubmissionPort = approvalSubmissionPort;
         this.shortLinkReadService = shortLinkReadService;
         this.clock = clock;
     }
 
-    public GovernanceApprovalRequestService.ApprovalRequestResult requestLinkEventExport(
+    public ApprovalRequestView requestLinkEventExport(
             UserActor actor,
             long linkId,
             Long expectedApplicationId,
@@ -47,9 +48,9 @@ public class AnalyticsExportRequestService {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "from 不能晚于 to");
         }
 
-        return governanceApprovalRequestService.requestAnalyticsDetailExportApproval(
+        return approvalSubmissionPort.requestAnalyticsDetailExportApproval(
                 actor.tenantId(),
-                new GovernanceApprovalRequestService.AnalyticsDetailExportApprovalRequest(
+                new ApprovalSubmissionPort.AnalyticsDetailExportApprovalRequest(
                         linkId,
                         link.applicationId(),
                         effectiveFrom,

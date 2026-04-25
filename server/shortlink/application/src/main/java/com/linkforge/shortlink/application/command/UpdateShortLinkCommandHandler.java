@@ -2,10 +2,10 @@ package com.linkforge.shortlink.application.command;
 
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
+import com.linkforge.contract.governance.ApprovalSubmissionPort;
 import com.linkforge.contract.shortlink.ShortLinkErrorCode;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.tx.PostCommitHookPort;
-import com.linkforge.governance.application.GovernanceApprovalRequestService;
 import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
 import com.linkforge.shortlink.application.ShortLinkService.UpdateLinkRequest;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
@@ -41,7 +41,7 @@ public class UpdateShortLinkCommandHandler {
     private final ShortLinkDtoMapper dtoMapper;
     private final PostCommitHookPort postCommitHookPort;
     private final Clock clock;
-    private final GovernanceApprovalRequestService governanceApprovalRequestService;
+    private final ApprovalSubmissionPort approvalSubmissionPort;
 
     public UpdateShortLinkCommandHandler(
             ShortLinkRepository shortLinkRepository,
@@ -52,7 +52,7 @@ public class UpdateShortLinkCommandHandler {
             ShortLinkDtoMapper dtoMapper,
             PostCommitHookPort postCommitHookPort,
             Clock clock,
-            GovernanceApprovalRequestService governanceApprovalRequestService
+            ApprovalSubmissionPort approvalSubmissionPort
     ) {
         this.shortLinkRepository = shortLinkRepository;
         this.setLinkTagsHandler = setLinkTagsHandler;
@@ -62,7 +62,7 @@ public class UpdateShortLinkCommandHandler {
         this.dtoMapper = dtoMapper;
         this.postCommitHookPort = postCommitHookPort;
         this.clock = clock;
-        this.governanceApprovalRequestService = governanceApprovalRequestService;
+        this.approvalSubmissionPort = approvalSubmissionPort;
     }
 
     @Transactional
@@ -98,9 +98,9 @@ public class UpdateShortLinkCommandHandler {
             if (hasOtherEffectiveChanges(link, req, existingTags)) {
                 throw new BusinessException(ErrorCode.BAD_REQUEST, "请先单独提交目标地址变更，再保存其他修改");
             }
-            governanceApprovalRequestService.requestLinkDestinationChangeApproval(
+            approvalSubmissionPort.requestLinkDestinationChangeApproval(
                     tenantId,
-                    new GovernanceApprovalRequestService.LinkDestinationChangeApprovalRequest(
+                    new ApprovalSubmissionPort.LinkDestinationChangeApprovalRequest(
                             linkId,
                             link.applicationId(),
                             link.originalUrl().value(),

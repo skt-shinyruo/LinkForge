@@ -5,11 +5,11 @@ import com.linkforge.analytics.application.AnalyticsQueryService;
 import com.linkforge.analytics.application.AnalyticsExportRequestService;
 import com.linkforge.analytics.application.AnalyticsLinkEventsService;
 import com.linkforge.contract.api.ApiResponse;
+import com.linkforge.contract.governance.ApprovalRequestView;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.runtime.security.PrincipalActorMapper;
 import com.linkforge.foundation.web.RequestId;
-import com.linkforge.governance.application.GovernanceApprovalRequestService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -83,7 +83,7 @@ class StatsControllerTest {
         LocalDateTime to = LocalDateTime.parse("2026-03-31T00:00:00");
         when(principalActorMapper.requireUser(any(AuthPrincipal.class))).thenReturn(actor);
 
-        GovernanceApprovalRequestService.ApprovalRequestResult expected = new GovernanceApprovalRequestService.ApprovalRequestResult(
+        ApprovalRequestView expected = new ApprovalRequestView(
                 501L,
                 1L,
                 "ANALYTICS_DETAIL_EXPORT",
@@ -97,7 +97,7 @@ class StatsControllerTest {
         );
         when(exportRequestService.requestLinkEventExport(actor, 101L, null, from, to)).thenReturn(expected);
 
-        ApiResponse<GovernanceApprovalRequestService.ApprovalRequestResult> response = controller.requestEventExport(101L, from, to);
+        ApiResponse<ApprovalRequestView> response = controller.requestEventExport(101L, from, to);
 
         assertThat(response.getData()).isSameAs(expected);
         assertThat(response.getRequestId()).isEqualTo("req-123");
@@ -129,7 +129,7 @@ class StatsControllerTest {
         LocalDateTime from = LocalDateTime.parse("2026-03-30T00:00:00");
         LocalDateTime to = LocalDateTime.parse("2026-03-31T00:00:00");
         when(principalActorMapper.requireUser(any(AuthPrincipal.class))).thenReturn(actor);
-        GovernanceApprovalRequestService.ApprovalRequestResult expected = new GovernanceApprovalRequestService.ApprovalRequestResult(
+        ApprovalRequestView expected = new ApprovalRequestView(
                 502L,
                 1L,
                 "ANALYTICS_DETAIL_EXPORT",
@@ -143,7 +143,7 @@ class StatsControllerTest {
         );
         when(exportRequestService.requestLinkEventExport(actor, 101L, 2001L, from, to)).thenReturn(expected);
 
-        ApiResponse<GovernanceApprovalRequestService.ApprovalRequestResult> response = controller.requestEventExportByApplication(2001L, 101L, from, to);
+        ApiResponse<ApprovalRequestView> response = controller.requestEventExportByApplication(2001L, 101L, from, to);
 
         assertThat(response.getData()).isSameAs(expected);
         verify(exportRequestService).requestLinkEventExport(actor, 101L, 2001L, from, to);

@@ -1,17 +1,17 @@
-package com.linkforge.governance.application;
+package com.linkforge.contract.governance;
 
 import com.linkforge.foundation.context.UserActor;
 
 import java.time.LocalDateTime;
 
-public interface GovernanceApprovalRequestService {
+public interface ApprovalSubmissionPort {
 
-    ApprovalRequestResult requestLinkDestinationChangeApproval(
+    ApprovalRequestView requestLinkDestinationChangeApproval(
             long tenantId,
             LinkDestinationChangeApprovalRequest request
     );
 
-    ApprovalRequestResult requestAnalyticsDetailExportApproval(
+    ApprovalRequestView requestAnalyticsDetailExportApproval(
             long tenantId,
             AnalyticsDetailExportApprovalRequest request
     );
@@ -33,20 +33,6 @@ public interface GovernanceApprovalRequestService {
             LocalDateTime to,
             UserActor actor,
             LocalDateTime requestedAt
-    ) {
-    }
-
-    record ApprovalRequestResult(
-            long id,
-            long tenantId,
-            String operation,
-            Long targetApplicationId,
-            long requestedByUserId,
-            String requestedByEmail,
-            String status,
-            Long approverUserId,
-            String approverEmail,
-            String decisionReason
     ) {
     }
 }

@@ -7,12 +7,12 @@ import com.linkforge.analytics.application.AnalyticsReportingService;
 import com.linkforge.contract.api.ApiResponse;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
+import com.linkforge.contract.governance.ApprovalRequestView;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.runtime.security.AuthContext;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.runtime.security.PrincipalActorMapper;
 import com.linkforge.foundation.web.RequestId;
-import com.linkforge.governance.application.GovernanceApprovalRequestService;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -247,7 +247,7 @@ public class StatsController {
 
     @PostMapping("/stats/links/{id}/events/export-requests")
     @PreAuthorize("!hasRole('OPENAPI')")
-    public ApiResponse<GovernanceApprovalRequestService.ApprovalRequestResult> requestEventExport(
+    public ApiResponse<ApprovalRequestView> requestEventExport(
             @PathVariable("id") long linkId,
             @RequestParam(value = "from", required = false) LocalDateTime from,
             @RequestParam(value = "to", required = false) LocalDateTime to
@@ -261,7 +261,7 @@ public class StatsController {
 
     @PostMapping("/applications/{applicationId}/links/{id}/events/export-requests")
     @PreAuthorize("!hasRole('OPENAPI')")
-    public ApiResponse<GovernanceApprovalRequestService.ApprovalRequestResult> requestEventExportByApplication(
+    public ApiResponse<ApprovalRequestView> requestEventExportByApplication(
             @PathVariable("applicationId") long applicationId,
             @PathVariable("id") long linkId,
             @RequestParam(value = "from", required = false) LocalDateTime from,

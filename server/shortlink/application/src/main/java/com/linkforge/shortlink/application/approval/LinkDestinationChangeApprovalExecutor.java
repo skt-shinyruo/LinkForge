@@ -2,11 +2,11 @@ package com.linkforge.shortlink.application.approval;
 
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
+import com.linkforge.contract.governance.ApprovalExecutionPort;
+import com.linkforge.contract.governance.ApprovalExecutionRequest;
+import com.linkforge.contract.governance.SensitiveOperation;
 import com.linkforge.contract.shortlink.ShortLinkErrorCode;
 import com.linkforge.foundation.tx.PostCommitHookPort;
-import com.linkforge.governance.application.port.ApprovalExecutionPort;
-import com.linkforge.governance.domain.ApprovalRequest;
-import com.linkforge.governance.domain.SensitiveOperationType;
 import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
 import com.linkforge.shortlink.application.port.ShortLinkEventPublisher;
 import com.linkforge.shortlink.application.port.ShortLinkRepository;
@@ -42,12 +42,12 @@ public class LinkDestinationChangeApprovalExecutor implements ApprovalExecutionP
     }
 
     @Override
-    public boolean supports(SensitiveOperationType operationType) {
-        return operationType == SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE;
+    public boolean supports(SensitiveOperation operation) {
+        return operation == SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE;
     }
 
     @Override
-    public void execute(ApprovalRequest request, LocalDateTime executedAt) {
+    public void execute(ApprovalExecutionRequest request, LocalDateTime executedAt) {
         LinkDestinationSnapshot before = LinkDestinationSnapshot.parse(request.beforeSnapshot(), "beforeSnapshot");
         LinkDestinationSnapshot after = LinkDestinationSnapshot.parse(request.afterSnapshot(), "afterSnapshot");
         if (before.linkId() != after.linkId()) {
@@ -73,7 +73,7 @@ public class LinkDestinationChangeApprovalExecutor implements ApprovalExecutionP
     }
 
     private static void validateApprovalStillMatchesLink(
-            ApprovalRequest request,
+            ApprovalExecutionRequest request,
             LinkDestinationSnapshot before,
             ShortLink link
     ) {

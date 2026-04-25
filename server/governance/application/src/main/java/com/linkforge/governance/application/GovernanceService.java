@@ -2,10 +2,12 @@ package com.linkforge.governance.application;
 
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
+import com.linkforge.contract.governance.ApprovalExecutionPort;
+import com.linkforge.contract.governance.ApprovalExecutionRequest;
+import com.linkforge.contract.governance.SensitiveOperation;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.security.StandardRoles;
-import com.linkforge.governance.application.port.ApprovalExecutionPort;
 import com.linkforge.governance.application.port.ApprovalRepository;
 import com.linkforge.governance.application.port.AuditLogRepository;
 import com.linkforge.governance.domain.ApprovalRequest;
@@ -99,10 +101,23 @@ public class GovernanceService {
     }
 
     private void executeApprovedRequest(ApprovalRequest request, LocalDateTime executedAt) {
+        SensitiveOperation operation = toContractOperation(request.operationType());
+        ApprovalExecutionRequest executionRequest = new ApprovalExecutionRequest(
+                request.id(),
+                request.tenantId(),
+                operation,
+                request.targetApplicationId(),
+                request.beforeSnapshot(),
+                request.afterSnapshot()
+        );
         approvalExecutionPorts.stream()
-                .filter(port -> port.supports(request.operationType()))
+                .filter(port -> port.supports(operation))
                 .findFirst()
-                .ifPresent(port -> port.execute(request, executedAt));
+                .ifPresent(port -> port.execute(executionRequest, executedAt));
+    }
+
+    private static SensitiveOperation toContractOperation(SensitiveOperationType operationType) {
+        return SensitiveOperation.valueOf(operationType.name());
     }
 
     public List<ApprovalRequestDto> listRequests(long tenantId, UserActor actor) {

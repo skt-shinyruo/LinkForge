@@ -2,8 +2,9 @@ package com.linkforge.analytics.application;
 
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
+import com.linkforge.contract.governance.ApprovalRequestView;
+import com.linkforge.contract.governance.ApprovalSubmissionPort;
 import com.linkforge.foundation.context.UserActor;
-import com.linkforge.governance.application.GovernanceApprovalRequestService;
 import com.linkforge.shortlink.application.ShortLinkReadService;
 import org.junit.jupiter.api.Test;
 
@@ -27,7 +28,7 @@ class AnalyticsExportRequestServiceTest {
 
     @Test
     void requestLinkEventExport_shouldCheckMissingLinkBeforeDateValidation() {
-        GovernanceApprovalRequestService governanceApprovalRequestService = mock(GovernanceApprovalRequestService.class);
+        ApprovalSubmissionPort governanceApprovalRequestService = mock(ApprovalSubmissionPort.class);
         ShortLinkReadService shortLinkReadService = mock(ShortLinkReadService.class);
         AnalyticsExportRequestService service = new AnalyticsExportRequestService(
                 governanceApprovalRequestService,
@@ -53,7 +54,7 @@ class AnalyticsExportRequestServiceTest {
 
     @Test
     void requestLinkEventExport_shouldCheckApplicationScopeBeforeDateValidation() {
-        GovernanceApprovalRequestService governanceApprovalRequestService = mock(GovernanceApprovalRequestService.class);
+        ApprovalSubmissionPort governanceApprovalRequestService = mock(ApprovalSubmissionPort.class);
         ShortLinkReadService shortLinkReadService = mock(ShortLinkReadService.class);
         AnalyticsExportRequestService service = new AnalyticsExportRequestService(
                 governanceApprovalRequestService,
@@ -80,7 +81,7 @@ class AnalyticsExportRequestServiceTest {
 
     @Test
     void requestLinkEventExport_shouldRequestApprovalThroughNarrowGovernanceApi() {
-        GovernanceApprovalRequestService governanceApprovalRequestService = mock(GovernanceApprovalRequestService.class);
+        ApprovalSubmissionPort governanceApprovalRequestService = mock(ApprovalSubmissionPort.class);
         ShortLinkReadService shortLinkReadService = mock(ShortLinkReadService.class);
         AnalyticsExportRequestService service = new AnalyticsExportRequestService(
                 governanceApprovalRequestService,
@@ -90,8 +91,8 @@ class AnalyticsExportRequestServiceTest {
         UserActor actor = new UserActor(1L, 9L, "tenant-admin@example.com", Set.of("TENANT_ADMIN"));
         LocalDateTime from = LocalDateTime.parse("2026-04-05T00:00:00");
         LocalDateTime to = LocalDateTime.parse("2026-04-06T00:00:00");
-        GovernanceApprovalRequestService.ApprovalRequestResult expected =
-                new GovernanceApprovalRequestService.ApprovalRequestResult(
+        ApprovalRequestView expected =
+                new ApprovalRequestView(
                         501L,
                         1L,
                         "ANALYTICS_DETAIL_EXPORT",
@@ -108,7 +109,7 @@ class AnalyticsExportRequestServiceTest {
                 .thenReturn(Optional.of(new ShortLinkReadService.LinkOwnership(2001L, null)));
         when(governanceApprovalRequestService.requestAnalyticsDetailExportApproval(
                 1L,
-                new GovernanceApprovalRequestService.AnalyticsDetailExportApprovalRequest(
+                new ApprovalSubmissionPort.AnalyticsDetailExportApprovalRequest(
                         101L,
                         2001L,
                         from,
@@ -118,13 +119,13 @@ class AnalyticsExportRequestServiceTest {
                 )
         )).thenReturn(expected);
 
-        GovernanceApprovalRequestService.ApprovalRequestResult actual =
+        ApprovalRequestView actual =
                 service.requestLinkEventExport(actor, 101L, 2001L, from, to);
 
         assertThat(actual).isSameAs(expected);
         verify(governanceApprovalRequestService).requestAnalyticsDetailExportApproval(
                 1L,
-                new GovernanceApprovalRequestService.AnalyticsDetailExportApprovalRequest(
+                new ApprovalSubmissionPort.AnalyticsDetailExportApprovalRequest(
                         101L,
                         2001L,
                         from,

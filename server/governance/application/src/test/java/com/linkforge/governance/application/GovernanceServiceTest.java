@@ -1,8 +1,10 @@
 package com.linkforge.governance.application;
 
+import com.linkforge.contract.governance.ApprovalExecutionRequest;
+import com.linkforge.contract.governance.ApprovalExecutionPort;
+import com.linkforge.contract.governance.SensitiveOperation;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
-import com.linkforge.governance.application.port.ApprovalExecutionPort;
 import com.linkforge.governance.application.port.ApprovalRepository;
 import com.linkforge.governance.application.port.AuditLogRepository;
 import com.linkforge.governance.domain.ApprovalRequest;
@@ -22,6 +24,8 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -80,7 +84,7 @@ class GovernanceServiceTest {
         when(approvalRepository.findByTenantIdAndId(1L, 501L))
                 .thenReturn(Optional.of(pending))
                 .thenReturn(Optional.of(executed));
-        when(executionPort.supports(SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE)).thenReturn(true);
+        when(executionPort.supports(SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE)).thenReturn(true);
         UserActor approver = new UserActor(1L, 8L, "approver@example.com", Set.of("TENANT_ADMIN"));
 
         GovernanceService.ApprovalRequestDto actual =
@@ -88,7 +92,17 @@ class GovernanceServiceTest {
 
         assertThat(actual.status()).isEqualTo(ApprovalStatus.EXECUTED);
         InOrder inOrder = inOrder(executionPort, approvalRepository, auditLogRepository);
-        inOrder.verify(executionPort).execute(pending, now);
+        inOrder.verify(executionPort).execute(
+                argThat(request -> request.equals(new ApprovalExecutionRequest(
+                        501L,
+                        1L,
+                        SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE,
+                        2001L,
+                        "linkId=101\noriginalUrl=https://example.com/old",
+                        "linkId=101\noriginalUrl=https://example.com/new"
+                ))),
+                eq(now)
+        );
         inOrder.verify(approvalRepository).updateDecision(
                 501L,
                 ApprovalStatus.EXECUTED.name(),

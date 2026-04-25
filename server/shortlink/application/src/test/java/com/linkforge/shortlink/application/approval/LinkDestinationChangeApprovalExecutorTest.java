@@ -1,9 +1,8 @@
 package com.linkforge.shortlink.application.approval;
 
 import com.linkforge.foundation.tx.PostCommitHookPort;
-import com.linkforge.governance.domain.ApprovalRequest;
-import com.linkforge.governance.domain.ApprovalStatus;
-import com.linkforge.governance.domain.SensitiveOperationType;
+import com.linkforge.contract.governance.ApprovalExecutionRequest;
+import com.linkforge.contract.governance.SensitiveOperation;
 import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
 import com.linkforge.shortlink.application.port.ShortLinkEventPublisher;
 import com.linkforge.shortlink.application.port.ShortLinkRepository;
@@ -58,22 +57,13 @@ class LinkDestinationChangeApprovalExecutorTest {
                 CreatedByType.USER,
                 9L
         );
-        ApprovalRequest request = new ApprovalRequest(
+        ApprovalExecutionRequest request = new ApprovalExecutionRequest(
                 501L,
                 1L,
-                SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE,
+                SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE,
                 2001L,
-                7L,
-                "requester@example.com",
-                ApprovalStatus.PENDING_APPROVAL,
-                null,
-                null,
-                null,
                 "linkId=101\noriginalUrl=https://example.com/old",
-                "linkId=101\noriginalUrl=https://example.com/new",
-                LocalDateTime.parse("2026-04-01T00:00:00"),
-                null,
-                null
+                "linkId=101\noriginalUrl=https://example.com/new"
         );
         LocalDateTime executedAt = LocalDateTime.parse("2026-04-01T01:02:03");
         when(shortLinkRepository.findByTenantIdAndId(1L, 101L)).thenReturn(Optional.of(link));
@@ -85,7 +75,7 @@ class LinkDestinationChangeApprovalExecutorTest {
 
         executor.execute(request, executedAt);
 
-        assertThat(executor.supports(SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE)).isTrue();
+        assertThat(executor.supports(SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE)).isTrue();
         assertThat(link.originalUrl().value()).isEqualTo("https://example.com/new");
         verify(shortLinkRepository).update(link);
         verify(eventPublisher).updated(link, Instant.parse("2026-04-01T01:02:03Z"));

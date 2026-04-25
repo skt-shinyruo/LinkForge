@@ -1,5 +1,7 @@
 package com.linkforge.governance.application;
 
+import com.linkforge.contract.governance.ApprovalRequestView;
+import com.linkforge.contract.governance.ApprovalSubmissionPort;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.governance.domain.ApprovalStatus;
 import com.linkforge.governance.domain.SensitiveOperationType;
@@ -20,7 +22,7 @@ class GovernanceApprovalApplicationServiceTest {
     @Test
     void requestLinkDestinationChangeApproval_shouldBuildGovernanceSubmissionInternally() {
         GovernanceService governanceService = mock(GovernanceService.class);
-        GovernanceApprovalRequestService service = new GovernanceApprovalApplicationService(governanceService);
+        ApprovalSubmissionPort service = new GovernanceApprovalApplicationService(governanceService);
         UserActor actor = new UserActor(1L, 7L, "reviewer@example.com", Set.of("TENANT_ADMIN"));
         LocalDateTime requestedAt = LocalDateTime.parse("2026-04-01T00:00:00");
 
@@ -45,9 +47,9 @@ class GovernanceApprovalApplicationServiceTest {
                 null
         ));
 
-        GovernanceApprovalRequestService.ApprovalRequestResult actual = service.requestLinkDestinationChangeApproval(
+        ApprovalRequestView actual = service.requestLinkDestinationChangeApproval(
                 1L,
-                new GovernanceApprovalRequestService.LinkDestinationChangeApprovalRequest(
+                new ApprovalSubmissionPort.LinkDestinationChangeApprovalRequest(
                         101L,
                         2001L,
                         "https://example.com/old",
@@ -57,7 +59,7 @@ class GovernanceApprovalApplicationServiceTest {
                 )
         );
 
-        assertThat(actual).isEqualTo(new GovernanceApprovalRequestService.ApprovalRequestResult(
+        assertThat(actual).isEqualTo(new ApprovalRequestView(
                 501L,
                 1L,
                 "PUBLIC_LINK_DESTINATION_CHANGE",
@@ -83,7 +85,7 @@ class GovernanceApprovalApplicationServiceTest {
     @Test
     void requestAnalyticsDetailExportApproval_shouldBuildGovernanceSubmissionInternally() {
         GovernanceService governanceService = mock(GovernanceService.class);
-        GovernanceApprovalRequestService service = new GovernanceApprovalApplicationService(governanceService);
+        ApprovalSubmissionPort service = new GovernanceApprovalApplicationService(governanceService);
         UserActor actor = new UserActor(1L, 9L, "tenant-admin@example.com", Set.of("TENANT_ADMIN"));
         LocalDateTime from = LocalDateTime.parse("2026-04-05T00:00:00");
         LocalDateTime to = LocalDateTime.parse("2026-04-06T00:00:00");
@@ -110,9 +112,9 @@ class GovernanceApprovalApplicationServiceTest {
                 null
         ));
 
-        GovernanceApprovalRequestService.ApprovalRequestResult actual = service.requestAnalyticsDetailExportApproval(
+        ApprovalRequestView actual = service.requestAnalyticsDetailExportApproval(
                 1L,
-                new GovernanceApprovalRequestService.AnalyticsDetailExportApprovalRequest(
+                new ApprovalSubmissionPort.AnalyticsDetailExportApprovalRequest(
                         101L,
                         2001L,
                         from,
@@ -122,7 +124,7 @@ class GovernanceApprovalApplicationServiceTest {
                 )
         );
 
-        assertThat(actual).isEqualTo(new GovernanceApprovalRequestService.ApprovalRequestResult(
+        assertThat(actual).isEqualTo(new ApprovalRequestView(
                 502L,
                 1L,
                 "ANALYTICS_DETAIL_EXPORT",

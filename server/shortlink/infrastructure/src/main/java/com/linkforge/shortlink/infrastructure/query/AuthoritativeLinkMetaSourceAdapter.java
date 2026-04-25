@@ -118,7 +118,10 @@ public class AuthoritativeLinkMetaSourceAdapter implements LinkMetaSourcePort {
                 row.getUnavailableLandingUrl(),
                 row.getQueryForwardMode(),
                 row.getQueryForwardAllowlist(),
-                row.getHostname()
+                row.getHostname(),
+                null,
+                null,
+                row.getLifecycleState()
         );
     }
 }

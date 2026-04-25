@@ -49,6 +49,7 @@ class MybatisShortLinkReadRepositoryTest {
             assertThat(meta.queryForwardAllowlist()).isEqualTo("utm_source,utm_medium");
             assertThat(meta.applicationId()).isEqualTo(33L);
             assertThat(meta.domainId()).isEqualTo(44L);
+            assertThat(meta.lifecycleState()).isEqualTo("ACTIVE");
         });
 
         verify(queryMapper).findActiveByHostnameAndCode("alpha.example.test", "AbC123");
@@ -184,6 +185,7 @@ class MybatisShortLinkReadRepositoryTest {
         row.setUnavailableLandingUrl("https://example.com/unavailable");
         row.setQueryForwardMode("ALLOWLIST");
         row.setQueryForwardAllowlist("utm_source,utm_medium");
+        row.setLifecycleState("ACTIVE");
         return row;
     }
 }

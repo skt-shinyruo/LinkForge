@@ -5,6 +5,8 @@ import com.linkforge.contract.redirect.LinkCachePort;
 import com.linkforge.contract.redirect.LinkMeta;
 import com.linkforge.shortlink.application.ShortLinkReadService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -72,6 +74,47 @@ class RedirectServiceAuthoritativeFallbackTest {
         assertThat(resolved).isEqualTo(expected);
         assertThat(cache.cachedMeta).isEqualTo(expected);
         verify(shortLinkReadService).findRedirectMetaByHostAndCode("go.example.test", "abc123");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"DRAFT", "PRE_RELEASE", "DISABLED"})
+    void resolve_shouldTreatNonActiveLifecycleAsUnavailable(String lifecycleState) {
+        RecordingLinkCache cache = new RecordingLinkCache();
+        ShortLinkReadService shortLinkReadService = mock(ShortLinkReadService.class);
+        ShortLinkReadService.RedirectLinkMeta authoritative = new ShortLinkReadService.RedirectLinkMeta(
+                22L,
+                11L,
+                "abc123",
+                "go.example.test",
+                "https://example.com/live",
+                true,
+                null,
+                302,
+                false,
+                "https://example.com/unavailable",
+                "ALLOWLIST",
+                "utm_source",
+                33L,
+                44L,
+                lifecycleState
+        );
+        when(shortLinkReadService.findRedirectMetaByHostAndCode("go.example.test", "abc123"))
+                .thenReturn(Optional.of(authoritative));
+        AnalyticsVisitEventService analyticsVisitEventService = new AnalyticsVisitEventService(event -> {
+        });
+        RedirectService service = new RedirectService(
+                cache,
+                shortLinkReadService,
+                analyticsVisitEventService,
+                Clock.systemUTC()
+        );
+
+        RedirectResolution resolution = service.resolve(
+                new ResolveRedirectRequest("abc123", "go.example.test", false, false, null)
+        );
+
+        assertThat(resolution.kind()).isEqualTo(RedirectResolution.Kind.UNAVAILABLE);
+        assertThat(resolution.unavailableReason()).isEqualTo(RedirectResolution.UnavailableReason.DISABLED);
     }
 
     private static final class RecordingLinkCache implements LinkCachePort {

@@ -191,7 +191,8 @@ public class RedirectService {
                 meta.queryForwardAllowlist(),
                 meta.hostname(),
                 meta.applicationId(),
-                meta.domainId()
+                meta.domainId(),
+                meta.lifecycleState()
         );
     }
 
@@ -210,7 +211,8 @@ public class RedirectService {
                 meta.queryForwardMode(),
                 meta.queryForwardAllowlist(),
                 meta.applicationId(),
-                meta.domainId()
+                meta.domainId(),
+                meta.lifecycleState()
         );
     }
 
@@ -253,6 +255,9 @@ public class RedirectService {
             return null;
         }
         if (!meta.enabled()) {
+            return RedirectResolution.UnavailableReason.DISABLED;
+        }
+        if (!meta.activeLifecycle()) {
             return RedirectResolution.UnavailableReason.DISABLED;
         }
         LocalDateTime nowUtc = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);

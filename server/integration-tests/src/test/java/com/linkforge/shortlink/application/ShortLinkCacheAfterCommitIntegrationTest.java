@@ -6,6 +6,8 @@ import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.eventing.IntegrationEventStore;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.redirect.application.RedirectService;
+import com.linkforge.redirect.application.RedirectResolution;
+import com.linkforge.redirect.application.ResolveRedirectRequest;
 import com.linkforge.redirect.application.error.RedirectBusinessException;
 import com.linkforge.redirect.application.error.RedirectErrorCode;
 import com.linkforge.shortlink.application.csv.ShortLinkCsvImportRow;
@@ -236,6 +238,35 @@ class ShortLinkCacheAfterCommitIntegrationTest {
         assertThat(redis.opsForValue().get(key)).isNull();
         assertThat(redirectService.resolve(code).originalUrl()).isEqualTo("https://example.com/create");
         assertThat(redis.opsForValue().get(key)).isNotNull();
+    }
+
+    @Test
+    void draftLink_shouldNotPubliclyRedirectEvenWhenEnabled() {
+        String code = uniqueCode("draft");
+        ShortLinkService.CreateLinkRequest req = new ShortLinkService.CreateLinkRequest(
+                "https://example.com/draft",
+                "note",
+                null,
+                true,
+                code,
+                Set.of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                "DRAFT"
+        );
+        shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), req);
+
+        RedirectResolution resolution = redirectService.resolve(
+                new ResolveRedirectRequest(code, null, false, false, null)
+        );
+
+        assertThat(resolution.kind()).isEqualTo(RedirectResolution.Kind.UNAVAILABLE);
+        assertThat(resolution.unavailableReason()).isEqualTo(RedirectResolution.UnavailableReason.DISABLED);
     }
 
     @Test

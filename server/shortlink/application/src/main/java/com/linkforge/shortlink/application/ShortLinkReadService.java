@@ -31,8 +31,56 @@ public interface ShortLinkReadService {
             String queryForwardMode,
             String queryForwardAllowlist,
             Long applicationId,
-            Long domainId
+            Long domainId,
+            String lifecycleState
     ) {
+        private static final String ACTIVE_LIFECYCLE_STATE = "ACTIVE";
+
+        public RedirectLinkMeta {
+            lifecycleState = normalizeLifecycleState(lifecycleState);
+        }
+
+        public RedirectLinkMeta(
+                long tenantId,
+                long linkId,
+                String code,
+                String hostname,
+                String originalUrl,
+                boolean enabled,
+                Instant expiresAtUtc,
+                Integer redirectStatusCode,
+                boolean previewEnabled,
+                String unavailableLandingUrl,
+                String queryForwardMode,
+                String queryForwardAllowlist,
+                Long applicationId,
+                Long domainId
+        ) {
+            this(
+                    tenantId,
+                    linkId,
+                    code,
+                    hostname,
+                    originalUrl,
+                    enabled,
+                    expiresAtUtc,
+                    redirectStatusCode,
+                    previewEnabled,
+                    unavailableLandingUrl,
+                    queryForwardMode,
+                    queryForwardAllowlist,
+                    applicationId,
+                    domainId,
+                    ACTIVE_LIFECYCLE_STATE
+            );
+        }
+
+        private static String normalizeLifecycleState(String raw) {
+            if (raw == null || raw.trim().isBlank()) {
+                return ACTIVE_LIFECYCLE_STATE;
+            }
+            return raw.trim().toUpperCase();
+        }
     }
 
     record LinkOwnership(Long applicationId, Long domainId) {

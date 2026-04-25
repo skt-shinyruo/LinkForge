@@ -152,7 +152,8 @@ public class MybatisShortLinkReadRepository implements ShortLinkReadRepository {
                 row.getQueryForwardMode(),
                 row.getQueryForwardAllowlist(),
                 row.getApplicationId(),
-                row.getDomainId()
+                row.getDomainId(),
+                row.getLifecycleState()
         );
     }
 

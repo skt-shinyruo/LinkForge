@@ -24,6 +24,9 @@ public class RedirectAvailabilityPolicy {
         if (!meta.enabled()) {
             return UnavailableReason.DISABLED;
         }
+        if (!meta.activeLifecycle()) {
+            return UnavailableReason.DISABLED;
+        }
         LocalDateTime nowUtc = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
         if (meta.expiresAt() != null && !meta.expiresAt().isAfter(nowUtc)) {
             return UnavailableReason.EXPIRED;

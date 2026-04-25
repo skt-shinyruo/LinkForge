@@ -1,6 +1,7 @@
 package com.linkforge.analytics.infrastructure.persistence.mapper;
 
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -13,21 +14,32 @@ public interface AnalyticsQueryMapper {
 
     List<AnalyticsDailyStatRow> tenantDaily(long tenantId, LocalDate from, LocalDate to);
 
-    List<AnalyticsDailyStatRow> applicationDaily(long tenantId, long applicationId, LocalDate from, LocalDate to);
-
-    List<AnalyticsDailyStatRow> domainDaily(long tenantId, long domainId, LocalDate from, LocalDate to);
+    List<AnalyticsDailyStatRow> dailyByLinkIds(
+            @Param("tenantId") long tenantId,
+            @Param("linkIds") List<Long> linkIds,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to
+    );
 
     List<AnalyticsTopLinkRow> topLinksOrderByPv(long tenantId, LocalDate from, LocalDate to, int limit);
 
     List<AnalyticsTopLinkRow> topLinksOrderByUv(long tenantId, LocalDate from, LocalDate to, int limit);
 
-    List<AnalyticsTopLinkRow> applicationTopLinksOrderByPv(long tenantId, long applicationId, LocalDate from, LocalDate to, int limit);
+    List<AnalyticsTopLinkRow> topLinksOrderByPvForLinkIds(
+            @Param("tenantId") long tenantId,
+            @Param("linkIds") List<Long> linkIds,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to,
+            @Param("limit") int limit
+    );
 
-    List<AnalyticsTopLinkRow> applicationTopLinksOrderByUv(long tenantId, long applicationId, LocalDate from, LocalDate to, int limit);
-
-    List<AnalyticsTopLinkRow> domainTopLinksOrderByPv(long tenantId, long domainId, LocalDate from, LocalDate to, int limit);
-
-    List<AnalyticsTopLinkRow> domainTopLinksOrderByUv(long tenantId, long domainId, LocalDate from, LocalDate to, int limit);
+    List<AnalyticsTopLinkRow> topLinksOrderByUvForLinkIds(
+            @Param("tenantId") long tenantId,
+            @Param("linkIds") List<Long> linkIds,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to,
+            @Param("limit") int limit
+    );
 
     Long linkDimTotalPv(long tenantId, long linkId, LocalDate from, LocalDate to, String dimType);
 

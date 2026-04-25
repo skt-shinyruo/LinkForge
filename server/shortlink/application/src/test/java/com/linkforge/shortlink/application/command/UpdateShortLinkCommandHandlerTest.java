@@ -1,10 +1,8 @@
 package com.linkforge.shortlink.application.command;
 
-import com.linkforge.contract.governance.ApprovalRequestView;
-import com.linkforge.contract.governance.ApprovalSubmissionPort;
-import com.linkforge.contract.governance.SensitiveOperation;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.tx.PostCommitHookPort;
+import com.linkforge.governance.application.GovernanceApprovalRequestService;
 import com.linkforge.shortlink.application.ShortLinkService;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
@@ -38,18 +36,20 @@ import static org.mockito.Mockito.when;
 class UpdateShortLinkCommandHandlerTest {
 
     @Test
-    void constructor_shouldDependOnApprovalSubmissionPort_insteadOfGovernanceService() {
+    void constructor_shouldDependOnNarrowGovernanceApprovalRequestService() {
         Constructor<?> constructor = UpdateShortLinkCommandHandler.class.getDeclaredConstructors()[0];
 
         assertThat(constructor.getParameterTypes())
-                .contains(ApprovalSubmissionPort.class);
+                .contains(GovernanceApprovalRequestService.class);
         assertThat(constructor.getParameterTypes())
                 .extracting(Class::getName)
-                .doesNotContain("com.linkforge.governance.application.GovernanceService");
+                .doesNotContain(
+                        "com.linkforge.governance.application.GovernanceService"
+                );
     }
 
     @Test
-    void handle_shouldSubmitDestinationChangeApproval_viaGovernanceContract() {
+    void handle_shouldRequestDestinationChangeApproval_viaNarrowGovernanceApi() {
         ShortLinkRepository shortLinkRepository = mock(ShortLinkRepository.class);
         SetLinkTagsCommandHandler setLinkTagsHandler = mock(SetLinkTagsCommandHandler.class);
         ShortLinkEventPublisher eventPublisher = mock(ShortLinkEventPublisher.class);
@@ -58,7 +58,7 @@ class UpdateShortLinkCommandHandlerTest {
         ShortLinkDtoMapper dtoMapper = mock(ShortLinkDtoMapper.class);
         PostCommitHookPort postCommitHookPort = mock(PostCommitHookPort.class);
         Clock clock = Clock.fixed(Instant.parse("2026-04-01T00:00:00Z"), ZoneOffset.UTC);
-        ApprovalSubmissionPort approvalSubmissionPort = mock(ApprovalSubmissionPort.class);
+        GovernanceApprovalRequestService governanceApprovalRequestService = mock(GovernanceApprovalRequestService.class);
 
         UpdateShortLinkCommandHandler handler = new UpdateShortLinkCommandHandler(
                 shortLinkRepository,
@@ -69,7 +69,7 @@ class UpdateShortLinkCommandHandlerTest {
                 dtoMapper,
                 postCommitHookPort,
                 clock,
-                approvalSubmissionPort
+                governanceApprovalRequestService
         );
 
         ShortLink link = ShortLink.create(
@@ -116,30 +116,6 @@ class UpdateShortLinkCommandHandlerTest {
                 Instant.parse("2026-03-31T00:00:00Z")
         );
         when(dtoMapper.toDto(link, List.of("alpha"))).thenReturn(expected);
-        when(approvalSubmissionPort.submitRequest(
-                1L,
-                SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE,
-                2001L,
-                "originalUrl=https://example.com/old",
-                "originalUrl=https://example.com/new",
-                1L,
-                7L,
-                "reviewer@example.com",
-                Set.of("TENANT_ADMIN"),
-                LocalDateTime.parse("2026-04-01T00:00:00")
-        )).thenReturn(new ApprovalRequestView(
-                501L,
-                1L,
-                SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE,
-                2001L,
-                7L,
-                "reviewer@example.com",
-                "PENDING_APPROVAL",
-                null,
-                null,
-                null
-        ));
-
         ShortLinkService.LinkDto actual = handler.handle(
                 1L,
                 101L,
@@ -164,17 +140,15 @@ class UpdateShortLinkCommandHandlerTest {
         );
 
         assertThat(actual).isSameAs(expected);
-        verify(approvalSubmissionPort).submitRequest(
+        verify(governanceApprovalRequestService).requestLinkDestinationChangeApproval(
                 1L,
-                SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE,
-                2001L,
-                "originalUrl=https://example.com/old",
-                "originalUrl=https://example.com/new",
-                1L,
-                7L,
-                "reviewer@example.com",
-                Set.of("TENANT_ADMIN"),
-                LocalDateTime.parse("2026-04-01T00:00:00")
+                new GovernanceApprovalRequestService.LinkDestinationChangeApprovalRequest(
+                        2001L,
+                        "https://example.com/old",
+                        "https://example.com/new",
+                        new UserActor(1L, 7L, "reviewer@example.com", Set.of("TENANT_ADMIN")),
+                        LocalDateTime.parse("2026-04-01T00:00:00")
+                )
         );
         verify(shortLinkRepository, never()).update(link);
         verify(eventPublisher, never()).updated(eq(link), eq(clock.instant()));
@@ -191,7 +165,7 @@ class UpdateShortLinkCommandHandlerTest {
         ShortLinkDtoMapper dtoMapper = mock(ShortLinkDtoMapper.class);
         PostCommitHookPort postCommitHookPort = mock(PostCommitHookPort.class);
         Clock clock = Clock.fixed(Instant.parse("2026-04-01T00:00:00Z"), ZoneOffset.UTC);
-        ApprovalSubmissionPort approvalSubmissionPort = mock(ApprovalSubmissionPort.class);
+        GovernanceApprovalRequestService governanceApprovalRequestService = mock(GovernanceApprovalRequestService.class);
 
         UpdateShortLinkCommandHandler handler = new UpdateShortLinkCommandHandler(
                 shortLinkRepository,
@@ -202,7 +176,7 @@ class UpdateShortLinkCommandHandlerTest {
                 dtoMapper,
                 postCommitHookPort,
                 clock,
-                approvalSubmissionPort
+                governanceApprovalRequestService
         );
 
         ShortLink link = ShortLink.create(
@@ -249,17 +223,15 @@ class UpdateShortLinkCommandHandlerTest {
                 LocalDateTime.parse("2026-04-01T00:00:00")
         )).hasMessageContaining("请先单独提交目标地址变更");
 
-        verify(approvalSubmissionPort, never()).submitRequest(
+        verify(governanceApprovalRequestService, never()).requestLinkDestinationChangeApproval(
                 eq(1L),
-                eq(SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE),
-                eq(2001L),
-                anyString(),
-                anyString(),
-                eq(1L),
-                eq(7L),
-                eq("reviewer@example.com"),
-                eq(Set.of("TENANT_ADMIN")),
-                eq(LocalDateTime.parse("2026-04-01T00:00:00"))
+                eq(new GovernanceApprovalRequestService.LinkDestinationChangeApprovalRequest(
+                        2001L,
+                        "https://example.com/old",
+                        "https://example.com/new",
+                        new UserActor(1L, 7L, "reviewer@example.com", Set.of("TENANT_ADMIN")),
+                        LocalDateTime.parse("2026-04-01T00:00:00")
+                ))
         );
         verify(shortLinkRepository, never()).update(link);
         verify(eventPublisher, never()).updated(eq(link), eq(clock.instant()));

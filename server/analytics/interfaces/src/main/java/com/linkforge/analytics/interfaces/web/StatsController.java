@@ -3,15 +3,16 @@ package com.linkforge.analytics.interfaces.web;
 import com.linkforge.analytics.application.AnalyticsExportRequestService;
 import com.linkforge.analytics.application.AnalyticsLinkEventsService;
 import com.linkforge.analytics.application.AnalyticsQueryService;
+import com.linkforge.analytics.application.AnalyticsReportingService;
 import com.linkforge.contract.api.ApiResponse;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
-import com.linkforge.contract.governance.ApprovalRequestView;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.runtime.security.AuthContext;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.runtime.security.PrincipalActorMapper;
 import com.linkforge.foundation.web.RequestId;
+import com.linkforge.governance.application.GovernanceApprovalRequestService;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -31,6 +32,7 @@ import java.util.Set;
 public class StatsController {
 
     private final AnalyticsQueryService queryService;
+    private final AnalyticsReportingService reportingService;
     private final AnalyticsLinkEventsService linkEventsService;
     private final AnalyticsExportRequestService exportRequestService;
     private final PrincipalActorMapper principalActorMapper;
@@ -48,11 +50,13 @@ public class StatsController {
 
     public StatsController(
             AnalyticsQueryService queryService,
+            AnalyticsReportingService reportingService,
             AnalyticsLinkEventsService linkEventsService,
             AnalyticsExportRequestService exportRequestService,
             PrincipalActorMapper principalActorMapper
     ) {
         this.queryService = queryService;
+        this.reportingService = reportingService;
         this.linkEventsService = linkEventsService;
         this.exportRequestService = exportRequestService;
         this.principalActorMapper = principalActorMapper;
@@ -155,7 +159,7 @@ public class StatsController {
             }
         }
         AuthPrincipal p = AuthContext.requirePrincipal();
-        return ApiResponse.ok(queryService.topLinks(p.getTenantId(), from, to, l, s), RequestId.get());
+        return ApiResponse.ok(reportingService.topLinks(p.getTenantId(), from, to, l, s), RequestId.get());
     }
 
     @GetMapping("/stats/applications/{id}/top-links")
@@ -170,7 +174,7 @@ public class StatsController {
         AnalyticsQueryService.TopSortBy sort = resolveTopSortBy(from, to, limit, sortBy);
         int l = normalizeTopLimit(limit);
         AuthPrincipal p = AuthContext.requirePrincipal();
-        return ApiResponse.ok(queryService.applicationTopLinks(p.getTenantId(), applicationId, from, to, l, sort), RequestId.get());
+        return ApiResponse.ok(reportingService.applicationTopLinks(p.getTenantId(), applicationId, from, to, l, sort), RequestId.get());
     }
 
     @GetMapping("/applications/{id}/stats/top-links")
@@ -197,7 +201,7 @@ public class StatsController {
         AnalyticsQueryService.TopSortBy sort = resolveTopSortBy(from, to, limit, sortBy);
         int l = normalizeTopLimit(limit);
         AuthPrincipal p = AuthContext.requirePrincipal();
-        return ApiResponse.ok(queryService.domainTopLinks(p.getTenantId(), domainId, from, to, l, sort), RequestId.get());
+        return ApiResponse.ok(reportingService.domainTopLinks(p.getTenantId(), domainId, from, to, l, sort), RequestId.get());
     }
 
     @GetMapping("/stats/links/{id}/dimensions")
@@ -243,7 +247,7 @@ public class StatsController {
 
     @PostMapping("/stats/links/{id}/events/export-requests")
     @PreAuthorize("!hasRole('OPENAPI')")
-    public ApiResponse<ApprovalRequestView> requestEventExport(
+    public ApiResponse<GovernanceApprovalRequestService.ApprovalRequestResult> requestEventExport(
             @PathVariable("id") long linkId,
             @RequestParam(value = "from", required = false) LocalDateTime from,
             @RequestParam(value = "to", required = false) LocalDateTime to
@@ -257,7 +261,7 @@ public class StatsController {
 
     @PostMapping("/applications/{applicationId}/links/{id}/events/export-requests")
     @PreAuthorize("!hasRole('OPENAPI')")
-    public ApiResponse<ApprovalRequestView> requestEventExportByApplication(
+    public ApiResponse<GovernanceApprovalRequestService.ApprovalRequestResult> requestEventExportByApplication(
             @PathVariable("applicationId") long applicationId,
             @PathVariable("id") long linkId,
             @RequestParam(value = "from", required = false) LocalDateTime from,

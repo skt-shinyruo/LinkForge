@@ -3,7 +3,6 @@ package com.linkforge.analytics;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkforge.LinkForgeApplication;
-import com.linkforge.analytics.infrastructure.catalog.ShortLinkCatalogProjectorJob;
 import com.linkforge.analytics.infrastructure.job.AnalyticsFlushJob;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -67,7 +66,6 @@ class ApplicationScopedStatsIntegrationTest {
         r.add("app.analytics.events.enabled", () -> "false");
         r.add("app.analytics.events.sample-rate", () -> "1");
         r.add("APP_ANALYTICS_FLUSH_DELAY_MS", () -> "9999999");
-        r.add("APP_ANALYTICS_SHORTLINK_CATALOG_PROJECTOR_DELAY_MS", () -> "9999999");
     }
 
     @Autowired
@@ -84,9 +82,6 @@ class ApplicationScopedStatsIntegrationTest {
 
     @Autowired
     AnalyticsFlushJob analyticsFlushJob;
-
-    @Autowired
-    ShortLinkCatalogProjectorJob shortLinkCatalogProjectorJob;
 
     @BeforeEach
     void resetRedis() {
@@ -110,8 +105,6 @@ class ApplicationScopedStatsIntegrationTest {
         String linkOneCode = appOneLinkOne.get("data").get("code").asText();
         String linkTwoCode = appOneLinkTwo.get("data").get("code").asText();
         String otherLinkCode = appTwoLink.get("data").get("code").asText();
-
-        shortLinkCatalogProjectorJob.project();
 
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
         seedStats(principal.tenantId(), linkOneId, today, 10, 2);
@@ -177,7 +170,7 @@ class ApplicationScopedStatsIntegrationTest {
 
         JsonNode json = objectMapper.readTree(response);
         assertThat(json.get("code").asInt()).isEqualTo(0);
-        assertThat(json.get("data").get("operationType").asText()).isEqualTo("ANALYTICS_DETAIL_EXPORT");
+        assertThat(json.get("data").get("operation").asText()).isEqualTo("ANALYTICS_DETAIL_EXPORT");
         assertThat(json.get("data").get("status").asText()).isEqualTo("PENDING_APPROVAL");
         assertThat(json.get("data").get("targetApplicationId").asLong()).isEqualTo(fixture.applicationId());
 

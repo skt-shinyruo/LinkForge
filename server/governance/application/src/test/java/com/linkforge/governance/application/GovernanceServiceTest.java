@@ -1,7 +1,8 @@
 package com.linkforge.governance.application;
 
-import com.linkforge.contract.governance.ApprovalExecutionRequest;
+import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.governance.ApprovalExecutionPort;
+import com.linkforge.contract.governance.ApprovalExecutionRequest;
 import com.linkforge.contract.governance.SensitiveOperation;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
@@ -23,75 +24,87 @@ import java.util.Optional;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class GovernanceServiceTest {
 
+    private static final LocalDateTime NOW = LocalDateTime.parse("2026-04-01T12:00:00");
+
     @Test
-    void approveRequest_shouldExecuteSupportedApprovalBeforeMarkingExecuted() {
+    void approveRequest_shouldRejectNonPendingRequestBeforeExecutionAndAudit() {
         SnowflakeIdGenerator idGenerator = mock(SnowflakeIdGenerator.class);
         ApprovalRepository approvalRepository = mock(ApprovalRepository.class);
         AuditLogRepository auditLogRepository = mock(AuditLogRepository.class);
         ApprovalExecutionPort executionPort = mock(ApprovalExecutionPort.class);
-        Clock clock = Clock.fixed(Instant.parse("2026-04-01T00:00:00Z"), ZoneOffset.UTC);
-        GovernanceService service = new GovernanceService(
-                idGenerator,
-                approvalRepository,
-                auditLogRepository,
-                clock,
-                List.of(executionPort)
-        );
-        LocalDateTime now = LocalDateTime.parse("2026-04-01T12:00:00");
-        ApprovalRequest pending = new ApprovalRequest(
-                501L,
-                1L,
-                SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE,
-                2001L,
-                7L,
-                "requester@example.com",
-                ApprovalStatus.PENDING_APPROVAL,
-                null,
-                null,
-                null,
-                "linkId=101\noriginalUrl=https://example.com/old",
-                "linkId=101\noriginalUrl=https://example.com/new",
-                now.minusHours(1),
-                null,
-                null
-        );
-        ApprovalRequest executed = new ApprovalRequest(
-                501L,
-                1L,
-                SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE,
-                2001L,
-                7L,
-                "requester@example.com",
-                ApprovalStatus.EXECUTED,
-                8L,
-                "approver@example.com",
-                "ok",
-                "linkId=101\noriginalUrl=https://example.com/old",
-                "linkId=101\noriginalUrl=https://example.com/new",
-                now.minusHours(1),
-                now,
-                now
-        );
+        GovernanceService service = service(idGenerator, approvalRepository, auditLogRepository, List.of(executionPort));
+        ApprovalRequest executed = request(ApprovalStatus.EXECUTED);
+        when(approvalRepository.findByTenantIdAndId(1L, 501L)).thenReturn(Optional.of(executed));
+
+        assertThatThrownBy(() -> service.approveRequest(1L, 501L, "again", approver(), NOW))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("审批请求状态已变化");
+
+        verifyNoInteractions(executionPort, auditLogRepository);
+        verify(approvalRepository, never()).markApprovedIfPending(anyLong(), anyLong(), anyLong(), any(), any(), any());
+    }
+
+    @Test
+    void approveRequest_shouldRejectStaleClaimBeforeExecutionAndAudit() {
+        SnowflakeIdGenerator idGenerator = mock(SnowflakeIdGenerator.class);
+        ApprovalRepository approvalRepository = mock(ApprovalRepository.class);
+        AuditLogRepository auditLogRepository = mock(AuditLogRepository.class);
+        ApprovalExecutionPort executionPort = mock(ApprovalExecutionPort.class);
+        GovernanceService service = service(idGenerator, approvalRepository, auditLogRepository, List.of(executionPort));
+        ApprovalRequest pending = request(ApprovalStatus.PENDING_APPROVAL);
+        when(approvalRepository.findByTenantIdAndId(1L, 501L)).thenReturn(Optional.of(pending));
+        when(executionPort.supports(SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE)).thenReturn(true);
+        when(approvalRepository.markApprovedIfPending(1L, 501L, 8L, "approver@example.com", "ok", NOW))
+                .thenReturn(false);
+
+        assertThatThrownBy(() -> service.approveRequest(1L, 501L, "ok", approver(), NOW))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("审批请求状态已变化");
+
+        verify(executionPort).supports(SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE);
+        verify(executionPort, never()).execute(any(), any());
+        verifyNoInteractions(auditLogRepository);
+        verify(approvalRepository, never()).markExecutedIfApproved(anyLong(), anyLong(), any());
+    }
+
+    @Test
+    void approveRequest_shouldClaimExecuteMarkExecutedAndAuditForSupportedApproval() {
+        SnowflakeIdGenerator idGenerator = mock(SnowflakeIdGenerator.class);
+        ApprovalRepository approvalRepository = mock(ApprovalRepository.class);
+        AuditLogRepository auditLogRepository = mock(AuditLogRepository.class);
+        ApprovalExecutionPort executionPort = mock(ApprovalExecutionPort.class);
+        GovernanceService service = service(idGenerator, approvalRepository, auditLogRepository, List.of(executionPort));
+        ApprovalRequest pending = request(ApprovalStatus.PENDING_APPROVAL);
+        ApprovalRequest executed = decidedRequest(ApprovalStatus.EXECUTED, NOW, NOW);
         when(approvalRepository.findByTenantIdAndId(1L, 501L))
                 .thenReturn(Optional.of(pending))
                 .thenReturn(Optional.of(executed));
         when(executionPort.supports(SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE)).thenReturn(true);
-        UserActor approver = new UserActor(1L, 8L, "approver@example.com", Set.of("TENANT_ADMIN"));
+        when(approvalRepository.markApprovedIfPending(1L, 501L, 8L, "approver@example.com", "ok", NOW))
+                .thenReturn(true);
+        when(approvalRepository.markExecutedIfApproved(1L, 501L, NOW)).thenReturn(true);
 
         GovernanceService.ApprovalRequestDto actual =
-                service.approveRequest(1L, 501L, "ok", approver, now);
+                service.approveRequest(1L, 501L, "ok", approver(), NOW);
 
         assertThat(actual.status()).isEqualTo(ApprovalStatus.EXECUTED);
-        InOrder inOrder = inOrder(executionPort, approvalRepository, auditLogRepository);
+        InOrder inOrder = inOrder(approvalRepository, executionPort, auditLogRepository);
+        inOrder.verify(approvalRepository).markApprovedIfPending(1L, 501L, 8L, "approver@example.com", "ok", NOW);
         inOrder.verify(executionPort).execute(
                 argThat(request -> request.equals(new ApprovalExecutionRequest(
                         501L,
@@ -101,17 +114,175 @@ class GovernanceServiceTest {
                         "linkId=101\noriginalUrl=https://example.com/old",
                         "linkId=101\noriginalUrl=https://example.com/new"
                 ))),
-                eq(now)
+                eq(NOW)
         );
-        inOrder.verify(approvalRepository).updateDecision(
+        inOrder.verify(approvalRepository).markExecutedIfApproved(1L, 501L, NOW);
+        inOrder.verify(auditLogRepository).insert(any(AuditLog.class));
+    }
+
+    @Test
+    void approveRequest_shouldRemainApprovedWhenNoExecutorSupportsOperation() {
+        SnowflakeIdGenerator idGenerator = mock(SnowflakeIdGenerator.class);
+        ApprovalRepository approvalRepository = mock(ApprovalRepository.class);
+        AuditLogRepository auditLogRepository = mock(AuditLogRepository.class);
+        GovernanceService service = service(idGenerator, approvalRepository, auditLogRepository, List.of());
+        ApprovalRequest pending = decisionOnlyRequest(ApprovalStatus.PENDING_APPROVAL);
+        ApprovalRequest approved = decisionOnlyDecidedRequest(ApprovalStatus.APPROVED, NOW, null);
+        when(approvalRepository.findByTenantIdAndId(1L, 502L))
+                .thenReturn(Optional.of(pending))
+                .thenReturn(Optional.of(approved));
+        when(approvalRepository.markApprovedIfPending(1L, 502L, 8L, "approver@example.com", "ok", NOW))
+                .thenReturn(true);
+
+        GovernanceService.ApprovalRequestDto actual =
+                service.approveRequest(1L, 502L, "ok", approver(), NOW);
+
+        assertThat(actual.status()).isEqualTo(ApprovalStatus.APPROVED);
+        verify(approvalRepository).markApprovedIfPending(1L, 502L, 8L, "approver@example.com", "ok", NOW);
+        verify(approvalRepository, never()).markExecutedIfApproved(anyLong(), anyLong(), any());
+        verify(auditLogRepository).insert(any(AuditLog.class));
+    }
+
+    @Test
+    void approveRequest_shouldPropagateExecutorFailureWithoutAuditOrExecutedTransition() {
+        SnowflakeIdGenerator idGenerator = mock(SnowflakeIdGenerator.class);
+        ApprovalRepository approvalRepository = mock(ApprovalRepository.class);
+        AuditLogRepository auditLogRepository = mock(AuditLogRepository.class);
+        ApprovalExecutionPort executionPort = mock(ApprovalExecutionPort.class);
+        GovernanceService service = service(idGenerator, approvalRepository, auditLogRepository, List.of(executionPort));
+        ApprovalRequest pending = request(ApprovalStatus.PENDING_APPROVAL);
+        when(approvalRepository.findByTenantIdAndId(1L, 501L)).thenReturn(Optional.of(pending));
+        when(executionPort.supports(SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE)).thenReturn(true);
+        when(approvalRepository.markApprovedIfPending(1L, 501L, 8L, "approver@example.com", "ok", NOW))
+                .thenReturn(true);
+        doThrow(new BusinessException(com.linkforge.contract.api.ErrorCode.BAD_REQUEST, "executor failed"))
+                .when(executionPort).execute(any(), eq(NOW));
+
+        assertThatThrownBy(() -> service.approveRequest(1L, 501L, "ok", approver(), NOW))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("executor failed");
+
+        verify(approvalRepository, never()).markExecutedIfApproved(anyLong(), anyLong(), any());
+        verifyNoInteractions(auditLogRepository);
+    }
+
+    @Test
+    void approveRequest_shouldFailWhenExecutedTransitionCannotBeRecordedAfterExecutorSuccess() {
+        SnowflakeIdGenerator idGenerator = mock(SnowflakeIdGenerator.class);
+        ApprovalRepository approvalRepository = mock(ApprovalRepository.class);
+        AuditLogRepository auditLogRepository = mock(AuditLogRepository.class);
+        ApprovalExecutionPort executionPort = mock(ApprovalExecutionPort.class);
+        GovernanceService service = service(idGenerator, approvalRepository, auditLogRepository, List.of(executionPort));
+        ApprovalRequest pending = request(ApprovalStatus.PENDING_APPROVAL);
+        when(approvalRepository.findByTenantIdAndId(1L, 501L)).thenReturn(Optional.of(pending));
+        when(executionPort.supports(SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE)).thenReturn(true);
+        when(approvalRepository.markApprovedIfPending(1L, 501L, 8L, "approver@example.com", "ok", NOW))
+                .thenReturn(true);
+        when(approvalRepository.markExecutedIfApproved(1L, 501L, NOW)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.approveRequest(1L, 501L, "ok", approver(), NOW))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("审批执行状态更新失败");
+
+        verify(executionPort).execute(any(ApprovalExecutionRequest.class), eq(NOW));
+        verifyNoInteractions(auditLogRepository);
+    }
+
+    private static GovernanceService service(
+            SnowflakeIdGenerator idGenerator,
+            ApprovalRepository approvalRepository,
+            AuditLogRepository auditLogRepository,
+            List<ApprovalExecutionPort> executionPorts
+    ) {
+        Clock clock = Clock.fixed(Instant.parse("2026-04-01T00:00:00Z"), ZoneOffset.UTC);
+        return new GovernanceService(idGenerator, approvalRepository, auditLogRepository, clock, executionPorts);
+    }
+
+    private static UserActor approver() {
+        return new UserActor(1L, 8L, "approver@example.com", Set.of("TENANT_ADMIN"));
+    }
+
+    private static ApprovalRequest request(ApprovalStatus status) {
+        return new ApprovalRequest(
                 501L,
-                ApprovalStatus.EXECUTED.name(),
+                1L,
+                SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE,
+                2001L,
+                7L,
+                "requester@example.com",
+                status,
+                null,
+                null,
+                null,
+                "linkId=101\noriginalUrl=https://example.com/old",
+                "linkId=101\noriginalUrl=https://example.com/new",
+                NOW.minusHours(1),
+                null,
+                null
+        );
+    }
+
+    private static ApprovalRequest decidedRequest(ApprovalStatus status, LocalDateTime decidedAt, LocalDateTime executedAt) {
+        return new ApprovalRequest(
+                501L,
+                1L,
+                SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE,
+                2001L,
+                7L,
+                "requester@example.com",
+                status,
                 8L,
                 "approver@example.com",
                 "ok",
-                now,
-                now
+                "linkId=101\noriginalUrl=https://example.com/old",
+                "linkId=101\noriginalUrl=https://example.com/new",
+                NOW.minusHours(1),
+                decidedAt,
+                executedAt
         );
-        inOrder.verify(auditLogRepository).insert(any(AuditLog.class));
+    }
+
+    private static ApprovalRequest decisionOnlyRequest(ApprovalStatus status) {
+        return new ApprovalRequest(
+                502L,
+                1L,
+                SensitiveOperationType.ANALYTICS_DETAIL_EXPORT,
+                2001L,
+                7L,
+                "requester@example.com",
+                status,
+                null,
+                null,
+                null,
+                null,
+                "linkId=101,from=2026-04-01T00:00,to=2026-04-02T00:00",
+                NOW.minusHours(1),
+                null,
+                null
+        );
+    }
+
+    private static ApprovalRequest decisionOnlyDecidedRequest(
+            ApprovalStatus status,
+            LocalDateTime decidedAt,
+            LocalDateTime executedAt
+    ) {
+        return new ApprovalRequest(
+                502L,
+                1L,
+                SensitiveOperationType.ANALYTICS_DETAIL_EXPORT,
+                2001L,
+                7L,
+                "requester@example.com",
+                status,
+                8L,
+                "approver@example.com",
+                "ok",
+                null,
+                "linkId=101,from=2026-04-01T00:00,to=2026-04-02T00:00",
+                NOW.minusHours(1),
+                decidedAt,
+                executedAt
+        );
     }
 }

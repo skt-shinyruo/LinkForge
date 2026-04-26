@@ -16,13 +16,18 @@ public interface ApprovalRequestMapper {
 
     List<ApprovalRequestEntity> listByTenantId(@Param("tenantId") long tenantId);
 
-    int updateDecision(
+    int markApprovedIfPending(
+            @Param("tenantId") long tenantId,
             @Param("requestId") long requestId,
-            @Param("status") String status,
             @Param("approverUserId") long approverUserId,
             @Param("approverEmail") String approverEmail,
             @Param("decisionReason") String decisionReason,
-            @Param("decidedAt") LocalDateTime decidedAt,
+            @Param("decidedAt") LocalDateTime decidedAt
+    );
+
+    int markExecutedIfApproved(
+            @Param("tenantId") long tenantId,
+            @Param("requestId") long requestId,
             @Param("executedAt") LocalDateTime executedAt
     );
 }

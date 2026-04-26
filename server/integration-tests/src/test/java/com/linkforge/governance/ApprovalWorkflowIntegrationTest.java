@@ -4,6 +4,7 @@ import com.linkforge.LinkForgeApplication;
 import com.linkforge.TestTenantFixtures;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.governance.application.GovernanceService;
+import com.linkforge.governance.domain.ApprovalStatus;
 import com.linkforge.governance.domain.SensitiveOperationType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -94,7 +95,7 @@ class ApprovalWorkflowIntegrationTest extends GovernancePersistenceIntegrationTe
                 approver,
                 LocalDateTime.now(ZoneOffset.UTC)
         );
-        assertThat(approved.status()).isEqualTo(com.linkforge.governance.domain.ApprovalStatus.EXECUTED);
+        assertThat(approved.status()).isEqualTo(ApprovalStatus.APPROVED);
 
         assertThatThrownBy(() -> governanceService.approveRequest(
                 TENANT_ID,
@@ -142,9 +143,59 @@ class ApprovalWorkflowIntegrationTest extends GovernancePersistenceIntegrationTe
                 platformApprover,
                 LocalDateTime.now(ZoneOffset.UTC)
         );
-        assertThat(approved.status()).isEqualTo(com.linkforge.governance.domain.ApprovalStatus.EXECUTED);
+        assertThat(approved.status()).isEqualTo(ApprovalStatus.APPROVED);
 
         Long auditCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM audit_logs WHERE request_id = ?", Long.class, request.id());
         assertThat(auditCount).isEqualTo(2L);
+    }
+
+    @Test
+    void approved_request_should_not_be_approved_again_or_write_duplicate_audit() {
+        UserActor requester = new UserActor(TENANT_ID, 207L, "requester-duplicate@example.com", Set.of("TENANT_ADMIN"));
+        authenticateAsTenantAdmin(TENANT_ID, 207L, "requester-duplicate@example.com");
+        GovernanceService.ApprovalRequestDto request = governanceService.submitRequest(
+                TENANT_ID,
+                new GovernanceService.SubmitApprovalRequest(
+                        SensitiveOperationType.APPLICATION_QUOTA_INCREASE,
+                        9004L,
+                        null,
+                        "monthlyLinkLimit=50000,monthlyClickLimit=1000000",
+                        requester,
+                        LocalDateTime.now(ZoneOffset.UTC)
+                )
+        );
+
+        UserActor firstApprover = new UserActor(TENANT_ID, 208L, "first-approver@example.com", Set.of("TENANT_ADMIN"));
+        GovernanceService.ApprovalRequestDto approved = governanceService.approveRequest(
+                TENANT_ID,
+                request.id(),
+                "first",
+                firstApprover,
+                LocalDateTime.now(ZoneOffset.UTC)
+        );
+
+        UserActor secondApprover = new UserActor(TENANT_ID, 209L, "second-approver@example.com", Set.of("TENANT_ADMIN"));
+        assertThatThrownBy(() -> governanceService.approveRequest(
+                TENANT_ID,
+                request.id(),
+                "second",
+                secondApprover,
+                LocalDateTime.now(ZoneOffset.UTC)
+        ))
+                .hasMessageContaining("审批请求状态已变化");
+
+        assertThat(approved.status()).isEqualTo(ApprovalStatus.APPROVED);
+        Long approveAuditCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM audit_logs WHERE request_id = ? AND action_type = 'APPROVE_REQUEST'",
+                Long.class,
+                request.id()
+        );
+        Long winningApprover = jdbcTemplate.queryForObject(
+                "SELECT approver_user_id FROM approval_requests WHERE id = ?",
+                Long.class,
+                request.id()
+        );
+        assertThat(approveAuditCount).isEqualTo(1L);
+        assertThat(winningApprover).isEqualTo(208L);
     }
 }

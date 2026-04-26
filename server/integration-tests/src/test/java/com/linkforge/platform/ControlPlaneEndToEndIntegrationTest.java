@@ -3,6 +3,7 @@ package com.linkforge.platform;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkforge.LinkForgeApplication;
+import com.linkforge.analytics.infrastructure.catalog.ShortLinkCatalogProjectorJob;
 import com.linkforge.analytics.infrastructure.job.AnalyticsFlushJob;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -80,6 +81,9 @@ class ControlPlaneEndToEndIntegrationTest {
     @Autowired
     AnalyticsFlushJob analyticsFlushJob;
 
+    @Autowired
+    ShortLinkCatalogProjectorJob shortLinkCatalogProjectorJob;
+
     @BeforeEach
     void resetRedis() {
         redis.getConnectionFactory().getConnection().serverCommands().flushAll();
@@ -154,7 +158,7 @@ class ControlPlaneEndToEndIntegrationTest {
                 approver.token(),
                 null
         );
-        assertThat(approved.get("data").get("status").asText()).isEqualTo("EXECUTED");
+        assertThat(approved.get("data").get("status").asText()).isEqualTo("APPROVED");
 
         mockMvc.perform(
                         get("/r/" + code)
@@ -165,6 +169,7 @@ class ControlPlaneEndToEndIntegrationTest {
                 .andExpect(header().string(HttpHeaders.LOCATION, "https://example.com/orders"));
 
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        shortLinkCatalogProjectorJob.project();
         seedStats(owner.tenantId(), linkId, today, 7, 3);
         analyticsFlushJob.flush();
 

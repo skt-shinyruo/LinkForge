@@ -2,6 +2,7 @@ package com.linkforge.shortlink.application;
 
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.TestTenantFixtures;
+import com.linkforge.contract.api.BusinessException;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.governance.application.GovernanceService;
 import com.linkforge.governance.domain.ApprovalStatus;
@@ -17,6 +18,12 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -241,6 +248,130 @@ class ApplicationAwareShortLinkIntegrationTest extends ApplicationAwareShortLink
     }
 
     @Test
+    void concurrent_public_link_destination_approval_should_execute_once_and_audit_once() throws Exception {
+        ShortLinkService.LinkDto created = shortLinkService.create(
+                TENANT_ID,
+                ShortLinkService.CreatedBy.user(USER_ID),
+                new ShortLinkService.CreateLinkRequest(
+                        "https://example.com/concurrent-original",
+                        "note",
+                        null,
+                        null,
+                        null,
+                        Set.of(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        applicationId,
+                        authorizedDomainId,
+                        "ACTIVE"
+                )
+        );
+
+        shortLinkService.update(
+                TENANT_ID,
+                created.id(),
+                new ShortLinkService.UpdateLinkRequest(
+                        "https://example.com/concurrent-approved",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null
+                ),
+                tenantAdminActor(),
+                LocalDateTime.now(ZoneOffset.UTC)
+        );
+
+        Long approvalId = jdbcTemplate.queryForObject(
+                """
+                        SELECT id
+                        FROM approval_requests
+                        WHERE operation_type = 'PUBLIC_LINK_DESTINATION_CHANGE'
+                          AND target_application_id = ?
+                        ORDER BY created_at DESC, id DESC
+                        LIMIT 1
+                        """,
+                Long.class,
+                applicationId
+        );
+        Long versionBeforeApproval = jdbcTemplate.queryForObject(
+                "SELECT version FROM short_links WHERE id = ?",
+                Long.class,
+                created.id()
+        );
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            Future<ApprovalAttempt> first = submitApprovalAttempt(
+                    executor,
+                    start,
+                    () -> governanceService.approveRequest(
+                            TENANT_ID,
+                            approvalId,
+                            "first",
+                            new UserActor(TENANT_ID, USER_ID + 1, "first-approver@example.com", Set.of("TENANT_ADMIN")),
+                            LocalDateTime.now(ZoneOffset.UTC)
+                    )
+            );
+            Future<ApprovalAttempt> second = submitApprovalAttempt(
+                    executor,
+                    start,
+                    () -> governanceService.approveRequest(
+                            TENANT_ID,
+                            approvalId,
+                            "second",
+                            new UserActor(TENANT_ID, USER_ID + 2, "second-approver@example.com", Set.of("TENANT_ADMIN")),
+                            LocalDateTime.now(ZoneOffset.UTC)
+                    )
+            );
+
+            start.countDown();
+
+            ApprovalAttempt firstResult = first.get(10, TimeUnit.SECONDS);
+            ApprovalAttempt secondResult = second.get(10, TimeUnit.SECONDS);
+
+            assertThat(firstResult.success() ^ secondResult.success()).isTrue();
+            assertThat(firstResult.success() ? firstResult.status() : secondResult.status()).isEqualTo(ApprovalStatus.EXECUTED);
+            assertThat(firstResult.success() ? secondResult.errorMessage() : firstResult.errorMessage())
+                    .contains("审批请求状态已变化");
+        } finally {
+            executor.shutdownNow();
+        }
+
+        String originalUrl = jdbcTemplate.queryForObject(
+                "SELECT original_url FROM short_links WHERE id = ?",
+                String.class,
+                created.id()
+        );
+        Long versionAfterApproval = jdbcTemplate.queryForObject(
+                "SELECT version FROM short_links WHERE id = ?",
+                Long.class,
+                created.id()
+        );
+        Long approveAuditCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM audit_logs WHERE request_id = ? AND action_type = 'APPROVE_REQUEST'",
+                Long.class,
+                approvalId
+        );
+
+        assertThat(originalUrl).isEqualTo("https://example.com/concurrent-approved");
+        assertThat(versionAfterApproval).isEqualTo(versionBeforeApproval + 1);
+        assertThat(approveAuditCount).isEqualTo(1L);
+    }
+
+    @Test
     void draft_link_should_allow_direct_edit_without_approval_state_on_link_row() {
         ShortLinkService.LinkDto created = shortLinkService.create(
                 TENANT_ID,
@@ -299,6 +430,25 @@ class ApplicationAwareShortLinkIntegrationTest extends ApplicationAwareShortLink
                 applicationId
         );
         assertThat(requestCount).isZero();
+    }
+
+    private static Future<ApprovalAttempt> submitApprovalAttempt(
+            ExecutorService executor,
+            CountDownLatch start,
+            Callable<GovernanceService.ApprovalRequestDto> task
+    ) {
+        return executor.submit(() -> {
+            assertThat(start.await(10, TimeUnit.SECONDS)).isTrue();
+            try {
+                GovernanceService.ApprovalRequestDto dto = task.call();
+                return new ApprovalAttempt(true, dto.status(), null);
+            } catch (BusinessException ex) {
+                return new ApprovalAttempt(false, null, ex.getMessage());
+            }
+        });
+    }
+
+    private record ApprovalAttempt(boolean success, ApprovalStatus status, String errorMessage) {
     }
 
     private static UserActor tenantAdminActor() {

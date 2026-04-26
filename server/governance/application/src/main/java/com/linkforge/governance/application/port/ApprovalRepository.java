@@ -13,13 +13,18 @@ public interface ApprovalRepository {
 
     List<ApprovalRequest> listByTenantId(long tenantId);
 
-    void updateDecision(
+    boolean markApprovedIfPending(
+            long tenantId,
             long requestId,
-            String status,
             long approverUserId,
             String approverEmail,
             String decisionReason,
-            java.time.LocalDateTime decidedAt,
+            java.time.LocalDateTime decidedAt
+    );
+
+    boolean markExecutedIfApproved(
+            long tenantId,
+            long requestId,
             java.time.LocalDateTime executedAt
     );
 }

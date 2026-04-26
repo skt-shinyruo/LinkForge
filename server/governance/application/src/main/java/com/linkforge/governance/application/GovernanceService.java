@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 @Service
@@ -79,29 +80,48 @@ public class GovernanceService {
         UserActor effectiveActor = requireActor(tenantId, actor);
         ApprovalRequest request = approvalRepository.findByTenantIdAndId(tenantId, requestId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "审批请求不存在"));
+        if (request.status() != ApprovalStatus.PENDING_APPROVAL) {
+            throw approvalStateChanged();
+        }
         if (request.requestedByUserId() == effectiveActor.userId()) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "申请人与审批人不能是同一人");
         }
         enforceApprovalMatrix(effectiveActor, request);
         LocalDateTime now = requestedAt == null ? LocalDateTime.now(clock) : requestedAt;
-        executeApprovedRequest(request, now);
-        approvalRepository.updateDecision(
+        SensitiveOperation operation = toContractOperation(request.operationType());
+        Optional<ApprovalExecutionPort> executor = findExecutor(operation);
+
+        boolean claimed = approvalRepository.markApprovedIfPending(
+                request.tenantId(),
                 request.id(),
-                ApprovalStatus.EXECUTED.name(),
                 effectiveActor.userId(),
                 effectiveActor.email(),
                 reason,
-                now,
                 now
         );
+        if (!claimed) {
+            throw approvalStateChanged();
+        }
+
+        if (executor.isPresent()) {
+            executeApprovedRequest(request, operation, executor.get(), now);
+            if (!approvalRepository.markExecutedIfApproved(request.tenantId(), request.id(), now)) {
+                throw new BusinessException(ErrorCode.INTERNAL_ERROR, "审批执行状态更新失败");
+            }
+        }
+
         appendAuditLog(tenantId, effectiveActor, "APPROVE_REQUEST", "approval_request", String.valueOf(requestId), requestId, request.beforeSnapshot(), request.afterSnapshot(), now);
         return approvalRepository.findByTenantIdAndId(tenantId, requestId)
                 .map(this::toDto)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_ERROR, "审批请求更新失败"));
     }
 
-    private void executeApprovedRequest(ApprovalRequest request, LocalDateTime executedAt) {
-        SensitiveOperation operation = toContractOperation(request.operationType());
+    private void executeApprovedRequest(
+            ApprovalRequest request,
+            SensitiveOperation operation,
+            ApprovalExecutionPort executor,
+            LocalDateTime executedAt
+    ) {
         ApprovalExecutionRequest executionRequest = new ApprovalExecutionRequest(
                 request.id(),
                 request.tenantId(),
@@ -110,10 +130,17 @@ public class GovernanceService {
                 request.beforeSnapshot(),
                 request.afterSnapshot()
         );
-        approvalExecutionPorts.stream()
+        executor.execute(executionRequest, executedAt);
+    }
+
+    private Optional<ApprovalExecutionPort> findExecutor(SensitiveOperation operation) {
+        return approvalExecutionPorts.stream()
                 .filter(port -> port.supports(operation))
-                .findFirst()
-                .ifPresent(port -> port.execute(executionRequest, executedAt));
+                .findFirst();
+    }
+
+    private static BusinessException approvalStateChanged() {
+        return new BusinessException(ErrorCode.BAD_REQUEST, "审批请求状态已变化，请刷新后重试");
     }
 
     private static SensitiveOperation toContractOperation(SensitiveOperationType operationType) {

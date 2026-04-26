@@ -76,14 +76,25 @@
         ORDER BY created_at DESC, id DESC
     </select>
 
-    <update id="updateDecision">
+    <update id="markApprovedIfPending">
         UPDATE approval_requests
-        SET status = #{status},
+        SET status = 'APPROVED',
             approver_user_id = #{approverUserId},
             approver_email = #{approverEmail},
             decision_reason = #{decisionReason},
             decided_at = #{decidedAt},
+            executed_at = NULL
+        WHERE tenant_id = #{tenantId}
+          AND id = #{requestId}
+          AND status = 'PENDING_APPROVAL'
+    </update>
+
+    <update id="markExecutedIfApproved">
+        UPDATE approval_requests
+        SET status = 'EXECUTED',
             executed_at = #{executedAt}
-        WHERE id = #{requestId}
+        WHERE tenant_id = #{tenantId}
+          AND id = #{requestId}
+          AND status = 'APPROVED'
     </update>
 </mapper>

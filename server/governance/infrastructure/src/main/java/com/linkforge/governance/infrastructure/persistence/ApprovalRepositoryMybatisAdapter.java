@@ -37,16 +37,27 @@ public class ApprovalRepositoryMybatisAdapter implements ApprovalRepository {
     }
 
     @Override
-    public void updateDecision(
+    public boolean markApprovedIfPending(
+            long tenantId,
             long requestId,
-            String status,
             long approverUserId,
             String approverEmail,
             String decisionReason,
-            LocalDateTime decidedAt,
-            LocalDateTime executedAt
+            LocalDateTime decidedAt
     ) {
-        mapper.updateDecision(requestId, status, approverUserId, approverEmail, decisionReason, decidedAt, executedAt);
+        return mapper.markApprovedIfPending(
+                tenantId,
+                requestId,
+                approverUserId,
+                approverEmail,
+                decisionReason,
+                decidedAt
+        ) > 0;
+    }
+
+    @Override
+    public boolean markExecutedIfApproved(long tenantId, long requestId, LocalDateTime executedAt) {
+        return mapper.markExecutedIfApproved(tenantId, requestId, executedAt) > 0;
     }
 
     private static ApprovalRequestEntity toEntity(ApprovalRequest request) {

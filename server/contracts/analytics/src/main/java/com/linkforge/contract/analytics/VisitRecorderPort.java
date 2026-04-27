@@ -7,6 +7,5 @@ package com.linkforge.contract.analytics;
  */
 public interface VisitRecorderPort {
 
-    void recordVisit(long tenantId, long linkId, VisitContext visitContext);
+    void recordVisit(RedirectVisitRecord visit);
 }
-

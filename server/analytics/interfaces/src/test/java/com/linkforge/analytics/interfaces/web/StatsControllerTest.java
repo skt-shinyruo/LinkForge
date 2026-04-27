@@ -52,7 +52,7 @@ class StatsControllerTest {
                 .doesNotContain(
                         "com.linkforge.governance.application.GovernanceService",
                         "com.linkforge.governance.application.GovernanceApprovalRequestService",
-                        "com.linkforge.contract.shortlink.ShortLinkOwnershipLookupPort"
+                        "com.linkforge.contract.shortlink.ShortLinkReadPort"
                 );
     }
 

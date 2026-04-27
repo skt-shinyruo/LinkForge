@@ -311,9 +311,9 @@ class ArchitectureTest {
         String[] innerLayerPatterns() {
             return new String[]{
                     basePackage + ".domain..",
+                    basePackage + ".application..",
                     basePackage + ".infrastructure..",
-                    basePackage + ".interfaces..",
-                    basePackage + ".application.port.."
+                    basePackage + ".interfaces.."
             };
         }
     }

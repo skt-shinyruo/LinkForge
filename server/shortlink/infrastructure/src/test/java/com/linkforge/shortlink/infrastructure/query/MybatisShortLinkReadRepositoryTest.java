@@ -1,7 +1,7 @@
 package com.linkforge.shortlink.infrastructure.query;
 
+import com.linkforge.contract.shortlink.ShortLinkReadPort;
 import com.linkforge.foundation.config.CoreProperties;
-import com.linkforge.shortlink.application.ShortLinkReadService;
 import com.linkforge.shortlink.infrastructure.persistence.entity.ShortLinkEntity;
 import com.linkforge.shortlink.infrastructure.persistence.mapper.ShortLinkQueryMapper;
 import org.junit.jupiter.api.Test;
@@ -31,7 +31,7 @@ class MybatisShortLinkReadRepositoryTest {
         when(queryMapper.findActiveByHostnameAndCode("alpha.example.test", "AbC123"))
                 .thenReturn(row);
 
-        Optional<ShortLinkReadService.RedirectLinkMeta> actual =
+        Optional<ShortLinkReadPort.RedirectLinkView> actual =
                 repository.findRedirectMetaByHostAndCode(" Alpha.Example.Test:8443 ", "  AbC123  ");
 
         assertThat(actual).hasValueSatisfying(meta -> {
@@ -72,7 +72,7 @@ class MybatisShortLinkReadRepositoryTest {
         when(queryMapper.findActiveByLegacyBaseHostAndCode("go.example.test", "abc123"))
                 .thenReturn(row);
 
-        Optional<ShortLinkReadService.RedirectLinkMeta> actual =
+        Optional<ShortLinkReadPort.RedirectLinkView> actual =
                 repository.findRedirectMetaByHostAndCode("Go.Example.Test:443", "abc123");
 
         assertThat(actual).hasValueSatisfying(meta -> {
@@ -100,7 +100,7 @@ class MybatisShortLinkReadRepositoryTest {
         when(queryMapper.findActiveUnscopedByCode("abc123")).thenReturn(row);
         MybatisShortLinkReadRepository repository = new MybatisShortLinkReadRepository(queryMapper, coreProperties);
 
-        Optional<ShortLinkReadService.RedirectLinkMeta> actual =
+        Optional<ShortLinkReadPort.RedirectLinkView> actual =
                 repository.findRedirectMetaByHostAndCode("Go.Example.Test:443", "abc123");
 
         assertThat(actual).hasValueSatisfying(meta -> {
@@ -125,9 +125,9 @@ class MybatisShortLinkReadRepositoryTest {
         ShortLinkEntity row = redirectRow();
         when(queryMapper.findByTenantIdAndId(22L, 11L)).thenReturn(row);
 
-        Optional<ShortLinkReadService.LinkOwnership> actual = repository.findOwnership(22L, 11L);
+        Optional<ShortLinkReadPort.ShortLinkOwnership> actual = repository.findOwnership(22L, 11L);
 
-        assertThat(actual).contains(new ShortLinkReadService.LinkOwnership(33L, 44L));
+        assertThat(actual).contains(new ShortLinkReadPort.ShortLinkOwnership(33L, 44L));
         verify(queryMapper).findByTenantIdAndId(22L, 11L);
         verifyNoMoreInteractions(queryMapper, coreProperties);
     }
@@ -144,11 +144,11 @@ class MybatisShortLinkReadRepositoryTest {
         row2.setOriginalUrl("https://example.com/other");
         when(queryMapper.listByTenantIdAndIds(22L, List.of(11L, 12L))).thenReturn(List.of(row1, row2));
 
-        Map<Long, ShortLinkReadService.LinkSummary> actual = repository.listSummaries(22L, List.of(11L, 12L));
+        Map<Long, ShortLinkReadPort.ShortLinkSummary> actual = repository.listSummaries(22L, List.of(11L, 12L));
 
         assertThat(actual).containsExactlyInAnyOrderEntriesOf(Map.of(
-                11L, new ShortLinkReadService.LinkSummary(11L, "AbC123", "https://example.com/live", false),
-                12L, new ShortLinkReadService.LinkSummary(12L, "xyz789", "https://example.com/other", false)
+                11L, new ShortLinkReadPort.ShortLinkSummary(11L, "AbC123", "https://example.com/live", false),
+                12L, new ShortLinkReadPort.ShortLinkSummary(12L, "xyz789", "https://example.com/other", false)
         ));
         verify(queryMapper).listByTenantIdAndIds(22L, List.of(11L, 12L));
         verifyNoMoreInteractions(queryMapper, coreProperties);

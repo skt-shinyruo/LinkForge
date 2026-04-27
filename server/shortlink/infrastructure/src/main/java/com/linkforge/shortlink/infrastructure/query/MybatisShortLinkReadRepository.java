@@ -1,7 +1,7 @@
 package com.linkforge.shortlink.infrastructure.query;
 
+import com.linkforge.contract.shortlink.ShortLinkReadPort;
 import com.linkforge.foundation.config.CoreProperties;
-import com.linkforge.shortlink.application.ShortLinkReadService;
 import com.linkforge.shortlink.application.port.ShortLinkReadRepository;
 import com.linkforge.shortlink.infrastructure.persistence.entity.ShortLinkEntity;
 import com.linkforge.shortlink.infrastructure.persistence.mapper.ShortLinkQueryMapper;
@@ -28,7 +28,7 @@ public class MybatisShortLinkReadRepository implements ShortLinkReadRepository {
     }
 
     @Override
-    public Optional<ShortLinkReadService.RedirectLinkMeta> findRedirectMetaByHostAndCode(String host, String code) {
+    public Optional<ShortLinkReadPort.RedirectLinkView> findRedirectMetaByHostAndCode(String host, String code) {
         String normalizedCode = normalizeNullable(code);
         String normalizedHost = normalizeHost(host);
         if (normalizedCode == null) {
@@ -58,22 +58,22 @@ public class MybatisShortLinkReadRepository implements ShortLinkReadRepository {
     }
 
     @Override
-    public Optional<ShortLinkReadService.LinkOwnership> findOwnership(long tenantId, long linkId) {
+    public Optional<ShortLinkReadPort.ShortLinkOwnership> findOwnership(long tenantId, long linkId) {
         return Optional.ofNullable(queryMapper.findByTenantIdAndId(tenantId, linkId))
-                .map(row -> new ShortLinkReadService.LinkOwnership(row.getApplicationId(), row.getDomainId()));
+                .map(row -> new ShortLinkReadPort.ShortLinkOwnership(row.getApplicationId(), row.getDomainId()));
     }
 
     @Override
-    public Map<Long, ShortLinkReadService.LinkSummary> listSummaries(long tenantId, List<Long> linkIds) {
+    public Map<Long, ShortLinkReadPort.ShortLinkSummary> listSummaries(long tenantId, List<Long> linkIds) {
         if (linkIds == null || linkIds.isEmpty()) {
             return Map.of();
         }
-        Map<Long, ShortLinkReadService.LinkSummary> summaries = new LinkedHashMap<>();
+        Map<Long, ShortLinkReadPort.ShortLinkSummary> summaries = new LinkedHashMap<>();
         for (ShortLinkEntity row : safeList(queryMapper.listByTenantIdAndIds(tenantId, linkIds))) {
             if (row == null || row.getId() == null) {
                 continue;
             }
-            summaries.put(row.getId(), new ShortLinkReadService.LinkSummary(
+            summaries.put(row.getId(), new ShortLinkReadPort.ShortLinkSummary(
                     row.getId(),
                     row.getCode(),
                     row.getOriginalUrl(),
@@ -134,11 +134,11 @@ public class MybatisShortLinkReadRepository implements ShortLinkReadRepository {
         return normalized.isBlank() ? null : normalized;
     }
 
-    private static ShortLinkReadService.RedirectLinkMeta toRedirectLinkMeta(ShortLinkEntity row) {
+    private static ShortLinkReadPort.RedirectLinkView toRedirectLinkMeta(ShortLinkEntity row) {
         if (row == null) {
             return null;
         }
-        return new ShortLinkReadService.RedirectLinkMeta(
+        return new ShortLinkReadPort.RedirectLinkView(
                 row.getTenantId() == null ? 0L : row.getTenantId(),
                 row.getId() == null ? 0L : row.getId(),
                 row.getCode(),

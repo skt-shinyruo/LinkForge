@@ -1,6 +1,6 @@
 package com.linkforge.analytics.infrastructure.query;
 
-import com.linkforge.analytics.application.ApplicationClickUsagePort;
+import com.linkforge.contract.analytics.ApplicationClickUsagePort;
 import com.linkforge.analytics.infrastructure.persistence.AnalyticsQueryRepository;
 import org.springframework.stereotype.Component;
 

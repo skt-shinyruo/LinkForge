@@ -1,6 +1,6 @@
 package com.linkforge.shortlink.application.port;
 
-import com.linkforge.shortlink.application.ShortLinkReadService;
+import com.linkforge.contract.shortlink.ShortLinkReadPort;
 
 import java.util.List;
 import java.util.Map;
@@ -8,11 +8,11 @@ import java.util.Optional;
 
 public interface ShortLinkReadRepository {
 
-    Optional<ShortLinkReadService.RedirectLinkMeta> findRedirectMetaByHostAndCode(String host, String code);
+    Optional<ShortLinkReadPort.RedirectLinkView> findRedirectMetaByHostAndCode(String host, String code);
 
-    Optional<ShortLinkReadService.LinkOwnership> findOwnership(long tenantId, long linkId);
+    Optional<ShortLinkReadPort.ShortLinkOwnership> findOwnership(long tenantId, long linkId);
 
-    Map<Long, ShortLinkReadService.LinkSummary> listSummaries(long tenantId, List<Long> linkIds);
+    Map<Long, ShortLinkReadPort.ShortLinkSummary> listSummaries(long tenantId, List<Long> linkIds);
 
     List<Long> listLinkIdsByApplication(long tenantId, long applicationId);
 

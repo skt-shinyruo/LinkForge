@@ -1,23 +1,19 @@
-package com.linkforge.shortlink.application;
+package com.linkforge.contract.shortlink;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-public interface ShortLinkReadService {
+public interface ShortLinkReadPort {
 
-    Optional<RedirectLinkMeta> findRedirectMetaByHostAndCode(String host, String code);
+    Optional<RedirectLinkView> findRedirectMetaByHostAndCode(String host, String code);
 
-    Optional<LinkOwnership> findOwnership(long tenantId, long linkId);
+    Optional<ShortLinkOwnership> findOwnership(long tenantId, long linkId);
 
-    Map<Long, LinkSummary> listSummaries(long tenantId, List<Long> linkIds);
+    Map<Long, ShortLinkSummary> listSummaries(long tenantId, List<Long> linkIds);
 
-    List<Long> listLinkIdsByApplication(long tenantId, long applicationId);
-
-    List<Long> listLinkIdsByDomain(long tenantId, long domainId);
-
-    record RedirectLinkMeta(
+    record RedirectLinkView(
             long tenantId,
             long linkId,
             String code,
@@ -36,11 +32,11 @@ public interface ShortLinkReadService {
     ) {
         private static final String ACTIVE_LIFECYCLE_STATE = "ACTIVE";
 
-        public RedirectLinkMeta {
+        public RedirectLinkView {
             lifecycleState = normalizeLifecycleState(lifecycleState);
         }
 
-        public RedirectLinkMeta(
+        public RedirectLinkView(
                 long tenantId,
                 long linkId,
                 String code,
@@ -83,9 +79,9 @@ public interface ShortLinkReadService {
         }
     }
 
-    record LinkOwnership(Long applicationId, Long domainId) {
+    record ShortLinkOwnership(Long applicationId, Long domainId) {
     }
 
-    record LinkSummary(long linkId, String code, String originalUrl, boolean deleted) {
+    record ShortLinkSummary(long linkId, String code, String originalUrl, boolean deleted) {
     }
 }

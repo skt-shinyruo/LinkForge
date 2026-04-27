@@ -1,5 +1,6 @@
 package com.linkforge.shortlink.application;
 
+import com.linkforge.contract.shortlink.ShortLinkReadPort;
 import com.linkforge.shortlink.application.port.ShortLinkReadRepository;
 import org.springframework.stereotype.Service;
 
@@ -8,7 +9,7 @@ import java.util.Map;
 import java.util.Optional;
 
 @Service
-public class ShortLinkReadApplicationService implements ShortLinkReadService {
+public class ShortLinkReadApplicationService implements ShortLinkReadPort {
 
     private final ShortLinkReadRepository shortLinkReadRepository;
 
@@ -17,27 +18,17 @@ public class ShortLinkReadApplicationService implements ShortLinkReadService {
     }
 
     @Override
-    public Optional<RedirectLinkMeta> findRedirectMetaByHostAndCode(String host, String code) {
+    public Optional<RedirectLinkView> findRedirectMetaByHostAndCode(String host, String code) {
         return shortLinkReadRepository.findRedirectMetaByHostAndCode(host, code);
     }
 
     @Override
-    public Optional<LinkOwnership> findOwnership(long tenantId, long linkId) {
+    public Optional<ShortLinkOwnership> findOwnership(long tenantId, long linkId) {
         return shortLinkReadRepository.findOwnership(tenantId, linkId);
     }
 
     @Override
-    public Map<Long, LinkSummary> listSummaries(long tenantId, List<Long> linkIds) {
+    public Map<Long, ShortLinkSummary> listSummaries(long tenantId, List<Long> linkIds) {
         return shortLinkReadRepository.listSummaries(tenantId, linkIds);
-    }
-
-    @Override
-    public List<Long> listLinkIdsByApplication(long tenantId, long applicationId) {
-        return shortLinkReadRepository.listLinkIdsByApplication(tenantId, applicationId);
-    }
-
-    @Override
-    public List<Long> listLinkIdsByDomain(long tenantId, long domainId) {
-        return shortLinkReadRepository.listLinkIdsByDomain(tenantId, domainId);
     }
 }

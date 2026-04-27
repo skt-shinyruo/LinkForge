@@ -1,13 +1,14 @@
 package com.linkforge.redirect.application;
 
-import com.linkforge.analytics.application.AnalyticsVisitEventService;
-import com.linkforge.analytics.application.ApplicationClickUsagePort;
+import com.linkforge.contract.analytics.ApplicationClickUsagePort;
+import com.linkforge.contract.analytics.RedirectVisitRecord;
+import com.linkforge.contract.analytics.VisitContext;
+import com.linkforge.contract.analytics.VisitRecorderPort;
 import com.linkforge.contract.platform.ApplicationQuotaView;
 import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.contract.redirect.LinkCachePort;
 import com.linkforge.contract.redirect.LinkMeta;
-import com.linkforge.contract.redirect.LinkMetaSourcePort;
-import com.linkforge.shortlink.application.ShortLinkReadService;
+import com.linkforge.contract.shortlink.ShortLinkReadPort;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.linkforge.redirect.application.error.RedirectBusinessException;
 import com.linkforge.redirect.application.error.RedirectErrorCode;
@@ -18,16 +19,14 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 @Service
 public class RedirectService {
 
     private final LinkCachePort linkCache;
-    private final ShortLinkReadService shortLinkReadService;
-    private final AnalyticsVisitEventService analyticsVisitEventService;
+    private final ShortLinkReadPort shortLinkReadPort;
+    private final VisitRecorderPort visitRecorderPort;
     private final Clock clock;
     private final ApplicationScopePort applicationScopePort;
     private final ApplicationClickUsagePort applicationClickUsagePort;
@@ -35,15 +34,15 @@ public class RedirectService {
     @Autowired
     public RedirectService(
             LinkCachePort linkCache,
-            ShortLinkReadService shortLinkReadService,
-            AnalyticsVisitEventService analyticsVisitEventService,
+            ShortLinkReadPort shortLinkReadPort,
+            VisitRecorderPort visitRecorderPort,
             Clock clock,
             ApplicationScopePort applicationScopePort,
             ApplicationClickUsagePort applicationClickUsagePort
     ) {
         this.linkCache = linkCache;
-        this.shortLinkReadService = shortLinkReadService;
-        this.analyticsVisitEventService = analyticsVisitEventService;
+        this.shortLinkReadPort = shortLinkReadPort;
+        this.visitRecorderPort = visitRecorderPort;
         this.clock = clock;
         this.applicationScopePort = applicationScopePort == null ? noQuotaApplicationScopePort() : applicationScopePort;
         this.applicationClickUsagePort = applicationClickUsagePort == null ? noClickUsagePort() : applicationClickUsagePort;
@@ -51,51 +50,17 @@ public class RedirectService {
 
     public RedirectService(
             LinkCachePort linkCache,
-            ShortLinkReadService shortLinkReadService,
-            AnalyticsVisitEventService analyticsVisitEventService,
+            ShortLinkReadPort shortLinkReadPort,
+            VisitRecorderPort visitRecorderPort,
             Clock clock
     ) {
         this(
                 linkCache,
-                shortLinkReadService,
-                analyticsVisitEventService,
+                shortLinkReadPort,
+                visitRecorderPort,
                 clock,
                 noQuotaApplicationScopePort(),
                 noClickUsagePort()
-        );
-    }
-
-    public RedirectService(
-            LinkCachePort linkCache,
-            LinkMetaSourcePort linkMetaSource,
-            AnalyticsVisitEventService analyticsVisitEventService,
-            Clock clock
-    ) {
-        this(
-                linkCache,
-                linkMetaSource,
-                analyticsVisitEventService,
-                clock,
-                noQuotaApplicationScopePort(),
-                noClickUsagePort()
-        );
-    }
-
-    public RedirectService(
-            LinkCachePort linkCache,
-            LinkMetaSourcePort linkMetaSource,
-            AnalyticsVisitEventService analyticsVisitEventService,
-            Clock clock,
-            ApplicationScopePort applicationScopePort,
-            ApplicationClickUsagePort applicationClickUsagePort
-    ) {
-        this(
-                linkCache,
-                readServiceFrom(linkMetaSource),
-                analyticsVisitEventService,
-                clock,
-                applicationScopePort,
-                applicationClickUsagePort
         );
     }
 
@@ -133,7 +98,7 @@ public class RedirectService {
             return RedirectResolution.preview(normalizedCode, true, meta);
         }
 
-        analyticsVisitEventService.append(toRedirectVisitEvent(meta, request.visitInput()));
+        visitRecorderPort.recordVisit(toRedirectVisitRecord(meta, request.visitInput()));
         return RedirectResolution.redirect(normalizedCode, request.htmlRequest(), meta);
     }
 
@@ -142,7 +107,7 @@ public class RedirectService {
      */
     public void recordVisitIfAvailable(LinkMeta meta, RedirectVisitInput visitInput) {
         if (isAvailable(meta)) {
-            analyticsVisitEventService.append(toRedirectVisitEvent(meta, visitInput));
+            visitRecorderPort.recordVisit(toRedirectVisitRecord(meta, visitInput));
         }
     }
 
@@ -176,7 +141,7 @@ public class RedirectService {
             return cached.meta();
         }
 
-        LinkMeta meta = shortLinkReadService.findRedirectMetaByHostAndCode(host, normalized)
+        LinkMeta meta = shortLinkReadPort.findRedirectMetaByHostAndCode(host, normalized)
                 .map(RedirectService::toLinkMeta)
                 .orElse(null);
         if (meta != null) {
@@ -222,7 +187,7 @@ public class RedirectService {
         return v;
     }
 
-    private static LinkMeta toLinkMeta(ShortLinkReadService.RedirectLinkMeta meta) {
+    private static LinkMeta toLinkMeta(ShortLinkReadPort.RedirectLinkView meta) {
         return new LinkMeta(
                 meta.linkId(),
                 meta.tenantId(),
@@ -240,56 +205,6 @@ public class RedirectService {
                 meta.domainId(),
                 meta.lifecycleState()
         );
-    }
-
-    private static ShortLinkReadService.RedirectLinkMeta toRedirectLinkMeta(LinkMeta meta) {
-        return new ShortLinkReadService.RedirectLinkMeta(
-                meta.tenantId(),
-                meta.id(),
-                meta.code(),
-                meta.hostname(),
-                meta.originalUrl(),
-                meta.enabled(),
-                toInstant(meta.expiresAt()),
-                meta.redirectStatusCode(),
-                meta.previewEnabled(),
-                meta.unavailableLandingUrl(),
-                meta.queryForwardMode(),
-                meta.queryForwardAllowlist(),
-                meta.applicationId(),
-                meta.domainId(),
-                meta.lifecycleState()
-        );
-    }
-
-    private static ShortLinkReadService readServiceFrom(LinkMetaSourcePort linkMetaSource) {
-        return new ShortLinkReadService() {
-            @Override
-            public Optional<RedirectLinkMeta> findRedirectMetaByHostAndCode(String host, String code) {
-                return linkMetaSource.findByHostAndCode(host, code)
-                        .map(RedirectService::toRedirectLinkMeta);
-            }
-
-            @Override
-            public Optional<LinkOwnership> findOwnership(long tenantId, long linkId) {
-                return Optional.empty();
-            }
-
-            @Override
-            public Map<Long, LinkSummary> listSummaries(long tenantId, List<Long> linkIds) {
-                return Map.of();
-            }
-
-            @Override
-            public List<Long> listLinkIdsByApplication(long tenantId, long applicationId) {
-                return List.of();
-            }
-
-            @Override
-            public List<Long> listLinkIdsByDomain(long tenantId, long domainId) {
-                return List.of();
-            }
-        };
     }
 
     private boolean isAvailable(LinkMeta meta) {
@@ -313,8 +228,8 @@ public class RedirectService {
         return quotaUnavailableReason(meta);
     }
 
-    private AnalyticsVisitEventService.RedirectVisitEvent toRedirectVisitEvent(LinkMeta meta, RedirectVisitInput visitInput) {
-        return new AnalyticsVisitEventService.RedirectVisitEvent(
+    private RedirectVisitRecord toRedirectVisitRecord(LinkMeta meta, RedirectVisitInput visitInput) {
+        return new RedirectVisitRecord(
                 meta.tenantId(),
                 meta.id(),
                 clock.instant().toEpochMilli(),
@@ -322,11 +237,13 @@ public class RedirectService {
                 meta.domainId(),
                 meta.code(),
                 meta.originalUrl(),
-                visitInput == null ? null : visitInput.ip(),
-                visitInput == null ? null : visitInput.userAgent(),
-                visitInput == null ? null : visitInput.referer(),
-                visitInput == null ? null : visitInput.acceptLanguage(),
-                visitInput == null ? null : visitInput.trackingParams()
+                new VisitContext(
+                        visitInput == null ? null : visitInput.ip(),
+                        visitInput == null ? null : visitInput.userAgent(),
+                        visitInput == null ? null : visitInput.referer(),
+                        visitInput == null ? null : visitInput.acceptLanguage(),
+                        visitInput == null ? null : visitInput.trackingParams()
+                )
         );
     }
 
@@ -335,13 +252,6 @@ public class RedirectService {
             return null;
         }
         return LocalDateTime.ofInstant(instant, ZoneOffset.UTC);
-    }
-
-    private static Instant toInstant(LocalDateTime value) {
-        if (value == null) {
-            return null;
-        }
-        return value.toInstant(ZoneOffset.UTC);
     }
 
     private RedirectResolution.UnavailableReason quotaUnavailableReason(LinkMeta meta) {

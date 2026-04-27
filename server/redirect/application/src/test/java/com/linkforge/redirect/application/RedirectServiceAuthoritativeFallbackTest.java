@@ -1,12 +1,13 @@
 package com.linkforge.redirect.application;
 
-import com.linkforge.analytics.application.AnalyticsVisitEventService;
-import com.linkforge.analytics.application.ApplicationClickUsagePort;
+import com.linkforge.contract.analytics.ApplicationClickUsagePort;
+import com.linkforge.contract.analytics.RedirectVisitRecord;
+import com.linkforge.contract.analytics.VisitRecorderPort;
 import com.linkforge.contract.platform.ApplicationQuotaView;
 import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.contract.redirect.LinkCachePort;
 import com.linkforge.contract.redirect.LinkMeta;
-import com.linkforge.shortlink.application.ShortLinkReadService;
+import com.linkforge.contract.shortlink.ShortLinkReadPort;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -26,10 +27,10 @@ import static org.mockito.Mockito.when;
 class RedirectServiceAuthoritativeFallbackTest {
 
     @Test
-    void resolve_shouldUseShortLinkReadServiceBeforeProjectionOnCacheMiss() {
+    void resolve_shouldUseShortLinkReadPortBeforeProjectionOnCacheMiss() {
         RecordingLinkCache cache = new RecordingLinkCache();
-        ShortLinkReadService shortLinkReadService = mock(ShortLinkReadService.class);
-        ShortLinkReadService.RedirectLinkMeta authoritative = new ShortLinkReadService.RedirectLinkMeta(
+        ShortLinkReadPort shortLinkReadPort = mock(ShortLinkReadPort.class);
+        ShortLinkReadPort.RedirectLinkView authoritative = new ShortLinkReadPort.RedirectLinkView(
                 22L,
                 11L,
                 "abc123",
@@ -45,7 +46,7 @@ class RedirectServiceAuthoritativeFallbackTest {
                 33L,
                 44L
         );
-        when(shortLinkReadService.findRedirectMetaByHostAndCode("go.example.test", "abc123"))
+        when(shortLinkReadPort.findRedirectMetaByHostAndCode("go.example.test", "abc123"))
                 .thenReturn(Optional.of(authoritative));
 
         LinkMeta expected = new LinkMeta(
@@ -64,13 +65,13 @@ class RedirectServiceAuthoritativeFallbackTest {
                 33L,
                 44L
         );
-        AnalyticsVisitEventService analyticsVisitEventService = new AnalyticsVisitEventService(event -> {
-        });
+        VisitRecorderPort visitRecorderPort = visit -> {
+        };
 
         RedirectService service = new RedirectService(
                 cache,
-                shortLinkReadService,
-                analyticsVisitEventService,
+                shortLinkReadPort,
+                visitRecorderPort,
                 Clock.systemUTC()
         );
 
@@ -78,15 +79,15 @@ class RedirectServiceAuthoritativeFallbackTest {
 
         assertThat(resolved).isEqualTo(expected);
         assertThat(cache.cachedMeta).isEqualTo(expected);
-        verify(shortLinkReadService).findRedirectMetaByHostAndCode("go.example.test", "abc123");
+        verify(shortLinkReadPort).findRedirectMetaByHostAndCode("go.example.test", "abc123");
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"DRAFT", "PRE_RELEASE", "DISABLED"})
     void resolve_shouldTreatNonActiveLifecycleAsUnavailable(String lifecycleState) {
         RecordingLinkCache cache = new RecordingLinkCache();
-        ShortLinkReadService shortLinkReadService = mock(ShortLinkReadService.class);
-        ShortLinkReadService.RedirectLinkMeta authoritative = new ShortLinkReadService.RedirectLinkMeta(
+        ShortLinkReadPort shortLinkReadPort = mock(ShortLinkReadPort.class);
+        ShortLinkReadPort.RedirectLinkView authoritative = new ShortLinkReadPort.RedirectLinkView(
                 22L,
                 11L,
                 "abc123",
@@ -103,14 +104,14 @@ class RedirectServiceAuthoritativeFallbackTest {
                 44L,
                 lifecycleState
         );
-        when(shortLinkReadService.findRedirectMetaByHostAndCode("go.example.test", "abc123"))
+        when(shortLinkReadPort.findRedirectMetaByHostAndCode("go.example.test", "abc123"))
                 .thenReturn(Optional.of(authoritative));
-        AnalyticsVisitEventService analyticsVisitEventService = new AnalyticsVisitEventService(event -> {
-        });
+        VisitRecorderPort visitRecorderPort = visit -> {
+        };
         RedirectService service = new RedirectService(
                 cache,
-                shortLinkReadService,
-                analyticsVisitEventService,
+                shortLinkReadPort,
+                visitRecorderPort,
                 Clock.systemUTC()
         );
 
@@ -125,8 +126,8 @@ class RedirectServiceAuthoritativeFallbackTest {
     @Test
     void resolve_shouldReturnUnavailableAndSkipAnalyticsWhenMonthlyClickQuotaReached() {
         RecordingLinkCache cache = new RecordingLinkCache();
-        ShortLinkReadService shortLinkReadService = mock(ShortLinkReadService.class);
-        ShortLinkReadService.RedirectLinkMeta authoritative = new ShortLinkReadService.RedirectLinkMeta(
+        ShortLinkReadPort shortLinkReadPort = mock(ShortLinkReadPort.class);
+        ShortLinkReadPort.RedirectLinkView authoritative = new ShortLinkReadPort.RedirectLinkView(
                 22L,
                 11L,
                 "abc123",
@@ -142,10 +143,10 @@ class RedirectServiceAuthoritativeFallbackTest {
                 33L,
                 44L
         );
-        when(shortLinkReadService.findRedirectMetaByHostAndCode("go.example.test", "abc123"))
+        when(shortLinkReadPort.findRedirectMetaByHostAndCode("go.example.test", "abc123"))
                 .thenReturn(Optional.of(authoritative));
-        AtomicReference<AnalyticsVisitEventService.RedirectVisitEvent> recorded = new AtomicReference<>();
-        AnalyticsVisitEventService analyticsVisitEventService = new AnalyticsVisitEventService(recorded::set);
+        AtomicReference<RedirectVisitRecord> recorded = new AtomicReference<>();
+        VisitRecorderPort visitRecorderPort = recorded::set;
         ApplicationScopePort applicationScopePort = mock(ApplicationScopePort.class);
         when(applicationScopePort.findApplicationQuota(22L, 33L))
                 .thenReturn(Optional.of(new ApplicationQuotaView(33L, 100L, 10L)));
@@ -158,8 +159,8 @@ class RedirectServiceAuthoritativeFallbackTest {
         )).thenReturn(10L);
         RedirectService service = new RedirectService(
                 cache,
-                shortLinkReadService,
-                analyticsVisitEventService,
+                shortLinkReadPort,
+                visitRecorderPort,
                 Clock.fixed(Instant.parse("2026-04-24T10:15:30Z"), java.time.ZoneOffset.UTC),
                 applicationScopePort,
                 applicationClickUsagePort

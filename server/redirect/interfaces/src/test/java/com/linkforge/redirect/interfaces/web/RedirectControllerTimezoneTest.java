@@ -1,9 +1,9 @@
 package com.linkforge.redirect.interfaces.web;
 
-import com.linkforge.analytics.application.AnalyticsVisitEventService;
+import com.linkforge.contract.analytics.VisitRecorderPort;
 import com.linkforge.contract.redirect.LinkCachePort;
 import com.linkforge.contract.redirect.LinkMeta;
-import com.linkforge.contract.redirect.LinkMetaSourcePort;
+import com.linkforge.contract.shortlink.ShortLinkReadPort;
 import com.linkforge.foundation.config.RedirectProperties;
 import com.linkforge.redirect.application.RedirectService;
 import com.linkforge.redirect.application.RedirectUrlBuilder;
@@ -17,6 +17,8 @@ import java.net.URI;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.TimeZone;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -57,7 +59,7 @@ class RedirectControllerTimezoneTest {
         );
 
         AtomicInteger recorded = new AtomicInteger();
-        AnalyticsVisitEventService analyticsVisitEventService = new AnalyticsVisitEventService(event -> recorded.incrementAndGet());
+        VisitRecorderPort visitRecorderPort = visit -> recorded.incrementAndGet();
 
         RedirectService redirectService = new RedirectService(
                 new LinkCachePort() {
@@ -81,8 +83,8 @@ class RedirectControllerTimezoneTest {
                         return true;
                     }
                 },
-                (LinkMetaSourcePort) code -> Optional.of(meta),
-                analyticsVisitEventService,
+                shortLinkReadPort(meta),
+                visitRecorderPort,
                 Clock.systemUTC()
         );
 
@@ -104,5 +106,40 @@ class RedirectControllerTimezoneTest {
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.FOUND);
         assertThat(resp.getHeaders().getLocation()).isEqualTo(URI.create("https://example.com"));
         assertThat(recorded.get()).isEqualTo(1);
+    }
+
+    private static ShortLinkReadPort shortLinkReadPort(LinkMeta meta) {
+        return new ShortLinkReadPort() {
+            @Override
+            public Optional<RedirectLinkView> findRedirectMetaByHostAndCode(String host, String code) {
+                return Optional.of(new RedirectLinkView(
+                        meta.tenantId(),
+                        meta.id(),
+                        meta.code(),
+                        meta.hostname(),
+                        meta.originalUrl(),
+                        meta.enabled(),
+                        meta.expiresAt() == null ? null : meta.expiresAt().toInstant(ZoneOffset.UTC),
+                        meta.redirectStatusCode(),
+                        meta.previewEnabled(),
+                        meta.unavailableLandingUrl(),
+                        meta.queryForwardMode(),
+                        meta.queryForwardAllowlist(),
+                        meta.applicationId(),
+                        meta.domainId(),
+                        meta.lifecycleState()
+                ));
+            }
+
+            @Override
+            public Optional<ShortLinkOwnership> findOwnership(long tenantId, long linkId) {
+                return Optional.empty();
+            }
+
+            @Override
+            public Map<Long, ShortLinkSummary> listSummaries(long tenantId, List<Long> linkIds) {
+                return Map.of();
+            }
+        };
     }
 }

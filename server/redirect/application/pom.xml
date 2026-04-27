@@ -34,11 +34,11 @@
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-analytics-application</artifactId>
+            <artifactId>linkforge-contract-analytics</artifactId>
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-shortlink-application</artifactId>
+            <artifactId>linkforge-contract-shortlink</artifactId>
         </dependency>
 
         <!-- test -->

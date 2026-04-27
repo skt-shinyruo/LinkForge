@@ -1,9 +1,9 @@
 package com.linkforge.redirect.interfaces.web;
 
-import com.linkforge.analytics.application.AnalyticsVisitEventService;
+import com.linkforge.contract.analytics.VisitRecorderPort;
 import com.linkforge.contract.redirect.LinkCachePort;
 import com.linkforge.contract.redirect.LinkMeta;
-import com.linkforge.contract.redirect.LinkMetaSourcePort;
+import com.linkforge.contract.shortlink.ShortLinkReadPort;
 import com.linkforge.foundation.config.RedirectProperties;
 import com.linkforge.redirect.application.RedirectResolution;
 import com.linkforge.redirect.application.ResolveRedirectRequest;
@@ -17,6 +17,8 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -46,7 +48,7 @@ class RedirectControllerExpiryBoundaryTest {
         );
 
         AtomicInteger recorded = new AtomicInteger();
-        AnalyticsVisitEventService analyticsVisitEventService = new AnalyticsVisitEventService(event -> recorded.incrementAndGet());
+        VisitRecorderPort visitRecorderPort = visit -> recorded.incrementAndGet();
 
         RedirectService redirectService = new RedirectService(
                 new LinkCachePort() {
@@ -70,8 +72,8 @@ class RedirectControllerExpiryBoundaryTest {
                         return true;
                     }
                 },
-                (LinkMetaSourcePort) code -> Optional.of(meta),
-                analyticsVisitEventService,
+                shortLinkReadPort(meta),
+                visitRecorderPort,
                 clock
         );
 
@@ -136,13 +138,48 @@ class RedirectControllerExpiryBoundaryTest {
                         return true;
                     }
                 },
-                (LinkMetaSourcePort) code -> Optional.of(meta),
-                new AnalyticsVisitEventService(event -> {
-                }),
+                shortLinkReadPort(meta),
+                visit -> {
+                },
                 clock
         );
 
         assertThat(redirectService.resolve(new ResolveRedirectRequest("abc123", null, false, false, null)).kind())
                 .isEqualTo(RedirectResolution.Kind.UNAVAILABLE);
+    }
+
+    private static ShortLinkReadPort shortLinkReadPort(LinkMeta meta) {
+        return new ShortLinkReadPort() {
+            @Override
+            public Optional<RedirectLinkView> findRedirectMetaByHostAndCode(String host, String code) {
+                return Optional.of(new RedirectLinkView(
+                        meta.tenantId(),
+                        meta.id(),
+                        meta.code(),
+                        meta.hostname(),
+                        meta.originalUrl(),
+                        meta.enabled(),
+                        meta.expiresAt() == null ? null : meta.expiresAt().toInstant(ZoneOffset.UTC),
+                        meta.redirectStatusCode(),
+                        meta.previewEnabled(),
+                        meta.unavailableLandingUrl(),
+                        meta.queryForwardMode(),
+                        meta.queryForwardAllowlist(),
+                        meta.applicationId(),
+                        meta.domainId(),
+                        meta.lifecycleState()
+                ));
+            }
+
+            @Override
+            public Optional<ShortLinkOwnership> findOwnership(long tenantId, long linkId) {
+                return Optional.empty();
+            }
+
+            @Override
+            public Map<Long, ShortLinkSummary> listSummaries(long tenantId, List<Long> linkIds) {
+                return Map.of();
+            }
+        };
     }
 }

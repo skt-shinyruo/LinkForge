@@ -4,8 +4,8 @@ import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.contract.governance.ApprovalRequestView;
 import com.linkforge.contract.governance.ApprovalSubmissionPort;
+import com.linkforge.contract.shortlink.ShortLinkReadPort;
 import com.linkforge.foundation.context.UserActor;
-import com.linkforge.shortlink.application.ShortLinkReadService;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
@@ -29,14 +29,14 @@ class AnalyticsExportRequestServiceTest {
     @Test
     void requestLinkEventExport_shouldCheckMissingLinkBeforeDateValidation() {
         ApprovalSubmissionPort governanceApprovalRequestService = mock(ApprovalSubmissionPort.class);
-        ShortLinkReadService shortLinkReadService = mock(ShortLinkReadService.class);
+        ShortLinkReadPort shortLinkReadPort = mock(ShortLinkReadPort.class);
         AnalyticsExportRequestService service = new AnalyticsExportRequestService(
                 governanceApprovalRequestService,
-                shortLinkReadService,
+                shortLinkReadPort,
                 FIXED_CLOCK
         );
 
-        when(shortLinkReadService.findOwnership(1L, 101L)).thenReturn(Optional.empty());
+        when(shortLinkReadPort.findOwnership(1L, 101L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.requestLinkEventExport(
                 new UserActor(1L, 9L, "tenant-admin@example.com", Set.of("TENANT_ADMIN")),
@@ -55,15 +55,15 @@ class AnalyticsExportRequestServiceTest {
     @Test
     void requestLinkEventExport_shouldCheckApplicationScopeBeforeDateValidation() {
         ApprovalSubmissionPort governanceApprovalRequestService = mock(ApprovalSubmissionPort.class);
-        ShortLinkReadService shortLinkReadService = mock(ShortLinkReadService.class);
+        ShortLinkReadPort shortLinkReadPort = mock(ShortLinkReadPort.class);
         AnalyticsExportRequestService service = new AnalyticsExportRequestService(
                 governanceApprovalRequestService,
-                shortLinkReadService,
+                shortLinkReadPort,
                 FIXED_CLOCK
         );
 
-        when(shortLinkReadService.findOwnership(1L, 101L))
-                .thenReturn(Optional.of(new ShortLinkReadService.LinkOwnership(3001L, null)));
+        when(shortLinkReadPort.findOwnership(1L, 101L))
+                .thenReturn(Optional.of(new ShortLinkReadPort.ShortLinkOwnership(3001L, null)));
 
         assertThatThrownBy(() -> service.requestLinkEventExport(
                 new UserActor(1L, 9L, "tenant-admin@example.com", Set.of("TENANT_ADMIN")),
@@ -82,10 +82,10 @@ class AnalyticsExportRequestServiceTest {
     @Test
     void requestLinkEventExport_shouldRequestApprovalThroughNarrowGovernanceApi() {
         ApprovalSubmissionPort governanceApprovalRequestService = mock(ApprovalSubmissionPort.class);
-        ShortLinkReadService shortLinkReadService = mock(ShortLinkReadService.class);
+        ShortLinkReadPort shortLinkReadPort = mock(ShortLinkReadPort.class);
         AnalyticsExportRequestService service = new AnalyticsExportRequestService(
                 governanceApprovalRequestService,
-                shortLinkReadService,
+                shortLinkReadPort,
                 FIXED_CLOCK
         );
         UserActor actor = new UserActor(1L, 9L, "tenant-admin@example.com", Set.of("TENANT_ADMIN"));
@@ -105,8 +105,8 @@ class AnalyticsExportRequestServiceTest {
                         null
                 );
 
-        when(shortLinkReadService.findOwnership(1L, 101L))
-                .thenReturn(Optional.of(new ShortLinkReadService.LinkOwnership(2001L, null)));
+        when(shortLinkReadPort.findOwnership(1L, 101L))
+                .thenReturn(Optional.of(new ShortLinkReadPort.ShortLinkOwnership(2001L, null)));
         when(governanceApprovalRequestService.requestAnalyticsDetailExportApproval(
                 1L,
                 new ApprovalSubmissionPort.AnalyticsDetailExportApprovalRequest(

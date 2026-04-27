@@ -4,8 +4,8 @@ import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.contract.governance.ApprovalRequestView;
 import com.linkforge.contract.governance.ApprovalSubmissionPort;
+import com.linkforge.contract.shortlink.ShortLinkReadPort;
 import com.linkforge.foundation.context.UserActor;
-import com.linkforge.shortlink.application.ShortLinkReadService;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
@@ -16,16 +16,16 @@ import java.time.ZoneOffset;
 public class AnalyticsExportRequestService {
 
     private final ApprovalSubmissionPort approvalSubmissionPort;
-    private final ShortLinkReadService shortLinkReadService;
+    private final ShortLinkReadPort shortLinkReadPort;
     private final Clock clock;
 
     public AnalyticsExportRequestService(
             ApprovalSubmissionPort approvalSubmissionPort,
-            ShortLinkReadService shortLinkReadService,
+            ShortLinkReadPort shortLinkReadPort,
             Clock clock
     ) {
         this.approvalSubmissionPort = approvalSubmissionPort;
-        this.shortLinkReadService = shortLinkReadService;
+        this.shortLinkReadPort = shortLinkReadPort;
         this.clock = clock;
     }
 
@@ -36,7 +36,7 @@ public class AnalyticsExportRequestService {
             LocalDateTime from,
             LocalDateTime to
     ) {
-        ShortLinkReadService.LinkOwnership link = requireLinkScope(actor.tenantId(), linkId);
+        ShortLinkReadPort.ShortLinkOwnership link = requireLinkScope(actor.tenantId(), linkId);
         if (expectedApplicationId != null
                 && (link.applicationId() == null || !expectedApplicationId.equals(link.applicationId()))) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "链接不属于该应用");
@@ -61,8 +61,8 @@ public class AnalyticsExportRequestService {
         );
     }
 
-    private ShortLinkReadService.LinkOwnership requireLinkScope(long tenantId, long linkId) {
-        return shortLinkReadService.findOwnership(tenantId, linkId)
+    private ShortLinkReadPort.ShortLinkOwnership requireLinkScope(long tenantId, long linkId) {
+        return shortLinkReadPort.findOwnership(tenantId, linkId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "链接不存在"));
     }
 

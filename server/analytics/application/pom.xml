@@ -33,7 +33,7 @@
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-shortlink-application</artifactId>
+            <artifactId>linkforge-contract-shortlink</artifactId>
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>

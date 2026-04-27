@@ -1,6 +1,9 @@
 package com.linkforge.analytics.application;
 
 import com.linkforge.analytics.application.port.AnalyticsVisitEventAppender;
+import com.linkforge.contract.analytics.RedirectVisitRecord;
+import com.linkforge.contract.analytics.VisitContext;
+import com.linkforge.contract.analytics.VisitRecorderPort;
 import com.linkforge.foundation.config.AnalyticsProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,7 +13,7 @@ import org.springframework.stereotype.Service;
 import java.util.Map;
 
 @Service
-public class AnalyticsVisitEventService {
+public class AnalyticsVisitEventService implements VisitRecorderPort {
 
     private static final Logger log = LoggerFactory.getLogger(AnalyticsVisitEventService.class);
 
@@ -25,6 +28,28 @@ public class AnalyticsVisitEventService {
     public AnalyticsVisitEventService(AnalyticsVisitEventAppender appender, AnalyticsProperties analyticsProperties) {
         this.appender = appender;
         this.analyticsProperties = analyticsProperties;
+    }
+
+    @Override
+    public void recordVisit(RedirectVisitRecord visit) {
+        if (visit == null) {
+            return;
+        }
+        VisitContext context = visit.visitContext();
+        append(new RedirectVisitEvent(
+                visit.tenantId(),
+                visit.linkId(),
+                visit.occurredAtMillis(),
+                visit.applicationId(),
+                visit.domainId(),
+                visit.code(),
+                visit.originalUrl(),
+                context == null ? null : context.ip(),
+                context == null ? null : context.userAgent(),
+                context == null ? null : context.referer(),
+                context == null ? null : context.acceptLanguage(),
+                context == null ? null : context.trackingParams()
+        ));
     }
 
     public void append(RedirectVisitEvent event) {

@@ -2,7 +2,7 @@ package com.linkforge.analytics.application;
 
 import com.linkforge.analytics.application.AnalyticsQueryService.TopLinkStat;
 import com.linkforge.analytics.application.AnalyticsQueryService.TopSortBy;
-import com.linkforge.shortlink.application.ShortLinkReadService;
+import com.linkforge.contract.shortlink.ShortLinkReadPort;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -14,14 +14,14 @@ import java.util.Map;
 public class AnalyticsReportingApplicationService implements AnalyticsReportingService {
 
     private final AnalyticsQueryService analyticsQueryService;
-    private final ShortLinkReadService shortLinkReadService;
+    private final ShortLinkReadPort shortLinkReadPort;
 
     public AnalyticsReportingApplicationService(
             AnalyticsQueryService analyticsQueryService,
-            ShortLinkReadService shortLinkReadService
+            ShortLinkReadPort shortLinkReadPort
     ) {
         this.analyticsQueryService = analyticsQueryService;
-        this.shortLinkReadService = shortLinkReadService;
+        this.shortLinkReadPort = shortLinkReadPort;
     }
 
     @Override
@@ -63,7 +63,7 @@ public class AnalyticsReportingApplicationService implements AnalyticsReportingS
                 .filter(linkId -> linkId > 0L)
                 .distinct()
                 .toList();
-        Map<Long, ShortLinkReadService.LinkSummary> summaries = shortLinkReadService.listSummaries(
+        Map<Long, ShortLinkReadPort.ShortLinkSummary> summaries = shortLinkReadPort.listSummaries(
                 tenantId,
                 List.copyOf(new LinkedHashSet<>(linkIds))
         );
@@ -73,7 +73,7 @@ public class AnalyticsReportingApplicationService implements AnalyticsReportingS
                 .toList();
     }
 
-    private static TopLinkStat enrichRow(TopLinkStat row, ShortLinkReadService.LinkSummary summary) {
+    private static TopLinkStat enrichRow(TopLinkStat row, ShortLinkReadPort.ShortLinkSummary summary) {
         if (summary == null) {
             return new TopLinkStat(row.linkId(), row.code(), row.originalUrl(), row.pv(), row.uv(), true);
         }

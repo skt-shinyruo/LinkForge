@@ -3,9 +3,9 @@ package com.linkforge.shortlink.application.command;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.shortlink.ShortLinkErrorCode;
 import com.linkforge.foundation.tx.PostCommitHookPort;
+import com.linkforge.shortlink.application.eventing.ShortLinkDomainEventDispatcher;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
 import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
-import com.linkforge.shortlink.application.port.ShortLinkEventPublisher;
 import com.linkforge.shortlink.application.port.ShortLinkRepository;
 import com.linkforge.shortlink.application.support.ShortLinkDomainExceptions;
 import com.linkforge.shortlink.domain.ShortLink;
@@ -14,13 +14,16 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 
 @Component
 public class DeleteShortLinkCommandHandler {
 
     private final ShortLinkRepository shortLinkRepository;
     private final LinkTagRepository linkTagRepository;
-    private final ShortLinkEventPublisher eventPublisher;
+    private final ShortLinkDomainEventDispatcher domainEventDispatcher;
     private final RedirectCacheSyncPort redirectCacheSync;
     private final PostCommitHookPort postCommitHookPort;
     private final Clock clock;
@@ -28,14 +31,14 @@ public class DeleteShortLinkCommandHandler {
     public DeleteShortLinkCommandHandler(
             ShortLinkRepository shortLinkRepository,
             LinkTagRepository linkTagRepository,
-            ShortLinkEventPublisher eventPublisher,
+            ShortLinkDomainEventDispatcher domainEventDispatcher,
             RedirectCacheSyncPort redirectCacheSync,
             PostCommitHookPort postCommitHookPort,
             Clock clock
     ) {
         this.shortLinkRepository = shortLinkRepository;
         this.linkTagRepository = linkTagRepository;
-        this.eventPublisher = eventPublisher;
+        this.domainEventDispatcher = domainEventDispatcher;
         this.redirectCacheSync = redirectCacheSync;
         this.postCommitHookPort = postCommitHookPort;
         this.clock = clock;
@@ -46,17 +49,19 @@ public class DeleteShortLinkCommandHandler {
         ShortLink link = shortLinkRepository.findByTenantIdAndId(tenantId, linkId)
                 .orElseThrow(() -> new BusinessException(ShortLinkErrorCode.LINK_NOT_FOUND));
 
+        Instant occurredAtUtc = clock.instant();
+        LocalDateTime nowUtc = LocalDateTime.ofInstant(occurredAtUtc, ZoneOffset.UTC);
         try {
-            link.requireArchivedBeforeDelete();
+            link.markDeleted(nowUtc);
         } catch (ShortLinkDomainException ex) {
             throw ShortLinkDomainExceptions.translate(ex);
         }
 
-        eventPublisher.deleted(link, clock.instant());
         linkTagRepository.deleteAllByLinkId(linkId);
         if (!shortLinkRepository.deleteByTenantIdAndId(tenantId, linkId, link.version())) {
             throw new BusinessException(ShortLinkErrorCode.LINK_STALE_WRITE);
         }
+        domainEventDispatcher.publish(link, occurredAtUtc);
         postCommitHookPort.run(() -> redirectCacheSync.evict(link.tenantId(), link.domainId(), link.code().value()));
     }
 }

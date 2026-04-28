@@ -14,8 +14,37 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 class ShortLinkDomainEventDispatcherTest {
+
+    @Test
+    void publish_shouldTranslateCreatedEvent() {
+        ShortLinkEventPublisher publisher = mock(ShortLinkEventPublisher.class);
+        ShortLinkDomainEventDispatcher dispatcher = new ShortLinkDomainEventDispatcher(publisher);
+        ShortLink link = newLinkWithCreatedEvent();
+        Instant occurredAtUtc = Instant.parse("2026-04-28T01:02:03Z");
+
+        dispatcher.publish(link, occurredAtUtc);
+
+        verify(publisher).created(link, occurredAtUtc);
+        verifyNoMoreInteractions(publisher);
+        assertThat(link.pullDomainEvents()).isEmpty();
+    }
+
+    @Test
+    void publish_shouldTranslateUpdatedEventUsingEventTime() {
+        ShortLinkEventPublisher publisher = mock(ShortLinkEventPublisher.class);
+        ShortLinkDomainEventDispatcher dispatcher = new ShortLinkDomainEventDispatcher(publisher);
+        ShortLink link = activeLink();
+        link.markUpdated(LocalDateTime.parse("2026-04-28T04:05:06"));
+
+        dispatcher.publish(link, Instant.parse("2026-04-28T00:00:00Z"));
+
+        verify(publisher).updated(link, Instant.parse("2026-04-28T04:05:06Z"));
+        verifyNoMoreInteractions(publisher);
+        assertThat(link.pullDomainEvents()).isEmpty();
+    }
 
     @Test
     void publish_shouldTranslateArchivedRestoredAndDeletedEvents() {
@@ -48,6 +77,12 @@ class ShortLinkDomainEventDispatcherTest {
     }
 
     private static ShortLink activeLink() {
+        ShortLink link = newLinkWithCreatedEvent();
+        link.pullDomainEvents();
+        return link;
+    }
+
+    private static ShortLink newLinkWithCreatedEvent() {
         return ShortLink.create(
                 1L,
                 1L,

@@ -7,6 +7,7 @@ import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.tx.PostCommitHookPort;
 import com.linkforge.shortlink.application.ShortLinkService;
+import com.linkforge.shortlink.application.eventing.ShortLinkDomainEventDispatcher;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
 import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
@@ -48,6 +49,16 @@ class CreateShortLinkCommandHandlerTest {
     }
 
     @Test
+    void constructor_shouldDependOnDomainEventDispatcherInsteadOfEventPublisher() {
+        Constructor<?> constructor = CreateShortLinkCommandHandler.class.getDeclaredConstructors()[0];
+
+        assertThat(constructor.getParameterTypes())
+                .contains(ShortLinkDomainEventDispatcher.class);
+        assertThat(constructor.getParameterTypes())
+                .doesNotContain(ShortLinkEventPublisher.class);
+    }
+
+    @Test
     void handle_shouldValidateApplicationScopeAndQuota_viaPlatformContract() {
         SnowflakeIdGenerator idGenerator = mock(SnowflakeIdGenerator.class);
         when(idGenerator.nextId()).thenReturn(101L);
@@ -55,7 +66,7 @@ class CreateShortLinkCommandHandlerTest {
         ShortLinkRepository shortLinkRepository = mock(ShortLinkRepository.class);
         SetLinkTagsCommandHandler setLinkTagsHandler = mock(SetLinkTagsCommandHandler.class);
         LinkTagRepository linkTagRepository = mock(LinkTagRepository.class);
-        ShortLinkEventPublisher eventPublisher = mock(ShortLinkEventPublisher.class);
+        ShortLinkDomainEventDispatcher domainEventDispatcher = mock(ShortLinkDomainEventDispatcher.class);
         RedirectCacheSyncPort redirectCacheSync = mock(RedirectCacheSyncPort.class);
         ShortLinkDtoMapper dtoMapper = mock(ShortLinkDtoMapper.class);
         PostCommitHookPort postCommitHookPort = mock(PostCommitHookPort.class);
@@ -67,7 +78,7 @@ class CreateShortLinkCommandHandlerTest {
                 shortLinkRepository,
                 setLinkTagsHandler,
                 linkTagRepository,
-                eventPublisher,
+                domainEventDispatcher,
                 redirectCacheSync,
                 dtoMapper,
                 postCommitHookPort,
@@ -143,6 +154,7 @@ class CreateShortLinkCommandHandlerTest {
                 LocalDateTime.parse("2026-04-01T00:00:00"),
                 LocalDateTime.parse("2026-05-01T00:00:00")
         );
+        verify(domainEventDispatcher).publish(any(ShortLink.class), eq(clock.instant()));
     }
 
     @Test
@@ -156,7 +168,7 @@ class CreateShortLinkCommandHandlerTest {
                 shortLinkRepository,
                 mock(SetLinkTagsCommandHandler.class),
                 mock(LinkTagRepository.class),
-                mock(ShortLinkEventPublisher.class),
+                mock(ShortLinkDomainEventDispatcher.class),
                 mock(RedirectCacheSyncPort.class),
                 mock(ShortLinkDtoMapper.class),
                 mock(PostCommitHookPort.class),
@@ -209,7 +221,7 @@ class CreateShortLinkCommandHandlerTest {
                 shortLinkRepository,
                 mock(SetLinkTagsCommandHandler.class),
                 mock(LinkTagRepository.class),
-                mock(ShortLinkEventPublisher.class),
+                mock(ShortLinkDomainEventDispatcher.class),
                 mock(RedirectCacheSyncPort.class),
                 mock(ShortLinkDtoMapper.class),
                 mock(PostCommitHookPort.class),

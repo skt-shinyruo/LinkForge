@@ -8,10 +8,10 @@ import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.tx.PostCommitHookPort;
 import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
 import com.linkforge.shortlink.application.ShortLinkService.UpdateLinkRequest;
+import com.linkforge.shortlink.application.eventing.ShortLinkDomainEventDispatcher;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
 import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
-import com.linkforge.shortlink.application.port.ShortLinkEventPublisher;
 import com.linkforge.shortlink.application.port.ShortLinkRepository;
 import com.linkforge.shortlink.application.support.ShortLinkDomainExceptions;
 import com.linkforge.shortlink.domain.HttpUrl;
@@ -35,7 +35,7 @@ public class UpdateShortLinkCommandHandler {
 
     private final ShortLinkRepository shortLinkRepository;
     private final SetLinkTagsCommandHandler setLinkTagsHandler;
-    private final ShortLinkEventPublisher eventPublisher;
+    private final ShortLinkDomainEventDispatcher domainEventDispatcher;
     private final LinkTagRepository linkTagRepository;
     private final RedirectCacheSyncPort redirectCacheSync;
     private final ShortLinkDtoMapper dtoMapper;
@@ -46,7 +46,7 @@ public class UpdateShortLinkCommandHandler {
     public UpdateShortLinkCommandHandler(
             ShortLinkRepository shortLinkRepository,
             SetLinkTagsCommandHandler setLinkTagsHandler,
-            ShortLinkEventPublisher eventPublisher,
+            ShortLinkDomainEventDispatcher domainEventDispatcher,
             LinkTagRepository linkTagRepository,
             RedirectCacheSyncPort redirectCacheSync,
             ShortLinkDtoMapper dtoMapper,
@@ -56,7 +56,7 @@ public class UpdateShortLinkCommandHandler {
     ) {
         this.shortLinkRepository = shortLinkRepository;
         this.setLinkTagsHandler = setLinkTagsHandler;
-        this.eventPublisher = eventPublisher;
+        this.domainEventDispatcher = domainEventDispatcher;
         this.linkTagRepository = linkTagRepository;
         this.redirectCacheSync = redirectCacheSync;
         this.dtoMapper = dtoMapper;
@@ -204,7 +204,9 @@ public class UpdateShortLinkCommandHandler {
             setLinkTagsHandler.handle(tenantId, linkId, req.tags());
         }
 
-        eventPublisher.updated(link, clock.instant());
+        LocalDateTime updatedAtUtc = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
+        link.markUpdated(updatedAtUtc);
+        domainEventDispatcher.publish(link, updatedAtUtc.toInstant(ZoneOffset.UTC));
         postCommitHookPort.run(() -> redirectCacheSync.evict(link.tenantId(), link.domainId(), link.code().value()));
 
         List<String> tags = linkTagRepository.findTagNamesByLinkId(linkId);

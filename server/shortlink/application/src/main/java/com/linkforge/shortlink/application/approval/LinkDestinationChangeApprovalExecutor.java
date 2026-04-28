@@ -7,8 +7,8 @@ import com.linkforge.contract.governance.ApprovalExecutionRequest;
 import com.linkforge.contract.governance.SensitiveOperation;
 import com.linkforge.contract.shortlink.ShortLinkErrorCode;
 import com.linkforge.foundation.tx.PostCommitHookPort;
+import com.linkforge.shortlink.application.eventing.ShortLinkDomainEventDispatcher;
 import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
-import com.linkforge.shortlink.application.port.ShortLinkEventPublisher;
 import com.linkforge.shortlink.application.port.ShortLinkRepository;
 import com.linkforge.shortlink.application.support.ShortLinkDomainExceptions;
 import com.linkforge.shortlink.domain.HttpUrl;
@@ -25,18 +25,18 @@ import java.util.Objects;
 public class LinkDestinationChangeApprovalExecutor implements ApprovalExecutionPort {
 
     private final ShortLinkRepository shortLinkRepository;
-    private final ShortLinkEventPublisher eventPublisher;
+    private final ShortLinkDomainEventDispatcher domainEventDispatcher;
     private final RedirectCacheSyncPort redirectCacheSync;
     private final PostCommitHookPort postCommitHookPort;
 
     public LinkDestinationChangeApprovalExecutor(
             ShortLinkRepository shortLinkRepository,
-            ShortLinkEventPublisher eventPublisher,
+            ShortLinkDomainEventDispatcher domainEventDispatcher,
             RedirectCacheSyncPort redirectCacheSync,
             PostCommitHookPort postCommitHookPort
     ) {
         this.shortLinkRepository = shortLinkRepository;
-        this.eventPublisher = eventPublisher;
+        this.domainEventDispatcher = domainEventDispatcher;
         this.redirectCacheSync = redirectCacheSync;
         this.postCommitHookPort = postCommitHookPort;
     }
@@ -68,7 +68,8 @@ public class LinkDestinationChangeApprovalExecutor implements ApprovalExecutionP
         }
         link.incrementVersion();
 
-        eventPublisher.updated(link, executedAt.toInstant(ZoneOffset.UTC));
+        link.markUpdated(executedAt);
+        domainEventDispatcher.publish(link, executedAt.toInstant(ZoneOffset.UTC));
         postCommitHookPort.run(() -> redirectCacheSync.evict(link.tenantId(), link.domainId(), link.code().value()));
     }
 

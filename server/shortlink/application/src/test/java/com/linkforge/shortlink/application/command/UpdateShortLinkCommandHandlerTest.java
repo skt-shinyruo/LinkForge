@@ -4,6 +4,7 @@ import com.linkforge.contract.governance.ApprovalSubmissionPort;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.tx.PostCommitHookPort;
 import com.linkforge.shortlink.application.ShortLinkService;
+import com.linkforge.shortlink.application.eventing.ShortLinkDomainEventDispatcher;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
 import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
@@ -50,10 +51,20 @@ class UpdateShortLinkCommandHandlerTest {
     }
 
     @Test
+    void constructor_shouldDependOnDomainEventDispatcherInsteadOfEventPublisher() {
+        Constructor<?> constructor = UpdateShortLinkCommandHandler.class.getDeclaredConstructors()[0];
+
+        assertThat(constructor.getParameterTypes())
+                .contains(ShortLinkDomainEventDispatcher.class);
+        assertThat(constructor.getParameterTypes())
+                .doesNotContain(ShortLinkEventPublisher.class);
+    }
+
+    @Test
     void handle_shouldRequestDestinationChangeApproval_viaNarrowGovernanceApi() {
         ShortLinkRepository shortLinkRepository = mock(ShortLinkRepository.class);
         SetLinkTagsCommandHandler setLinkTagsHandler = mock(SetLinkTagsCommandHandler.class);
-        ShortLinkEventPublisher eventPublisher = mock(ShortLinkEventPublisher.class);
+        ShortLinkDomainEventDispatcher domainEventDispatcher = mock(ShortLinkDomainEventDispatcher.class);
         LinkTagRepository linkTagRepository = mock(LinkTagRepository.class);
         RedirectCacheSyncPort redirectCacheSync = mock(RedirectCacheSyncPort.class);
         ShortLinkDtoMapper dtoMapper = mock(ShortLinkDtoMapper.class);
@@ -64,7 +75,7 @@ class UpdateShortLinkCommandHandlerTest {
         UpdateShortLinkCommandHandler handler = new UpdateShortLinkCommandHandler(
                 shortLinkRepository,
                 setLinkTagsHandler,
-                eventPublisher,
+                domainEventDispatcher,
                 linkTagRepository,
                 redirectCacheSync,
                 dtoMapper,
@@ -153,7 +164,7 @@ class UpdateShortLinkCommandHandlerTest {
                 )
         );
         verify(shortLinkRepository, never()).update(link);
-        verify(eventPublisher, never()).updated(eq(link), eq(clock.instant()));
+        verify(domainEventDispatcher, never()).publish(eq(link), eq(clock.instant()));
         verify(redirectCacheSync, never()).evict(eq(1L), eq(3001L), anyString());
     }
 
@@ -161,7 +172,7 @@ class UpdateShortLinkCommandHandlerTest {
     void handle_shouldRejectMixingDestinationApprovalWithOtherEdits() {
         ShortLinkRepository shortLinkRepository = mock(ShortLinkRepository.class);
         SetLinkTagsCommandHandler setLinkTagsHandler = mock(SetLinkTagsCommandHandler.class);
-        ShortLinkEventPublisher eventPublisher = mock(ShortLinkEventPublisher.class);
+        ShortLinkDomainEventDispatcher domainEventDispatcher = mock(ShortLinkDomainEventDispatcher.class);
         LinkTagRepository linkTagRepository = mock(LinkTagRepository.class);
         RedirectCacheSyncPort redirectCacheSync = mock(RedirectCacheSyncPort.class);
         ShortLinkDtoMapper dtoMapper = mock(ShortLinkDtoMapper.class);
@@ -172,7 +183,7 @@ class UpdateShortLinkCommandHandlerTest {
         UpdateShortLinkCommandHandler handler = new UpdateShortLinkCommandHandler(
                 shortLinkRepository,
                 setLinkTagsHandler,
-                eventPublisher,
+                domainEventDispatcher,
                 linkTagRepository,
                 redirectCacheSync,
                 dtoMapper,
@@ -237,6 +248,6 @@ class UpdateShortLinkCommandHandlerTest {
                 ))
         );
         verify(shortLinkRepository, never()).update(link);
-        verify(eventPublisher, never()).updated(eq(link), eq(clock.instant()));
+        verify(domainEventDispatcher, never()).publish(eq(link), eq(clock.instant()));
     }
 }

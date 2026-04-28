@@ -2,6 +2,7 @@ package com.linkforge.accounts.infrastructure.security;
 
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.config.SecurityProperties;
+import com.linkforge.foundation.security.JwtPrincipalVerifier;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.Jwts;
@@ -16,7 +17,7 @@ import java.util.List;
 import java.util.Set;
 
 @Service
-public class JwtService {
+public class JwtService implements JwtPrincipalVerifier {
 
     private final SecurityProperties.Jwt jwt;
     private final SecretKey key;

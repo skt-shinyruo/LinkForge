@@ -1,12 +1,14 @@
 package com.linkforge.app.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linkforge.accounts.application.AccountStatusService;
-import com.linkforge.accounts.application.ApiKeyService;
 import com.linkforge.app.api.error.ApiErrorResponseWriter;
 import com.linkforge.contract.accounts.AccountsErrorCode;
 import com.linkforge.contract.api.BusinessException;
-import com.linkforge.contract.openapi.OpenApiErrorCode;
+import com.linkforge.foundation.security.AccountStatusVerifier;
+import com.linkforge.foundation.security.ApiKeyAuthenticationException;
+import com.linkforge.foundation.security.ApiKeyAuthenticationFailure;
+import com.linkforge.foundation.security.ApiKeyAuthenticationResult;
+import com.linkforge.foundation.security.ApiKeyAuthenticator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockFilterChain;
@@ -28,8 +30,8 @@ class ApiKeyAuthenticationFilterTest {
 
     @Test
     void openApiKeyDisabled_shouldReturnForbidden() throws Exception {
-        ApiKeyService apiKeyService = mock(ApiKeyService.class);
-        AccountStatusService accountStatusService = mock(AccountStatusService.class);
+        ApiKeyAuthenticator apiKeyService = mock(ApiKeyAuthenticator.class);
+        AccountStatusVerifier accountStatusService = mock(AccountStatusVerifier.class);
         ApiErrorResponseWriter writer = new ApiErrorResponseWriter(new ObjectMapper());
 
         ApiKeyAuthenticationFilter filter = new ApiKeyAuthenticationFilter(
@@ -38,8 +40,8 @@ class ApiKeyAuthenticationFilterTest {
                 writer
         );
 
-        when(apiKeyService.authenticate("lfk_123_secret"))
-                .thenThrow(new ApiKeyService.ApiKeyAuthException(OpenApiErrorCode.API_KEY_DISABLED));
+        when(apiKeyService.authenticateApiKey("lfk_123_secret"))
+                .thenThrow(new ApiKeyAuthenticationException(ApiKeyAuthenticationFailure.DISABLED));
 
         MockHttpServletRequest req = new MockHttpServletRequest("GET", "/api/v1/open/ping");
         req.addHeader("X-API-Key", "lfk_123_secret");
@@ -54,8 +56,8 @@ class ApiKeyAuthenticationFilterTest {
 
     @Test
     void openApi_withoutApiKey_shouldReturnUnauthorized() throws Exception {
-        ApiKeyService apiKeyService = mock(ApiKeyService.class);
-        AccountStatusService accountStatusService = mock(AccountStatusService.class);
+        ApiKeyAuthenticator apiKeyService = mock(ApiKeyAuthenticator.class);
+        AccountStatusVerifier accountStatusService = mock(AccountStatusVerifier.class);
         ApiErrorResponseWriter writer = new ApiErrorResponseWriter(new ObjectMapper());
 
         ApiKeyAuthenticationFilter filter = new ApiKeyAuthenticationFilter(
@@ -76,8 +78,8 @@ class ApiKeyAuthenticationFilterTest {
 
     @Test
     void openApi_withTenantDisabled_shouldReturnForbidden() throws Exception {
-        ApiKeyService apiKeyService = mock(ApiKeyService.class);
-        AccountStatusService accountStatusService = mock(AccountStatusService.class);
+        ApiKeyAuthenticator apiKeyService = mock(ApiKeyAuthenticator.class);
+        AccountStatusVerifier accountStatusService = mock(AccountStatusVerifier.class);
         ApiErrorResponseWriter writer = new ApiErrorResponseWriter(new ObjectMapper());
 
         ApiKeyAuthenticationFilter filter = new ApiKeyAuthenticationFilter(
@@ -86,8 +88,8 @@ class ApiKeyAuthenticationFilterTest {
                 writer
         );
 
-        when(apiKeyService.authenticate("lfk_123_secret"))
-                .thenReturn(new ApiKeyService.ApiKeyAuthResult(1L, 1L, 123L));
+        when(apiKeyService.authenticateApiKey("lfk_123_secret"))
+                .thenReturn(new ApiKeyAuthenticationResult(1L, 1L, 123L));
         doThrow(new BusinessException(AccountsErrorCode.TENANT_DISABLED))
                 .when(accountStatusService)
                 .requireActiveTenant(1L);

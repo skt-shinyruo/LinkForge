@@ -1,13 +1,13 @@
 package com.linkforge.app.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linkforge.accounts.application.AccountStatusService;
-import com.linkforge.accounts.infrastructure.security.JwtService;
 import com.linkforge.app.api.error.ApiErrorResponseWriter;
 import com.linkforge.contract.accounts.AccountsErrorCode;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.foundation.config.SecurityProperties;
+import com.linkforge.foundation.security.AccountStatusVerifier;
 import com.linkforge.foundation.security.AuthPrincipal;
+import com.linkforge.foundation.security.JwtPrincipalVerifier;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
@@ -38,8 +38,8 @@ class JwtAuthenticationFilterTest {
 
     @Test
     void invalidCookieJwt_shouldNotShortCircuitPermitAllEndpoints() throws Exception {
-        JwtService jwtService = mock(JwtService.class);
-        AccountStatusService accountStatusService = mock(AccountStatusService.class);
+        JwtPrincipalVerifier jwtService = mock(JwtPrincipalVerifier.class);
+        AccountStatusVerifier accountStatusService = mock(AccountStatusVerifier.class);
         ApiErrorResponseWriter writer = new ApiErrorResponseWriter(new ObjectMapper());
 
         SecurityProperties securityProperties = new SecurityProperties();
@@ -75,8 +75,8 @@ class JwtAuthenticationFilterTest {
 
     @Test
     void invalidBearerJwt_shouldReturnUnauthorized() throws Exception {
-        JwtService jwtService = mock(JwtService.class);
-        AccountStatusService accountStatusService = mock(AccountStatusService.class);
+        JwtPrincipalVerifier jwtService = mock(JwtPrincipalVerifier.class);
+        AccountStatusVerifier accountStatusService = mock(AccountStatusVerifier.class);
         ApiErrorResponseWriter writer = new ApiErrorResponseWriter(new ObjectMapper());
 
         SecurityProperties securityProperties = new SecurityProperties();
@@ -106,8 +106,8 @@ class JwtAuthenticationFilterTest {
 
     @Test
     void oversizedBearerJwt_shouldReturnUnauthorized_withoutParsing() throws Exception {
-        JwtService jwtService = mock(JwtService.class);
-        AccountStatusService accountStatusService = mock(AccountStatusService.class);
+        JwtPrincipalVerifier jwtService = mock(JwtPrincipalVerifier.class);
+        AccountStatusVerifier accountStatusService = mock(AccountStatusVerifier.class);
         ApiErrorResponseWriter writer = new ApiErrorResponseWriter(new ObjectMapper());
         SecurityProperties securityProperties = new SecurityProperties();
 
@@ -134,8 +134,8 @@ class JwtAuthenticationFilterTest {
 
     @Test
     void oversizedCookieJwt_shouldClearCookie_andContinueChain_withoutParsing() throws Exception {
-        JwtService jwtService = mock(JwtService.class);
-        AccountStatusService accountStatusService = mock(AccountStatusService.class);
+        JwtPrincipalVerifier jwtService = mock(JwtPrincipalVerifier.class);
+        AccountStatusVerifier accountStatusService = mock(AccountStatusVerifier.class);
         ApiErrorResponseWriter writer = new ApiErrorResponseWriter(new ObjectMapper());
 
         SecurityProperties securityProperties = new SecurityProperties();
@@ -170,8 +170,8 @@ class JwtAuthenticationFilterTest {
 
     @Test
     void disabledUser_shouldReturnForbidden() throws Exception {
-        JwtService jwtService = mock(JwtService.class);
-        AccountStatusService accountStatusService = mock(AccountStatusService.class);
+        JwtPrincipalVerifier jwtService = mock(JwtPrincipalVerifier.class);
+        AccountStatusVerifier accountStatusService = mock(AccountStatusVerifier.class);
         ApiErrorResponseWriter writer = new ApiErrorResponseWriter(new ObjectMapper());
         SecurityProperties securityProperties = new SecurityProperties();
 
@@ -205,8 +205,8 @@ class JwtAuthenticationFilterTest {
 
     @Test
     void jwt_filter_should_parse_claims_once_and_delegate_user_state_validation_to_account_status_service() throws Exception {
-        JwtService jwtService = mock(JwtService.class);
-        AccountStatusService accountStatusService = mock(AccountStatusService.class);
+        JwtPrincipalVerifier jwtService = mock(JwtPrincipalVerifier.class);
+        AccountStatusVerifier accountStatusService = mock(AccountStatusVerifier.class);
         ApiErrorResponseWriter writer = new ApiErrorResponseWriter(new ObjectMapper());
         SecurityProperties securityProperties = new SecurityProperties();
 

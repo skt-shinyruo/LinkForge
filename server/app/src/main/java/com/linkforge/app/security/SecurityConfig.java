@@ -1,10 +1,10 @@
 package com.linkforge.app.security;
 
-import com.linkforge.accounts.application.AccountStatusService;
-import com.linkforge.accounts.application.ApiKeyService;
-import com.linkforge.accounts.infrastructure.security.JwtService;
 import com.linkforge.app.api.error.ApiErrorResponseWriter;
 import com.linkforge.foundation.config.SecurityProperties;
+import com.linkforge.foundation.security.AccountStatusVerifier;
+import com.linkforge.foundation.security.ApiKeyAuthenticator;
+import com.linkforge.foundation.security.JwtPrincipalVerifier;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -29,8 +29,8 @@ public class SecurityConfig {
             HttpSecurity http,
             RestAuthenticationEntryPoint restAuthenticationEntryPoint,
             RestAccessDeniedHandler restAccessDeniedHandler,
-            ApiKeyService apiKeyService,
-            AccountStatusService accountStatusService,
+            ApiKeyAuthenticator apiKeyService,
+            AccountStatusVerifier accountStatusService,
             ApiErrorResponseWriter errorResponseWriter
     ) throws Exception {
         ApiKeyAuthenticationFilter apiKeyAuthenticationFilter = new ApiKeyAuthenticationFilter(
@@ -62,8 +62,8 @@ public class SecurityConfig {
             HttpSecurity http,
             RestAuthenticationEntryPoint restAuthenticationEntryPoint,
             RestAccessDeniedHandler restAccessDeniedHandler,
-            JwtService jwtService,
-            AccountStatusService accountStatusService,
+            JwtPrincipalVerifier jwtService,
+            AccountStatusVerifier accountStatusService,
             ApiErrorResponseWriter errorResponseWriter,
             SecurityProperties securityProperties
     ) throws Exception {

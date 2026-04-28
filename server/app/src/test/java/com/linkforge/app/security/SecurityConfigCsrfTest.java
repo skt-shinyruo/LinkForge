@@ -1,10 +1,11 @@
 package com.linkforge.app.security;
 
-import com.linkforge.accounts.application.ApiKeyService;
-import com.linkforge.accounts.application.AccountStatusService;
-import com.linkforge.accounts.infrastructure.security.JwtService;
 import com.linkforge.app.api.error.ApiErrorResponseWriter;
 import com.linkforge.foundation.config.SecurityProperties;
+import com.linkforge.foundation.security.AccountStatusVerifier;
+import com.linkforge.foundation.security.ApiKeyAuthenticationResult;
+import com.linkforge.foundation.security.ApiKeyAuthenticator;
+import com.linkforge.foundation.security.JwtPrincipalVerifier;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -64,10 +65,10 @@ class SecurityConfigCsrfTest {
     private SecurityProperties securityProperties;
 
     @Autowired
-    private ApiKeyService apiKeyService;
+    private ApiKeyAuthenticator apiKeyService;
 
     @Autowired
-    private JwtService jwtService;
+    private JwtPrincipalVerifier jwtService;
 
     @Test
     void csrf_should_not_be_ignored_for_non_bearer_authorization_header() throws Exception {
@@ -91,8 +92,8 @@ class SecurityConfigCsrfTest {
     void csrf_should_only_be_ignored_for_openapi_when_api_key_header_present() throws Exception {
         assertThat(securityProperties.getJwt().isCookieEnabled()).isTrue();
 
-        when(apiKeyService.authenticate(anyString()))
-                .thenReturn(new ApiKeyService.ApiKeyAuthResult(1L, 1L, 123L));
+        when(apiKeyService.authenticateApiKey(anyString()))
+                .thenReturn(new ApiKeyAuthenticationResult(1L, 1L, 123L));
 
         // Without X-API-Key: OpenAPI chain is stateless and does not use CSRF; auth should fail as 401.
         mockMvc.perform(post("/api/v1/open/links")
@@ -181,18 +182,18 @@ class SecurityConfigCsrfTest {
         }
 
         @Bean
-        JwtService jwtService() {
-            return mock(JwtService.class);
+        JwtPrincipalVerifier jwtService() {
+            return mock(JwtPrincipalVerifier.class);
         }
 
         @Bean
-        ApiKeyService apiKeyService() {
-            return mock(ApiKeyService.class);
+        ApiKeyAuthenticator apiKeyService() {
+            return mock(ApiKeyAuthenticator.class);
         }
 
         @Bean
-        AccountStatusService accountStatusService() {
-            return mock(AccountStatusService.class);
+        AccountStatusVerifier accountStatusService() {
+            return mock(AccountStatusVerifier.class);
         }
     }
 }

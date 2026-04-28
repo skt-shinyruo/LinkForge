@@ -23,6 +23,8 @@ class ArchitectureTest {
             .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
             .importPackages("com.linkforge");
     private static final String FORBIDDEN_GOVERNANCE_ROLES_REFERENCE = "com.linkforge.accounts.domain.Roles";
+    private static final String FORBIDDEN_APP_ACCOUNTS_INFRASTRUCTURE_REFERENCE = "com.linkforge.accounts.infrastructure.";
+    private static final String FORBIDDEN_APP_ACCOUNTS_DOMAIN_ROLES_REFERENCE = "com.linkforge.accounts.domain.Roles";
     private static final List<BoundedContext> BOUNDED_CONTEXTS = List.of(
             new BoundedContext("accounts", "com.linkforge.accounts"),
             new BoundedContext("shortlink", "com.linkforge.shortlink"),
@@ -202,6 +204,25 @@ class ArchitectureTest {
     }
 
     @Test
+    void domain_should_not_depend_on_runtime_frameworks_or_persistence_tools() {
+        ArchRule rule = noClasses()
+                .that()
+                .resideInAnyPackage("..domain..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAnyPackage(
+                        "org.springframework..",
+                        "jakarta.servlet..",
+                        "jakarta.persistence..",
+                        "org.mybatis..",
+                        "org.apache.ibatis..",
+                        "org.springframework.data..",
+                        "org.springframework.security.."
+                );
+        rule.check(CLASSES);
+    }
+
+    @Test
     void redirect_bounded_context_should_not_use_jdbc_or_sql_packages() {
         ArchRule rule = noClasses()
                 .that()
@@ -253,6 +274,41 @@ class ArchitectureTest {
         );
         String source = Files.readString(governanceService);
         assertThat(source).doesNotContain(FORBIDDEN_GOVERNANCE_ROLES_REFERENCE);
+    }
+
+    @Test
+    void app_security_source_should_not_gain_new_accounts_internal_imports() throws Exception {
+        Path securityDir = resolveFromCurrentWorkspace(
+                "app/src/main/java/com/linkforge/app/security",
+                "server/app/src/main/java/com/linkforge/app/security"
+        );
+
+        List<Path> sources;
+        try (var stream = Files.walk(securityDir)) {
+            sources = stream
+                    .filter(path -> path.toString().endsWith(".java"))
+                    .sorted()
+                    .toList();
+        }
+
+        List<String> violations = new ArrayList<>();
+        for (Path source : sources) {
+            String text = Files.readString(source);
+            boolean existingKnownDebt = source.getFileName().toString().equals("JwtAuthenticationFilter.java")
+                    || source.getFileName().toString().equals("ApiKeyAuthenticationFilter.java")
+                    || source.getFileName().toString().equals("SecurityConfig.java");
+            if (existingKnownDebt) {
+                continue;
+            }
+            if (text.contains(FORBIDDEN_APP_ACCOUNTS_INFRASTRUCTURE_REFERENCE)
+                    || text.contains(FORBIDDEN_APP_ACCOUNTS_DOMAIN_ROLES_REFERENCE)) {
+                violations.add(source.toString());
+            }
+        }
+
+        assertThat(violations)
+                .withFailMessage("New app/security accounts-internal imports are forbidden: %s", violations)
+                .isEmpty();
     }
 
     @Test

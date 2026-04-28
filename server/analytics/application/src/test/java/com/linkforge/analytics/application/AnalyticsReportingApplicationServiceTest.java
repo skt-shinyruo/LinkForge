@@ -18,7 +18,10 @@ class AnalyticsReportingApplicationServiceTest {
     void topLinks_shouldEnrichRawRowsWithShortlinkSummaries() {
         AnalyticsQueryService queryService = mock(AnalyticsQueryService.class);
         ShortLinkReadPort shortLinkReadPort = mock(ShortLinkReadPort.class);
-        AnalyticsReportingService service = new AnalyticsReportingApplicationService(queryService, shortLinkReadPort);
+        AnalyticsReportingService service = new AnalyticsReportingApplicationService(
+                queryService,
+                new AnalyticsLinkSummaryEnricher(shortLinkReadPort)
+        );
 
         LocalDate from = LocalDate.parse("2026-04-01");
         LocalDate to = LocalDate.parse("2026-04-24");
@@ -47,7 +50,10 @@ class AnalyticsReportingApplicationServiceTest {
     void applicationTopLinks_shouldReuseQueryServiceAndSummaryEnrichment() {
         AnalyticsQueryService queryService = mock(AnalyticsQueryService.class);
         ShortLinkReadPort shortLinkReadPort = mock(ShortLinkReadPort.class);
-        AnalyticsReportingService service = new AnalyticsReportingApplicationService(queryService, shortLinkReadPort);
+        AnalyticsReportingService service = new AnalyticsReportingApplicationService(
+                queryService,
+                new AnalyticsLinkSummaryEnricher(shortLinkReadPort)
+        );
 
         LocalDate from = LocalDate.parse("2026-04-01");
         LocalDate to = LocalDate.parse("2026-04-24");
@@ -70,7 +76,10 @@ class AnalyticsReportingApplicationServiceTest {
     void topLinks_shouldKeepCatalogMetadataWhenShortlinkSummaryIsMissingAfterDelete() {
         AnalyticsQueryService queryService = mock(AnalyticsQueryService.class);
         ShortLinkReadPort shortLinkReadPort = mock(ShortLinkReadPort.class);
-        AnalyticsReportingService service = new AnalyticsReportingApplicationService(queryService, shortLinkReadPort);
+        AnalyticsReportingService service = new AnalyticsReportingApplicationService(
+                queryService,
+                new AnalyticsLinkSummaryEnricher(shortLinkReadPort)
+        );
 
         LocalDate from = LocalDate.parse("2026-04-01");
         LocalDate to = LocalDate.parse("2026-04-24");

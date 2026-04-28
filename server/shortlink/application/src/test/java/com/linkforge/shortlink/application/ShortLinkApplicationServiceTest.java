@@ -230,7 +230,7 @@ class ShortLinkApplicationServiceTest {
                 mock(CreateTagCommandHandler.class),
                 importHandler,
                 mock(ExportShortLinksCsvQueryHandler.class),
-                applicationScopePort
+                new ShortLinkActorScopeResolver(applicationScopePort)
         );
     }
 }

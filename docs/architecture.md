@@ -15,6 +15,57 @@ LinkForge is a modular monolith built as a Maven reactor plus a separate Vue fro
 - `server/app`: Spring Boot executable composition root. `LinkForgeApplication` explicitly imports context-owned runtime modules (`FoundationRuntimeModule`, `AccountsRuntimeModule`, `ShortlinkRuntimeModule`, `RedirectRuntimeModule`, `AnalyticsRuntimeModule`, `PlatformRuntimeModule`, and `GovernanceRuntimeModule`) instead of package scans or app-owned wrappers; the bounded-context runtime modules now live with the context export surface in `interfaces`.
 - `server/integration-tests`: Testcontainers-based integration verification for cross-module behavior.
 
+## DDD Context Map
+
+The backend bounded contexts are code-ownership boundaries inside one deployed monolith.
+They are not independently deployed services.
+
+### Accounts
+
+Owns tenants, users, roles, API keys, authentication state, and account-status checks.
+Accounts may publish authentication and account-status capabilities, but persistence details,
+token parsing internals, and role storage remain private to the context.
+
+### Platform
+
+Owns tenant applications, domains, quotas, and application policies.
+Platform publishes application scope, domain hostname lookup, and quota views through
+`contract-platform`.
+
+### Shortlink
+
+Owns durable link state, link lifecycle, destination rules, tags, revisions, and shortlink
+mutation events. `ShortLink` is the first aggregate root for tactical DDD hardening.
+Other contexts may read redirect metadata, ownership, and summaries only through
+`contract-shortlink`.
+
+### Redirect
+
+Owns traffic-plane redirect resolution, Redis cache behavior, preview/not-found responses,
+and lightweight visit-event append. Redirect does not own link truth; cache misses use the
+shortlink published read contract.
+
+### Analytics
+
+Owns visit ingestion, aggregates, detail storage, statistics reads, and export integration.
+Analytics read models remain private. Cross-context link enrichment uses published
+shortlink contracts.
+
+### Governance
+
+Owns approval request lifecycle, approval decisions, sensitive-operation records, and audit
+logs. Governance exposes published approval contracts where cross-context callers still need
+approval orchestration.
+
+## Tactical DDD Rules
+
+- `domain` owns aggregate behavior, invariants, value objects, domain services, and internal domain events.
+- `application` owns use-case orchestration, transactions, repository ports, authorization input handling, and integration-event publication.
+- `interfaces` owns HTTP mapping, request validation, principal extraction, and transport response shaping.
+- `infrastructure` owns MyBatis, Redis, schedulers, and persistence mapping.
+- `contracts/*` owns published language shared across bounded contexts.
+- Bounded contexts must not import another context's `domain`, `application`, `infrastructure`, or `interfaces` packages.
+
 ## Redirect Correctness Path
 
 Redirect reads follow this order:

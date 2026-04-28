@@ -11,6 +11,10 @@ import com.linkforge.contract.openapi.OpenApiErrorCode;
 import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.foundation.config.SecurityProperties;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
+import com.linkforge.foundation.security.ApiKeyAuthenticationException;
+import com.linkforge.foundation.security.ApiKeyAuthenticationFailure;
+import com.linkforge.foundation.security.ApiKeyAuthenticationResult;
+import com.linkforge.foundation.security.ApiKeyAuthenticator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -27,7 +31,7 @@ import java.util.Base64;
 import java.util.List;
 
 @Service
-public class ApiKeyService {
+public class ApiKeyService implements ApiKeyAuthenticator {
 
     private static final Logger log = LoggerFactory.getLogger(ApiKeyService.class);
     private static final String API_KEY_PREFIX = "lfk";
@@ -155,6 +159,23 @@ public class ApiKeyService {
         tryUpdateLastUsedAtThrottled(parsed.id, apiKeyRecord.lastUsedAt(), true);
 
         return new ApiKeyAuthResult(apiKeyRecord.tenantId(), apiKeyRecord.applicationId(), apiKeyRecord.id());
+    }
+
+    @Override
+    public ApiKeyAuthenticationResult authenticateApiKey(String apiKey) {
+        try {
+            ApiKeyAuthResult result = authenticate(apiKey);
+            return new ApiKeyAuthenticationResult(result.tenantId(), result.applicationId(), result.apiKeyId());
+        } catch (ApiKeyAuthException e) {
+            throw new ApiKeyAuthenticationException(toAuthenticationFailure(e.errorCode()));
+        }
+    }
+
+    private static ApiKeyAuthenticationFailure toAuthenticationFailure(AppErrorCode errorCode) {
+        if (OpenApiErrorCode.API_KEY_DISABLED.equals(errorCode)) {
+            return ApiKeyAuthenticationFailure.DISABLED;
+        }
+        return ApiKeyAuthenticationFailure.INVALID;
     }
 
     public List<ApiKeyInfo> list(long tenantId) {

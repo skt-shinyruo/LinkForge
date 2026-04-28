@@ -52,8 +52,6 @@ New foundation security exports:
 ```java
 package com.linkforge.foundation.security;
 
-import com.linkforge.contract.api.AppErrorCode;
-
 public interface JwtPrincipalVerifier {
     AuthPrincipal parseToken(String token);
 }
@@ -71,16 +69,20 @@ public interface ApiKeyAuthenticator {
 public record ApiKeyAuthenticationResult(long tenantId, Long applicationId, long apiKeyId) {
 }
 
-public class ApiKeyAuthenticationException extends RuntimeException {
-    private final AppErrorCode errorCode;
+public enum ApiKeyAuthenticationFailure {
+    INVALID,
+    DISABLED
+}
 
-    public ApiKeyAuthenticationException(AppErrorCode errorCode) {
-        super(errorCode == null ? null : errorCode.getMessage());
-        this.errorCode = errorCode;
+public class ApiKeyAuthenticationException extends RuntimeException {
+    private final ApiKeyAuthenticationFailure failure;
+
+    public ApiKeyAuthenticationException(ApiKeyAuthenticationFailure failure) {
+        this.failure = failure == null ? ApiKeyAuthenticationFailure.INVALID : failure;
     }
 
-    public AppErrorCode errorCode() {
-        return errorCode;
+    public ApiKeyAuthenticationFailure failure() {
+        return failure;
     }
 }
 ```

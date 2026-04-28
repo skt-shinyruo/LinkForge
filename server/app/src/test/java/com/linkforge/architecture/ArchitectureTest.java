@@ -23,6 +23,7 @@ class ArchitectureTest {
             .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
             .importPackages("com.linkforge");
     private static final String FORBIDDEN_GOVERNANCE_ROLES_REFERENCE = "com.linkforge.accounts.domain.Roles";
+    private static final String FORBIDDEN_APP_ACCOUNTS_APPLICATION_REFERENCE = "com.linkforge.accounts.application.";
     private static final String FORBIDDEN_APP_ACCOUNTS_INFRASTRUCTURE_REFERENCE = "com.linkforge.accounts.infrastructure.";
     private static final String FORBIDDEN_APP_ACCOUNTS_DOMAIN_ROLES_REFERENCE = "com.linkforge.accounts.domain.Roles";
     private static final List<BoundedContext> BOUNDED_CONTEXTS = List.of(
@@ -317,13 +318,8 @@ class ArchitectureTest {
         List<String> violations = new ArrayList<>();
         for (Path source : sources) {
             String text = Files.readString(source);
-            boolean existingKnownDebt = source.getFileName().toString().equals("JwtAuthenticationFilter.java")
-                    || source.getFileName().toString().equals("ApiKeyAuthenticationFilter.java")
-                    || source.getFileName().toString().equals("SecurityConfig.java");
-            if (existingKnownDebt) {
-                continue;
-            }
-            if (text.contains(FORBIDDEN_APP_ACCOUNTS_INFRASTRUCTURE_REFERENCE)
+            if (text.contains(FORBIDDEN_APP_ACCOUNTS_APPLICATION_REFERENCE)
+                    || text.contains(FORBIDDEN_APP_ACCOUNTS_INFRASTRUCTURE_REFERENCE)
                     || text.contains(FORBIDDEN_APP_ACCOUNTS_DOMAIN_ROLES_REFERENCE)) {
                 violations.add(source.toString());
             }

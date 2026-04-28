@@ -1,12 +1,12 @@
 package com.linkforge.app.security;
 
-import com.linkforge.accounts.application.AccountStatusService;
-import com.linkforge.accounts.infrastructure.security.JwtService;
 import com.linkforge.app.api.error.ApiErrorResponseWriter;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.config.SecurityProperties;
+import com.linkforge.foundation.security.AccountStatusVerifier;
 import com.linkforge.foundation.security.AuthPrincipal;
+import com.linkforge.foundation.security.JwtPrincipalVerifier;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Cookie;
@@ -43,8 +43,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private static final int MAX_JWT_TOKEN_LEN = 4096;
 
-    private final JwtService jwtService;
-    private final AccountStatusService accountStatusService;
+    private final JwtPrincipalVerifier jwtService;
+    private final AccountStatusVerifier accountStatusService;
     private final ApiErrorResponseWriter errorResponseWriter;
     private final SecurityProperties securityProperties;
 
@@ -57,8 +57,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     public JwtAuthenticationFilter(
-            JwtService jwtService,
-            AccountStatusService accountStatusService,
+            JwtPrincipalVerifier jwtService,
+            AccountStatusVerifier accountStatusService,
             ApiErrorResponseWriter errorResponseWriter,
             SecurityProperties securityProperties
     ) {

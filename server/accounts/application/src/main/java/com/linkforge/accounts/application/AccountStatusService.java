@@ -7,6 +7,7 @@ import com.linkforge.accounts.domain.AccountsConstants;
 import com.linkforge.contract.accounts.AccountsErrorCode;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
+import com.linkforge.foundation.security.AccountStatusVerifier;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -21,7 +22,7 @@ import java.time.Duration;
  * is unavailable, checks fall back to the persistence store.</p>
  */
 @Service
-public class AccountStatusService {
+public class AccountStatusService implements AccountStatusVerifier {
 
     private static final Duration CACHE_TTL = Duration.ofSeconds(30);
     private static final int SKIP_TOKEN_VERSION_CHECK = Integer.MIN_VALUE;

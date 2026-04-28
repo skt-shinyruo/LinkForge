@@ -4,10 +4,10 @@ import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.shortlink.ShortLinkErrorCode;
 import com.linkforge.foundation.tx.PostCommitHookPort;
 import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
+import com.linkforge.shortlink.application.eventing.ShortLinkDomainEventDispatcher;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
 import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
-import com.linkforge.shortlink.application.port.ShortLinkEventPublisher;
 import com.linkforge.shortlink.application.port.ShortLinkRepository;
 import com.linkforge.shortlink.application.support.ShortLinkDomainExceptions;
 import com.linkforge.shortlink.domain.ShortLink;
@@ -16,7 +16,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -25,7 +24,7 @@ import java.util.List;
 public class ArchiveShortLinkCommandHandler {
 
     private final ShortLinkRepository shortLinkRepository;
-    private final ShortLinkEventPublisher eventPublisher;
+    private final ShortLinkDomainEventDispatcher domainEventDispatcher;
     private final LinkTagRepository linkTagRepository;
     private final RedirectCacheSyncPort redirectCacheSync;
     private final ShortLinkDtoMapper dtoMapper;
@@ -34,7 +33,7 @@ public class ArchiveShortLinkCommandHandler {
 
     public ArchiveShortLinkCommandHandler(
             ShortLinkRepository shortLinkRepository,
-            ShortLinkEventPublisher eventPublisher,
+            ShortLinkDomainEventDispatcher domainEventDispatcher,
             LinkTagRepository linkTagRepository,
             RedirectCacheSyncPort redirectCacheSync,
             ShortLinkDtoMapper dtoMapper,
@@ -42,7 +41,7 @@ public class ArchiveShortLinkCommandHandler {
             Clock clock
     ) {
         this.shortLinkRepository = shortLinkRepository;
-        this.eventPublisher = eventPublisher;
+        this.domainEventDispatcher = domainEventDispatcher;
         this.linkTagRepository = linkTagRepository;
         this.redirectCacheSync = redirectCacheSync;
         this.dtoMapper = dtoMapper;
@@ -55,20 +54,19 @@ public class ArchiveShortLinkCommandHandler {
         ShortLink link = shortLinkRepository.findByTenantIdAndId(tenantId, linkId)
                 .orElseThrow(() -> new BusinessException(ShortLinkErrorCode.LINK_NOT_FOUND));
 
-        boolean alreadyArchived = link.archivedAtUtc() != null;
-        if (!alreadyArchived) {
-            LocalDateTime nowUtc = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
-            try {
-                link.archive(nowUtc);
-            } catch (ShortLinkDomainException ex) {
-                throw ShortLinkDomainExceptions.translate(ex);
-            }
+        LocalDateTime nowUtc = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
+        boolean archived;
+        try {
+            archived = link.archive(nowUtc);
+        } catch (ShortLinkDomainException ex) {
+            throw ShortLinkDomainExceptions.translate(ex);
+        }
+        if (archived) {
             if (!shortLinkRepository.update(link)) {
                 throw new BusinessException(ShortLinkErrorCode.LINK_STALE_WRITE);
             }
             link.incrementVersion();
-            Instant occurredAtUtc = nowUtc.toInstant(ZoneOffset.UTC);
-            eventPublisher.archived(link, occurredAtUtc);
+            domainEventDispatcher.publish(link, nowUtc.toInstant(ZoneOffset.UTC));
             postCommitHookPort.run(() -> redirectCacheSync.evict(link.tenantId(), link.domainId(), link.code().value()));
         }
 

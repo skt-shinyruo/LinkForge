@@ -10,6 +10,7 @@ import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.security.StandardRoles;
 import com.linkforge.governance.application.port.ApprovalRepository;
 import com.linkforge.governance.application.port.AuditLogRepository;
+import com.linkforge.governance.domain.ApprovalDomainException;
 import com.linkforge.governance.domain.ApprovalRequest;
 import com.linkforge.governance.domain.ApprovalStatus;
 import com.linkforge.governance.domain.AuditLog;
@@ -80,32 +81,28 @@ public class GovernanceService {
         UserActor effectiveActor = requireActor(tenantId, actor);
         ApprovalRequest request = approvalRepository.findByTenantIdAndId(tenantId, requestId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "审批请求不存在"));
-        if (request.status() != ApprovalStatus.PENDING_APPROVAL) {
-            throw approvalStateChanged();
-        }
-        if (request.requestedByUserId() == effectiveActor.userId()) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "申请人与审批人不能是同一人");
-        }
-        enforceApprovalMatrix(effectiveActor, request);
         LocalDateTime now = requestedAt == null ? LocalDateTime.now(clock) : requestedAt;
+        ApprovalRequest approved = approve(request, effectiveActor, reason, now);
+        enforceApprovalMatrix(effectiveActor, request);
         SensitiveOperation operation = toContractOperation(request.operationType());
         Optional<ApprovalExecutionPort> executor = findExecutor(operation);
 
         boolean claimed = approvalRepository.markApprovedIfPending(
-                request.tenantId(),
-                request.id(),
-                effectiveActor.userId(),
-                effectiveActor.email(),
-                reason,
-                now
+                approved.tenantId(),
+                approved.id(),
+                approved.approverUserId(),
+                approved.approverEmail(),
+                approved.decisionReason(),
+                approved.decidedAt()
         );
         if (!claimed) {
             throw approvalStateChanged();
         }
 
         if (executor.isPresent()) {
-            executeApprovedRequest(request, operation, executor.get(), now);
-            if (!approvalRepository.markExecutedIfApproved(request.tenantId(), request.id(), now)) {
+            executeApprovedRequest(approved, operation, executor.get(), now);
+            ApprovalRequest executed = markExecuted(approved, now);
+            if (!approvalRepository.markExecutedIfApproved(executed.tenantId(), executed.id(), executed.executedAt())) {
                 throw new BusinessException(ErrorCode.INTERNAL_ERROR, "审批执行状态更新失败");
             }
         }
@@ -114,6 +111,27 @@ public class GovernanceService {
         return approvalRepository.findByTenantIdAndId(tenantId, requestId)
                 .map(this::toDto)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_ERROR, "审批请求更新失败"));
+    }
+
+    private static ApprovalRequest approve(
+            ApprovalRequest request,
+            UserActor effectiveActor,
+            String reason,
+            LocalDateTime decidedAt
+    ) {
+        try {
+            return request.approve(effectiveActor.userId(), effectiveActor.email(), reason, decidedAt);
+        } catch (ApprovalDomainException e) {
+            throw toBusinessException(e);
+        }
+    }
+
+    private static ApprovalRequest markExecuted(ApprovalRequest request, LocalDateTime executedAt) {
+        try {
+            return request.markExecuted(executedAt);
+        } catch (ApprovalDomainException e) {
+            throw toBusinessException(e);
+        }
     }
 
     private void executeApprovedRequest(
@@ -141,6 +159,13 @@ public class GovernanceService {
 
     private static BusinessException approvalStateChanged() {
         return new BusinessException(ErrorCode.BAD_REQUEST, "审批请求状态已变化，请刷新后重试");
+    }
+
+    private static BusinessException toBusinessException(ApprovalDomainException e) {
+        if (e != null && e.reason() == ApprovalDomainException.Reason.SELF_APPROVAL) {
+            return new BusinessException(ErrorCode.BAD_REQUEST, "申请人与审批人不能是同一人");
+        }
+        return approvalStateChanged();
     }
 
     private static SensitiveOperation toContractOperation(SensitiveOperationType operationType) {

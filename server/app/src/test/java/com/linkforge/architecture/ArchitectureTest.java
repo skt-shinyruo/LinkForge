@@ -312,6 +312,42 @@ class ArchitectureTest {
     }
 
     @Test
+    void shortlink_create_update_application_code_should_dispatch_domain_events_instead_of_publishing_directly() throws Exception {
+        Path shortlinkCommandDir = resolveFromCurrentWorkspace(
+                "shortlink/application/src/main/java/com/linkforge/shortlink/application/command",
+                "server/shortlink/application/src/main/java/com/linkforge/shortlink/application/command"
+        );
+        Path shortlinkApprovalDir = resolveFromCurrentWorkspace(
+                "shortlink/application/src/main/java/com/linkforge/shortlink/application/approval",
+                "server/shortlink/application/src/main/java/com/linkforge/shortlink/application/approval"
+        );
+
+        List<Path> sources;
+        try (var commandStream = Files.walk(shortlinkCommandDir);
+             var approvalStream = Files.walk(shortlinkApprovalDir)) {
+            sources = java.util.stream.Stream
+                    .concat(commandStream, approvalStream)
+                    .filter(path -> path.toString().endsWith(".java"))
+                    .sorted()
+                    .toList();
+        }
+
+        List<String> violations = new ArrayList<>();
+        for (Path source : sources) {
+            String text = Files.readString(source);
+            if (text.contains("ShortLinkEventPublisher")
+                    || text.contains(".created(")
+                    || text.contains(".updated(")) {
+                violations.add(source.toString());
+            }
+        }
+
+        assertThat(violations)
+                .withFailMessage("Shortlink application code must dispatch aggregate domain events instead of directly publishing create/update events: %s", violations)
+                .isEmpty();
+    }
+
+    @Test
     void foundation_should_not_depend_on_bounded_contexts() {
         ArchRule rule = noClasses()
                 .that()

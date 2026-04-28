@@ -1,9 +1,11 @@
 package com.linkforge.shortlink.domain;
 
 import com.linkforge.shortlink.domain.event.ShortLinkArchived;
+import com.linkforge.shortlink.domain.event.ShortLinkCreated;
 import com.linkforge.shortlink.domain.event.ShortLinkDeleted;
 import com.linkforge.shortlink.domain.event.ShortLinkDomainEvent;
 import com.linkforge.shortlink.domain.event.ShortLinkRestored;
+import com.linkforge.shortlink.domain.event.ShortLinkUpdated;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -166,7 +168,7 @@ public class ShortLink {
     ) {
         boolean en = enabled == null || enabled;
         boolean preview = previewEnabled != null && previewEnabled;
-        return new ShortLink(
+        ShortLink link = new ShortLink(
                 id,
                 tenantId,
                 applicationId,
@@ -189,6 +191,8 @@ public class ShortLink {
                 null,
                 null
         );
+        link.recordDomainEvent(new ShortLinkCreated(link.id, link.tenantId, link.domainId, link.code.value()));
+        return link;
     }
 
     public static ShortLink rehydrate(
@@ -413,6 +417,11 @@ public class ShortLink {
         Objects.requireNonNull(nowUtc, "nowUtc must be provided in UTC");
         requireArchivedBeforeDelete();
         recordDomainEvent(new ShortLinkDeleted(id, tenantId, domainId, code.value(), nowUtc));
+    }
+
+    public void markUpdated(LocalDateTime updatedAtUtc) {
+        Objects.requireNonNull(updatedAtUtc, "updatedAtUtc must be provided in UTC");
+        recordDomainEvent(new ShortLinkUpdated(id, tenantId, domainId, code.value(), updatedAtUtc));
     }
 
     public void changeOriginalUrl(HttpUrl newUrl) {

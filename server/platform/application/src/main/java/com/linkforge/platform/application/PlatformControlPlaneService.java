@@ -7,6 +7,8 @@ import com.linkforge.platform.application.port.ApplicationRepository;
 import com.linkforge.platform.application.port.ApplicationQuotaRepository;
 import com.linkforge.platform.application.port.DomainRepository;
 import com.linkforge.platform.domain.Domain;
+import com.linkforge.platform.domain.DomainAuthorizationException;
+import com.linkforge.platform.domain.DomainAuthorizationPolicy;
 import com.linkforge.platform.domain.DomainScope;
 import com.linkforge.platform.domain.ApplicationQuota;
 import org.springframework.stereotype.Service;
@@ -16,6 +18,8 @@ import java.util.Optional;
 
 @Service
 public class PlatformControlPlaneService {
+
+    private static final DomainAuthorizationPolicy DOMAIN_AUTHORIZATION_POLICY = new DomainAuthorizationPolicy();
 
     private final ApplicationProvisioningService provisioningService;
     private final ApplicationRepository applicationRepository;
@@ -65,16 +69,20 @@ public class PlatformControlPlaneService {
         Domain domain = domainRepository.findByTenantIdAndId(tenantId, domainId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "域名不存在"));
 
-        if (domain.scope() == DomainScope.APPLICATION_DEDICATED) {
-            if (domain.applicationId() == null || domain.applicationId() != applicationId) {
-                throw new BusinessException(ErrorCode.FORBIDDEN, "应用未绑定该专属域名");
-            }
-            return;
+        boolean sharedDomainAuthorized = domain.scope() == DomainScope.APPLICATION_DEDICATED
+                || domainRepository.isApplicationAuthorizedForDomain(applicationId, domainId);
+        try {
+            DOMAIN_AUTHORIZATION_POLICY.requireApplicationCanUseDomain(applicationId, domain, sharedDomainAuthorized);
+        } catch (DomainAuthorizationException e) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, domainAuthorizationMessage(e));
         }
+    }
 
-        if (!domainRepository.isApplicationAuthorizedForDomain(applicationId, domainId)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "应用未获授权使用该共享域名");
+    private static String domainAuthorizationMessage(DomainAuthorizationException e) {
+        if (e != null && e.reason() == DomainAuthorizationException.Reason.DEDICATED_DOMAIN_MISMATCH) {
+            return "应用未绑定该专属域名";
         }
+        return "应用未获授权使用该共享域名";
     }
 
     public void requireApplicationExists(long tenantId, long applicationId) {

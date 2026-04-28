@@ -1239,16 +1239,21 @@ Add this test after `app_security_source_should_not_gain_new_accounts_internal_i
 ```java
     @Test
     void shortlink_create_update_application_code_should_dispatch_domain_events_instead_of_publishing_directly() throws Exception {
-        Path shortlinkAppDir = resolveFromCurrentWorkspace(
-                "shortlink/application/src/main/java/com/linkforge/shortlink/application",
-                "server/shortlink/application/src/main/java/com/linkforge/shortlink/application"
+        Path shortlinkCommandDir = resolveFromCurrentWorkspace(
+                "shortlink/application/src/main/java/com/linkforge/shortlink/application/command",
+                "server/shortlink/application/src/main/java/com/linkforge/shortlink/application/command"
+        );
+        Path shortlinkApprovalDir = resolveFromCurrentWorkspace(
+                "shortlink/application/src/main/java/com/linkforge/shortlink/application/approval",
+                "server/shortlink/application/src/main/java/com/linkforge/shortlink/application/approval"
         );
 
         List<Path> sources;
-        try (var stream = Files.walk(shortlinkAppDir)) {
-            sources = stream
+        try (var commandStream = Files.walk(shortlinkCommandDir);
+             var approvalStream = Files.walk(shortlinkApprovalDir)) {
+            sources = java.util.stream.Stream
+                    .concat(commandStream, approvalStream)
                     .filter(path -> path.toString().endsWith(".java"))
-                    .filter(path -> !path.getFileName().toString().equals("ShortLinkDomainEventDispatcher.java"))
                     .sorted()
                     .toList();
         }
@@ -1344,7 +1349,7 @@ Run:
 rg -n "ShortLinkEventPublisher|\\.created\\(|\\.updated\\(" server/shortlink/application/src/main/java server/shortlink/application/src/test/java
 ```
 
-Expected: any remaining production reference is only inside `ShortLinkDomainEventDispatcher` or test mocks of the dispatcher path. There should be no direct `eventPublisher.created(...)` or `eventPublisher.updated(...)` calls in create/update/approval application code.
+Expected: production references remain only in `ShortLinkDomainEventDispatcher` and the `ShortLinkEventPublisher` port interface. Test references may remain for constructor guards and dispatcher mocks. There should be no direct `eventPublisher.created(...)` or `eventPublisher.updated(...)` calls in create/update/approval application code.
 
 - [ ] **Step 5: Record completion note**
 

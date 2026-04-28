@@ -1,6 +1,13 @@
 package com.linkforge.shortlink.domain;
 
+import com.linkforge.shortlink.domain.event.ShortLinkArchived;
+import com.linkforge.shortlink.domain.event.ShortLinkDeleted;
+import com.linkforge.shortlink.domain.event.ShortLinkDomainEvent;
+import com.linkforge.shortlink.domain.event.ShortLinkRestored;
+
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 import static com.linkforge.shortlink.domain.ShortLinkDomainException.Reason.DELETE_REQUIRES_ARCHIVE;
@@ -41,6 +48,7 @@ public class ShortLink {
     private final CreatedByType createdByType;
     private LocalDateTime createdAtUtc;
     private LocalDateTime updatedAtUtc;
+    private final List<ShortLinkDomainEvent> domainEvents = new ArrayList<>();
 
     private ShortLink(
             long id,
@@ -360,15 +368,33 @@ public class ShortLink {
         return updatedAtUtc;
     }
 
-    public void archive(LocalDateTime nowUtc) {
-        Objects.requireNonNull(nowUtc, "nowUtc must be provided in UTC");
-        if (archivedAtUtc == null) {
-            archivedAtUtc = nowUtc;
-        }
+    public List<ShortLinkDomainEvent> pullDomainEvents() {
+        List<ShortLinkDomainEvent> events = List.copyOf(domainEvents);
+        domainEvents.clear();
+        return events;
     }
 
-    public void restore() {
+    private void recordDomainEvent(ShortLinkDomainEvent event) {
+        domainEvents.add(Objects.requireNonNull(event, "event"));
+    }
+
+    public boolean archive(LocalDateTime nowUtc) {
+        Objects.requireNonNull(nowUtc, "nowUtc must be provided in UTC");
+        if (archivedAtUtc != null) {
+            return false;
+        }
+        archivedAtUtc = nowUtc;
+        recordDomainEvent(new ShortLinkArchived(id, tenantId, domainId, code.value(), nowUtc));
+        return true;
+    }
+
+    public boolean restore() {
+        if (archivedAtUtc == null) {
+            return false;
+        }
         archivedAtUtc = null;
+        recordDomainEvent(new ShortLinkRestored(id, tenantId, domainId, code.value()));
+        return true;
     }
 
     public void requireNotArchivedForUpdate() {
@@ -381,6 +407,12 @@ public class ShortLink {
         if (archivedAtUtc == null) {
             throw new ShortLinkDomainException(DELETE_REQUIRES_ARCHIVE, "删除前请先归档（可避免误删）");
         }
+    }
+
+    public void markDeleted(LocalDateTime nowUtc) {
+        Objects.requireNonNull(nowUtc, "nowUtc must be provided in UTC");
+        requireArchivedBeforeDelete();
+        recordDomainEvent(new ShortLinkDeleted(id, tenantId, domainId, code.value(), nowUtc));
     }
 
     public void changeOriginalUrl(HttpUrl newUrl) {

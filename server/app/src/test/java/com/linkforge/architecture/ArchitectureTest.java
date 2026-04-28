@@ -265,6 +265,29 @@ class ArchitectureTest {
     }
 
     @Test
+    void non_shortlink_contexts_should_depend_on_shortlink_contracts_only() {
+        ArchRule rule = noClasses()
+                .that()
+                .resideInAnyPackage(
+                        "com.linkforge.redirect..",
+                        "com.linkforge.analytics..",
+                        "com.linkforge.platform..",
+                        "com.linkforge.governance..",
+                        "com.linkforge.accounts..",
+                        "com.linkforge.app.."
+                )
+                .should()
+                .dependOnClassesThat()
+                .resideInAnyPackage(
+                        "com.linkforge.shortlink.domain..",
+                        "com.linkforge.shortlink.application..",
+                        "com.linkforge.shortlink.infrastructure..",
+                        "com.linkforge.shortlink.interfaces.."
+                );
+        rule.check(CLASSES);
+    }
+
+    @Test
     void governance_service_source_should_not_import_accounts_roles() throws Exception {
         // ArchUnit can miss constant-only dependencies after javac inlines static final String fields.
         // Keep this source-level guard until governance stops importing accounts-domain Roles.

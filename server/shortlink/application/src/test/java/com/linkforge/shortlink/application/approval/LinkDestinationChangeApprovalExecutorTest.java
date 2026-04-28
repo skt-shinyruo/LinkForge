@@ -3,6 +3,7 @@ package com.linkforge.shortlink.application.approval;
 import com.linkforge.foundation.tx.PostCommitHookPort;
 import com.linkforge.contract.governance.ApprovalExecutionRequest;
 import com.linkforge.contract.governance.SensitiveOperation;
+import com.linkforge.shortlink.application.eventing.ShortLinkDomainEventDispatcher;
 import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
 import com.linkforge.shortlink.application.port.ShortLinkEventPublisher;
 import com.linkforge.shortlink.application.port.ShortLinkRepository;
@@ -13,7 +14,7 @@ import com.linkforge.shortlink.domain.ShortLink;
 import com.linkforge.shortlink.domain.ShortLinkLifecycleState;
 import org.junit.jupiter.api.Test;
 
-import java.time.Instant;
+import java.lang.reflect.Constructor;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
@@ -27,14 +28,24 @@ import static org.mockito.Mockito.when;
 class LinkDestinationChangeApprovalExecutorTest {
 
     @Test
+    void constructor_shouldDependOnDomainEventDispatcherInsteadOfEventPublisher() {
+        Constructor<?> constructor = LinkDestinationChangeApprovalExecutor.class.getDeclaredConstructors()[0];
+
+        assertThat(constructor.getParameterTypes())
+                .contains(ShortLinkDomainEventDispatcher.class);
+        assertThat(constructor.getParameterTypes())
+                .doesNotContain(ShortLinkEventPublisher.class);
+    }
+
+    @Test
     void execute_shouldApplyApprovedDestinationChangeAndEvictRedirectCache() {
         ShortLinkRepository shortLinkRepository = mock(ShortLinkRepository.class);
-        ShortLinkEventPublisher eventPublisher = mock(ShortLinkEventPublisher.class);
+        ShortLinkDomainEventDispatcher domainEventDispatcher = mock(ShortLinkDomainEventDispatcher.class);
         RedirectCacheSyncPort redirectCacheSync = mock(RedirectCacheSyncPort.class);
         PostCommitHookPort postCommitHookPort = mock(PostCommitHookPort.class);
         LinkDestinationChangeApprovalExecutor executor = new LinkDestinationChangeApprovalExecutor(
                 shortLinkRepository,
-                eventPublisher,
+                domainEventDispatcher,
                 redirectCacheSync,
                 postCommitHookPort
         );
@@ -78,7 +89,7 @@ class LinkDestinationChangeApprovalExecutorTest {
         assertThat(executor.supports(SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE)).isTrue();
         assertThat(link.originalUrl().value()).isEqualTo("https://example.com/new");
         verify(shortLinkRepository).update(link);
-        verify(eventPublisher).updated(link, Instant.parse("2026-04-01T01:02:03Z"));
+        verify(domainEventDispatcher).publish(link, executedAt.toInstant(java.time.ZoneOffset.UTC));
         verify(redirectCacheSync).evict(1L, 3001L, "governed");
     }
 }

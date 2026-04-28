@@ -9,7 +9,6 @@ import com.linkforge.foundation.security.JwtPrincipalVerifier;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
@@ -171,7 +170,6 @@ class SecurityConfigCsrfTest {
     static class TestApp {
     }
 
-    @TestConfiguration
     static class TestSecurityBeans {
         @Bean
         SecurityProperties securityProperties() {

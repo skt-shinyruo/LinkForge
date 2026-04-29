@@ -104,6 +104,8 @@ The repository currently ships as:
 
 - one backend runtime (`server/app`)
 - one frontend app (`web`)
-- supporting infrastructure such as MySQL and Redis
+- supporting infrastructure such as MySQL primary/replica and Redis
+
+The backend uses Apache ShardingSphere-JDBC as the logical application datasource. `readwrite_ds` routes writes to `write_ds` and eligible non-transactional reads to `read_ds_0`; transactional reads stay on the primary through `transactionalReadQueryStrategy: PRIMARY`. Flyway is explicitly bound to the primary MySQL connection and does not migrate through the logical read/write splitting datasource.
 
 This is not a microservice deployment. Module boundaries remain for ownership and tests, but day-to-day correctness is designed for a single deployed monolith rather than future service extraction.

@@ -17,13 +17,24 @@
 - `APP_BASE_URL`：创建短链时用于拼接 shortUrl（建议指向反向代理/网关域名；本地默认 `http://localhost`）
 - （可选/生产建议）`EDGE_TRUSTED_PROXIES`：可信代理链（CIDR）。当 `/r/**` 经 Nginx/网关反代时需要配置，否则客户端 IP/UV 统计可能严重失真
 - （可选）MySQL 账号（默认值可直接使用）：
-  - `MYSQL_API_USER` / `MYSQL_API_PASSWORD`：后端服务读写账号（Flyway 迁移与业务写入）
+  - `MYSQL_API_USER` / `MYSQL_API_PASSWORD`：主库读写账号（Flyway 迁移与业务写入）
+  - `MYSQL_READ_USER` / `MYSQL_READ_PASSWORD`：从库只读账号（ShardingSphere-JDBC 读流量）
+  - `MYSQL_REPLICATION_USER` / `MYSQL_REPLICATION_PASSWORD`：MySQL 主从复制账号
 
 3) 启动：
 
 ```bash
 cd deploy
 docker compose --env-file .env up --build
+```
+
+本地 compose 使用 `mysql-primary` + `mysql-replica` 模拟 MySQL 主从部署，后端通过 ShardingSphere-JDBC 暴露一个逻辑数据源。Flyway 固定连接主库，业务写入走 `write_ds`，符合条件的非事务查询可走 `read_ds_0`；事务内读保持走主库，降低复制延迟导致的写后读不一致风险。
+
+如果修改 MySQL 初始化账号、复制参数或需要重新初始化主从数据卷，请先通过 `docker compose down -v` 停止并删除旧卷；本项目命令示例带上环境文件：
+
+```bash
+cd deploy
+docker compose --env-file .env down -v
 ```
 
 访问：

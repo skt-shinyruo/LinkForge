@@ -138,7 +138,7 @@ class ShardingSphereDatasourceConfigTest {
 Run:
 
 ```bash
-cd server && mvn -q -pl app -Dtest=ShardingSphereDatasourceConfigTest test
+cd server && mvn -q -pl app -am -Dtest=ShardingSphereDatasourceConfigTest test
 ```
 
 Expected: FAIL because `application.yml` still uses the single MySQL datasource and `shardingsphere-readwrite.yaml` does not exist.
@@ -270,7 +270,7 @@ Use ShardingSphere's `$${ENV_NAME::default}` placeholder syntax because the JDBC
 Run:
 
 ```bash
-cd server && mvn -q -pl app -Dtest=ShardingSphereDatasourceConfigTest test
+cd server && mvn -q -pl app -am -Dtest=ShardingSphereDatasourceConfigTest test
 ```
 
 Expected: PASS.
@@ -280,7 +280,7 @@ Expected: PASS.
 Run:
 
 ```bash
-cd server && mvn -q -pl app -DskipTests compile
+cd server && mvn -q -pl app -am -DskipTests compile
 ```
 
 Expected: PASS. If Maven cannot resolve `org.apache.shardingsphere:shardingsphere-jdbc:5.5.3`, stop and verify Maven Central availability before changing the version.
@@ -325,7 +325,7 @@ In `server/integration-tests/src/test/java/com/linkforge/LinkForgeIntegrationTes
 Run:
 
 ```bash
-cd server && mvn -q -pl integration-tests -P it -Dtest=LinkForgeIntegrationTest#integrationTests_use_plain_mysql_datasource_and_primary_flyway_override test
+cd server && mvn -q -P it -pl integration-tests -am -Dtest=LinkForgeIntegrationTest#integrationTests_use_plain_mysql_datasource_and_primary_flyway_override test
 ```
 
 Expected: FAIL because the integration-test module does not yet override the ShardingSphere driver and explicit Flyway connection.
@@ -348,7 +348,7 @@ These properties preserve the existing `DynamicPropertySource` pattern that regi
 Run:
 
 ```bash
-cd server && mvn -q -pl integration-tests -P it -Dtest=LinkForgeIntegrationTest#integrationTests_use_plain_mysql_datasource_and_primary_flyway_override test
+cd server && mvn -q -P it -pl integration-tests -am -Dtest=LinkForgeIntegrationTest#integrationTests_use_plain_mysql_datasource_and_primary_flyway_override test
 ```
 
 Expected: PASS.
@@ -358,7 +358,7 @@ Expected: PASS.
 Run:
 
 ```bash
-cd server && mvn -q -pl integration-tests -P it -Dtest=LinkForgeIntegrationTest test
+cd server && mvn -q -P it -pl integration-tests -am -Dtest=LinkForgeIntegrationTest test
 ```
 
 Expected: PASS.
@@ -464,7 +464,7 @@ class DeployReadwriteTopologyTest {
 Run:
 
 ```bash
-cd server && mvn -q -pl app -Dtest=DeployReadwriteTopologyTest test
+cd server && mvn -q -pl app -am -Dtest=DeployReadwriteTopologyTest test
 ```
 
 Expected: FAIL because Compose still defines the single `mysql` service and the init scripts do not exist.
@@ -642,7 +642,7 @@ MYSQL_REPLICATION_PASSWORD=linkforge_repl
 Run:
 
 ```bash
-cd server && mvn -q -pl app -Dtest=DeployReadwriteTopologyTest test
+cd server && mvn -q -pl app -am -Dtest=DeployReadwriteTopologyTest test
 ```
 
 Expected: PASS.
@@ -704,7 +704,7 @@ Append this test method to `DeployReadwriteTopologyTest`:
 Run:
 
 ```bash
-cd server && mvn -q -pl app -Dtest=DeployReadwriteTopologyTest#docs_should_describe_shardingsphere_and_primary_replica_deployment test
+cd server && mvn -q -pl app -am -Dtest=DeployReadwriteTopologyTest#docs_should_describe_shardingsphere_and_primary_replica_deployment test
 ```
 
 Expected: FAIL because README and architecture docs still describe a single MySQL service.
@@ -773,7 +773,7 @@ This is not a microservice deployment. Module boundaries remain for ownership an
 Run:
 
 ```bash
-cd server && mvn -q -pl app -Dtest=DeployReadwriteTopologyTest#docs_should_describe_shardingsphere_and_primary_replica_deployment test
+cd server && mvn -q -pl app -am -Dtest=DeployReadwriteTopologyTest#docs_should_describe_shardingsphere_and_primary_replica_deployment test
 ```
 
 Expected: PASS.
@@ -795,7 +795,7 @@ git commit -m "docs: document ShardingSphere mysql topology"
 Run:
 
 ```bash
-cd server && mvn -q -pl app -Dtest=ShardingSphereDatasourceConfigTest,DeployReadwriteTopologyTest test
+cd server && mvn -q -pl app -am -Dtest=ShardingSphereDatasourceConfigTest,DeployReadwriteTopologyTest test
 ```
 
 Expected: PASS.
@@ -805,7 +805,7 @@ Expected: PASS.
 Run:
 
 ```bash
-cd server && mvn -q -pl app test
+cd server && mvn -q -pl app -am test
 ```
 
 Expected: PASS.
@@ -815,7 +815,7 @@ Expected: PASS.
 Run:
 
 ```bash
-cd server && mvn -q -pl integration-tests -P it -Dtest=LinkForgeIntegrationTest test
+cd server && mvn -q -P it -pl integration-tests -am -Dtest=LinkForgeIntegrationTest test
 ```
 
 Expected: PASS.

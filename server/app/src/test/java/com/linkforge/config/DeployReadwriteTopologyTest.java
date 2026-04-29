@@ -70,4 +70,26 @@ class DeployReadwriteTopologyTest {
                 .contains("GET_SOURCE_PUBLIC_KEY=1")
                 .contains("START REPLICA");
     }
+
+    @Test
+    void docs_should_describe_shardingsphere_and_primary_replica_deployment() throws Exception {
+        String readme = Files.readString(Path.of("../../README.md"));
+        String architecture = Files.readString(Path.of("../../docs/architecture.md"));
+
+        assertThat(readme)
+                .contains("ShardingSphere-JDBC")
+                .contains("mysql-primary")
+                .contains("mysql-replica")
+                .contains("MYSQL_READ_USER")
+                .contains("MYSQL_REPLICATION_USER")
+                .contains("docker compose down -v");
+
+        assertThat(architecture)
+                .contains("ShardingSphere-JDBC")
+                .contains("readwrite_ds")
+                .contains("write_ds")
+                .contains("read_ds_0")
+                .contains("Flyway")
+                .contains("primary");
+    }
 }

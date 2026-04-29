@@ -6,15 +6,15 @@ spring:
       - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
 
   datasource:
-    url: ${DB_URL:jdbc:mysql://localhost:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC}
-    username: ${DB_USERNAME:linkforge}
-    password: ${DB_PASSWORD:linkforge}
-    hikari:
-      maximum-pool-size: ${DB_POOL_SIZE:20}
+    driver-class-name: org.apache.shardingsphere.driver.ShardingSphereDriver
+    url: jdbc:shardingsphere:classpath:shardingsphere-readwrite.yaml?placeholder-type=environment
 
   flyway:
     enabled: true
     locations: classpath:db/migration
+    url: ${DB_WRITE_URL:${DB_URL:jdbc:mysql://localhost:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC}}
+    user: ${DB_WRITE_USERNAME:${DB_USERNAME:linkforge}}
+    password: ${DB_WRITE_PASSWORD:${DB_PASSWORD:linkforge}}
 
   data:
     redis:

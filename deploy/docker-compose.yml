@@ -75,10 +75,10 @@ services:
       context: ../server
       dockerfile: Dockerfile
     environment:
-      DB_WRITE_URL: jdbc:mysql://mysql-primary:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
+      DB_WRITE_URL: jdbc:mysql://mysql-primary:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true
       DB_WRITE_USERNAME: ${MYSQL_API_USER:-linkforge_api}
       DB_WRITE_PASSWORD: ${MYSQL_API_PASSWORD:-linkforge_api}
-      DB_READ_URL: jdbc:mysql://mysql-replica:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
+      DB_READ_URL: jdbc:mysql://mysql-replica:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true
       DB_READ_USERNAME: ${MYSQL_READ_USER:-linkforge_read}
       DB_READ_PASSWORD: ${MYSQL_READ_PASSWORD:-linkforge_read}
       REDIS_HOST: redis

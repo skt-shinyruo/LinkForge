@@ -13,6 +13,8 @@ COPY accounts /app/accounts
 COPY shortlink /app/shortlink
 COPY redirect /app/redirect
 COPY analytics /app/analytics
+COPY platform /app/platform
+COPY governance /app/governance
 COPY app /app/app
 
 # Build executable jar from the Spring Boot module only

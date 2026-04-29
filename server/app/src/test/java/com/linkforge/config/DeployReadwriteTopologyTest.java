@@ -72,6 +72,22 @@ class DeployReadwriteTopologyTest {
     }
 
     @Test
+    void serverDockerfile_should_copy_all_app_reactor_modules() throws Exception {
+        String dockerfile = Files.readString(Path.of("../Dockerfile"));
+
+        assertThat(dockerfile)
+                .contains("COPY foundation /app/foundation")
+                .contains("COPY contracts /app/contracts")
+                .contains("COPY accounts /app/accounts")
+                .contains("COPY shortlink /app/shortlink")
+                .contains("COPY redirect /app/redirect")
+                .contains("COPY analytics /app/analytics")
+                .contains("COPY platform /app/platform")
+                .contains("COPY governance /app/governance")
+                .contains("COPY app /app/app");
+    }
+
+    @Test
     void docs_should_describe_shardingsphere_and_primary_replica_deployment() throws Exception {
         String readme = Files.readString(Path.of("../../README.md"));
         String architecture = Files.readString(Path.of("../../docs/architecture.md"));

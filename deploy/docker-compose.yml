@@ -1,3 +1,5 @@
+name: linkforge
+
 services:
   mysql-primary:
     image: mysql:8.0.36

@@ -4,14 +4,14 @@ dataSources:
   write_ds:
     dataSourceClassName: com.zaxxer.hikari.HikariDataSource
     driverClassName: $${DB_DRIVER_CLASS_NAME::com.mysql.cj.jdbc.Driver}
-    jdbcUrl: $${DB_WRITE_URL::jdbc:mysql://localhost:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC}
+    jdbcUrl: $${DB_WRITE_URL::jdbc:mysql://localhost:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true}
     username: $${DB_WRITE_USERNAME::linkforge}
     password: $${DB_WRITE_PASSWORD::linkforge}
     maximumPoolSize: $${DB_WRITE_POOL_SIZE::20}
   read_ds_0:
     dataSourceClassName: com.zaxxer.hikari.HikariDataSource
     driverClassName: $${DB_DRIVER_CLASS_NAME::com.mysql.cj.jdbc.Driver}
-    jdbcUrl: $${DB_READ_URL::jdbc:mysql://localhost:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC}
+    jdbcUrl: $${DB_READ_URL::jdbc:mysql://localhost:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true}
     username: $${DB_READ_USERNAME::linkforge}
     password: $${DB_READ_PASSWORD::linkforge}
     maximumPoolSize: $${DB_READ_POOL_SIZE::20}

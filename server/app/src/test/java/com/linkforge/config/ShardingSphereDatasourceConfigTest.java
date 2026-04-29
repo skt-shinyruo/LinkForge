@@ -22,7 +22,7 @@ class ShardingSphereDatasourceConfigTest {
         assertThat(application.getProperty("spring.datasource.url"))
                 .isEqualTo("jdbc:shardingsphere:classpath:shardingsphere-readwrite.yaml?placeholder-type=environment");
         assertThat(application.getProperty("spring.flyway.url"))
-                .isEqualTo("${DB_WRITE_URL:${DB_URL:jdbc:mysql://localhost:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC}}");
+                .isEqualTo("${DB_WRITE_URL:${DB_URL:jdbc:mysql://localhost:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true}}");
         assertThat(application.getProperty("spring.flyway.user"))
                 .isEqualTo("${DB_WRITE_USERNAME:${DB_USERNAME:linkforge}}");
         assertThat(application.getProperty("spring.flyway.password"))
@@ -49,8 +49,8 @@ class ShardingSphereDatasourceConfigTest {
                 .contains("read_ds_0:")
                 .contains("dataSourceClassName: com.zaxxer.hikari.HikariDataSource")
                 .contains("driverClassName: $${DB_DRIVER_CLASS_NAME::com.mysql.cj.jdbc.Driver}")
-                .contains("jdbcUrl: $${DB_WRITE_URL::jdbc:mysql://localhost:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC}")
-                .contains("jdbcUrl: $${DB_READ_URL::jdbc:mysql://localhost:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC}")
+                .contains("jdbcUrl: $${DB_WRITE_URL::jdbc:mysql://localhost:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true}")
+                .contains("jdbcUrl: $${DB_READ_URL::jdbc:mysql://localhost:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true}")
                 .contains("username: $${DB_WRITE_USERNAME::linkforge}")
                 .contains("username: $${DB_READ_USERNAME::linkforge}")
                 .contains("!READWRITE_SPLITTING")
@@ -60,6 +60,30 @@ class ShardingSphereDatasourceConfigTest {
                 .contains("transactionalReadQueryStrategy: PRIMARY")
                 .contains("type: RANDOM")
                 .contains("sql-show: $${SHARDINGSPHERE_SQL_SHOW::false}");
+    }
+
+    @Test
+    void appPom_should_include_shardingsphere_runtime_plugins_required_by_yaml_driver() throws Exception {
+        String pom = Files.readString(Path.of("pom.xml"));
+
+        assertThat(pom)
+                .contains("<artifactId>shardingsphere-jdbc</artifactId>")
+                .contains("<artifactId>shardingsphere-jdbc-dialect-mysql</artifactId>")
+                .contains("<artifactId>shardingsphere-parser-sql-engine-mysql</artifactId>")
+                .contains("<artifactId>shardingsphere-infra-url-classpath</artifactId>")
+                .contains("<artifactId>shardingsphere-infra-data-source-pool-hikari</artifactId>")
+                .contains("<artifactId>shardingsphere-standalone-mode-repository-memory</artifactId>")
+                .contains("<artifactId>shardingsphere-authority-simple</artifactId>")
+                .contains("<artifactId>shardingsphere-readwrite-splitting-core</artifactId>")
+                .contains("<artifactId>commons-lang3</artifactId>")
+                .contains("<version>${commons-lang3.version}</version>");
+    }
+
+    @Test
+    void parentPom_should_use_commonsLang3_version_required_by_shardingsphere() throws Exception {
+        String pom = Files.readString(Path.of("../pom.xml"));
+
+        assertThat(pom).contains("<commons-lang3.version>3.18.0</commons-lang3.version>");
     }
 
     private static Properties yaml(String classpathResource) {

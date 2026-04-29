@@ -1,0 +1,73 @@
+package com.linkforge.config;
+
+import org.junit.jupiter.api.Test;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class DeployReadwriteTopologyTest {
+
+    @Test
+    void dockerCompose_should_define_mysql_primary_replica_and_server_readwrite_env() throws Exception {
+        String compose = Files.readString(Path.of("../../deploy/docker-compose.yml"));
+
+        assertThat(compose)
+                .contains("mysql-primary:")
+                .contains("mysql-replica:")
+                .contains("mysql_primary_data:")
+                .contains("mysql_replica_data:")
+                .contains("\"3306:3306\"")
+                .contains("\"3307:3306\"")
+                .contains("--server-id=1")
+                .contains("--server-id=2")
+                .contains("--log-bin=mysql-bin")
+                .contains("--gtid-mode=ON")
+                .contains("DB_WRITE_URL: jdbc:mysql://mysql-primary:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC")
+                .contains("DB_READ_URL: jdbc:mysql://mysql-replica:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC")
+                .contains("DB_WRITE_USERNAME: ${MYSQL_API_USER:-linkforge_api}")
+                .contains("DB_READ_USERNAME: ${MYSQL_READ_USER:-linkforge_read}")
+                .contains("mysql-primary:")
+                .contains("condition: service_healthy")
+                .contains("mysql-replica:")
+                .contains("condition: service_healthy");
+
+        assertThat(compose).doesNotContain("DB_URL: jdbc:mysql://mysql:3306/linkforge");
+    }
+
+    @Test
+    void envExample_should_document_mysql_read_and_replication_accounts() throws Exception {
+        String env = Files.readString(Path.of("../../deploy/.env.example"));
+
+        assertThat(env)
+                .contains("MYSQL_ROOT_PASSWORD=root")
+                .contains("MYSQL_API_USER=linkforge_api")
+                .contains("MYSQL_API_PASSWORD=linkforge_api")
+                .contains("MYSQL_READ_USER=linkforge_read")
+                .contains("MYSQL_READ_PASSWORD=linkforge_read")
+                .contains("MYSQL_REPLICATION_USER=linkforge_repl")
+                .contains("MYSQL_REPLICATION_PASSWORD=linkforge_repl");
+    }
+
+    @Test
+    void mysql_init_scripts_should_create_accounts_and_start_replication() throws Exception {
+        String primary = Files.readString(Path.of("../../deploy/mysql/primary/init/01-create-users.sh"));
+        String replica = Files.readString(Path.of("../../deploy/mysql/replica/init/01-start-replication.sh"));
+
+        assertThat(primary)
+                .contains("CREATE USER IF NOT EXISTS '${MYSQL_API_USER}'@'%'")
+                .contains("GRANT ALL PRIVILEGES ON linkforge.* TO '${MYSQL_API_USER}'@'%'")
+                .contains("CREATE USER IF NOT EXISTS '${MYSQL_READ_USER}'@'%'")
+                .contains("GRANT SELECT ON linkforge.* TO '${MYSQL_READ_USER}'@'%'")
+                .contains("CREATE USER IF NOT EXISTS '${MYSQL_REPLICATION_USER}'@'%'")
+                .contains("GRANT REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO '${MYSQL_REPLICATION_USER}'@'%'");
+
+        assertThat(replica)
+                .contains("CHANGE REPLICATION SOURCE TO")
+                .contains("SOURCE_HOST='mysql-primary'")
+                .contains("SOURCE_AUTO_POSITION=1")
+                .contains("GET_SOURCE_PUBLIC_KEY=1")
+                .contains("START REPLICA");
+    }
+}

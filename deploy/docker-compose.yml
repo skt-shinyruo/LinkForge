@@ -1,26 +1,63 @@
 services:
-  mysql:
+  mysql-primary:
     image: mysql:8.0.36
     environment:
       MYSQL_DATABASE: linkforge
-      # 单体服务（读写）账号：用于 Flyway 与业务写入
-      MYSQL_USER: ${MYSQL_API_USER:-linkforge_api}
-      MYSQL_PASSWORD: ${MYSQL_API_PASSWORD:-linkforge_api}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_API_USER: ${MYSQL_API_USER:-linkforge_api}
+      MYSQL_API_PASSWORD: ${MYSQL_API_PASSWORD:-linkforge_api}
+      MYSQL_READ_USER: ${MYSQL_READ_USER:-linkforge_read}
+      MYSQL_READ_PASSWORD: ${MYSQL_READ_PASSWORD:-linkforge_read}
+      MYSQL_REPLICATION_USER: ${MYSQL_REPLICATION_USER:-linkforge_repl}
+      MYSQL_REPLICATION_PASSWORD: ${MYSQL_REPLICATION_PASSWORD:-linkforge_repl}
     ports:
       - "3306:3306"
     command:
+      - "--server-id=1"
+      - "--log-bin=mysql-bin"
+      - "--binlog-format=ROW"
+      - "--gtid-mode=ON"
+      - "--enforce-gtid-consistency=ON"
       - "--character-set-server=utf8mb4"
       - "--collation-server=utf8mb4_unicode_ci"
       # Note: shortlink code is strictly case-sensitive via column-level collation (see Flyway V1 init schema),
       # even though the server default collation is case-insensitive.
     volumes:
-      - mysql_data:/var/lib/mysql
+      - mysql_primary_data:/var/lib/mysql
+      - ./mysql/primary/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p${MYSQL_ROOT_PASSWORD:-root} --silent"]
       interval: 5s
       timeout: 3s
       retries: 20
+
+  mysql-replica:
+    image: mysql:8.0.36
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_REPLICATION_USER: ${MYSQL_REPLICATION_USER:-linkforge_repl}
+      MYSQL_REPLICATION_PASSWORD: ${MYSQL_REPLICATION_PASSWORD:-linkforge_repl}
+    ports:
+      - "3307:3306"
+    command:
+      - "--server-id=2"
+      - "--relay-log=mysql-relay-bin"
+      - "--read-only=ON"
+      - "--gtid-mode=ON"
+      - "--enforce-gtid-consistency=ON"
+      - "--character-set-server=utf8mb4"
+      - "--collation-server=utf8mb4_unicode_ci"
+    volumes:
+      - mysql_replica_data:/var/lib/mysql
+      - ./mysql/replica/init:/docker-entrypoint-initdb.d:ro
+    depends_on:
+      mysql-primary:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "mysql -uroot -p${MYSQL_ROOT_PASSWORD:-root} -e \"SHOW REPLICA STATUS\\G\" | grep -q \"Replica_IO_Running: Yes\" && mysql -uroot -p${MYSQL_ROOT_PASSWORD:-root} -e \"SHOW REPLICA STATUS\\G\" | grep -q \"Replica_SQL_Running: Yes\""]
+      interval: 5s
+      timeout: 5s
+      retries: 30
 
   redis:
     image: redis:7.2.4-alpine
@@ -38,9 +75,12 @@ services:
       context: ../server
       dockerfile: Dockerfile
     environment:
-      DB_URL: jdbc:mysql://mysql:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
-      DB_USERNAME: ${MYSQL_API_USER:-linkforge_api}
-      DB_PASSWORD: ${MYSQL_API_PASSWORD:-linkforge_api}
+      DB_WRITE_URL: jdbc:mysql://mysql-primary:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
+      DB_WRITE_USERNAME: ${MYSQL_API_USER:-linkforge_api}
+      DB_WRITE_PASSWORD: ${MYSQL_API_PASSWORD:-linkforge_api}
+      DB_READ_URL: jdbc:mysql://mysql-replica:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
+      DB_READ_USERNAME: ${MYSQL_READ_USER:-linkforge_read}
+      DB_READ_PASSWORD: ${MYSQL_READ_PASSWORD:-linkforge_read}
       REDIS_HOST: redis
       REDIS_PORT: 6379
       JWT_SECRET: ${JWT_SECRET}
@@ -63,7 +103,9 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      mysql:
+      mysql-primary:
+        condition: service_healthy
+      mysql-replica:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -78,4 +120,5 @@ services:
       - server
 
 volumes:
-  mysql_data:
+  mysql_primary_data:
+  mysql_replica_data:

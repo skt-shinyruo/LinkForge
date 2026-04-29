@@ -1,0 +1,17 @@
+#!/bin/sh
+set -eu
+
+until mysqladmin ping -h mysql-primary -uroot -p"${MYSQL_ROOT_PASSWORD}" --silent; do
+  sleep 2
+done
+
+mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" <<SQL
+CHANGE REPLICATION SOURCE TO
+  SOURCE_HOST='mysql-primary',
+  SOURCE_PORT=3306,
+  SOURCE_USER='${MYSQL_REPLICATION_USER}',
+  SOURCE_PASSWORD='${MYSQL_REPLICATION_PASSWORD}',
+  SOURCE_AUTO_POSITION=1,
+  GET_SOURCE_PUBLIC_KEY=1;
+START REPLICA;
+SQL

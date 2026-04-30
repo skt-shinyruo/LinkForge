@@ -11,39 +11,71 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class RedisAnalyticsVisitEventAppenderTest {
 
     @Test
-    void append_shouldSkipRedisWhenEventsAreDisabled() {
+    void append_shouldWriteStreamWithDefaultProperties() {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         AnalyticsProperties properties = new AnalyticsProperties();
+
+        @SuppressWarnings("unchecked")
+        StreamOperations<String, Object, Object> streamOps = mock(StreamOperations.class);
+        when(redis.opsForStream()).thenReturn(streamOps);
+        when(streamOps.add(any())).thenReturn(RecordId.of("1-0"));
 
         RedisAnalyticsVisitEventAppender appender = new RedisAnalyticsVisitEventAppender(redis, properties);
 
         appender.append(event());
 
-        verifyNoInteractions(redis);
+        verify(streamOps).add(any());
+        verify(streamOps).trim(eq(AnalyticsKeys.visitEventStreamKey()), eq(200_000L), eq(true));
     }
 
     @Test
-    void append_shouldSkipRedisWhenSampleRateIsZero() {
+    void append_shouldWriteStreamWhenEventsAreDisabled() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        AnalyticsProperties properties = new AnalyticsProperties();
+        properties.getEvents().setEnabled(false);
+
+        @SuppressWarnings("unchecked")
+        StreamOperations<String, Object, Object> streamOps = mock(StreamOperations.class);
+        when(redis.opsForStream()).thenReturn(streamOps);
+        when(streamOps.add(any())).thenReturn(RecordId.of("1-0"));
+
+        RedisAnalyticsVisitEventAppender appender = new RedisAnalyticsVisitEventAppender(redis, properties);
+
+        appender.append(event());
+
+        verify(streamOps).add(any());
+        verify(streamOps).trim(eq(AnalyticsKeys.visitEventStreamKey()), eq(200_000L), eq(true));
+    }
+
+    @Test
+    void append_shouldWriteStreamWhenDetailSampleRateIsZero() {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         AnalyticsProperties properties = new AnalyticsProperties();
         properties.getEvents().setEnabled(true);
         properties.getEvents().setSampleRate(0);
+        properties.getEvents().setStreamMaxLen(0);
+
+        @SuppressWarnings("unchecked")
+        StreamOperations<String, Object, Object> streamOps = mock(StreamOperations.class);
+        when(redis.opsForStream()).thenReturn(streamOps);
+        when(streamOps.add(any())).thenReturn(RecordId.of("1-0"));
 
         RedisAnalyticsVisitEventAppender appender = new RedisAnalyticsVisitEventAppender(redis, properties);
 
         appender.append(event());
 
-        verifyNoInteractions(redis);
+        verify(streamOps).add(any());
+        verify(streamOps, never()).trim(eq(AnalyticsKeys.visitEventStreamKey()), anyLong(), eq(true));
     }
 
     @Test
@@ -65,6 +97,26 @@ class RedisAnalyticsVisitEventAppenderTest {
 
         verify(streamOps).add(any());
         verify(streamOps).trim(eq(AnalyticsKeys.visitEventStreamKey()), eq(500L), eq(true));
+    }
+
+    @Test
+    void append_shouldPreferDedicatedVisitStreamMaxLenOverLegacyEventsStreamMaxLen() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        AnalyticsProperties properties = new AnalyticsProperties();
+        properties.getEvents().setStreamMaxLen(500);
+        properties.getVisitStream().setMaxLen(900L);
+
+        @SuppressWarnings("unchecked")
+        StreamOperations<String, Object, Object> streamOps = mock(StreamOperations.class);
+        when(redis.opsForStream()).thenReturn(streamOps);
+        when(streamOps.add(any())).thenReturn(RecordId.of("1-0"));
+
+        RedisAnalyticsVisitEventAppender appender = new RedisAnalyticsVisitEventAppender(redis, properties);
+
+        appender.append(event());
+
+        verify(streamOps).add(any());
+        verify(streamOps).trim(eq(AnalyticsKeys.visitEventStreamKey()), eq(900L), eq(true));
     }
 
     private static AnalyticsVisitEventService.RedirectVisitEvent event() {

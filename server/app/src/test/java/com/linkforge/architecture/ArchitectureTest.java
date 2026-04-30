@@ -92,6 +92,24 @@ class ArchitectureTest {
     }
 
     @Test
+    void controllers_should_not_depend_on_mappers_repositories_or_infrastructure_adapters() {
+        ArchRule rule = noClasses()
+                .that()
+                .areAnnotatedWith(RestController.class)
+                .or()
+                .areAnnotatedWith(Controller.class)
+                .should()
+                .dependOnClassesThat()
+                .resideInAnyPackage(
+                        "..infrastructure..",
+                        "..persistence.mapper..",
+                        "..persistence.repository..",
+                        "..repo.."
+                );
+        rule.check(CLASSES);
+    }
+
+    @Test
     void application_and_domain_should_not_depend_on_interfaces() {
         ArchRule rule = noClasses()
                 .that()
@@ -380,6 +398,42 @@ class ArchitectureTest {
                         "com.linkforge.analytics..",
                         "com.linkforge.platform..",
                         "com.linkforge.governance.."
+                );
+        rule.check(CLASSES);
+    }
+
+    @Test
+    void contracts_should_not_depend_on_bounded_context_inner_layers() {
+        ArchRule rule = noClasses()
+                .that()
+                .resideInAnyPackage("com.linkforge.contract..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAnyPackage(
+                        "com.linkforge.accounts.domain..",
+                        "com.linkforge.accounts.application..",
+                        "com.linkforge.accounts.infrastructure..",
+                        "com.linkforge.accounts.interfaces..",
+                        "com.linkforge.shortlink.domain..",
+                        "com.linkforge.shortlink.application..",
+                        "com.linkforge.shortlink.infrastructure..",
+                        "com.linkforge.shortlink.interfaces..",
+                        "com.linkforge.redirect.domain..",
+                        "com.linkforge.redirect.application..",
+                        "com.linkforge.redirect.infrastructure..",
+                        "com.linkforge.redirect.interfaces..",
+                        "com.linkforge.analytics.domain..",
+                        "com.linkforge.analytics.application..",
+                        "com.linkforge.analytics.infrastructure..",
+                        "com.linkforge.analytics.interfaces..",
+                        "com.linkforge.platform.domain..",
+                        "com.linkforge.platform.application..",
+                        "com.linkforge.platform.infrastructure..",
+                        "com.linkforge.platform.interfaces..",
+                        "com.linkforge.governance.domain..",
+                        "com.linkforge.governance.application..",
+                        "com.linkforge.governance.infrastructure..",
+                        "com.linkforge.governance.interfaces.."
                 );
         rule.check(CLASSES);
     }

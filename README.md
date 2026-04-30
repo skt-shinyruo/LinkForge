@@ -14,6 +14,8 @@
 
 - `JWT_SECRET`：长度至少 32 bytes
 - `ANALYTICS_SALT`：用于统计访客指纹 hash 的盐
+- （可选）`ANALYTICS_VISIT_STREAM_MAX_LEN`：基础 PV/UV 使用的 Redis 访问流近似最大长度，默认 `200000`
+- （可选）`ANALYTICS_EVENTS_ENABLED` / `ANALYTICS_EVENTS_SAMPLE_RATE`：访问明细落库开关与采样率；只影响 `link_visit_events` 明细，不影响基础 PV/UV
 - `APP_BASE_URL`：创建短链时用于拼接 shortUrl（建议指向反向代理/网关域名；本地默认 `http://localhost:18080`）
 - （可选）`LINKFORGE_HTTP_BIND` / `LINKFORGE_HTTP_PORT`：本地 compose 网关监听地址与端口，默认 `127.0.0.1:18080`
 - （可选/生产建议）`EDGE_TRUSTED_PROXIES`：可信代理链（CIDR）。当 `/r/**` 经 Nginx/网关反代时需要配置，否则客户端 IP/UV 统计可能严重失真

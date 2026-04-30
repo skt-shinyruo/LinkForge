@@ -25,6 +25,7 @@ public class AnalyticsProperties {
     private List<String> trackingParamAllowlist;
 
     private Dimensions dimensions = new Dimensions();
+    private VisitStream visitStream = new VisitStream();
     private Events events = new Events();
 
     public String getSalt() {
@@ -75,6 +76,22 @@ public class AnalyticsProperties {
         this.events = events;
     }
 
+    public VisitStream getVisitStream() {
+        return visitStream;
+    }
+
+    public void setVisitStream(VisitStream visitStream) {
+        this.visitStream = visitStream;
+    }
+
+    public long resolveVisitStreamMaxLen() {
+        Long dedicated = visitStream == null ? null : visitStream.getMaxLen();
+        if (dedicated != null) {
+            return dedicated;
+        }
+        return events == null ? 200_000L : events.getStreamMaxLen();
+    }
+
     public static class Dimensions {
         /**
          * 是否启用维度统计写入（Edge 写 Redis；API flush 落库）。
@@ -113,6 +130,23 @@ public class AnalyticsProperties {
 
         public void setMaxLinksPerDay(int maxLinksPerDay) {
             this.maxLinksPerDay = maxLinksPerDay;
+        }
+    }
+
+    public static class VisitStream {
+        /**
+         * Redis Stream approximate max length for the full-fidelity redirect visit stream.
+         *
+         * <p>Null keeps compatibility by falling back to events.stream-max-len. Values <= 0 disable trim.</p>
+         */
+        private Long maxLen;
+
+        public Long getMaxLen() {
+            return maxLen;
+        }
+
+        public void setMaxLen(Long maxLen) {
+            this.maxLen = maxLen;
         }
     }
 
@@ -254,4 +288,3 @@ public class AnalyticsProperties {
         }
     }
 }
-

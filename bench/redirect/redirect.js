@@ -8,7 +8,7 @@ function envInt(name, def) {
   return Number.isFinite(n) ? n : def;
 }
 
-const BASE_URL = __ENV.BASE_URL || "http://localhost:8080";
+const BASE_URL = __ENV.BASE_URL || "http://localhost:18080";
 const CODE = __ENV.CODE || "";
 
 const RATE = envInt("RATE", 1000); // requests / second
@@ -43,4 +43,3 @@ export default function () {
     "has Location": (r) => !!r.headers["Location"],
   });
 }
-

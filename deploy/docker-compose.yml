@@ -12,8 +12,6 @@ services:
       MYSQL_READ_PASSWORD: ${MYSQL_READ_PASSWORD:-linkforge_read}
       MYSQL_REPLICATION_USER: ${MYSQL_REPLICATION_USER:-linkforge_repl}
       MYSQL_REPLICATION_PASSWORD: ${MYSQL_REPLICATION_PASSWORD:-linkforge_repl}
-    ports:
-      - "3306:3306"
     command:
       - "--server-id=1"
       - "--log-bin=mysql-bin"
@@ -39,8 +37,6 @@ services:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
       MYSQL_REPLICATION_USER: ${MYSQL_REPLICATION_USER:-linkforge_repl}
       MYSQL_REPLICATION_PASSWORD: ${MYSQL_REPLICATION_PASSWORD:-linkforge_repl}
-    ports:
-      - "3307:3306"
     command:
       - "--server-id=2"
       - "--relay-log=mysql-relay-bin"
@@ -62,10 +58,7 @@ services:
       retries: 30
 
   redis:
-    image: redis:7.2.4-alpine
-    ports:
-      # 避免与本机已有 Redis 占用 6379 冲突
-      - "6380:6379"
+    image: redis:8.6.2-alpine
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -102,8 +95,6 @@ services:
       CORS_ALLOW_CREDENTIALS: ${CORS_ALLOW_CREDENTIALS:-false}
       # 可选：默认 302；如需 301 可设为 301
       REDIRECT_DEFAULT_STATUS_CODE: 302
-    ports:
-      - "8080:8080"
     depends_on:
       mysql-primary:
         condition: service_healthy
@@ -117,7 +108,8 @@ services:
     build:
       context: ../web
     ports:
-      - "80:80"
+      # 仅发布本地网关入口；数据库、Redis、后端服务只在 Docker 内网可见。
+      - "${LINKFORGE_HTTP_BIND:-127.0.0.1}:${LINKFORGE_HTTP_PORT:-18080}:80"
     depends_on:
       - server
 

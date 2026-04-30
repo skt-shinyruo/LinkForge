@@ -14,7 +14,8 @@
 
 - `JWT_SECRET`：长度至少 32 bytes
 - `ANALYTICS_SALT`：用于统计访客指纹 hash 的盐
-- `APP_BASE_URL`：创建短链时用于拼接 shortUrl（建议指向反向代理/网关域名；本地默认 `http://localhost`）
+- `APP_BASE_URL`：创建短链时用于拼接 shortUrl（建议指向反向代理/网关域名；本地默认 `http://localhost:18080`）
+- （可选）`LINKFORGE_HTTP_BIND` / `LINKFORGE_HTTP_PORT`：本地 compose 网关监听地址与端口，默认 `127.0.0.1:18080`
 - （可选/生产建议）`EDGE_TRUSTED_PROXIES`：可信代理链（CIDR）。当 `/r/**` 经 Nginx/网关反代时需要配置，否则客户端 IP/UV 统计可能严重失真
 - （可选）MySQL 账号（默认值可直接使用）：
   - `MYSQL_API_USER` / `MYSQL_API_PASSWORD`：主库读写账号（Flyway 迁移与业务写入）
@@ -39,10 +40,12 @@ docker compose --env-file .env down -v
 
 访问：
 
-- 管理后台：`http://localhost/`
-- 后端服务：`http://localhost:8080/`（管理 API：`/api/v1/**`；跳转：`/r/**`）
-- 跳转（推荐通过反代访问）：`http://localhost/r/{code}`
+- 管理后台：`http://localhost:18080/`
+- 后端服务：通过网关访问 `http://localhost:18080/api/v1/**`
+- 跳转：`http://localhost:18080/r/{code}`
   - 说明：短码 `code` **严格区分大小写**（例如 `Abcdef` ≠ `abcdef`）
+
+本地 compose 只向宿主机发布 Nginx 网关入口；MySQL、Redis、后端服务仅在 Docker 内网可见，避免占用 `3306`、`6379`、`8080` 等常用端口。
 
 ## 2. 本地开发（前后端分离）
 

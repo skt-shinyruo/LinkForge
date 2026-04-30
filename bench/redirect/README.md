@@ -33,7 +33,7 @@
 docker run --rm -i \
   -v "$PWD/bench/redirect:/scripts" \
   grafana/k6:latest run /scripts/redirect.js \
-  -e BASE_URL="http://localhost:8080" \
+  -e BASE_URL="http://localhost:18080" \
   -e CODE="<your_code>" \
   -e RATE="1000" \
   -e DURATION="30s" \
@@ -42,7 +42,7 @@ docker run --rm -i \
 ```
 
 参数说明：
-- `BASE_URL`：目标服务地址（建议直连 server：`http://localhost:8080`）
+- `BASE_URL`：目标服务地址（本地 compose 默认网关：`http://localhost:18080`）
 - `CODE`：短码（必填）
 - `RATE`：目标 RPS（每秒请求数）
 - `DURATION`：持续时间（例如 `30s` / `1m`）
@@ -53,4 +53,3 @@ docker run --rm -i \
 ## 3. 结果记录
 
 基线测试结果见：`bench/redirect/results.md`
-

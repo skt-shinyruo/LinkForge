@@ -18,8 +18,7 @@ class DeployReadwriteTopologyTest {
                 .contains("mysql-replica:")
                 .contains("mysql_primary_data:")
                 .contains("mysql_replica_data:")
-                .contains("\"3306:3306\"")
-                .contains("\"3307:3306\"")
+                .contains("image: redis:8.6.2-alpine")
                 .contains("--server-id=1")
                 .contains("--server-id=2")
                 .contains("--log-bin=mysql-bin")
@@ -34,6 +33,13 @@ class DeployReadwriteTopologyTest {
                 .contains("condition: service_healthy");
 
         assertThat(compose).doesNotContain("DB_URL: jdbc:mysql://mysql:3306/linkforge");
+        assertThat(compose)
+                .contains("\"${LINKFORGE_HTTP_BIND:-127.0.0.1}:${LINKFORGE_HTTP_PORT:-18080}:80\"")
+                .doesNotContain("\"3306:3306\"")
+                .doesNotContain("\"3307:3306\"")
+                .doesNotContain("\"6380:6379\"")
+                .doesNotContain("\"8080:8080\"")
+                .doesNotContain("\"80:80\"");
     }
 
     @Test
@@ -47,7 +53,10 @@ class DeployReadwriteTopologyTest {
                 .contains("MYSQL_READ_USER=linkforge_read")
                 .contains("MYSQL_READ_PASSWORD=linkforge_read")
                 .contains("MYSQL_REPLICATION_USER=linkforge_repl")
-                .contains("MYSQL_REPLICATION_PASSWORD=linkforge_repl");
+                .contains("MYSQL_REPLICATION_PASSWORD=linkforge_repl")
+                .contains("LINKFORGE_HTTP_BIND=127.0.0.1")
+                .contains("LINKFORGE_HTTP_PORT=18080")
+                .contains("APP_BASE_URL=http://localhost:18080");
     }
 
     @Test
@@ -98,6 +107,7 @@ class DeployReadwriteTopologyTest {
                 .contains("mysql-replica")
                 .contains("MYSQL_READ_USER")
                 .contains("MYSQL_REPLICATION_USER")
+                .contains("http://localhost:18080/")
                 .contains("docker compose down -v");
 
         assertThat(architecture)

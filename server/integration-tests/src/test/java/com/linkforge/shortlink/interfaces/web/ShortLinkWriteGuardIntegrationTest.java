@@ -42,7 +42,7 @@ class ShortLinkWriteGuardIntegrationTest {
             .withPassword("linkforge");
 
     @Container
-    static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.2.4-alpine")
+    static final GenericContainer<?> REDIS = new GenericContainer<>("redis:8.6.2-alpine")
             .withExposedPorts(6379)
             .waitingFor(Wait.forLogMessage(".*Ready to accept connections.*\\n", 1)
                     .withStartupTimeout(Duration.ofSeconds(120)))

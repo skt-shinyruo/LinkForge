@@ -35,6 +35,8 @@ class AnalyticsEventIngestJobPoisonIsolationTest {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         LinkVisitEventMapper mapper = mock(LinkVisitEventMapper.class);
         AnalyticsProperties analyticsProperties = new AnalyticsProperties();
+        analyticsProperties.getEvents().setEnabled(true);
+        analyticsProperties.getEvents().setSampleRate(1);
         IdProperties idProperties = new IdProperties();
         SnowflakeIdGenerator idGenerator = new SnowflakeIdGenerator(1L, 1L);
 

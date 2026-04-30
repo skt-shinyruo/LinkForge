@@ -17,7 +17,6 @@ import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
 
 @Component
 public class RedisAnalyticsVisitEventAppender implements AnalyticsVisitEventAppender {
@@ -37,10 +36,6 @@ public class RedisAnalyticsVisitEventAppender implements AnalyticsVisitEventAppe
         }
 
         AnalyticsProperties.Events cfg = analyticsProperties == null ? null : analyticsProperties.getEvents();
-        if (!shouldAppend(cfg)) {
-            return;
-        }
-
         long occurredAtMillis = event.occurredAtMillis() > 0 ? event.occurredAtMillis() : System.currentTimeMillis();
         LocalDate day = Instant.ofEpochMilli(occurredAtMillis).atOffset(ZoneOffset.UTC).toLocalDate();
         VisitContext visitContext = new VisitContext(
@@ -88,24 +83,10 @@ public class RedisAnalyticsVisitEventAppender implements AnalyticsVisitEventAppe
         String streamKey = AnalyticsKeys.visitEventStreamKey();
         redis.opsForStream().add(StreamRecords.newRecord().in(streamKey).ofStrings(fields));
 
-        long maxLen = cfg == null ? 0L : cfg.getStreamMaxLen();
+        long maxLen = analyticsProperties == null ? 0L : analyticsProperties.resolveVisitStreamMaxLen();
         if (maxLen > 0) {
             redis.opsForStream().trim(streamKey, maxLen, true);
         }
-    }
-
-    private static boolean shouldAppend(AnalyticsProperties.Events cfg) {
-        if (cfg == null || !cfg.isEnabled()) {
-            return false;
-        }
-        double sampleRate = cfg.getSampleRate();
-        if (Double.isNaN(sampleRate) || sampleRate <= 0) {
-            return false;
-        }
-        if (sampleRate >= 1) {
-            return true;
-        }
-        return ThreadLocalRandom.current().nextDouble() < sampleRate;
     }
 
     private static void putIfNonBlank(Map<String, String> fields, String key, String value) {

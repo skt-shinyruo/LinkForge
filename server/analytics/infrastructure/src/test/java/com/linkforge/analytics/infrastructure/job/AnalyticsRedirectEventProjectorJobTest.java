@@ -41,7 +41,6 @@ class AnalyticsRedirectEventProjectorJobTest {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         AnalyticsProperties properties = new AnalyticsProperties();
         properties.setRedisKeyTtlDays(7);
-        properties.getEvents().setEnabled(true);
         properties.getDimensions().setEnabled(true);
         properties.getDimensions().setTypes(List.of("referer_domain"));
 
@@ -147,20 +146,44 @@ class AnalyticsRedirectEventProjectorJobTest {
     }
 
     @Test
-    void project_shouldSkipRedisWhenEventsAreDisabled() {
+    void project_shouldReadStreamWhenEventsAreDisabledBecauseCoreStatsAreAlwaysOn() {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         AnalyticsProperties properties = new AnalyticsProperties();
+        AnalyticsRedisAggregateWriter aggregateWriter = mock(AnalyticsRedisAggregateWriter.class);
+
+        @SuppressWarnings("unchecked")
+        StreamOperations<String, Object, Object> streamOps = mock(StreamOperations.class);
+        when(redis.opsForStream()).thenReturn(streamOps);
+        when(redis.hasKey(AnalyticsKeys.visitEventStreamKey())).thenReturn(true);
+        when(streamOps.createGroup(anyString(), any(ReadOffset.class), anyString()))
+                .thenThrow(new RuntimeException("BUSYGROUP Consumer Group name already exists"));
+
+        MapRecord<String, Object, Object> record = visitRecord("1-0", Map.of(
+                "ts", String.valueOf(Instant.parse("2026-04-24T10:15:30Z").toEpochMilli()),
+                "tenantId", "1",
+                "linkId", "10",
+                "visitorKey", "visitor-1"
+        ));
+        when(streamOps.read(any(org.springframework.data.redis.connection.stream.Consumer.class), any(StreamReadOptions.class), any(StreamOffset.class)))
+                .thenReturn((List) List.of(record), List.of());
+        when(streamOps.acknowledge(anyString(), anyString(), any(RecordId[].class))).thenReturn(1L);
 
         AnalyticsRedirectEventProjectorJob job = new AnalyticsRedirectEventProjectorJob(
                 redis,
                 properties,
-                mock(AnalyticsRedisAggregateWriter.class)
+                aggregateWriter
         );
 
         job.project();
 
-        verify(redis, never()).hasKey(anyString());
-        verify(redis, never()).opsForStream();
+        verify(redis).hasKey(AnalyticsKeys.visitEventStreamKey());
+        verify(aggregateWriter).write(Map.of(
+                "ts", String.valueOf(Instant.parse("2026-04-24T10:15:30Z").toEpochMilli()),
+                "tenantId", "1",
+                "linkId", "10",
+                "visitorKey", "visitor-1"
+        ));
+        verify(streamOps).acknowledge(eq(AnalyticsKeys.visitEventStreamKey()), eq("lf-visit-projector"), any(RecordId[].class));
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})

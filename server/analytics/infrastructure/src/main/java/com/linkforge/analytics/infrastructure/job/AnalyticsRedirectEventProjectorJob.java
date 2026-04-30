@@ -46,11 +46,6 @@ public class AnalyticsRedirectEventProjectorJob {
     @Scheduled(fixedDelayString = "${APP_ANALYTICS_REDIRECT_EVENT_PROJECTOR_DELAY_MS:2000}")
     @SchedulerLock(name = "lf:job:analytics:redirect-event-projector", lockAtMostFor = "PT2M")
     public void project() {
-        AnalyticsProperties.Events cfg = analyticsProperties == null ? null : analyticsProperties.getEvents();
-        if (cfg == null || !cfg.isEnabled()) {
-            return;
-        }
-
         String streamKey = AnalyticsKeys.visitEventStreamKey();
         if (!ensureGroup(streamKey)) {
             return;

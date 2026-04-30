@@ -73,14 +73,20 @@ app:
     flush-backfill-days: ${ANALYTICS_FLUSH_BACKFILL_DAYS:7}
     # 可选：追踪参数采集白名单（逗号分隔），为空时 Edge 采用安全默认值 utm_*,gclid,fbclid
     tracking-param-allowlist: ${ANALYTICS_TRACKING_PARAM_ALLOWLIST:}
+    # 核心访问流（Redirect -> Redis Stream -> 异步 PV/UV 聚合），默认启用；不受 events.enabled/sample-rate 影响
+    visit-stream:
+      # 空值时兼容回退到 events.stream-max-len；<=0 表示不 trim
+      max-len: ${ANALYTICS_VISIT_STREAM_MAX_LEN:}
     dimensions:
       enabled: ${ANALYTICS_DIMENSIONS_ENABLED:false}
       max-links-per-day: ${ANALYTICS_DIMENSIONS_MAX_LINKS_PER_DAY:5000}
       types: ${ANALYTICS_DIMENSIONS_TYPES:}
     events:
-      # 访问明细事件（Redirect → Redis Stream → 异步落库），默认关闭
+      # 可选访问明细落库（Redis Stream -> MySQL link_visit_events），默认关闭；不影响基础 PV/UV
       enabled: ${ANALYTICS_EVENTS_ENABLED:false}
+      # 仅影响访问明细落库采样；不影响基础 PV/UV 或应用月点击配额
       sample-rate: ${ANALYTICS_EVENTS_SAMPLE_RATE:0.1}
+      # 兼容旧配置：当 visit-stream.max-len 为空时作为核心访问流 trim fallback
       stream-max-len: ${ANALYTICS_EVENTS_STREAM_MAX_LEN:200000}
       retention-days: ${ANALYTICS_EVENTS_RETENTION_DAYS:14}
       # consumer 稳定化：多实例部署建议每个实例不同且稳定（可选）

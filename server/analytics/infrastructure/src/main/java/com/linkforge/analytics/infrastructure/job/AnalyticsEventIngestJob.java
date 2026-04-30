@@ -25,6 +25,7 @@ import org.springframework.stereotype.Component;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.regex.Pattern;
 
 /**
@@ -175,7 +176,7 @@ public class AnalyticsEventIngestJob {
             return;
         }
 
-        VisitEventBatchAssembler.Batch batch = batchAssembler.assemble(records);
+        VisitEventBatchAssembler.Batch batch = applyDetailSampling(batchAssembler.assemble(records));
         List<VisitEventBatchAssembler.IngestItem> items = batch.items();
         List<RecordId> ackAlways = batch.ackAlways();
 
@@ -201,6 +202,43 @@ public class AnalyticsEventIngestJob {
             acknowledge(streamKey, ackAlways);
         }
         acknowledge(streamKey, items.stream().map(VisitEventBatchAssembler.IngestItem::recordId).toList());
+    }
+
+    private VisitEventBatchAssembler.Batch applyDetailSampling(VisitEventBatchAssembler.Batch batch) {
+        if (batch == null) {
+            return new VisitEventBatchAssembler.Batch(List.of(), List.of());
+        }
+
+        AnalyticsProperties.Events cfg = analyticsProperties == null ? null : analyticsProperties.getEvents();
+        List<RecordId> ackAlways = new ArrayList<>(batch.ackAlways());
+        List<VisitEventBatchAssembler.IngestItem> sampledItems = new ArrayList<>(batch.items().size());
+
+        for (VisitEventBatchAssembler.IngestItem item : batch.items()) {
+            if (item == null || item.recordId() == null) {
+                continue;
+            }
+            if (shouldPersistDetail(cfg)) {
+                sampledItems.add(item);
+            } else {
+                ackAlways.add(item.recordId());
+            }
+        }
+
+        return new VisitEventBatchAssembler.Batch(List.copyOf(sampledItems), List.copyOf(ackAlways));
+    }
+
+    private static boolean shouldPersistDetail(AnalyticsProperties.Events cfg) {
+        if (cfg == null || !cfg.isEnabled()) {
+            return false;
+        }
+        double sampleRate = cfg.getSampleRate();
+        if (Double.isNaN(sampleRate) || sampleRate <= 0) {
+            return false;
+        }
+        if (sampleRate >= 1) {
+            return true;
+        }
+        return ThreadLocalRandom.current().nextDouble() < sampleRate;
     }
 
     private void isolatePoisonAndAck(String streamKey, List<VisitEventBatchAssembler.IngestItem> items) {

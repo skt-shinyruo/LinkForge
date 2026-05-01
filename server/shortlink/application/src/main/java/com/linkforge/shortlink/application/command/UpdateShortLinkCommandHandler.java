@@ -95,7 +95,7 @@ public class UpdateShortLinkCommandHandler {
                 throw new BusinessException(ErrorCode.FORBIDDEN, "actor 租户不匹配");
             }
             existingTags = linkTagRepository.findTagNamesByLinkId(linkId);
-            if (hasOtherEffectiveChanges(link, req, existingTags)) {
+            if (hasOtherEffectiveChangesForApproval(link, req, existingTags)) {
                 throw new BusinessException(ErrorCode.BAD_REQUEST, "请先单独提交目标地址变更，再保存其他修改");
             }
             approvalSubmissionPort.requestLinkDestinationChangeApproval(
@@ -211,6 +211,16 @@ public class UpdateShortLinkCommandHandler {
 
         List<String> tags = linkTagRepository.findTagNamesByLinkId(linkId);
         return dtoMapper.toDto(link, tags);
+    }
+
+    private static boolean hasOtherEffectiveChangesForApproval(ShortLink link, UpdateLinkRequest req, List<String> existingTags) {
+        try {
+            return hasOtherEffectiveChanges(link, req, existingTags);
+        } catch (IllegalArgumentException ex) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "lifecycleState 不合法");
+        } catch (ShortLinkDomainException ex) {
+            throw ShortLinkDomainExceptions.translate(ex);
+        }
     }
 
     private static boolean hasOtherEffectiveChanges(ShortLink link, UpdateLinkRequest req, List<String> existingTags) {

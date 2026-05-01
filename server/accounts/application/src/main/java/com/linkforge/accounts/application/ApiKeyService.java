@@ -15,6 +15,7 @@ import com.linkforge.foundation.security.ApiKeyAuthenticationException;
 import com.linkforge.foundation.security.ApiKeyAuthenticationFailure;
 import com.linkforge.foundation.security.ApiKeyAuthenticationResult;
 import com.linkforge.foundation.security.ApiKeyAuthenticator;
+import com.linkforge.foundation.tx.PostCommitHookPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -55,6 +56,7 @@ public class ApiKeyService implements ApiKeyAuthenticator {
     private final SecurityProperties securityProperties;
     private final ApiKeyAuthCache authCache;
     private final Clock clock;
+    private final PostCommitHookPort postCommitHookPort;
     private final ApplicationScopePort applicationScopePort;
 
     public ApiKeyService(
@@ -64,6 +66,7 @@ public class ApiKeyService implements ApiKeyAuthenticator {
             SecurityProperties securityProperties,
             ApiKeyAuthCache authCache,
             Clock clock,
+            PostCommitHookPort postCommitHookPort,
             ApplicationScopePort applicationScopePort
     ) {
         this.idGenerator = idGenerator;
@@ -72,6 +75,7 @@ public class ApiKeyService implements ApiKeyAuthenticator {
         this.securityProperties = securityProperties;
         this.authCache = authCache;
         this.clock = clock;
+        this.postCommitHookPort = postCommitHookPort;
         this.applicationScopePort = applicationScopePort;
     }
 
@@ -101,9 +105,7 @@ public class ApiKeyService implements ApiKeyAuthenticator {
 
         String digest = sha256Base64Url(secret);
         long authCacheTtlSeconds = authCacheTtlSeconds();
-        if (authCacheTtlSeconds > 0) {
-            authCache.putActive(id, tenantId, applicationId, digest, authCacheTtlSeconds);
-        }
+        putActiveAfterCommit(id, tenantId, applicationId, digest, authCacheTtlSeconds);
 
         return new CreatedApiKey(id, name, key);
     }
@@ -203,14 +205,12 @@ public class ApiKeyService implements ApiKeyAuthenticator {
             apiKeyStore.update(apiKey);
         }
         long authCacheTtlSeconds = authCacheTtlSeconds();
-        if (authCacheTtlSeconds > 0) {
-            authCache.putDisabled(
-                    apiKeyId,
-                    apiKey.tenantId() == null ? 0L : apiKey.tenantId(),
-                    apiKey.applicationId(),
-                    authCacheTtlSeconds
-            );
-        }
+        putDisabledAfterCommit(
+                apiKeyId,
+                apiKey.tenantId() == null ? 0L : apiKey.tenantId(),
+                apiKey.applicationId(),
+                authCacheTtlSeconds
+        );
         return new ApiKeyInfo(apiKey.id(), apiKey.applicationId(), apiKey.name(), apiKey.status(), apiKey.lastUsedAt(), apiKey.createdAt());
     }
 
@@ -227,7 +227,7 @@ public class ApiKeyService implements ApiKeyAuthenticator {
             apiKey = withStatus(apiKey, AccountsConstants.STATUS_ACTIVE);
             apiKeyStore.update(apiKey);
         }
-        authCache.evict(apiKeyId);
+        evictAfterCommit(apiKeyId);
         return new ApiKeyInfo(apiKey.id(), apiKey.applicationId(), apiKey.name(), apiKey.status(), apiKey.lastUsedAt(), apiKey.createdAt());
     }
 
@@ -247,15 +247,13 @@ public class ApiKeyService implements ApiKeyAuthenticator {
 
         String digest = sha256Base64Url(secret);
         long authCacheTtlSeconds = authCacheTtlSeconds();
-        if (authCacheTtlSeconds > 0) {
-            authCache.putActive(
-                    apiKeyId,
-                    apiKey.tenantId() == null ? 0L : apiKey.tenantId(),
-                    apiKey.applicationId(),
-                    digest,
-                    authCacheTtlSeconds
-            );
-        }
+        putActiveAfterCommit(
+                apiKeyId,
+                apiKey.tenantId() == null ? 0L : apiKey.tenantId(),
+                apiKey.applicationId(),
+                digest,
+                authCacheTtlSeconds
+        );
 
         return new CreatedApiKey(apiKey.id(), apiKey.name(), key);
     }
@@ -443,5 +441,37 @@ public class ApiKeyService implements ApiKeyAuthenticator {
             ttlSeconds = 0;
         }
         return ttlSeconds;
+    }
+
+    private void putActiveAfterCommit(
+            long apiKeyId,
+            long tenantId,
+            Long applicationId,
+            String secretDigest,
+            long ttlSeconds
+    ) {
+        if (ttlSeconds <= 0) {
+            return;
+        }
+        runAfterCommit(() -> authCache.putActive(apiKeyId, tenantId, applicationId, secretDigest, ttlSeconds));
+    }
+
+    private void putDisabledAfterCommit(long apiKeyId, long tenantId, Long applicationId, long ttlSeconds) {
+        if (ttlSeconds <= 0) {
+            return;
+        }
+        runAfterCommit(() -> authCache.putDisabled(apiKeyId, tenantId, applicationId, ttlSeconds));
+    }
+
+    private void evictAfterCommit(long apiKeyId) {
+        runAfterCommit(() -> authCache.evict(apiKeyId));
+    }
+
+    private void runAfterCommit(Runnable action) {
+        if (postCommitHookPort == null) {
+            action.run();
+            return;
+        }
+        postCommitHookPort.run(action);
     }
 }

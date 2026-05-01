@@ -9,6 +9,7 @@ import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.contract.openapi.OpenApiErrorCode;
 import com.linkforge.foundation.config.SecurityProperties;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
+import com.linkforge.foundation.tx.PostCommitHookPort;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,6 +25,7 @@ import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.TimeZone;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -205,6 +207,32 @@ class ApiKeyServiceTest {
     }
 
     @Test
+    void create_shouldPopulateAuthCacheOnlyAfterCommit() {
+        AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
+        AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
+        ApiKeyAuthCache authCache = mock(ApiKeyAuthCache.class);
+        ApplicationScopePort applicationScopePort = mock(ApplicationScopePort.class);
+        CapturingPostCommitHook postCommitHook = new CapturingPostCommitHook();
+
+        SecurityProperties props = new SecurityProperties();
+        props.getApiKey().setAuthCacheTtlSeconds(60);
+        props.getApiKey().setLastUsedUpdateIntervalSeconds(0);
+
+        ApiKeyService service = newService(store, passwordHasher, props, authCache, postCommitHook, applicationScopePort);
+        when(passwordHasher.encode(any())).thenReturn("encoded-secret");
+
+        ApiKeyService.CreatedApiKey created = service.create(1L, 2001L, "openapi-app");
+
+        assertThat(created.id()).isEqualTo(123L);
+        verify(store).insert(any());
+        verifyNoInteractions(authCache);
+
+        postCommitHook.runCaptured();
+
+        verify(authCache).putActive(eq(123L), eq(1L), eq(2001L), any(), eq(60L));
+    }
+
+    @Test
     void authenticate_shouldBypassAuthCacheRead_whenAuthCacheTtlIsDisabled() {
         AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
         AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
@@ -345,6 +373,47 @@ class ApiKeyServiceTest {
     }
 
     @Test
+    void disable_shouldPopulateAuthCacheOnlyAfterCommit() {
+        AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
+        ApiKeyAuthCache authCache = mock(ApiKeyAuthCache.class);
+        CapturingPostCommitHook postCommitHook = new CapturingPostCommitHook();
+
+        SecurityProperties props = new SecurityProperties();
+        props.getApiKey().setAuthCacheTtlSeconds(60);
+        props.getApiKey().setLastUsedUpdateIntervalSeconds(0);
+
+        ApiKeyService service = newService(
+                store,
+                mock(AccountsPasswordHasher.class),
+                props,
+                authCache,
+                postCommitHook,
+                mock(ApplicationScopePort.class)
+        );
+
+        AccountsApiKeyStore.ApiKey existing = new AccountsApiKeyStore.ApiKey(
+                123L,
+                1L,
+                2001L,
+                "test-key",
+                "hash",
+                AccountsConstants.STATUS_ACTIVE,
+                null,
+                null
+        );
+        when(store.findById(123L)).thenReturn(existing);
+
+        service.disable(1L, 123L);
+
+        verify(store).update(argThat(apiKey -> AccountsConstants.STATUS_DISABLED.equals(apiKey.status())));
+        verifyNoInteractions(authCache);
+
+        postCommitHook.runCaptured();
+
+        verify(authCache).putDisabled(123L, 1L, 2001L, 60L);
+    }
+
+    @Test
     void enable_shouldReturnActiveStatusInApiKeyInfo() {
         AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
         ApiKeyService service = newService(
@@ -370,6 +439,86 @@ class ApiKeyServiceTest {
 
         assertThat(info.status()).isEqualTo(AccountsConstants.STATUS_ACTIVE);
         verify(store).update(argThat(apiKey -> AccountsConstants.STATUS_ACTIVE.equals(apiKey.status())));
+    }
+
+    @Test
+    void enable_shouldEvictAuthCacheOnlyAfterCommit() {
+        AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
+        ApiKeyAuthCache authCache = mock(ApiKeyAuthCache.class);
+        CapturingPostCommitHook postCommitHook = new CapturingPostCommitHook();
+
+        ApiKeyService service = newService(
+                store,
+                mock(AccountsPasswordHasher.class),
+                new SecurityProperties(),
+                authCache,
+                postCommitHook,
+                mock(ApplicationScopePort.class)
+        );
+
+        AccountsApiKeyStore.ApiKey existing = new AccountsApiKeyStore.ApiKey(
+                123L,
+                1L,
+                2001L,
+                "test-key",
+                "hash",
+                AccountsConstants.STATUS_DISABLED,
+                null,
+                null
+        );
+        when(store.findById(123L)).thenReturn(existing);
+
+        service.enable(1L, 123L);
+
+        verify(store).update(argThat(apiKey -> AccountsConstants.STATUS_ACTIVE.equals(apiKey.status())));
+        verifyNoInteractions(authCache);
+
+        postCommitHook.runCaptured();
+
+        verify(authCache).evict(123L);
+    }
+
+    @Test
+    void rotate_shouldPopulateAuthCacheOnlyAfterCommit() {
+        AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
+        AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
+        ApiKeyAuthCache authCache = mock(ApiKeyAuthCache.class);
+        CapturingPostCommitHook postCommitHook = new CapturingPostCommitHook();
+
+        SecurityProperties props = new SecurityProperties();
+        props.getApiKey().setAuthCacheTtlSeconds(60);
+        props.getApiKey().setLastUsedUpdateIntervalSeconds(0);
+
+        ApiKeyService service = newService(
+                store,
+                passwordHasher,
+                props,
+                authCache,
+                postCommitHook,
+                mock(ApplicationScopePort.class)
+        );
+
+        AccountsApiKeyStore.ApiKey existing = new AccountsApiKeyStore.ApiKey(
+                123L,
+                1L,
+                2001L,
+                "test-key",
+                "hash",
+                AccountsConstants.STATUS_ACTIVE,
+                null,
+                null
+        );
+        when(store.findById(123L)).thenReturn(existing);
+        when(passwordHasher.encode(any())).thenReturn("encoded-secret");
+
+        service.rotate(1L, 123L);
+
+        verify(store).update(any());
+        verifyNoInteractions(authCache);
+
+        postCommitHook.runCaptured();
+
+        verify(authCache).putActive(eq(123L), eq(1L), eq(2001L), any(), eq(60L));
     }
 
     private static String sha256Base64Url(String input) {
@@ -416,7 +565,30 @@ class ApiKeyServiceTest {
             AccountsPasswordHasher passwordHasher,
             SecurityProperties props,
             ApiKeyAuthCache authCache,
+            PostCommitHookPort postCommitHook,
+            ApplicationScopePort applicationScopePort
+    ) {
+        return newService(store, passwordHasher, props, authCache, Clock.systemUTC(), postCommitHook, applicationScopePort);
+    }
+
+    private static ApiKeyService newService(
+            AccountsApiKeyStore store,
+            AccountsPasswordHasher passwordHasher,
+            SecurityProperties props,
+            ApiKeyAuthCache authCache,
             Clock clock,
+            ApplicationScopePort applicationScopePort
+    ) {
+        return newService(store, passwordHasher, props, authCache, clock, action -> action.run(), applicationScopePort);
+    }
+
+    private static ApiKeyService newService(
+            AccountsApiKeyStore store,
+            AccountsPasswordHasher passwordHasher,
+            SecurityProperties props,
+            ApiKeyAuthCache authCache,
+            Clock clock,
+            PostCommitHookPort postCommitHook,
             ApplicationScopePort applicationScopePort
     ) {
         try {
@@ -429,6 +601,7 @@ class ApiKeyServiceTest {
                     SecurityProperties.class,
                     ApiKeyAuthCache.class,
                     Clock.class,
+                    PostCommitHookPort.class,
                     ApplicationScopePort.class
             );
             return constructor.newInstance(
@@ -438,10 +611,29 @@ class ApiKeyServiceTest {
                     props,
                     authCache,
                     clock,
+                    postCommitHook,
                     applicationScopePort
             );
         } catch (ReflectiveOperationException ex) {
             throw new IllegalStateException(ex);
+        }
+    }
+
+    private static final class CapturingPostCommitHook implements PostCommitHookPort {
+
+        private final AtomicReference<Runnable> captured = new AtomicReference<>();
+
+        @Override
+        public void run(Runnable action) {
+            captured.set(action);
+        }
+
+        void runCaptured() {
+            Runnable action = captured.get();
+            if (action == null) {
+                throw new AssertionError("expected post-commit action to be registered");
+            }
+            action.run();
         }
     }
 }

@@ -1,5 +1,7 @@
 package com.linkforge.shortlink.application.command;
 
+import com.linkforge.contract.api.BusinessException;
+import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.contract.governance.ApprovalSubmissionPort;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.tx.PostCommitHookPort;
@@ -32,6 +34,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class UpdateShortLinkCommandHandlerTest {
@@ -247,6 +250,83 @@ class UpdateShortLinkCommandHandlerTest {
                         LocalDateTime.parse("2026-04-01T00:00:00")
                 ))
         );
+        verify(shortLinkRepository, never()).update(link);
+        verify(domainEventDispatcher, never()).publish(eq(link), eq(clock.instant()));
+    }
+
+    @Test
+    void handle_shouldTranslateInvalidLifecycleState_whenCheckingDestinationApprovalSideEffects() {
+        ShortLinkRepository shortLinkRepository = mock(ShortLinkRepository.class);
+        SetLinkTagsCommandHandler setLinkTagsHandler = mock(SetLinkTagsCommandHandler.class);
+        ShortLinkDomainEventDispatcher domainEventDispatcher = mock(ShortLinkDomainEventDispatcher.class);
+        LinkTagRepository linkTagRepository = mock(LinkTagRepository.class);
+        RedirectCacheSyncPort redirectCacheSync = mock(RedirectCacheSyncPort.class);
+        ShortLinkDtoMapper dtoMapper = mock(ShortLinkDtoMapper.class);
+        PostCommitHookPort postCommitHookPort = mock(PostCommitHookPort.class);
+        Clock clock = Clock.fixed(Instant.parse("2026-04-01T00:00:00Z"), ZoneOffset.UTC);
+        ApprovalSubmissionPort governanceApprovalRequestService = mock(ApprovalSubmissionPort.class);
+
+        UpdateShortLinkCommandHandler handler = new UpdateShortLinkCommandHandler(
+                shortLinkRepository,
+                setLinkTagsHandler,
+                domainEventDispatcher,
+                linkTagRepository,
+                redirectCacheSync,
+                dtoMapper,
+                postCommitHookPort,
+                clock,
+                governanceApprovalRequestService
+        );
+
+        ShortLink link = ShortLink.create(
+                103L,
+                1L,
+                2001L,
+                3001L,
+                ShortCode.of("governed3"),
+                ShortLinkLifecycleState.ACTIVE,
+                HttpUrl.of("https://example.com/old"),
+                null,
+                true,
+                null,
+                null,
+                false,
+                null,
+                null,
+                null,
+                CreatedByType.USER,
+                9L
+        );
+        when(shortLinkRepository.findByTenantIdAndId(1L, 103L)).thenReturn(java.util.Optional.of(link));
+        when(linkTagRepository.findTagNamesByLinkId(103L)).thenReturn(List.of());
+
+        assertThatThrownBy(() -> handler.handle(
+                1L,
+                103L,
+                new ShortLinkService.UpdateLinkRequest(
+                        "https://example.com/new",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        "not-a-state"
+                ),
+                new UserActor(1L, 7L, "reviewer@example.com", Set.of("TENANT_ADMIN")),
+                LocalDateTime.parse("2026-04-01T00:00:00")
+        ))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.BAD_REQUEST))
+                .hasMessageContaining("lifecycleState");
+
+        verifyNoInteractions(governanceApprovalRequestService);
         verify(shortLinkRepository, never()).update(link);
         verify(domainEventDispatcher, never()).publish(eq(link), eq(clock.instant()));
     }

@@ -1,7 +1,8 @@
-package com.linkforge.redirect.interfaces;
+package com.linkforge.redirect.runtime;
 
 import com.linkforge.redirect.application.RedirectApplicationConfig;
 import com.linkforge.redirect.infrastructure.RedirectInfrastructureConfig;
+import com.linkforge.redirect.interfaces.RedirectInterfacesConfig;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 

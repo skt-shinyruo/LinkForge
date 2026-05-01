@@ -1,12 +1,19 @@
 <script setup lang="ts">
 defineProps<{
-  topLinks: { linkId: number; code: string | null; originalUrl: string | null; pv: number; uv: number }[];
+  topLinks: {
+    linkId: number;
+    code: string | null;
+    shortUrl: string | null;
+    originalUrl: string | null;
+    pv: number;
+    uv: number;
+  }[];
   topSortBy: "pv" | "uv";
 }>();
 
 defineEmits<{
   setTopSortBy: [value: "pv" | "uv"];
-  copyShort: [code: string | null];
+  copyShort: [shortUrl: string | null];
 }>();
 </script>
 
@@ -44,7 +51,7 @@ defineEmits<{
             <span v-else class="sub">已删除</span>
           </td>
           <td class="mono">
-            <a v-if="item.code" :href="`/r/${item.code}`" target="_blank" rel="noreferrer">/r/{{ item.code }}</a>
+            <a v-if="item.shortUrl" :href="item.shortUrl" target="_blank" rel="noreferrer">{{ item.shortUrl }}</a>
             <span v-else class="sub">已删除</span>
           </td>
           <td class="mono">
@@ -54,7 +61,9 @@ defineEmits<{
           <td class="mono">{{ item.pv }}</td>
           <td class="mono">{{ item.uv }}</td>
           <td>
-            <button class="btn small secondary" :disabled="!item.code" @click="$emit('copyShort', item.code)">复制</button>
+            <button class="btn small secondary" :disabled="!item.shortUrl" @click="$emit('copyShort', item.shortUrl)">
+              复制
+            </button>
           </td>
         </tr>
         <tr v-if="topLinks.length === 0">

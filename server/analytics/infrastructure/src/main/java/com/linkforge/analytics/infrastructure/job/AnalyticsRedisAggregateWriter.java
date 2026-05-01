@@ -50,6 +50,8 @@ public class AnalyticsRedisAggregateWriter {
         if (tenantId <= 0 || linkId <= 0) {
             return;
         }
+        long applicationId = safeLong(values.get("applicationId"), -1L);
+        long domainId = safeLong(values.get("domainId"), -1L);
 
         long ts = safeLong(values.get("ts"), System.currentTimeMillis());
         LocalDate day = Instant.ofEpochMilli(ts).atOffset(ZoneOffset.UTC).toLocalDate();
@@ -60,12 +62,23 @@ public class AnalyticsRedisAggregateWriter {
         String activeKey = AnalyticsKeys.activeSetKey(day);
         String activeMember = AnalyticsKeys.activeMember(tenantId, linkId);
         String statsDirtyStreamKey = AnalyticsKeys.statsDirtyStreamKey(day);
+        String scopeDirtyStreamKey = AnalyticsKeys.scopeDirtyStreamKey(day);
         String dimDirtyStreamKey = AnalyticsKeys.dimDirtyStreamKey(day);
         Date expireAt = resolveDayExpireAtUtc(day);
 
         redis.opsForValue().increment(pvKey);
         if (visitorKey != null) {
             redis.opsForHyperLogLog().add(uvKey, visitorKey);
+            writeScopeUv(AnalyticsKeys.tenantScopeUvKey(tenantId, day), scopeDirtyStreamKey,
+                    AnalyticsKeys.tenantScopeMember(tenantId), visitorKey, expireAt);
+            if (applicationId > 0) {
+                writeScopeUv(AnalyticsKeys.applicationScopeUvKey(tenantId, applicationId, day), scopeDirtyStreamKey,
+                        AnalyticsKeys.applicationScopeMember(tenantId, applicationId), visitorKey, expireAt);
+            }
+            if (domainId > 0) {
+                writeScopeUv(AnalyticsKeys.domainScopeUvKey(tenantId, domainId, day), scopeDirtyStreamKey,
+                        AnalyticsKeys.domainScopeMember(tenantId, domainId), visitorKey, expireAt);
+            }
         }
         redis.opsForSet().add(activeKey, activeMember);
         enqueueDirtyMember(statsDirtyStreamKey, activeMember, expireAt);
@@ -106,6 +119,15 @@ public class AnalyticsRedisAggregateWriter {
             expireAtQuietly(dimPvKey, expireAt);
             expireAtQuietly(dimUvKey, expireAt);
         }
+    }
+
+    private void writeScopeUv(String uvKey, String dirtyStreamKey, String dirtyMember, String visitorKey, Date expireAt) {
+        if (uvKey == null || uvKey.isBlank() || dirtyMember == null || dirtyMember.isBlank() || visitorKey == null) {
+            return;
+        }
+        redis.opsForHyperLogLog().add(uvKey, visitorKey);
+        expireAtQuietly(uvKey, expireAt);
+        enqueueDirtyMember(dirtyStreamKey, dirtyMember, expireAt);
     }
 
     private void enqueueDirtyMember(String streamKey, String member, Date expireAt) {

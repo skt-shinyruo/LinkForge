@@ -34,7 +34,10 @@ public interface AnalyticsQueryService {
         UV
     }
 
-    record TopLinkStat(long linkId, String code, String originalUrl, long pv, long uv, boolean deleted) {
+    record TopLinkStat(long linkId, String code, String shortUrl, String originalUrl, long pv, long uv, boolean deleted) {
+        public TopLinkStat(long linkId, String code, String originalUrl, long pv, long uv, boolean deleted) {
+            this(linkId, code, null, originalUrl, pv, uv, deleted);
+        }
     }
 
     record DimensionStat(String value, long pv, long uv, double ratio) {

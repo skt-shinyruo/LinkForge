@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.linkforge.analytics.infrastructure.persistence.mapper.AnalyticsScopeStatsDailyMapper">
+
+    <insert id="batchUpsert">
+        INSERT INTO analytics_scope_stats_daily (tenant_id, scope_type, scope_id, day, uv, updated_at)
+        VALUES
+        <foreach collection="list" item="r" separator=",">
+            (#{r.tenantId}, #{r.scopeType}, #{r.scopeId}, #{r.day}, #{r.uv}, NOW())
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+            uv = GREATEST(uv, VALUES(uv)),
+            updated_at = NOW()
+    </insert>
+</mapper>

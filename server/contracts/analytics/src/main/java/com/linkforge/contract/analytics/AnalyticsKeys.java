@@ -43,6 +43,34 @@ public final class AnalyticsKeys {
         return "stats:uv:" + tenantId + ":" + linkId + ":" + DAY.format(day);
     }
 
+    public static String scopeDirtyStreamKey(LocalDate day) {
+        return "stats:dirty:scope:" + DAY.format(day);
+    }
+
+    public static String tenantScopeUvKey(long tenantId, LocalDate day) {
+        return "stats:scope:uv:tenant:" + tenantId + ":" + DAY.format(day);
+    }
+
+    public static String applicationScopeUvKey(long tenantId, long applicationId, LocalDate day) {
+        return "stats:scope:uv:application:" + tenantId + ":" + applicationId + ":" + DAY.format(day);
+    }
+
+    public static String domainScopeUvKey(long tenantId, long domainId, LocalDate day) {
+        return "stats:scope:uv:domain:" + tenantId + ":" + domainId + ":" + DAY.format(day);
+    }
+
+    public static String tenantScopeMember(long tenantId) {
+        return "tenant:" + tenantId + ":0";
+    }
+
+    public static String applicationScopeMember(long tenantId, long applicationId) {
+        return "application:" + tenantId + ":" + applicationId;
+    }
+
+    public static String domainScopeMember(long tenantId, long domainId) {
+        return "domain:" + tenantId + ":" + domainId;
+    }
+
     public static String applicationClickQuotaKey(long tenantId, long applicationId, LocalDate monthStartUtc) {
         return "quota:click:application:" + tenantId + ":" + applicationId + ":" + MONTH.format(monthStartUtc);
     }

@@ -82,6 +82,9 @@ public interface ShortLinkReadPort {
     record ShortLinkOwnership(Long applicationId, Long domainId) {
     }
 
-    record ShortLinkSummary(long linkId, String code, String originalUrl, boolean deleted) {
+    record ShortLinkSummary(long linkId, String code, String shortUrl, String originalUrl, boolean deleted) {
+        public ShortLinkSummary(long linkId, String code, String originalUrl, boolean deleted) {
+            this(linkId, code, null, originalUrl, deleted);
+        }
     }
 }

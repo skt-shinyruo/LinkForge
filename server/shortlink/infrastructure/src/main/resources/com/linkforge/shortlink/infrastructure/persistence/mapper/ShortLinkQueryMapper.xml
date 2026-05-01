@@ -149,14 +149,16 @@
 
     <select id="listByTenantIdAndIds" resultMap="ShortLinkResultMap">
         SELECT
-        <include refid="shortLinkColumns"/>
-        FROM short_links
-        WHERE tenant_id = #{tenantId}
-          AND id IN
+        <include refid="shortLinkColumnsAliased"/>,
+        d.hostname AS hostname
+        FROM short_links sl
+        LEFT JOIN domains d ON d.id = sl.domain_id AND d.tenant_id = sl.tenant_id
+        WHERE sl.tenant_id = #{tenantId}
+          AND sl.id IN
           <foreach collection="ids" item="id" open="(" separator="," close=")">
               #{id}
           </foreach>
-        ORDER BY id ASC
+        ORDER BY sl.id ASC
     </select>
 
     <select id="listIdsByTenantIdAndApplicationId" resultType="long">

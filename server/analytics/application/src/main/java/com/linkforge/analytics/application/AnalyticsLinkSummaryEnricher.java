@@ -38,11 +38,12 @@ public class AnalyticsLinkSummaryEnricher {
 
     private static TopLinkStat enrichRow(TopLinkStat row, ShortLinkReadPort.ShortLinkSummary summary) {
         if (summary == null) {
-            return new TopLinkStat(row.linkId(), row.code(), row.originalUrl(), row.pv(), row.uv(), true);
+            return new TopLinkStat(row.linkId(), row.code(), row.shortUrl(), row.originalUrl(), row.pv(), row.uv(), true);
         }
         return new TopLinkStat(
                 row.linkId(),
                 summary.code(),
+                summary.shortUrl(),
                 summary.originalUrl(),
                 row.pv(),
                 row.uv(),

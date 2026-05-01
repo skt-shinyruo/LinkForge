@@ -9,6 +9,7 @@ import com.linkforge.foundation.tx.PostCommitHookPort;
 import com.linkforge.shortlink.application.ShortLinkService;
 import com.linkforge.shortlink.application.eventing.ShortLinkDomainEventDispatcher;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
+import com.linkforge.shortlink.application.port.ApplicationLinkQuotaReservationPort;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
 import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
 import com.linkforge.shortlink.application.port.ShortLinkEventPublisher;
@@ -19,11 +20,21 @@ import org.junit.jupiter.api.Test;
 import java.lang.reflect.Constructor;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -72,10 +83,12 @@ class CreateShortLinkCommandHandlerTest {
         PostCommitHookPort postCommitHookPort = mock(PostCommitHookPort.class);
         Clock clock = Clock.fixed(Instant.parse("2026-04-01T00:00:00Z"), ZoneOffset.UTC);
         ApplicationScopePort applicationScopePort = mock(ApplicationScopePort.class);
+        ApplicationLinkQuotaReservationPort quotaReservationPort = mock(ApplicationLinkQuotaReservationPort.class);
 
         CreateShortLinkCommandHandler handler = new CreateShortLinkCommandHandler(
                 idGenerator,
                 shortLinkRepository,
+                quotaReservationPort,
                 setLinkTagsHandler,
                 linkTagRepository,
                 domainEventDispatcher,
@@ -88,12 +101,14 @@ class CreateShortLinkCommandHandlerTest {
 
         when(applicationScopePort.findApplicationQuota(1L, 2001L))
                 .thenReturn(Optional.of(new ApplicationQuotaView(2001L, 10L, 100L)));
-        when(shortLinkRepository.countCreatedByTenantIdAndApplicationIdAndCreatedAtRange(
+        when(quotaReservationPort.tryReserveMonthlyLink(
                 1L,
                 2001L,
+                LocalDate.parse("2026-04-01"),
                 LocalDateTime.parse("2026-04-01T00:00:00"),
-                LocalDateTime.parse("2026-05-01T00:00:00")
-        )).thenReturn(2L);
+                LocalDateTime.parse("2026-05-01T00:00:00"),
+                10L
+        )).thenReturn(true);
         doAnswer(invocation -> {
             ShortLink inserted = invocation.getArgument(0);
             when(shortLinkRepository.findByTenantIdAndId(1L, inserted.id())).thenReturn(Optional.of(inserted));
@@ -148,11 +163,13 @@ class CreateShortLinkCommandHandlerTest {
         assertThat(actual).isSameAs(expected);
         verify(applicationScopePort).requireApplicationAndDomainAuthorized(1L, 2001L, 3001L);
         verify(applicationScopePort).findApplicationQuota(1L, 2001L);
-        verify(shortLinkRepository).countCreatedByTenantIdAndApplicationIdAndCreatedAtRange(
+        verify(quotaReservationPort).tryReserveMonthlyLink(
                 1L,
                 2001L,
+                LocalDate.parse("2026-04-01"),
                 LocalDateTime.parse("2026-04-01T00:00:00"),
-                LocalDateTime.parse("2026-05-01T00:00:00")
+                LocalDateTime.parse("2026-05-01T00:00:00"),
+                10L
         );
         verify(domainEventDispatcher).publish(any(ShortLink.class), eq(clock.instant()));
     }
@@ -162,10 +179,12 @@ class CreateShortLinkCommandHandlerTest {
         SnowflakeIdGenerator idGenerator = mock(SnowflakeIdGenerator.class);
         ShortLinkRepository shortLinkRepository = mock(ShortLinkRepository.class);
         ApplicationScopePort applicationScopePort = mock(ApplicationScopePort.class);
+        ApplicationLinkQuotaReservationPort quotaReservationPort = mock(ApplicationLinkQuotaReservationPort.class);
         Clock clock = Clock.fixed(Instant.parse("2026-04-30T23:59:59Z"), ZoneOffset.UTC);
         CreateShortLinkCommandHandler handler = new CreateShortLinkCommandHandler(
                 idGenerator,
                 shortLinkRepository,
+                quotaReservationPort,
                 mock(SetLinkTagsCommandHandler.class),
                 mock(LinkTagRepository.class),
                 mock(ShortLinkDomainEventDispatcher.class),
@@ -178,12 +197,14 @@ class CreateShortLinkCommandHandlerTest {
 
         when(applicationScopePort.findApplicationQuota(1L, 2001L))
                 .thenReturn(Optional.of(new ApplicationQuotaView(2001L, 2L, 100L)));
-        when(shortLinkRepository.countCreatedByTenantIdAndApplicationIdAndCreatedAtRange(
+        when(quotaReservationPort.tryReserveMonthlyLink(
                 1L,
                 2001L,
+                LocalDate.parse("2026-04-01"),
                 LocalDateTime.parse("2026-04-01T00:00:00"),
-                LocalDateTime.parse("2026-05-01T00:00:00")
-        )).thenReturn(2L);
+                LocalDateTime.parse("2026-05-01T00:00:00"),
+                2L
+        )).thenReturn(false);
 
         assertThatThrownBy(() -> handler.handle(
                 1L,
@@ -213,12 +234,83 @@ class CreateShortLinkCommandHandlerTest {
     }
 
     @Test
+    void handle_shouldNotOversellMonthlyLinkQuotaWhenConcurrentCreatesRace() throws Exception {
+        SnowflakeIdGenerator idGenerator = mock(SnowflakeIdGenerator.class);
+        when(idGenerator.nextId()).thenReturn(101L, 102L);
+        InMemoryShortLinkRepository shortLinkRepository = new InMemoryShortLinkRepository();
+        LinkTagRepository linkTagRepository = mock(LinkTagRepository.class);
+        when(linkTagRepository.findTagNamesByLinkId(101L)).thenReturn(List.of());
+        when(linkTagRepository.findTagNamesByLinkId(102L)).thenReturn(List.of());
+        ShortLinkDtoMapper dtoMapper = mock(ShortLinkDtoMapper.class);
+        when(dtoMapper.toDto(any(ShortLink.class), eq(List.of()))).thenAnswer(invocation -> {
+            ShortLink link = invocation.getArgument(0);
+            return new ShortLinkService.LinkDto(
+                    link.id(),
+                    link.tenantId(),
+                    link.applicationId(),
+                    link.domainId(),
+                    link.lifecycleState().name(),
+                    link.code().value(),
+                    "https://lf/r/" + link.code().value(),
+                    link.originalUrl().value(),
+                    link.note(),
+                    link.enabled(),
+                    null,
+                    null,
+                    link.redirectStatusCode(),
+                    link.previewEnabled(),
+                    null,
+                    null,
+                    List.of(),
+                    List.of(),
+                    Instant.parse("2026-04-01T00:00:00Z")
+            );
+        });
+        ApplicationScopePort applicationScopePort = mock(ApplicationScopePort.class);
+        when(applicationScopePort.findApplicationQuota(1L, 2001L))
+                .thenReturn(Optional.of(new ApplicationQuotaView(2001L, 1L, 100L)));
+        Clock clock = Clock.fixed(Instant.parse("2026-04-01T00:00:00Z"), ZoneOffset.UTC);
+        CreateShortLinkCommandHandler handler = new CreateShortLinkCommandHandler(
+                idGenerator,
+                shortLinkRepository,
+                new SinglePermitQuotaReservationPort(),
+                mock(SetLinkTagsCommandHandler.class),
+                linkTagRepository,
+                mock(ShortLinkDomainEventDispatcher.class),
+                mock(RedirectCacheSyncPort.class),
+                dtoMapper,
+                mock(PostCommitHookPort.class),
+                clock,
+                applicationScopePort
+        );
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            List<Future<Boolean>> futures = executor.invokeAll(List.of(
+                    createCall(handler, "raceA1"),
+                    createCall(handler, "raceA2")
+            ));
+
+            List<Boolean> results = new ArrayList<>();
+            for (Future<Boolean> future : futures) {
+                results.add(future.get(5, TimeUnit.SECONDS));
+            }
+
+            assertThat(results).containsExactlyInAnyOrder(true, false);
+            assertThat(shortLinkRepository.insertedCount()).isEqualTo(1);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
     void handle_shouldRejectInvalidLifecycleStateAsBadRequestBeforeCreatingLink() {
         SnowflakeIdGenerator idGenerator = mock(SnowflakeIdGenerator.class);
         ShortLinkRepository shortLinkRepository = mock(ShortLinkRepository.class);
         CreateShortLinkCommandHandler handler = new CreateShortLinkCommandHandler(
                 idGenerator,
                 shortLinkRepository,
+                mock(ApplicationLinkQuotaReservationPort.class),
                 mock(SetLinkTagsCommandHandler.class),
                 mock(LinkTagRepository.class),
                 mock(ShortLinkDomainEventDispatcher.class),
@@ -253,5 +345,137 @@ class CreateShortLinkCommandHandlerTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.BAD_REQUEST));
 
         verifyNoInteractions(idGenerator, shortLinkRepository);
+    }
+
+    private static Callable<Boolean> createCall(CreateShortLinkCommandHandler handler, String code) {
+        return () -> {
+            try {
+                handler.handle(
+                        1L,
+                        ShortLinkService.CreatedBy.user(99L),
+                        new ShortLinkService.CreateLinkRequest(
+                                "https://example.com/" + code,
+                                "note",
+                                null,
+                                true,
+                                code,
+                                Set.of(),
+                                302,
+                                false,
+                                null,
+                                null,
+                                List.of(),
+                                2001L,
+                                3001L,
+                                "ACTIVE"
+                        )
+                );
+                return true;
+            } catch (BusinessException ex) {
+                if (ex.getErrorCode() == ErrorCode.FORBIDDEN) {
+                    return false;
+                }
+                throw ex;
+            }
+        };
+    }
+
+    private static final class SinglePermitQuotaReservationPort implements ApplicationLinkQuotaReservationPort {
+        private final AtomicLong used = new AtomicLong();
+
+        @Override
+        public boolean tryReserveMonthlyLink(
+                long tenantId,
+                long applicationId,
+                LocalDate monthStartUtc,
+                LocalDateTime fromInclusiveUtc,
+                LocalDateTime toExclusiveUtc,
+                long monthlyLinkLimit
+        ) {
+            while (true) {
+                long current = used.get();
+                if (current >= monthlyLinkLimit) {
+                    return false;
+                }
+                if (used.compareAndSet(current, current + 1)) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    private static final class InMemoryShortLinkRepository implements ShortLinkRepository {
+        private final List<ShortLink> inserted = Collections.synchronizedList(new ArrayList<>());
+        private final ConcurrentHashMap<Long, ShortLink> linksById = new ConcurrentHashMap<>();
+
+        @Override
+        public Optional<ShortLink> findByTenantIdAndId(long tenantId, long linkId) {
+            return Optional.ofNullable(linksById.get(linkId))
+                    .filter(link -> link.tenantId() == tenantId);
+        }
+
+        @Override
+        public Optional<ShortLink> findUnscopedByCode(String code) {
+            return inserted.stream()
+                    .filter(link -> link.domainId() == null)
+                    .filter(link -> link.code().value().equals(code))
+                    .findFirst();
+        }
+
+        @Override
+        public Optional<ShortLink> findByDomainIdAndCode(long domainId, String code) {
+            return inserted.stream()
+                    .filter(link -> Long.valueOf(domainId).equals(link.domainId()))
+                    .filter(link -> link.code().value().equals(code))
+                    .findFirst();
+        }
+
+        @Override
+        public long countCreatedByTenantIdAndApplicationIdAndCreatedAtRange(
+                long tenantId,
+                long applicationId,
+                LocalDateTime fromInclusiveUtc,
+                LocalDateTime toExclusiveUtc
+        ) {
+            return inserted.stream()
+                    .filter(link -> link.tenantId() == tenantId)
+                    .filter(link -> Long.valueOf(applicationId).equals(link.applicationId()))
+                    .count();
+        }
+
+        @Override
+        public void insert(ShortLink link) {
+            inserted.add(link);
+            linksById.put(link.id(), link);
+        }
+
+        @Override
+        public boolean update(ShortLink link) {
+            return false;
+        }
+
+        @Override
+        public boolean deleteByTenantIdAndId(long tenantId, long linkId, long version) {
+            return false;
+        }
+
+        @Override
+        public long countSearch(long tenantId, com.linkforge.shortlink.application.query.ShortLinkSearchQuery query) {
+            return 0;
+        }
+
+        @Override
+        public List<ShortLink> listSearch(
+                long tenantId,
+                com.linkforge.shortlink.application.query.ShortLinkSearchQuery query,
+                long offset,
+                int limit
+        ) {
+            return List.of();
+        }
+
+        int insertedCount() {
+            return inserted.size();
+        }
     }
 }

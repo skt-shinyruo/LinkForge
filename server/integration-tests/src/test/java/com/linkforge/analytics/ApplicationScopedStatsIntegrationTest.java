@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.analytics.infrastructure.job.AnalyticsFlushJob;
+import com.linkforge.analytics.infrastructure.job.AnalyticsRedirectEventProjectorJob;
 import com.linkforge.analytics.infrastructure.catalog.ShortLinkCatalogProjectorJob;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -84,6 +85,9 @@ class ApplicationScopedStatsIntegrationTest {
 
     @Autowired
     AnalyticsFlushJob analyticsFlushJob;
+
+    @Autowired
+    AnalyticsRedirectEventProjectorJob analyticsRedirectEventProjectorJob;
 
     @Autowired
     ShortLinkCatalogProjectorJob shortLinkCatalogProjectorJob;
@@ -191,6 +195,56 @@ class ApplicationScopedStatsIntegrationTest {
             assertThat(row.get("linkId").asLong()).isEqualTo(linkOneId);
             assertThat(row.get("deleted").asBoolean()).isTrue();
         });
+    }
+
+    @Test
+    void scopeOverviewUv_shouldDeduplicateVisitorsAcrossLinks() throws Exception {
+        RegisteredPrincipal principal = registerTenantAdmin();
+        AppDomainFixture fixture = provisionDedicatedApplication(principal.tenantId(), "stats-dedup-app", "stats-dedup.example.test");
+
+        JsonNode firstLink = createLink(principal.token(), fixture.applicationId(), fixture.domainId(), "https://example.com/dedup-a");
+        JsonNode secondLink = createLink(principal.token(), fixture.applicationId(), fixture.domainId(), "https://example.com/dedup-b");
+        long firstLinkId = firstLink.get("data").get("id").asLong();
+        long secondLinkId = secondLink.get("data").get("id").asLong();
+
+        shortLinkCatalogProjectorJob.project();
+
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        long ts = today.atStartOfDay(ZoneOffset.UTC).plusHours(9).toInstant().toEpochMilli();
+        seedVisitEvent(principal.tenantId(), fixture.applicationId(), fixture.domainId(), firstLinkId, ts, "same-visitor");
+        seedVisitEvent(principal.tenantId(), fixture.applicationId(), fixture.domainId(), secondLinkId, ts, "same-visitor");
+        analyticsRedirectEventProjectorJob.project();
+        analyticsFlushJob.flush();
+
+        JsonNode tenantOverview = getJson(
+                get("/api/v1/stats/overview")
+                        .header("Authorization", "Bearer " + principal.token())
+                        .param("from", today.toString())
+                        .param("to", today.toString())
+        );
+        assertThat(tenantOverview.get("data")).hasSize(1);
+        assertThat(tenantOverview.get("data").get(0).get("pv").asLong()).isEqualTo(2L);
+        assertThat(tenantOverview.get("data").get(0).get("uv").asLong()).isEqualTo(1L);
+
+        JsonNode appOverview = getJson(
+                get("/api/v1/stats/applications/" + fixture.applicationId() + "/overview")
+                        .header("Authorization", "Bearer " + principal.token())
+                        .param("from", today.toString())
+                        .param("to", today.toString())
+        );
+        assertThat(appOverview.get("data")).hasSize(1);
+        assertThat(appOverview.get("data").get(0).get("pv").asLong()).isEqualTo(2L);
+        assertThat(appOverview.get("data").get(0).get("uv").asLong()).isEqualTo(1L);
+
+        JsonNode domainOverview = getJson(
+                get("/api/v1/stats/domains/" + fixture.domainId() + "/overview")
+                        .header("Authorization", "Bearer " + principal.token())
+                        .param("from", today.toString())
+                        .param("to", today.toString())
+        );
+        assertThat(domainOverview.get("data")).hasSize(1);
+        assertThat(domainOverview.get("data").get(0).get("pv").asLong()).isEqualTo(2L);
+        assertThat(domainOverview.get("data").get(0).get("uv").asLong()).isEqualTo(1L);
     }
 
     @Test
@@ -350,6 +404,17 @@ class ApplicationScopedStatsIntegrationTest {
         redis.opsForStream().add(StreamRecords.newRecord().in(statsDirtyStreamKey).ofStrings(java.util.Map.of(
                 "member", dirtyMember,
                 "ts", String.valueOf(System.currentTimeMillis())
+        )));
+    }
+
+    private void seedVisitEvent(long tenantId, long applicationId, long domainId, long linkId, long ts, String visitorKey) {
+        redis.opsForStream().add(StreamRecords.newRecord().in("stats:visit:events").ofStrings(java.util.Map.of(
+                "ts", String.valueOf(ts),
+                "tenantId", String.valueOf(tenantId),
+                "applicationId", String.valueOf(applicationId),
+                "domainId", String.valueOf(domainId),
+                "linkId", String.valueOf(linkId),
+                "visitorKey", visitorKey
         )));
     }
 

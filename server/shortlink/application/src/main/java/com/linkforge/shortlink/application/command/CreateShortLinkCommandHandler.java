@@ -12,6 +12,7 @@ import com.linkforge.shortlink.application.ShortLinkService.CreateLinkRequest;
 import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
 import com.linkforge.shortlink.application.eventing.ShortLinkDomainEventDispatcher;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
+import com.linkforge.shortlink.application.port.ApplicationLinkQuotaReservationPort;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
 import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
 import com.linkforge.shortlink.application.port.ShortLinkRepository;
@@ -38,6 +39,7 @@ public class CreateShortLinkCommandHandler {
 
     private final SnowflakeIdGenerator idGenerator;
     private final ShortLinkRepository shortLinkRepository;
+    private final ApplicationLinkQuotaReservationPort applicationLinkQuotaReservationPort;
     private final SetLinkTagsCommandHandler setLinkTagsHandler;
     private final LinkTagRepository linkTagRepository;
     private final ShortLinkDomainEventDispatcher domainEventDispatcher;
@@ -50,6 +52,7 @@ public class CreateShortLinkCommandHandler {
     public CreateShortLinkCommandHandler(
             SnowflakeIdGenerator idGenerator,
             ShortLinkRepository shortLinkRepository,
+            ApplicationLinkQuotaReservationPort applicationLinkQuotaReservationPort,
             SetLinkTagsCommandHandler setLinkTagsHandler,
             LinkTagRepository linkTagRepository,
             ShortLinkDomainEventDispatcher domainEventDispatcher,
@@ -61,6 +64,7 @@ public class CreateShortLinkCommandHandler {
     ) {
         this.idGenerator = idGenerator;
         this.shortLinkRepository = shortLinkRepository;
+        this.applicationLinkQuotaReservationPort = applicationLinkQuotaReservationPort;
         this.setLinkTagsHandler = setLinkTagsHandler;
         this.linkTagRepository = linkTagRepository;
         this.domainEventDispatcher = domainEventDispatcher;
@@ -99,13 +103,15 @@ public class CreateShortLinkCommandHandler {
                 LocalDate monthStart = LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC).withDayOfMonth(1);
                 LocalDateTime fromInclusiveUtc = monthStart.atStartOfDay();
                 LocalDateTime toExclusiveUtc = monthStart.plusMonths(1).atStartOfDay();
-                long currentMonthCreated = shortLinkRepository.countCreatedByTenantIdAndApplicationIdAndCreatedAtRange(
+                boolean reserved = applicationLinkQuotaReservationPort.tryReserveMonthlyLink(
                         tenantId,
                         applicationId,
+                        monthStart,
                         fromInclusiveUtc,
-                        toExclusiveUtc
+                        toExclusiveUtc,
+                        monthlyLinkLimit
                 );
-                if (currentMonthCreated >= monthlyLinkLimit) {
+                if (!reserved) {
                     throw new BusinessException(com.linkforge.contract.api.ErrorCode.FORBIDDEN, "应用发链额度已用尽");
                 }
             });

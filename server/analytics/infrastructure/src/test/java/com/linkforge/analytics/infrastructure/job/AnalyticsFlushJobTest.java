@@ -1,5 +1,7 @@
 package com.linkforge.analytics.infrastructure.job;
 
+import com.linkforge.analytics.infrastructure.persistence.mapper.AnalyticsScopeStatsDailyMapper;
+import com.linkforge.analytics.infrastructure.persistence.mapper.AnalyticsScopeStatsDailyUpsertRow;
 import com.linkforge.analytics.infrastructure.persistence.mapper.LinkStatsDailyMapper;
 import com.linkforge.analytics.infrastructure.persistence.mapper.LinkStatsDailyUpsertRow;
 import com.linkforge.foundation.config.AnalyticsProperties;
@@ -174,5 +176,45 @@ class AnalyticsFlushJobTest {
         assertThat(row.getDay()).isEqualTo(day);
         assertThat(row.getPv()).isEqualTo(7L);
         assertThat(row.getUv()).isZero();
+    }
+
+    @Test
+    void flushActiveScopeMembers_should_write_deduplicated_scope_uv_counts() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        LinkStatsDailyMapper linkMapper = mock(LinkStatsDailyMapper.class);
+        AnalyticsScopeStatsDailyMapper scopeMapper = mock(AnalyticsScopeStatsDailyMapper.class);
+        AnalyticsProperties properties = new AnalyticsProperties();
+
+        when(redis.getStringSerializer()).thenReturn(new StringRedisSerializer());
+        when(redis.executePipelined(any(RedisCallback.class))).thenReturn(List.of(1L, 2L, 3L));
+
+        AnalyticsFlushJob job = new AnalyticsFlushJob(redis, linkMapper, scopeMapper, properties);
+
+        LocalDate day = LocalDate.of(2026, 4, 24);
+        job.flushActiveScopeMembers(day, List.of(
+                "tenant:1:0",
+                "application:1:100",
+                "domain:1:200",
+                "application:1:100",
+                "bad"
+        ));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<AnalyticsScopeStatsDailyUpsertRow>> batchCaptor = ArgumentCaptor.forClass(List.class);
+        verify(scopeMapper).batchUpsert(batchCaptor.capture());
+
+        List<AnalyticsScopeStatsDailyUpsertRow> rows = batchCaptor.getValue();
+        assertThat(rows).hasSize(3);
+        assertThat(rows).extracting(
+                AnalyticsScopeStatsDailyUpsertRow::getScopeType,
+                AnalyticsScopeStatsDailyUpsertRow::getTenantId,
+                AnalyticsScopeStatsDailyUpsertRow::getScopeId,
+                AnalyticsScopeStatsDailyUpsertRow::getDay,
+                AnalyticsScopeStatsDailyUpsertRow::getUv
+        ).containsExactly(
+                org.assertj.core.groups.Tuple.tuple("tenant", 1L, 0L, day, 1L),
+                org.assertj.core.groups.Tuple.tuple("application", 1L, 100L, day, 2L),
+                org.assertj.core.groups.Tuple.tuple("domain", 1L, 200L, day, 3L)
+        );
     }
 }

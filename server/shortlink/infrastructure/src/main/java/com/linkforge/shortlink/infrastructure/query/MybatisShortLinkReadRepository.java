@@ -76,6 +76,7 @@ public class MybatisShortLinkReadRepository implements ShortLinkReadRepository {
             summaries.put(row.getId(), new ShortLinkReadPort.ShortLinkSummary(
                     row.getId(),
                     row.getCode(),
+                    buildShortUrl(row),
                     row.getOriginalUrl(),
                     false
             ));
@@ -98,6 +99,22 @@ public class MybatisShortLinkReadRepository implements ShortLinkReadRepository {
         return baseHost != null && baseHost.equalsIgnoreCase(host);
     }
 
+    private String buildShortUrl(ShortLinkEntity row) {
+        if (row == null || row.getCode() == null || row.getCode().isBlank()) {
+            return null;
+        }
+        return appendRedirectPath(shortUrlBase(row), row.getCode());
+    }
+
+    private String shortUrlBase(ShortLinkEntity row) {
+        String hostname = trimToNull(row.getHostname());
+        Long domainId = row.getDomainId();
+        if (domainId != null && domainId > 0L && hostname != null) {
+            return schemeForDomainUrl() + "://" + hostname;
+        }
+        return configuredBaseUrl();
+    }
+
     private String resolveBaseHost() {
         String baseUrl = coreProperties == null ? null : coreProperties.getBaseUrl();
         if (baseUrl == null || baseUrl.isBlank()) {
@@ -111,11 +128,56 @@ public class MybatisShortLinkReadRepository implements ShortLinkReadRepository {
         }
     }
 
+    private String configuredBaseUrl() {
+        String base = coreProperties == null ? null : coreProperties.getBaseUrl();
+        if (base == null) {
+            base = "";
+        }
+        return trimTrailingSlash(base);
+    }
+
+    private String schemeForDomainUrl() {
+        String base = coreProperties == null ? null : coreProperties.getBaseUrl();
+        if (base != null && !base.isBlank()) {
+            try {
+                String scheme = URI.create(base.trim()).getScheme();
+                if (scheme != null && !scheme.isBlank()) {
+                    return scheme.toLowerCase();
+                }
+            } catch (Exception ignored) {
+                // fall through to the public default
+            }
+        }
+        return "https";
+    }
+
+    private static String appendRedirectPath(String base, String code) {
+        return trimTrailingSlash(base) + "/r/" + code;
+    }
+
+    private static String trimTrailingSlash(String base) {
+        if (base == null) {
+            return "";
+        }
+        while (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        return base;
+    }
+
     private static String normalizeNullable(String code) {
         if (code == null) {
             return null;
         }
         String normalized = code.trim();
+        return normalized.isBlank() ? null : normalized;
+    }
+
+    private static String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.trim();
         return normalized.isBlank() ? null : normalized;
     }
 

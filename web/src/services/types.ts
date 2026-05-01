@@ -122,6 +122,7 @@ export type DailyStat = {
 export type TopLinkStat = {
   linkId: number;
   code: string | null;
+  shortUrl: string | null;
   originalUrl: string | null;
   pv: number;
   uv: number;

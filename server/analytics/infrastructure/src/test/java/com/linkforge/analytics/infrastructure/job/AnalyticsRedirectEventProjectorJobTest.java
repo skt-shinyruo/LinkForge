@@ -77,6 +77,8 @@ class AnalyticsRedirectEventProjectorJobTest {
                 "ts", String.valueOf(Instant.parse("2026-04-24T10:15:30Z").toEpochMilli()),
                 "tenantId", "1",
                 "linkId", "10",
+                "applicationId", "100",
+                "domainId", "200",
                 "visitorKey", "visitor-1",
                 "refererDomain", "example.com"
         ));
@@ -96,17 +98,23 @@ class AnalyticsRedirectEventProjectorJobTest {
         InOrder inOrder = inOrder(valueOps, hllOps, setOps, hashOps, streamOps);
         inOrder.verify(valueOps).increment(AnalyticsKeys.pvKey(1L, 10L, day));
         inOrder.verify(hllOps).add(eq(AnalyticsKeys.uvKey(1L, 10L, day)), eq(new String[]{"visitor-1"}));
+        inOrder.verify(hllOps).add(eq(AnalyticsKeys.tenantScopeUvKey(1L, day)), eq(new String[]{"visitor-1"}));
+        inOrder.verify(hllOps).add(eq(AnalyticsKeys.applicationScopeUvKey(1L, 100L, day)), eq(new String[]{"visitor-1"}));
+        inOrder.verify(hllOps).add(eq(AnalyticsKeys.domainScopeUvKey(1L, 200L, day)), eq(new String[]{"visitor-1"}));
         inOrder.verify(setOps).add(eq(AnalyticsKeys.activeSetKey(day)), eq(new String[]{AnalyticsKeys.activeMember(1L, 10L)}));
         inOrder.verify(hashOps).increment(AnalyticsKeys.dimPvHashKey(1L, 10L, day, "referer_domain"), "example.com", 1L);
         inOrder.verify(streamOps).acknowledge(eq(AnalyticsKeys.visitEventStreamKey()), eq("lf-visit-projector"), any(RecordId[].class));
 
         @SuppressWarnings({"rawtypes", "unchecked"})
         ArgumentCaptor<MapRecord> streamAddCaptor = ArgumentCaptor.forClass(MapRecord.class);
-        verify(streamOps, org.mockito.Mockito.times(2)).add(streamAddCaptor.capture());
+        verify(streamOps, org.mockito.Mockito.times(5)).add(streamAddCaptor.capture());
 
         assertThat(streamAddCaptor.getAllValues())
                 .extracting(MapRecord::getStream)
                 .containsExactly(
+                        AnalyticsKeys.scopeDirtyStreamKey(day),
+                        AnalyticsKeys.scopeDirtyStreamKey(day),
+                        AnalyticsKeys.scopeDirtyStreamKey(day),
                         AnalyticsKeys.statsDirtyStreamKey(day),
                         AnalyticsKeys.dimDirtyStreamKey(day)
                 );

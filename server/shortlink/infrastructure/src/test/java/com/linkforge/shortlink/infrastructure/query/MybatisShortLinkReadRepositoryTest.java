@@ -14,6 +14,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
@@ -136,21 +137,38 @@ class MybatisShortLinkReadRepositoryTest {
     void listSummaries_shouldReturnCurrentLinkMetadataByIds() {
         ShortLinkQueryMapper queryMapper = mock(ShortLinkQueryMapper.class);
         CoreProperties coreProperties = mock(CoreProperties.class);
+        when(coreProperties.getBaseUrl()).thenReturn("https://console.example.test/app/");
         MybatisShortLinkReadRepository repository = new MybatisShortLinkReadRepository(queryMapper, coreProperties);
         ShortLinkEntity row1 = redirectRow();
+        row1.setHostname("go.example.test");
         ShortLinkEntity row2 = redirectRow();
         row2.setId(12L);
         row2.setCode("xyz789");
         row2.setOriginalUrl("https://example.com/other");
+        row2.setDomainId(null);
+        row2.setHostname(null);
         when(queryMapper.listByTenantIdAndIds(22L, List.of(11L, 12L))).thenReturn(List.of(row1, row2));
 
         Map<Long, ShortLinkReadPort.ShortLinkSummary> actual = repository.listSummaries(22L, List.of(11L, 12L));
 
         assertThat(actual).containsExactlyInAnyOrderEntriesOf(Map.of(
-                11L, new ShortLinkReadPort.ShortLinkSummary(11L, "AbC123", "https://example.com/live", false),
-                12L, new ShortLinkReadPort.ShortLinkSummary(12L, "xyz789", "https://example.com/other", false)
+                11L, new ShortLinkReadPort.ShortLinkSummary(
+                        11L,
+                        "AbC123",
+                        "https://go.example.test/r/AbC123",
+                        "https://example.com/live",
+                        false
+                ),
+                12L, new ShortLinkReadPort.ShortLinkSummary(
+                        12L,
+                        "xyz789",
+                        "https://console.example.test/app/r/xyz789",
+                        "https://example.com/other",
+                        false
+                )
         ));
         verify(queryMapper).listByTenantIdAndIds(22L, List.of(11L, 12L));
+        verify(coreProperties, times(2)).getBaseUrl();
         verifyNoMoreInteractions(queryMapper, coreProperties);
     }
 

@@ -1,5 +1,7 @@
 package com.linkforge.analytics.infrastructure.job;
 
+import com.linkforge.analytics.infrastructure.persistence.mapper.AnalyticsScopeStatsDailyMapper;
+import com.linkforge.analytics.infrastructure.persistence.mapper.AnalyticsScopeStatsDailyUpsertRow;
 import com.linkforge.analytics.infrastructure.persistence.mapper.LinkStatsDailyMapper;
 import com.linkforge.analytics.infrastructure.persistence.mapper.LinkStatsDailyUpsertRow;
 import com.linkforge.contract.analytics.AnalyticsKeys;
@@ -17,13 +19,16 @@ import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.serializer.RedisSerializer;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Component
 public class AnalyticsFlushJob {
@@ -35,11 +40,23 @@ public class AnalyticsFlushJob {
 
     private final StringRedisTemplate redis;
     private final LinkStatsDailyMapper linkStatsDailyMapper;
+    private final AnalyticsScopeStatsDailyMapper scopeStatsDailyMapper;
     private final AnalyticsProperties analyticsProperties;
 
     public AnalyticsFlushJob(StringRedisTemplate redis, LinkStatsDailyMapper linkStatsDailyMapper, AnalyticsProperties analyticsProperties) {
+        this(redis, linkStatsDailyMapper, null, analyticsProperties);
+    }
+
+    @Autowired
+    public AnalyticsFlushJob(
+            StringRedisTemplate redis,
+            LinkStatsDailyMapper linkStatsDailyMapper,
+            AnalyticsScopeStatsDailyMapper scopeStatsDailyMapper,
+            AnalyticsProperties analyticsProperties
+    ) {
         this.redis = redis;
         this.linkStatsDailyMapper = linkStatsDailyMapper;
+        this.scopeStatsDailyMapper = scopeStatsDailyMapper;
         this.analyticsProperties = analyticsProperties;
     }
 
@@ -54,6 +71,11 @@ public class AnalyticsFlushJob {
     }
 
     private void flushDay(LocalDate day) {
+        flushLinkStatsDay(day);
+        flushScopeStatsDay(day);
+    }
+
+    private void flushLinkStatsDay(LocalDate day) {
         String streamKey = AnalyticsKeys.statsDirtyStreamKey(day);
         if (!ensureGroup(streamKey)) {
             return;
@@ -83,6 +105,45 @@ public class AnalyticsFlushJob {
                 continue;
             }
             if (!flushActiveMembers(day, members)) {
+                return;
+            }
+            acknowledge(streamKey, records.stream().map(MapRecord::getId).toList());
+        }
+    }
+
+    private void flushScopeStatsDay(LocalDate day) {
+        if (scopeStatsDailyMapper == null) {
+            return;
+        }
+        String streamKey = AnalyticsKeys.scopeDirtyStreamKey(day);
+        if (!ensureGroup(streamKey)) {
+            return;
+        }
+
+        Consumer consumer = Consumer.from(GROUP, CONSUMER);
+        while (true) {
+            List<MapRecord<String, Object, Object>> records = readSafe(
+                    consumer,
+                    StreamReadOptions.empty().count(BATCH_SIZE),
+                    StreamOffset.create(streamKey, ReadOffset.from("0-0"))
+            );
+            if (records == null || records.isEmpty()) {
+                records = readSafe(
+                        consumer,
+                        StreamReadOptions.empty().count(BATCH_SIZE),
+                        StreamOffset.create(streamKey, ReadOffset.lastConsumed())
+                );
+            }
+            if (records == null || records.isEmpty()) {
+                return;
+            }
+
+            List<String> members = extractMembers(records);
+            if (members.isEmpty()) {
+                acknowledge(streamKey, records.stream().map(MapRecord::getId).toList());
+                continue;
+            }
+            if (!flushActiveScopeMembers(day, members)) {
                 return;
             }
             acknowledge(streamKey, records.stream().map(MapRecord::getId).toList());
@@ -183,6 +244,65 @@ public class AnalyticsFlushJob {
             );
             return false;
         }
+    }
+
+    boolean flushActiveScopeMembers(LocalDate day, List<String> members) {
+        if (scopeStatsDailyMapper == null) {
+            return true;
+        }
+        long startNs = System.nanoTime();
+        Map<String, ScopeMemberParts> partsByKey = new LinkedHashMap<>();
+        for (String m : members) {
+            ScopeMemberParts p = parseScopeMember(m);
+            if (p != null) {
+                partsByKey.putIfAbsent(p.key(), p);
+            }
+        }
+        List<ScopeMemberParts> parts = new ArrayList<>(partsByKey.values());
+        if (parts.isEmpty()) {
+            return true;
+        }
+
+        List<String> uvKeys = parts.stream().map(p -> scopeUvKey(p, day)).toList();
+        List<Long> uvValues = pfCountPipeline(uvKeys);
+        List<AnalyticsScopeStatsDailyUpsertRow> batch = new ArrayList<>(parts.size());
+
+        for (int i = 0; i < parts.size(); i++) {
+            ScopeMemberParts p = parts.get(i);
+            Long uvRaw = uvValues == null || i >= uvValues.size() ? null : uvValues.get(i);
+            long uv = safeLong(uvRaw, 0L);
+
+            AnalyticsScopeStatsDailyUpsertRow row = new AnalyticsScopeStatsDailyUpsertRow();
+            row.setTenantId(p.tenantId);
+            row.setScopeType(p.scopeType);
+            row.setScopeId(p.scopeId);
+            row.setDay(day);
+            row.setUv(Math.max(uv, 0L));
+            batch.add(row);
+        }
+
+        if (batch.isEmpty()) {
+            return true;
+        }
+
+        try {
+            scopeStatsDailyMapper.batchUpsert(batch);
+            long latencyMs = (System.nanoTime() - startNs) / 1_000_000;
+            log.info("flush scope stats batch ok: day={}, written={}, latencyMs={}", day, batch.size(), latencyMs);
+            return true;
+        } catch (DataAccessException e) {
+            log.warn("flush scope stats batch failed: day={}, written={}, err={}", day, batch.size(), e.getMessage());
+            return false;
+        }
+    }
+
+    private static String scopeUvKey(ScopeMemberParts p, LocalDate day) {
+        return switch (p.scopeType) {
+            case "tenant" -> AnalyticsKeys.tenantScopeUvKey(p.tenantId, day);
+            case "application" -> AnalyticsKeys.applicationScopeUvKey(p.tenantId, p.scopeId, day);
+            case "domain" -> AnalyticsKeys.domainScopeUvKey(p.tenantId, p.scopeId, day);
+            default -> null;
+        };
     }
 
     private List<Long> pfCountPipeline(List<String> keys) {
@@ -307,5 +427,41 @@ public class AnalyticsFlushJob {
     }
 
     private record MemberParts(long tenantId, long linkId) {
+    }
+
+    private static ScopeMemberParts parseScopeMember(String member) {
+        if (member == null || member.isBlank()) {
+            return null;
+        }
+        String[] parts = member.split(":", 3);
+        if (parts.length != 3) {
+            return null;
+        }
+        String scopeType = parts[0].trim().toLowerCase();
+        if (!scopeType.equals("tenant") && !scopeType.equals("application") && !scopeType.equals("domain")) {
+            return null;
+        }
+        try {
+            long tenantId = Long.parseLong(parts[1]);
+            long scopeId = Long.parseLong(parts[2]);
+            if (tenantId <= 0) {
+                return null;
+            }
+            if (scopeType.equals("tenant")) {
+                scopeId = 0L;
+            } else if (scopeId <= 0) {
+                return null;
+            }
+            return new ScopeMemberParts(scopeType, tenantId, scopeId);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private record ScopeMemberParts(String scopeType, long tenantId, long scopeId) {
+
+        private String key() {
+            return scopeType + ":" + tenantId + ":" + scopeId;
+        }
     }
 }

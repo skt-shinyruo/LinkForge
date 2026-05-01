@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.linkforge.shortlink.infrastructure.persistence.mapper.ApplicationLinkQuotaUsageMapper">
+
+    <select id="acquireMonthlyLinkUsageLock" resultType="int">
+        SELECT GET_LOCK(#{lockName}, #{timeoutSeconds})
+    </select>
+
+    <select id="releaseMonthlyLinkUsageLock" resultType="int">
+        SELECT RELEASE_LOCK(#{lockName})
+    </select>
+
+    <insert id="ensureMonthlyLinkUsage">
+        INSERT IGNORE INTO application_link_monthly_usages (
+            tenant_id,
+            application_id,
+            month_start,
+            used_count
+        )
+        SELECT
+            #{tenantId},
+            #{applicationId},
+            #{monthStartUtc},
+            COUNT(*)
+        FROM short_links
+        WHERE tenant_id = #{tenantId}
+          AND application_id = #{applicationId}
+          AND created_at &gt;= #{fromInclusiveUtc}
+          AND created_at &lt; #{toExclusiveUtc}
+    </insert>
+
+    <update id="incrementMonthlyLinkUsage">
+        UPDATE application_link_monthly_usages
+        SET used_count = used_count + 1
+        WHERE tenant_id = #{tenantId}
+          AND application_id = #{applicationId}
+          AND month_start = #{monthStartUtc}
+          AND used_count &lt; #{monthlyLinkLimit}
+    </update>
+</mapper>

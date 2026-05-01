@@ -106,9 +106,6 @@ export function useStatsPage() {
     ) {
       selectedApplicationId.value = null;
     }
-    if (selectedApplicationId.value == null && applications.value.length > 0) {
-      selectedApplicationId.value = applications.value[0]!.id;
-    }
   }
 
   async function loadOverview() {
@@ -175,13 +172,12 @@ export function useStatsPage() {
     });
   }
 
-  async function copyShort(code: string | null) {
-    if (!code) {
+  async function copyShort(shortUrl: string | null) {
+    if (!shortUrl) {
       return;
     }
-    const url = `${location.origin}/r/${code}`;
     try {
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(shortUrl);
     } catch {
       // ignore clipboard failures
     }

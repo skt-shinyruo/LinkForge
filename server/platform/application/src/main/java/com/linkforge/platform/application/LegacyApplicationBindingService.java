@@ -9,9 +9,11 @@ import com.linkforge.platform.application.port.DomainRepository;
 import com.linkforge.platform.domain.Application;
 import com.linkforge.platform.domain.ApplicationPolicy;
 import com.linkforge.platform.domain.ApplicationQuota;
+import com.linkforge.platform.domain.DomainHostname;
 import com.linkforge.platform.domain.Domain;
 import com.linkforge.platform.domain.DomainScope;
 import com.linkforge.platform.domain.DomainStatus;
+import com.linkforge.platform.domain.MonthlyLinkLimit;
 import com.linkforge.platform.domain.TargetTrustClass;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -76,12 +78,10 @@ class LegacyApplicationBindingService {
                 null,
                 null
         ));
-        applicationQuotaRepository.insert(new ApplicationQuota(
+        applicationQuotaRepository.insert(ApplicationQuota.create(
                 applicationId,
-                ApplicationProvisioningService.DEFAULT_MONTHLY_LINK_LIMIT,
-                ApplicationProvisioningService.DEFAULT_MONTHLY_CLICK_LIMIT,
-                null,
-                null
+                MonthlyLinkLimit.of(ApplicationProvisioningService.DEFAULT_MONTHLY_LINK_LIMIT),
+                MonthlyLinkLimit.of(ApplicationProvisioningService.DEFAULT_MONTHLY_CLICK_LIMIT)
         ));
         return application;
     }
@@ -92,7 +92,7 @@ class LegacyApplicationBindingService {
                 domainId,
                 tenantId,
                 applicationId,
-                hostname,
+                DomainHostname.of(hostname).value(),
                 DomainScope.APPLICATION_DEDICATED,
                 DomainStatus.ACTIVE,
                 TargetTrustClass.FIRST_PARTY,

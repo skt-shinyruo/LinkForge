@@ -12,6 +12,9 @@ import com.linkforge.contract.shortlink.ShortLinkReadPort;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.linkforge.redirect.application.error.RedirectBusinessException;
 import com.linkforge.redirect.application.error.RedirectErrorCode;
+import com.linkforge.redirect.domain.RedirectAvailabilityPolicy;
+import com.linkforge.redirect.domain.RedirectDecision;
+import com.linkforge.redirect.domain.RedirectLookupKey;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
@@ -30,6 +33,7 @@ public class RedirectService {
     private final Clock clock;
     private final ApplicationScopePort applicationScopePort;
     private final ApplicationClickUsagePort applicationClickUsagePort;
+    private final RedirectAvailabilityPolicy availabilityPolicy;
 
     @Autowired
     public RedirectService(
@@ -40,12 +44,33 @@ public class RedirectService {
             ApplicationScopePort applicationScopePort,
             ApplicationClickUsagePort applicationClickUsagePort
     ) {
+        this(
+                linkCache,
+                shortLinkReadPort,
+                visitRecorderPort,
+                clock,
+                applicationScopePort,
+                applicationClickUsagePort,
+                new RedirectAvailabilityPolicy()
+        );
+    }
+
+    RedirectService(
+            LinkCachePort linkCache,
+            ShortLinkReadPort shortLinkReadPort,
+            VisitRecorderPort visitRecorderPort,
+            Clock clock,
+            ApplicationScopePort applicationScopePort,
+            ApplicationClickUsagePort applicationClickUsagePort,
+            RedirectAvailabilityPolicy availabilityPolicy
+    ) {
         this.linkCache = linkCache;
         this.shortLinkReadPort = shortLinkReadPort;
         this.visitRecorderPort = visitRecorderPort;
         this.clock = clock;
         this.applicationScopePort = applicationScopePort == null ? noQuotaApplicationScopePort() : applicationScopePort;
         this.applicationClickUsagePort = applicationClickUsagePort == null ? noClickUsagePort() : applicationClickUsagePort;
+        this.availabilityPolicy = availabilityPolicy;
     }
 
     public RedirectService(
@@ -79,12 +104,13 @@ public class RedirectService {
         if (request == null) {
             return RedirectResolution.notFound(null, false);
         }
-        String normalizedCode = normalizeCode(request.code());
-        if (normalizedCode == null) {
+        Optional<RedirectLookupKey> lookupKey = RedirectLookupKey.tryCreate(request.host(), request.code());
+        if (lookupKey.isEmpty()) {
             return RedirectResolution.notFound(request.code(), request.htmlRequest());
         }
+        String normalizedCode = lookupKey.get().code();
 
-        LinkMeta meta = findMeta(request.host(), normalizedCode);
+        LinkMeta meta = findMeta(lookupKey.get().host(), normalizedCode);
         if (meta == null) {
             return RedirectResolution.notFound(normalizedCode, request.htmlRequest());
         }
@@ -124,8 +150,9 @@ public class RedirectService {
     }
 
     private LinkMeta resolveMeta(String host, String code) {
-        String normalized = normalizeAndValidateCode(code);
-        LinkMeta meta = findMeta(host, normalized);
+        RedirectLookupKey lookupKey = RedirectLookupKey.tryCreate(host, code)
+                .orElseThrow(() -> new RedirectBusinessException(RedirectErrorCode.LINK_NOT_FOUND));
+        LinkMeta meta = findMeta(lookupKey.host(), lookupKey.code());
         if (meta == null) {
             throw new RedirectBusinessException(RedirectErrorCode.LINK_NOT_FOUND);
         }
@@ -152,39 +179,6 @@ public class RedirectService {
         // Monolith correctness uses the authoritative source. Projectors remain warm/recovery infrastructure.
         linkCache.markNotFound(host, normalized);
         return null;
-    }
-
-    private static String normalizeAndValidateCode(String code) {
-        String normalized = normalizeCode(code);
-        if (normalized == null) {
-            throw new RedirectBusinessException(RedirectErrorCode.LINK_NOT_FOUND);
-        }
-        return normalized;
-    }
-
-    private static String normalizeCode(String code) {
-        if (code == null) {
-            return null;
-        }
-        String v = code.trim();
-        if (v.isBlank()) {
-            return null;
-        }
-        // 约束：短码最大长度为 32
-        if (v.length() > 32) {
-            return null;
-        }
-        // 安全默认：仅允许字母数字，避免异常字符导致 key/日志/路由复杂度上升
-        for (int i = 0; i < v.length(); i++) {
-            char ch = v.charAt(i);
-            boolean ok = (ch >= '0' && ch <= '9')
-                    || (ch >= 'A' && ch <= 'Z')
-                    || (ch >= 'a' && ch <= 'z');
-            if (!ok) {
-                return null;
-            }
-        }
-        return v;
     }
 
     private static LinkMeta toLinkMeta(ShortLinkReadPort.RedirectLinkView meta) {
@@ -215,17 +209,18 @@ public class RedirectService {
         if (meta == null) {
             return null;
         }
-        if (!meta.enabled()) {
-            return RedirectResolution.UnavailableReason.DISABLED;
-        }
-        if (!meta.activeLifecycle()) {
-            return RedirectResolution.UnavailableReason.DISABLED;
-        }
         LocalDateTime nowUtc = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
-        if (meta.expiresAt() != null && !meta.expiresAt().isAfter(nowUtc)) {
-            return RedirectResolution.UnavailableReason.EXPIRED;
+        RedirectDecision decision = availabilityPolicy.evaluate(
+                meta.enabled(),
+                meta.activeLifecycle(),
+                meta.expiresAt(),
+                nowUtc,
+                quotaExceeded(meta)
+        );
+        if (decision.kind() != RedirectDecision.Kind.UNAVAILABLE) {
+            return null;
         }
-        return quotaUnavailableReason(meta);
+        return toUnavailableReason(decision.reason());
     }
 
     private RedirectVisitRecord toRedirectVisitRecord(LinkMeta meta, RedirectVisitInput visitInput) {
@@ -254,18 +249,18 @@ public class RedirectService {
         return LocalDateTime.ofInstant(instant, ZoneOffset.UTC);
     }
 
-    private RedirectResolution.UnavailableReason quotaUnavailableReason(LinkMeta meta) {
+    private boolean quotaExceeded(LinkMeta meta) {
         Long applicationId = meta.applicationId();
         if (applicationId == null || applicationId <= 0) {
-            return null;
+            return false;
         }
         Optional<ApplicationQuotaView> quota = applicationScopePort.findApplicationQuota(meta.tenantId(), applicationId);
         if (quota.isEmpty()) {
-            return null;
+            return false;
         }
         long monthlyClickLimit = quota.get().monthlyClickLimit();
         if (monthlyClickLimit <= 0) {
-            return null;
+            return false;
         }
         LocalDate monthStart = LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC).withDayOfMonth(1);
         long currentMonthClicks = applicationClickUsagePort.countApplicationClicks(
@@ -274,9 +269,15 @@ public class RedirectService {
                 monthStart,
                 monthStart.plusMonths(1)
         );
-        return currentMonthClicks >= monthlyClickLimit
-                ? RedirectResolution.UnavailableReason.QUOTA_EXCEEDED
-                : null;
+        return currentMonthClicks >= monthlyClickLimit;
+    }
+
+    private static RedirectResolution.UnavailableReason toUnavailableReason(RedirectDecision.UnavailableReason reason) {
+        return switch (reason) {
+            case DISABLED -> RedirectResolution.UnavailableReason.DISABLED;
+            case EXPIRED -> RedirectResolution.UnavailableReason.EXPIRED;
+            case QUOTA_EXCEEDED -> RedirectResolution.UnavailableReason.QUOTA_EXCEEDED;
+        };
     }
 
     private static ApplicationClickUsagePort noClickUsagePort() {

@@ -7,12 +7,14 @@ import com.linkforge.contract.governance.ApprovalExecutionRequest;
 import com.linkforge.contract.governance.SensitiveOperation;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.context.UserActor;
-import com.linkforge.foundation.security.StandardRoles;
+import com.linkforge.governance.domain.ApprovalActor;
 import com.linkforge.governance.application.port.ApprovalRepository;
 import com.linkforge.governance.application.port.AuditLogRepository;
 import com.linkforge.governance.domain.ApprovalDomainException;
+import com.linkforge.governance.domain.ApprovalMatrixPolicy;
 import com.linkforge.governance.domain.ApprovalRequest;
 import com.linkforge.governance.domain.ApprovalStatus;
+import com.linkforge.governance.domain.AuditPolicy;
 import com.linkforge.governance.domain.AuditLog;
 import com.linkforge.governance.domain.SensitiveOperationType;
 import org.springframework.stereotype.Service;
@@ -22,18 +24,17 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 @Service
 public class GovernanceService {
-
-    private static final long TENANT_ADMIN_MONTHLY_LINK_LIMIT_CEILING = 100_000L;
 
     private final SnowflakeIdGenerator idGenerator;
     private final ApprovalRepository approvalRepository;
     private final AuditLogRepository auditLogRepository;
     private final Clock clock;
     private final List<ApprovalExecutionPort> approvalExecutionPorts;
+    private final ApprovalMatrixPolicy approvalMatrixPolicy = new ApprovalMatrixPolicy();
+    private final AuditPolicy auditPolicy = new AuditPolicy();
 
     public GovernanceService(
             SnowflakeIdGenerator idGenerator,
@@ -72,7 +73,17 @@ public class GovernanceService {
                 null
         );
         approvalRepository.insert(approvalRequest);
-        appendAuditLog(tenantId, actor, "SUBMIT_REQUEST", "approval_request", String.valueOf(requestId), requestId, null, request.afterSnapshot(), now);
+        appendAuditLog(
+                tenantId,
+                actor,
+                auditPolicy.requiredActionType(AuditPolicy.AuditAction.SUBMIT_REQUEST),
+                auditPolicy.requiredResourceType(),
+                String.valueOf(requestId),
+                requestId,
+                null,
+                request.afterSnapshot(),
+                now
+        );
         return toDto(approvalRequest);
     }
 
@@ -107,7 +118,17 @@ public class GovernanceService {
             }
         }
 
-        appendAuditLog(tenantId, effectiveActor, "APPROVE_REQUEST", "approval_request", String.valueOf(requestId), requestId, request.beforeSnapshot(), request.afterSnapshot(), now);
+        appendAuditLog(
+                tenantId,
+                effectiveActor,
+                auditPolicy.requiredActionType(AuditPolicy.AuditAction.APPROVE_REQUEST),
+                auditPolicy.requiredResourceType(),
+                String.valueOf(requestId),
+                requestId,
+                request.beforeSnapshot(),
+                request.afterSnapshot(),
+                now
+        );
         return approvalRepository.findByTenantIdAndId(tenantId, requestId)
                 .map(this::toDto)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_ERROR, "审批请求更新失败"));
@@ -197,36 +218,21 @@ public class GovernanceService {
     }
 
     private void enforceApprovalMatrix(UserActor actor, ApprovalRequest request) {
-        Set<String> roles = actor.roles() == null ? Set.of() : actor.roles();
-        boolean isPlatformAdmin = roles.contains(StandardRoles.PLATFORM_ADMIN);
-        boolean isTenantAdmin = roles.contains(StandardRoles.TENANT_ADMIN);
-        if (!isPlatformAdmin && !isTenantAdmin) {
+        ApprovalActor approvalActor = new ApprovalActor(actor.tenantId(), actor.userId(), actor.email(), actor.roles());
+        boolean hasAnyApprovalRole = approvalActor.hasRole(ApprovalMatrixPolicy.PLATFORM_ADMIN)
+                || approvalActor.hasRole(ApprovalMatrixPolicy.TENANT_ADMIN);
+        if (!hasAnyApprovalRole) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "无审批权限");
         }
-        if (request.operationType() == SensitiveOperationType.EXTERNAL_DOMAIN_BINDING && !isPlatformAdmin) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "外部域名绑定需平台管理员审批");
-        }
-        if (request.operationType() == SensitiveOperationType.APPLICATION_QUOTA_INCREASE) {
-            long requestedMonthlyLinkLimit = parseRequestedMonthlyLinkLimit(request.afterSnapshot());
-            if (requestedMonthlyLinkLimit > TENANT_ADMIN_MONTHLY_LINK_LIMIT_CEILING && !isPlatformAdmin) {
+        if (!approvalMatrixPolicy.mayApprove(approvalActor, request)) {
+            if (request.operationType() == SensitiveOperationType.EXTERNAL_DOMAIN_BINDING) {
+                throw new BusinessException(ErrorCode.FORBIDDEN, "外部域名绑定需平台管理员审批");
+            }
+            if (request.operationType() == SensitiveOperationType.APPLICATION_QUOTA_INCREASE) {
                 throw new BusinessException(ErrorCode.FORBIDDEN, "超出租户管理员可审批的配额上限");
             }
+            throw new BusinessException(ErrorCode.FORBIDDEN, "无审批权限");
         }
-    }
-
-    private long parseRequestedMonthlyLinkLimit(String snapshot) {
-        if (snapshot == null || snapshot.isBlank()) {
-            return 0L;
-        }
-        String marker = "monthlyLinkLimit=";
-        int start = snapshot.indexOf(marker);
-        if (start < 0) {
-            return 0L;
-        }
-        int valueStart = start + marker.length();
-        int valueEnd = snapshot.indexOf(',', valueStart);
-        String raw = valueEnd < 0 ? snapshot.substring(valueStart) : snapshot.substring(valueStart, valueEnd);
-        return Long.parseLong(raw.trim());
     }
 
     private void appendAuditLog(

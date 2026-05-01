@@ -14,6 +14,7 @@ import com.linkforge.shortlink.application.port.LinkTagRepository;
 import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
 import com.linkforge.shortlink.application.port.ShortLinkRepository;
 import com.linkforge.shortlink.application.support.ShortLinkDomainExceptions;
+import com.linkforge.shortlink.domain.DestinationChangePolicy;
 import com.linkforge.shortlink.domain.HttpUrl;
 import com.linkforge.shortlink.domain.QueryForwardAllowlist;
 import com.linkforge.shortlink.domain.QueryForwardMode;
@@ -42,6 +43,7 @@ public class UpdateShortLinkCommandHandler {
     private final PostCommitHookPort postCommitHookPort;
     private final Clock clock;
     private final ApprovalSubmissionPort approvalSubmissionPort;
+    private final DestinationChangePolicy destinationChangePolicy = new DestinationChangePolicy();
 
     public UpdateShortLinkCommandHandler(
             ShortLinkRepository shortLinkRepository,
@@ -81,10 +83,12 @@ public class UpdateShortLinkCommandHandler {
 
         boolean appAwareLink = link.applicationId() != null && link.domainId() != null;
         ShortLinkLifecycleState persistedLifecycleState = link.lifecycleState();
-        boolean requiresDestinationApproval = req.originalUrl() != null
-                && appAwareLink
-                && persistedLifecycleState == ShortLinkLifecycleState.ACTIVE
-                && !link.originalUrl().value().equals(req.originalUrl());
+        boolean requiresDestinationApproval = destinationChangePolicy.decide(
+                appAwareLink,
+                persistedLifecycleState,
+                link.originalUrl().value(),
+                req.originalUrl()
+        ) == DestinationChangePolicy.Decision.REQUIRES_APPROVAL;
 
         List<String> existingTags = null;
         if (requiresDestinationApproval) {

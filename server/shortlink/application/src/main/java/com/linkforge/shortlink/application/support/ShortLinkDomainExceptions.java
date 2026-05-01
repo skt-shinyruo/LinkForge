@@ -19,6 +19,7 @@ public final class ShortLinkDomainExceptions {
             case INVALID_CODE,
                  NOTE_TOO_LONG,
                  INVALID_REDIRECT_STATUS_CODE,
+                 INVALID_TAG,
                  INVALID_QUERY_FORWARD_MODE,
                  INVALID_QUERY_FORWARD_ALLOWLIST_ITEM,
                  INVALID_QUERY_FORWARD_ALLOWLIST_TOO_LONG,
@@ -29,4 +30,3 @@ public final class ShortLinkDomainExceptions {
         };
     }
 }
-

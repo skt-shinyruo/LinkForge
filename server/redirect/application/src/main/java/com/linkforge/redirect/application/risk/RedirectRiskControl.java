@@ -2,7 +2,7 @@ package com.linkforge.redirect.application.risk;
 
 import com.linkforge.redirect.domain.net.CidrBlock;
 import com.linkforge.redirect.domain.net.CidrBlocks;
-import com.linkforge.redirect.domain.risk.UserAgentBotDetector;
+import com.linkforge.redirect.domain.RedirectRiskPolicy;
 import com.linkforge.foundation.config.EdgeProperties;
 import com.linkforge.redirect.application.error.RedirectErrorCode;
 import org.slf4j.Logger;
@@ -43,6 +43,7 @@ public class RedirectRiskControl {
     private final List<String> botKeywords;
     private final long botIpMaxRequests;
     private final boolean botBlock;
+    private final RedirectRiskPolicy riskPolicy;
 
     public RedirectRiskControl(EdgeProperties properties, RateLimiterPort rateLimiter) {
         this.rateLimiter = rateLimiter;
@@ -68,6 +69,14 @@ public class RedirectRiskControl {
         this.botKeywords = (rawKeywords == null || rawKeywords.isEmpty()) ? DEFAULT_BOT_KEYWORDS : rawKeywords;
         this.botIpMaxRequests = bot == null ? 30 : bot.getIpMaxRequests();
         this.botBlock = bot != null && bot.isBlock();
+        this.riskPolicy = new RedirectRiskPolicy(
+                enabled,
+                ipAllowlist,
+                ipDenylist,
+                botEnabled,
+                botKeywords,
+                botBlock
+        );
     }
 
     public Decision check(String clientIp, String userAgent, String code) {
@@ -75,20 +84,12 @@ public class RedirectRiskControl {
             return Decision.allow();
         }
 
-        String ip = normalizeIp(clientIp);
-
-        // deny 优先
-        if (CidrBlocks.containsAny(ipDenylist, ip)) {
-            return Decision.forbidden("ip_denylist", "IP 已被禁止访问");
+        String ip = RedirectRiskPolicy.normalizeIp(clientIp);
+        RedirectRiskPolicy.RiskDecision riskDecision = riskPolicy.evaluate(ip, userAgent);
+        if (!riskDecision.allowed()) {
+            return Decision.forbidden(riskDecision.reasonCode(), riskDecision.message());
         }
-        if (!ipAllowlist.isEmpty() && !CidrBlocks.containsAny(ipAllowlist, ip)) {
-            return Decision.forbidden("ip_not_in_allowlist", "IP 不在允许访问范围");
-        }
-
-        boolean isBot = botEnabled && UserAgentBotDetector.isBot(userAgent, botKeywords);
-        if (isBot && botBlock) {
-            return Decision.forbidden("bot_block", "请求被策略拒绝");
-        }
+        boolean isBot = riskDecision.bot();
 
         if (!rateLimitEnabled) {
             return Decision.allow();
@@ -113,7 +114,7 @@ public class RedirectRiskControl {
         }
 
         if (ipCodeEnabled && ipCodeMaxRequests > 0 && code != null && !code.isBlank()) {
-            String safeCode = normalizeCodeForKey(code);
+            String safeCode = RedirectRiskPolicy.normalizeCodeForRateKey(code);
             if (safeCode != null) {
                 String key = "rl:r:ip_code:" + keyPart(ip) + ":" + safeCode + ":" + windowId;
                 try {
@@ -144,43 +145,12 @@ public class RedirectRiskControl {
         return r <= 0 ? 1L : r;
     }
 
-    private static String normalizeIp(String ip) {
-        if (ip == null || ip.isBlank()) {
-            return "unknown";
-        }
-        return ip.trim();
-    }
-
     private static String keyPart(String s) {
         if (s == null) {
             return "null";
         }
         // Redis key 允许 ':'，但 IPv6 包含 ':' 会显著增加 key 的可读复杂度，这里做轻度归一化
         return s.trim().replace(':', '_');
-    }
-
-    private static String normalizeCodeForKey(String code) {
-        if (code == null) {
-            return null;
-        }
-        String v = code.trim();
-        if (v.isBlank()) {
-            return null;
-        }
-        // Keep consistent with Redirect short code constraints (max 32, alphanumeric only).
-        if (v.length() > 32) {
-            return null;
-        }
-        for (int i = 0; i < v.length(); i++) {
-            char ch = v.charAt(i);
-            boolean ok = (ch >= '0' && ch <= '9')
-                    || (ch >= 'A' && ch <= 'Z')
-                    || (ch >= 'a' && ch <= 'z');
-            if (!ok) {
-                return null;
-            }
-        }
-        return v;
     }
 
     public record Decision(

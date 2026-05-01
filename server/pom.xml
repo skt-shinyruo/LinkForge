@@ -139,6 +139,11 @@
             </dependency>
             <dependency>
                 <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-accounts-runtime</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
                 <artifactId>linkforge-shortlink</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -160,6 +165,11 @@
             <dependency>
                 <groupId>com.linkforge</groupId>
                 <artifactId>linkforge-shortlink-interfaces</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-shortlink-runtime</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -189,6 +199,11 @@
             </dependency>
             <dependency>
                 <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-redirect-runtime</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
                 <artifactId>linkforge-analytics</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -210,6 +225,11 @@
             <dependency>
                 <groupId>com.linkforge</groupId>
                 <artifactId>linkforge-analytics-interfaces</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-analytics-runtime</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -239,6 +259,11 @@
             </dependency>
             <dependency>
                 <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-platform-runtime</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
                 <artifactId>linkforge-governance</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -260,6 +285,11 @@
             <dependency>
                 <groupId>com.linkforge</groupId>
                 <artifactId>linkforge-governance-interfaces</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.linkforge</groupId>
+                <artifactId>linkforge-governance-runtime</artifactId>
                 <version>${project.version}</version>
             </dependency>
 

@@ -1,7 +1,8 @@
-package com.linkforge.accounts.interfaces;
+package com.linkforge.accounts.runtime;
 
 import com.linkforge.accounts.application.AccountsApplicationConfig;
 import com.linkforge.accounts.infrastructure.AccountsInfrastructureConfig;
+import com.linkforge.accounts.interfaces.AccountsInterfacesConfig;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 

@@ -51,15 +51,6 @@ class ArchitectureTest {
         ArchRule rule = noClasses()
                 .that()
                 .resideInAnyPackage("..interfaces..")
-                .and()
-                .resideOutsideOfPackages(
-                        "com.linkforge.accounts.interfaces",
-                        "com.linkforge.shortlink.interfaces",
-                        "com.linkforge.redirect.interfaces",
-                        "com.linkforge.analytics.interfaces",
-                        "com.linkforge.platform.interfaces",
-                        "com.linkforge.governance.interfaces"
-                )
                 .should()
                 .dependOnClassesThat()
                 .resideInAnyPackage("..infrastructure..");
@@ -274,8 +265,7 @@ class ArchitectureTest {
                         "com.linkforge.analytics..",
                         "com.linkforge.platform..",
                         "com.linkforge.governance..",
-                        "com.linkforge.accounts..",
-                        "com.linkforge.app.."
+                        "com.linkforge.accounts.."
                 )
                 .should()
                 .dependOnClassesThat()
@@ -283,7 +273,8 @@ class ArchitectureTest {
                         "com.linkforge.shortlink.domain..",
                         "com.linkforge.shortlink.application..",
                         "com.linkforge.shortlink.infrastructure..",
-                        "com.linkforge.shortlink.interfaces.."
+                        "com.linkforge.shortlink.interfaces..",
+                        "com.linkforge.shortlink.runtime.."
                 );
         rule.check(CLASSES);
     }
@@ -424,7 +415,8 @@ class ArchitectureTest {
                     basePackage + ".domain..",
                     basePackage + ".application..",
                     basePackage + ".infrastructure..",
-                    basePackage + ".interfaces.."
+                    basePackage + ".interfaces..",
+                    basePackage + ".runtime.."
             };
         }
     }

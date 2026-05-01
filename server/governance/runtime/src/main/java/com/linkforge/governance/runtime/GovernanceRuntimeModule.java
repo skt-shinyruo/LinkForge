@@ -1,7 +1,8 @@
-package com.linkforge.governance.interfaces;
+package com.linkforge.governance.runtime;
 
 import com.linkforge.governance.application.GovernanceApplicationConfig;
 import com.linkforge.governance.infrastructure.GovernanceInfrastructureConfig;
+import com.linkforge.governance.interfaces.GovernanceInterfacesConfig;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 

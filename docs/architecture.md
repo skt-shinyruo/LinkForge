@@ -6,13 +6,13 @@ LinkForge is a modular monolith built as a Maven reactor plus a separate Vue fro
 
 - `server/foundation`: split between pure shared-library packages and explicit runtime support. `foundation.config`, `foundation.id`, `foundation.tx`, and `foundation.util` stay framework-light library code; runtime beans such as `RequestIdFilter`, startup checks, and integration-event MyBatis wiring live under `foundation.runtime..`.
 - `server/contracts/*`: shared vocabulary that still earns its maintenance cost inside the monolith. `contract-api` holds common API contracts, `contract-shortlink` carries shortlink integration-event payloads, `contract-redirect` carries redirect read/cache contracts, `contract-analytics` carries analytics contracts, and `contract-platform` carries application/domain authorization vocabulary.
-- `server/accounts`: account, tenant, auth, and API-key management split into `domain`, `application`, `infrastructure`, and `interfaces` Maven modules. Its application layer now depends on ports/shared contracts instead of infrastructure classes or runtime-security helpers.
+- `server/accounts`: account, tenant, auth, and API-key management split into `domain`, `application`, `infrastructure`, `interfaces`, and `runtime` Maven modules. Its application layer now depends on ports/shared contracts instead of infrastructure classes or runtime-security helpers.
 - `server/platform`: control-plane ownership for tenant applications, domains, quotas, and policies. It models `tenant -> application -> domain` relationships and exposes the tenant/platform admin HTTP surfaces used by the self-service console.
 - `server/governance`: approval and audit management. It persists sensitive-operation requests, approval decisions, and audit logs, and exposes narrow application APIs for link destination changes and analytics export approvals.
-- `server/shortlink`: write-side shortlink management split into `domain`, `application`, `infrastructure`, and `interfaces`. It owns durable shortlink state and emits integration events for downstream projections.
-- `server/redirect`: cache-backed redirect serving split into `domain`, `application`, `infrastructure`, and `interfaces`. Redirect correctness uses Redis plus the authoritative shortlink read API on cache miss; it no longer maintains an independent redirect projection model.
-- `server/analytics`: visit recording and read models split into `domain`, `application`, `infrastructure`, and `interfaces`.
-- `server/app`: Spring Boot executable composition root. `LinkForgeApplication` explicitly imports context-owned runtime modules (`FoundationRuntimeModule`, `AccountsRuntimeModule`, `ShortlinkRuntimeModule`, `RedirectRuntimeModule`, `AnalyticsRuntimeModule`, `PlatformRuntimeModule`, and `GovernanceRuntimeModule`) instead of package scans or app-owned wrappers; the bounded-context runtime modules now live with the context export surface in `interfaces`.
+- `server/shortlink`: write-side shortlink management split into `domain`, `application`, `infrastructure`, `interfaces`, and `runtime`. It owns durable shortlink state and emits integration events for downstream projections.
+- `server/redirect`: cache-backed redirect serving split into `domain`, `application`, `infrastructure`, `interfaces`, and `runtime`. Redirect correctness uses Redis plus the authoritative shortlink read API on cache miss; it no longer maintains an independent redirect projection model.
+- `server/analytics`: visit recording and read models split into `domain`, `application`, `infrastructure`, `interfaces`, and `runtime`.
+- `server/app`: Spring Boot executable composition root. `LinkForgeApplication` explicitly imports context-owned runtime modules (`FoundationRuntimeModule`, `AccountsRuntimeModule`, `ShortlinkRuntimeModule`, `RedirectRuntimeModule`, `AnalyticsRuntimeModule`, `PlatformRuntimeModule`, and `GovernanceRuntimeModule`) instead of package scans or app-owned wrappers; bounded-context runtime modules now live in each context's `runtime` Maven module.
 - `server/integration-tests`: Testcontainers-based integration verification for cross-module behavior.
 
 ## DDD Context Map
@@ -63,8 +63,9 @@ approval orchestration.
 - `application` owns use-case orchestration, transactions, repository ports, authorization input handling, and integration-event publication.
 - `interfaces` owns HTTP mapping, request validation, principal extraction, and transport response shaping.
 - `infrastructure` owns MyBatis, Redis, schedulers, and persistence mapping.
+- `runtime` owns context-local Spring composition by importing the context's application, infrastructure, and interfaces configs.
 - `contracts/*` owns published language shared across bounded contexts.
-- Bounded contexts must not import another context's `domain`, `application`, `infrastructure`, or `interfaces` packages.
+- Bounded contexts must not import another context's `domain`, `application`, `infrastructure`, `interfaces`, or `runtime` packages.
 
 ## Redirect Correctness Path
 

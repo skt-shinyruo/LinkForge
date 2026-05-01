@@ -14,6 +14,7 @@ import java.util.HexFormat;
 public final class AnalyticsKeys {
 
     private static final DateTimeFormatter DAY = DateTimeFormatter.BASIC_ISO_DATE; // yyyyMMdd
+    private static final DateTimeFormatter MONTH = DateTimeFormatter.ofPattern("yyyyMM");
 
     private AnalyticsKeys() {
     }
@@ -40,6 +41,10 @@ public final class AnalyticsKeys {
 
     public static String uvKey(long tenantId, long linkId, LocalDate day) {
         return "stats:uv:" + tenantId + ":" + linkId + ":" + DAY.format(day);
+    }
+
+    public static String applicationClickQuotaKey(long tenantId, long applicationId, LocalDate monthStartUtc) {
+        return "quota:click:application:" + tenantId + ":" + applicationId + ":" + MONTH.format(monthStartUtc);
     }
 
     /**

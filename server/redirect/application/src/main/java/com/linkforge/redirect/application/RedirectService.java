@@ -1,6 +1,7 @@
 package com.linkforge.redirect.application;
 
 import com.linkforge.contract.analytics.ApplicationClickUsagePort;
+import com.linkforge.contract.analytics.ApplicationClickQuotaReservationPort;
 import com.linkforge.contract.analytics.RedirectVisitRecord;
 import com.linkforge.contract.analytics.VisitContext;
 import com.linkforge.contract.analytics.VisitRecorderPort;
@@ -12,6 +13,8 @@ import com.linkforge.contract.shortlink.ShortLinkReadPort;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.linkforge.redirect.application.error.RedirectBusinessException;
 import com.linkforge.redirect.application.error.RedirectErrorCode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
@@ -24,12 +27,15 @@ import java.util.Optional;
 @Service
 public class RedirectService {
 
+    private static final Logger log = LoggerFactory.getLogger(RedirectService.class);
+
     private final LinkCachePort linkCache;
     private final ShortLinkReadPort shortLinkReadPort;
     private final VisitRecorderPort visitRecorderPort;
     private final Clock clock;
     private final ApplicationScopePort applicationScopePort;
     private final ApplicationClickUsagePort applicationClickUsagePort;
+    private final ApplicationClickQuotaReservationPort applicationClickQuotaReservationPort;
 
     @Autowired
     public RedirectService(
@@ -38,7 +44,8 @@ public class RedirectService {
             VisitRecorderPort visitRecorderPort,
             Clock clock,
             ApplicationScopePort applicationScopePort,
-            ApplicationClickUsagePort applicationClickUsagePort
+            ApplicationClickUsagePort applicationClickUsagePort,
+            ApplicationClickQuotaReservationPort applicationClickQuotaReservationPort
     ) {
         this.linkCache = linkCache;
         this.shortLinkReadPort = shortLinkReadPort;
@@ -46,6 +53,28 @@ public class RedirectService {
         this.clock = clock;
         this.applicationScopePort = applicationScopePort == null ? noQuotaApplicationScopePort() : applicationScopePort;
         this.applicationClickUsagePort = applicationClickUsagePort == null ? noClickUsagePort() : applicationClickUsagePort;
+        this.applicationClickQuotaReservationPort = applicationClickQuotaReservationPort == null
+                ? fallbackClickQuotaReservationPort(this.applicationClickUsagePort)
+                : applicationClickQuotaReservationPort;
+    }
+
+    public RedirectService(
+            LinkCachePort linkCache,
+            ShortLinkReadPort shortLinkReadPort,
+            VisitRecorderPort visitRecorderPort,
+            Clock clock,
+            ApplicationScopePort applicationScopePort,
+            ApplicationClickUsagePort applicationClickUsagePort
+    ) {
+        this(
+                linkCache,
+                shortLinkReadPort,
+                visitRecorderPort,
+                clock,
+                applicationScopePort,
+                applicationClickUsagePort,
+                null
+        );
     }
 
     public RedirectService(
@@ -60,7 +89,8 @@ public class RedirectService {
                 visitRecorderPort,
                 clock,
                 noQuotaApplicationScopePort(),
-                noClickUsagePort()
+                noClickUsagePort(),
+                null
         );
     }
 
@@ -89,13 +119,18 @@ public class RedirectService {
             return RedirectResolution.notFound(normalizedCode, request.htmlRequest());
         }
 
-        RedirectResolution.UnavailableReason unavailableReason = unavailableReason(meta);
+        RedirectResolution.UnavailableReason unavailableReason = staticUnavailableReason(meta);
         if (unavailableReason != null) {
             return RedirectResolution.unavailable(normalizedCode, request.htmlRequest(), meta, unavailableReason);
         }
 
         if (request.htmlRequest() && meta.previewEnabled() && !request.confirmed()) {
             return RedirectResolution.preview(normalizedCode, true, meta);
+        }
+
+        unavailableReason = quotaUnavailableReason(meta);
+        if (unavailableReason != null) {
+            return RedirectResolution.unavailable(normalizedCode, request.htmlRequest(), meta, unavailableReason);
         }
 
         visitRecorderPort.recordVisit(toRedirectVisitRecord(meta, request.visitInput()));
@@ -208,10 +243,15 @@ public class RedirectService {
     }
 
     private boolean isAvailable(LinkMeta meta) {
-        return unavailableReason(meta) == null;
+        return redirectUnavailableReason(meta) == null;
     }
 
-    private RedirectResolution.UnavailableReason unavailableReason(LinkMeta meta) {
+    private RedirectResolution.UnavailableReason redirectUnavailableReason(LinkMeta meta) {
+        RedirectResolution.UnavailableReason reason = staticUnavailableReason(meta);
+        return reason == null ? quotaUnavailableReason(meta) : reason;
+    }
+
+    private RedirectResolution.UnavailableReason staticUnavailableReason(LinkMeta meta) {
         if (meta == null) {
             return null;
         }
@@ -225,7 +265,7 @@ public class RedirectService {
         if (meta.expiresAt() != null && !meta.expiresAt().isAfter(nowUtc)) {
             return RedirectResolution.UnavailableReason.EXPIRED;
         }
-        return quotaUnavailableReason(meta);
+        return null;
     }
 
     private RedirectVisitRecord toRedirectVisitRecord(LinkMeta meta, RedirectVisitInput visitInput) {
@@ -268,19 +308,37 @@ public class RedirectService {
             return null;
         }
         LocalDate monthStart = LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC).withDayOfMonth(1);
-        long currentMonthClicks = applicationClickUsagePort.countApplicationClicks(
-                meta.tenantId(),
-                applicationId,
-                monthStart,
-                monthStart.plusMonths(1)
-        );
-        return currentMonthClicks >= monthlyClickLimit
-                ? RedirectResolution.UnavailableReason.QUOTA_EXCEEDED
-                : null;
+        LocalDate monthEnd = monthStart.plusMonths(1);
+        boolean reserved;
+        try {
+            reserved = applicationClickQuotaReservationPort.tryReserveMonthlyClick(
+                    meta.tenantId(),
+                    applicationId,
+                    monthStart,
+                    monthEnd,
+                    monthlyClickLimit
+            );
+        } catch (Exception e) {
+            log.debug(
+                    "reserve monthly click quota failed: tenantId={}, applicationId={}, monthStart={}, err={}",
+                    meta.tenantId(),
+                    applicationId,
+                    monthStart,
+                    e.getMessage()
+            );
+            reserved = false;
+        }
+        return reserved ? null : RedirectResolution.UnavailableReason.QUOTA_EXCEEDED;
     }
 
     private static ApplicationClickUsagePort noClickUsagePort() {
         return (tenantId, applicationId, fromInclusiveUtc, toExclusiveUtc) -> 0L;
+    }
+
+    private static ApplicationClickQuotaReservationPort fallbackClickQuotaReservationPort(ApplicationClickUsagePort clickUsagePort) {
+        ApplicationClickUsagePort usagePort = clickUsagePort == null ? noClickUsagePort() : clickUsagePort;
+        return (tenantId, applicationId, fromInclusiveUtc, toExclusiveUtc, monthlyClickLimit) ->
+                usagePort.countApplicationClicks(tenantId, applicationId, fromInclusiveUtc, toExclusiveUtc) < monthlyClickLimit;
     }
 
     private static ApplicationScopePort noQuotaApplicationScopePort() {

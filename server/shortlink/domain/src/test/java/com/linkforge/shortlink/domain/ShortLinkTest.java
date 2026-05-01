@@ -50,13 +50,33 @@ class ShortLinkTest {
     }
 
     @Test
-    void markUpdated_shouldRecordUpdatedDomainEvent() {
-        ShortLink link = activeLink();
-        link.pullDomainEvents();
+    void markUpdated_shouldUpdateAggregateTimestampAndRecordUpdatedDomainEvent() {
+        LocalDateTime previousUpdatedAtUtc = LocalDateTime.parse("2026-04-28T01:02:03");
+        ShortLink link = ShortLink.rehydrate(
+                1L,
+                1L,
+                ShortCode.of("abc123"),
+                HttpUrl.of("https://example.com/path"),
+                "note",
+                true,
+                null,
+                null,
+                null,
+                false,
+                null,
+                null,
+                null,
+                CreatedByType.USER,
+                99L,
+                3L,
+                LocalDateTime.parse("2026-04-28T00:00:00"),
+                previousUpdatedAtUtc
+        );
         LocalDateTime updatedAtUtc = LocalDateTime.parse("2026-04-28T04:05:06");
 
         link.markUpdated(updatedAtUtc);
 
+        assertThat(link.updatedAtUtc()).isEqualTo(updatedAtUtc);
         assertThat(link.pullDomainEvents())
                 .containsExactly(new ShortLinkUpdated(1L, 1L, null, "abc123", updatedAtUtc));
     }

@@ -421,6 +421,7 @@ public class ShortLink {
 
     public void markUpdated(LocalDateTime updatedAtUtc) {
         Objects.requireNonNull(updatedAtUtc, "updatedAtUtc must be provided in UTC");
+        this.updatedAtUtc = updatedAtUtc;
         recordDomainEvent(new ShortLinkUpdated(id, tenantId, domainId, code.value(), updatedAtUtc));
     }
 

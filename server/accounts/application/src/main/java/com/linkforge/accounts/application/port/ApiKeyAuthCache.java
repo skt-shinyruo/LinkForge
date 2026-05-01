@@ -4,8 +4,6 @@ public interface ApiKeyAuthCache {
 
     Entry read(long apiKeyId);
 
-    void putActive(long apiKeyId, long tenantId, Long applicationId, String secretDigest, long ttlSeconds);
-
     void putDisabled(long apiKeyId, long tenantId, Long applicationId, long ttlSeconds);
 
     void evict(long apiKeyId);

@@ -21,10 +21,6 @@
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-accounts-infrastructure</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.linkforge</groupId>
             <artifactId>linkforge-foundation-core</artifactId>
         </dependency>
         <dependency>

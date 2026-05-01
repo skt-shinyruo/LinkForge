@@ -21,5 +21,6 @@
         <module>application</module>
         <module>infrastructure</module>
         <module>interfaces</module>
+        <module>runtime</module>
     </modules>
 </project>

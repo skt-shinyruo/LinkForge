@@ -1,12 +1,12 @@
 package com.linkforge;
 
-import com.linkforge.accounts.interfaces.AccountsRuntimeModule;
-import com.linkforge.analytics.interfaces.AnalyticsRuntimeModule;
+import com.linkforge.accounts.runtime.AccountsRuntimeModule;
+import com.linkforge.analytics.runtime.AnalyticsRuntimeModule;
 import com.linkforge.foundation.runtime.FoundationRuntimeModule;
-import com.linkforge.governance.interfaces.GovernanceRuntimeModule;
-import com.linkforge.platform.interfaces.PlatformRuntimeModule;
-import com.linkforge.redirect.interfaces.RedirectRuntimeModule;
-import com.linkforge.shortlink.interfaces.ShortlinkRuntimeModule;
+import com.linkforge.governance.runtime.GovernanceRuntimeModule;
+import com.linkforge.platform.runtime.PlatformRuntimeModule;
+import com.linkforge.redirect.runtime.RedirectRuntimeModule;
+import com.linkforge.shortlink.runtime.ShortlinkRuntimeModule;
 import com.linkforge.foundation.config.AnalyticsProperties;
 import com.linkforge.foundation.config.CorsProperties;
 import com.linkforge.foundation.config.CoreProperties;

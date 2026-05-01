@@ -55,39 +55,27 @@
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-accounts-domain</artifactId>
+            <artifactId>linkforge-accounts-runtime</artifactId>
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-accounts-application</artifactId>
+            <artifactId>linkforge-platform-runtime</artifactId>
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-accounts-infrastructure</artifactId>
+            <artifactId>linkforge-governance-runtime</artifactId>
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-accounts-interfaces</artifactId>
+            <artifactId>linkforge-shortlink-runtime</artifactId>
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-platform-interfaces</artifactId>
+            <artifactId>linkforge-redirect-runtime</artifactId>
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-governance-interfaces</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-shortlink-interfaces</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-redirect-interfaces</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-analytics-interfaces</artifactId>
+            <artifactId>linkforge-analytics-runtime</artifactId>
         </dependency>
 
         <!-- web -->

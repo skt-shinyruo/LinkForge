@@ -1,6 +1,7 @@
 package com.linkforge.redirect.application;
 
 import com.linkforge.contract.analytics.ApplicationClickUsagePort;
+import com.linkforge.contract.analytics.ApplicationClickQuotaReservationPort;
 import com.linkforge.contract.analytics.RedirectVisitRecord;
 import com.linkforge.contract.analytics.VisitRecorderPort;
 import com.linkforge.contract.platform.ApplicationQuotaView;
@@ -21,6 +22,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -173,6 +175,132 @@ class RedirectServiceAuthoritativeFallbackTest {
         assertThat(resolution.kind()).isEqualTo(RedirectResolution.Kind.UNAVAILABLE);
         assertThat(resolution.unavailableReason()).isEqualTo(RedirectResolution.UnavailableReason.QUOTA_EXCEEDED);
         assertThat(recorded.get()).isNull();
+    }
+
+    @Test
+    void resolve_shouldReserveMonthlyClickQuotaOnlyForActualRedirects() {
+        RecordingLinkCache cache = new RecordingLinkCache();
+        ShortLinkReadPort shortLinkReadPort = mock(ShortLinkReadPort.class);
+        ShortLinkReadPort.RedirectLinkView authoritative = new ShortLinkReadPort.RedirectLinkView(
+                22L,
+                11L,
+                "abc123",
+                "go.example.test",
+                "https://example.com/live",
+                true,
+                null,
+                302,
+                true,
+                "https://example.com/unavailable",
+                "ALLOWLIST",
+                "utm_source",
+                33L,
+                44L
+        );
+        when(shortLinkReadPort.findRedirectMetaByHostAndCode("go.example.test", "abc123"))
+                .thenReturn(Optional.of(authoritative));
+        AtomicReference<RedirectVisitRecord> recorded = new AtomicReference<>();
+        VisitRecorderPort visitRecorderPort = recorded::set;
+        ApplicationScopePort applicationScopePort = mock(ApplicationScopePort.class);
+        when(applicationScopePort.findApplicationQuota(22L, 33L))
+                .thenReturn(Optional.of(new ApplicationQuotaView(33L, 100L, 10L)));
+        ApplicationClickUsagePort applicationClickUsagePort = mock(ApplicationClickUsagePort.class);
+        ApplicationClickQuotaReservationPort quotaReservationPort = mock(ApplicationClickQuotaReservationPort.class);
+        when(quotaReservationPort.tryReserveMonthlyClick(
+                22L,
+                33L,
+                LocalDate.parse("2026-04-01"),
+                LocalDate.parse("2026-05-01"),
+                10L
+        )).thenReturn(true);
+        RedirectService service = new RedirectService(
+                cache,
+                shortLinkReadPort,
+                visitRecorderPort,
+                Clock.fixed(Instant.parse("2026-04-24T10:15:30Z"), java.time.ZoneOffset.UTC),
+                applicationScopePort,
+                applicationClickUsagePort,
+                quotaReservationPort
+        );
+
+        RedirectResolution preview = service.resolve(
+                new ResolveRedirectRequest("abc123", "go.example.test", true, false, null)
+        );
+        RedirectResolution redirect = service.resolve(
+                new ResolveRedirectRequest("abc123", "go.example.test", true, true, null)
+        );
+
+        assertThat(preview.kind()).isEqualTo(RedirectResolution.Kind.PREVIEW);
+        assertThat(redirect.kind()).isEqualTo(RedirectResolution.Kind.REDIRECT);
+        verify(quotaReservationPort).tryReserveMonthlyClick(
+                22L,
+                33L,
+                LocalDate.parse("2026-04-01"),
+                LocalDate.parse("2026-05-01"),
+                10L
+        );
+        assertThat(recorded.get()).isNotNull();
+    }
+
+    @Test
+    void resolve_shouldReturnUnavailableAndSkipAnalyticsWhenQuotaReservationRejected() {
+        RecordingLinkCache cache = new RecordingLinkCache();
+        ShortLinkReadPort shortLinkReadPort = mock(ShortLinkReadPort.class);
+        ShortLinkReadPort.RedirectLinkView authoritative = new ShortLinkReadPort.RedirectLinkView(
+                22L,
+                11L,
+                "abc123",
+                "go.example.test",
+                "https://example.com/live",
+                true,
+                null,
+                302,
+                false,
+                "https://example.com/unavailable",
+                "ALLOWLIST",
+                "utm_source",
+                33L,
+                44L
+        );
+        when(shortLinkReadPort.findRedirectMetaByHostAndCode("go.example.test", "abc123"))
+                .thenReturn(Optional.of(authoritative));
+        AtomicReference<RedirectVisitRecord> recorded = new AtomicReference<>();
+        VisitRecorderPort visitRecorderPort = recorded::set;
+        ApplicationScopePort applicationScopePort = mock(ApplicationScopePort.class);
+        when(applicationScopePort.findApplicationQuota(22L, 33L))
+                .thenReturn(Optional.of(new ApplicationQuotaView(33L, 100L, 10L)));
+        ApplicationClickUsagePort applicationClickUsagePort = mock(ApplicationClickUsagePort.class);
+        ApplicationClickQuotaReservationPort quotaReservationPort = mock(ApplicationClickQuotaReservationPort.class);
+        when(quotaReservationPort.tryReserveMonthlyClick(
+                22L,
+                33L,
+                LocalDate.parse("2026-04-01"),
+                LocalDate.parse("2026-05-01"),
+                10L
+        )).thenReturn(false);
+        RedirectService service = new RedirectService(
+                cache,
+                shortLinkReadPort,
+                visitRecorderPort,
+                Clock.fixed(Instant.parse("2026-04-24T10:15:30Z"), java.time.ZoneOffset.UTC),
+                applicationScopePort,
+                applicationClickUsagePort,
+                quotaReservationPort
+        );
+
+        RedirectResolution resolution = service.resolve(
+                new ResolveRedirectRequest("abc123", "go.example.test", false, false, null)
+        );
+
+        assertThat(resolution.kind()).isEqualTo(RedirectResolution.Kind.UNAVAILABLE);
+        assertThat(resolution.unavailableReason()).isEqualTo(RedirectResolution.UnavailableReason.QUOTA_EXCEEDED);
+        assertThat(recorded.get()).isNull();
+        verify(applicationClickUsagePort, never()).countApplicationClicks(
+                22L,
+                33L,
+                LocalDate.parse("2026-04-01"),
+                LocalDate.parse("2026-05-01")
+        );
     }
 
     private static final class RecordingLinkCache implements LinkCachePort {

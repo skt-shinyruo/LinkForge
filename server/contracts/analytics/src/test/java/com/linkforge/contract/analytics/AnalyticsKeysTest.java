@@ -15,6 +15,8 @@ class AnalyticsKeysTest {
         assertThat(AnalyticsKeys.activeMember(12L, 34L)).isEqualTo("12:34");
         assertThat(AnalyticsKeys.pvKey(12L, 34L, day)).isEqualTo("stats:pv:12:34:20260219");
         assertThat(AnalyticsKeys.uvKey(12L, 34L, day)).isEqualTo("stats:uv:12:34:20260219");
+        assertThat(AnalyticsKeys.applicationClickQuotaKey(12L, 56L, LocalDate.of(2026, 2, 1)))
+                .isEqualTo("quota:click:application:12:56:202602");
         assertThat(AnalyticsKeys.dimPvHashKey(12L, 34L, day, "referer_domain"))
                 .isEqualTo("stats:dim:pv:12:34:20260219:referer_domain");
         assertThat(AnalyticsKeys.dimPvHashKey(12L, 34L, day, " Referer:Domain "))

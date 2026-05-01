@@ -162,6 +162,78 @@ class ShortLinkCsvTimeSemanticsTest {
     }
 
     @Test
+    void importCsv_shouldResolveDomainIdFromHostnameWhenRowDomainIdIsMissing() {
+        CreateShortLinkCommandHandler createHandler = mock(CreateShortLinkCommandHandler.class);
+        DomainHostnameLookupPort domainHostnameLookupPort = mock(DomainHostnameLookupPort.class);
+        when(createHandler.handle(anyLong(), any(), any())).thenReturn(null);
+        when(domainHostnameLookupPort.findDomainIdByHostname(1L, "go.example.test")).thenReturn(Optional.of(3001L));
+
+        ImportShortLinksCsvCommandHandler handler = new ImportShortLinksCsvCommandHandler(
+                createHandler,
+                Runnable::run,
+                domainHostnameLookupPort
+        );
+
+        ShortLinkService.ImportResult result = handler.handle(
+                1L,
+                ShortLinkService.CreatedBy.user(1L),
+                List.of(new ShortLinkCsvImportRow(
+                        1L,
+                        "2001",
+                        null,
+                        " Go.Example.Test ",
+                        "https://example.com/1",
+                        "code-1",
+                        null,
+                        null,
+                        null
+                ))
+        );
+
+        assertThat(result.failed()).isEqualTo(0);
+
+        ArgumentCaptor<ShortLinkService.CreateLinkRequest> reqCaptor = ArgumentCaptor.forClass(ShortLinkService.CreateLinkRequest.class);
+        verify(createHandler).handle(eq(1L), eq(ShortLinkService.CreatedBy.user(1L)), reqCaptor.capture());
+        assertThat(reqCaptor.getValue().applicationId()).isEqualTo(2001L);
+        assertThat(reqCaptor.getValue().domainId()).isEqualTo(3001L);
+        verify(domainHostnameLookupPort).findDomainIdByHostname(1L, "go.example.test");
+    }
+
+    @Test
+    void importCsv_shouldFailRowWhenHostnameDoesNotMatchDomain() {
+        CreateShortLinkCommandHandler createHandler = mock(CreateShortLinkCommandHandler.class);
+        DomainHostnameLookupPort domainHostnameLookupPort = mock(DomainHostnameLookupPort.class);
+        when(domainHostnameLookupPort.findDomainIdByHostname(1L, "missing.example.test")).thenReturn(Optional.empty());
+
+        ImportShortLinksCsvCommandHandler handler = new ImportShortLinksCsvCommandHandler(
+                createHandler,
+                Runnable::run,
+                domainHostnameLookupPort
+        );
+
+        ShortLinkService.ImportResult result = handler.handle(
+                1L,
+                ShortLinkService.CreatedBy.user(1L),
+                List.of(new ShortLinkCsvImportRow(
+                        7L,
+                        "2001",
+                        null,
+                        "missing.example.test",
+                        "https://example.com/1",
+                        "code-1",
+                        null,
+                        null,
+                        null
+                ))
+        );
+
+        assertThat(result.success()).isEqualTo(0);
+        assertThat(result.failed()).isEqualTo(1);
+        assertThat(result.errors()).containsExactly("line 7: hostname 对应域名不存在");
+        verify(createHandler, times(0)).handle(anyLong(), any(), any());
+    }
+
+    @Test
     void exportCsv_should_output_expiresAt_as_utc_instant_and_null_when_blank() {
         ShortLinkRepository shortLinkRepository = mock(ShortLinkRepository.class);
         LinkTagRepository linkTagRepository = mock(LinkTagRepository.class);

@@ -104,6 +104,21 @@ class PlatformApplicationScopeAdapterTest {
         assertThat(adapter.findDomainHostname(1L, 3L)).contains("d.example");
     }
 
+    @Test
+    void findDomainIdByHostname_shouldExposeStableDomainIdentifier() {
+        DomainRepository domainRepository = mock(DomainRepository.class);
+        when(domainRepository.findByTenantIdAndHostname(1L, "d.example"))
+                .thenReturn(Optional.of(new Domain(3L, 1L, 2L, "d.example", DomainScope.TENANT_SHARED, DomainStatus.ACTIVE, TargetTrustClass.FIRST_PARTY, null, null)));
+
+        PlatformApplicationScopeAdapter adapter = newAdapter(
+                mock(PlatformControlPlaneService.class),
+                domainRepository,
+                mock(LegacyApplicationBindingService.class)
+        );
+
+        assertThat(adapter.findDomainIdByHostname(1L, "d.example")).contains(3L);
+    }
+
     private static PlatformApplicationScopeAdapter newAdapter(
             PlatformControlPlaneService controlPlaneService,
             DomainRepository domainRepository,

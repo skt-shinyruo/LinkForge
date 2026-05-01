@@ -22,9 +22,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -37,15 +34,6 @@ public class ApiKeyService implements ApiKeyAuthenticator {
     private static final Logger log = LoggerFactory.getLogger(ApiKeyService.class);
     private static final String API_KEY_PREFIX = "lfk";
     private static final SecureRandom RANDOM = new SecureRandom();
-
-    private static final Base64.Encoder BASE64_URL = Base64.getUrlEncoder().withoutPadding();
-    private static final ThreadLocal<MessageDigest> SHA_256 = ThreadLocal.withInitial(() -> {
-        try {
-            return MessageDigest.getInstance("SHA-256");
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 digest not available", e);
-        }
-    });
 
     private static final int MAX_API_KEY_LEN = 256;
     private static final int MAX_API_KEY_SECRET_LEN = 128;
@@ -103,30 +91,18 @@ public class ApiKeyService implements ApiKeyAuthenticator {
         );
         apiKeyStore.insert(apiKey);
 
-        String digest = sha256Base64Url(secret);
-        long authCacheTtlSeconds = authCacheTtlSeconds();
-        putActiveAfterCommit(id, tenantId, applicationId, digest, authCacheTtlSeconds);
-
         return new CreatedApiKey(id, name, key);
     }
 
     public ApiKeyAuthResult authenticate(String apiKey) {
         Parsed parsed = parse(apiKey);
-        String secretDigest = sha256Base64Url(parsed.secret);
 
         long authCacheTtlSeconds = authCacheTtlSeconds();
         ApiKeyAuthCache.Entry cached = authCacheTtlSeconds > 0
                 ? authCache.read(parsed.id)
                 : null;
-        if (cached != null) {
-            if (!AccountsConstants.STATUS_ACTIVE.equals(cached.status())) {
-                throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_DISABLED);
-            }
-            if (!constantTimeEquals(secretDigest, cached.secretDigest())) {
-                throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_INVALID);
-            }
-            tryUpdateLastUsedAtThrottled(parsed.id, null, false);
-            return new ApiKeyAuthResult(cached.tenantId(), cached.applicationId(), parsed.id);
+        if (cached != null && !AccountsConstants.STATUS_ACTIVE.equals(cached.status())) {
+            throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_DISABLED);
         }
 
         AccountsApiKeyStore.ApiKey apiKeyRecord = apiKeyStore.findById(parsed.id);
@@ -149,15 +125,6 @@ public class ApiKeyService implements ApiKeyAuthenticator {
             throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_INVALID);
         }
 
-        if (authCacheTtlSeconds > 0) {
-            authCache.putActive(
-                    parsed.id,
-                    apiKeyRecord.tenantId() == null ? 0L : apiKeyRecord.tenantId(),
-                    apiKeyRecord.applicationId(),
-                    secretDigest,
-                    authCacheTtlSeconds
-            );
-        }
         tryUpdateLastUsedAtThrottled(parsed.id, apiKeyRecord.lastUsedAt(), true);
 
         return new ApiKeyAuthResult(apiKeyRecord.tenantId(), apiKeyRecord.applicationId(), apiKeyRecord.id());
@@ -245,15 +212,7 @@ public class ApiKeyService implements ApiKeyAuthenticator {
         String key = API_KEY_PREFIX + "_" + apiKey.id() + "_" + secret;
         apiKeyStore.update(withKeyHashAndStatus(apiKey, passwordHasher.encode(secret), AccountsConstants.STATUS_ACTIVE));
 
-        String digest = sha256Base64Url(secret);
-        long authCacheTtlSeconds = authCacheTtlSeconds();
-        putActiveAfterCommit(
-                apiKeyId,
-                apiKey.tenantId() == null ? 0L : apiKey.tenantId(),
-                apiKey.applicationId(),
-                digest,
-                authCacheTtlSeconds
-        );
+        evictAfterCommit(apiKeyId);
 
         return new CreatedApiKey(apiKey.id(), apiKey.name(), key);
     }
@@ -405,30 +364,6 @@ public class ApiKeyService implements ApiKeyAuthenticator {
         );
     }
 
-    private static String sha256Base64Url(String input) {
-        if (input == null) {
-            return "";
-        }
-        MessageDigest md = SHA_256.get();
-        md.reset();
-        byte[] digest = md.digest(input.getBytes(StandardCharsets.UTF_8));
-        return BASE64_URL.encodeToString(digest);
-    }
-
-    private static boolean constantTimeEquals(String a, String b) {
-        if (a == null || b == null) {
-            return false;
-        }
-        if (a.length() != b.length()) {
-            return false;
-        }
-        int r = 0;
-        for (int i = 0; i < a.length(); i++) {
-            r |= a.charAt(i) ^ b.charAt(i);
-        }
-        return r == 0;
-    }
-
     private long authCacheTtlSeconds() {
         long ttlSeconds = 60;
         try {
@@ -441,19 +376,6 @@ public class ApiKeyService implements ApiKeyAuthenticator {
             ttlSeconds = 0;
         }
         return ttlSeconds;
-    }
-
-    private void putActiveAfterCommit(
-            long apiKeyId,
-            long tenantId,
-            Long applicationId,
-            String secretDigest,
-            long ttlSeconds
-    ) {
-        if (ttlSeconds <= 0) {
-            return;
-        }
-        runAfterCommit(() -> authCache.putActive(apiKeyId, tenantId, applicationId, secretDigest, ttlSeconds));
     }
 
     private void putDisabledAfterCommit(long apiKeyId, long tenantId, Long applicationId, long ttlSeconds) {

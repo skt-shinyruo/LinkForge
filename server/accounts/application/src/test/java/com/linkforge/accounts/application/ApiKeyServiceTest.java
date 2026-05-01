@@ -32,7 +32,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
@@ -79,7 +78,7 @@ class ApiKeyServiceTest {
     }
 
     @Test
-    void authenticate_shouldUseRedisAuthCache_andSkipDbAndBcrypt_onCacheHit() {
+    void authenticate_shouldVerifyDbAndBcryptBeforeAcceptingActiveCacheHit() {
         AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
         AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
         ApiKeyAuthCache authCache = mock(ApiKeyAuthCache.class);
@@ -91,18 +90,95 @@ class ApiKeyServiceTest {
         ApiKeyService service = newService(store, passwordHasher, props, authCache);
 
         String digest = sha256Base64Url("secret");
+        AccountsApiKeyStore.ApiKey apiKey = new AccountsApiKeyStore.ApiKey(
+                123L,
+                1L,
+                null,
+                "test-key",
+                "hash",
+                AccountsConstants.STATUS_ACTIVE,
+                null,
+                null
+        );
         when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, null, AccountsConstants.STATUS_ACTIVE, digest));
+        when(store.findById(123L)).thenReturn(apiKey);
+        when(passwordHasher.matches("secret", "hash")).thenReturn(true);
 
         ApiKeyService.ApiKeyAuthResult r = service.authenticate("lfk_123_secret");
         assertThat(r.tenantId()).isEqualTo(1L);
         assertThat(r.apiKeyId()).isEqualTo(123L);
 
-        verifyNoInteractions(store);
-        verifyNoInteractions(passwordHasher);
+        verify(store).findById(123L);
+        verify(passwordHasher).matches("secret", "hash");
     }
 
     @Test
-    void authenticate_shouldReject_whenCacheHitButDigestMismatch() {
+    void authenticate_shouldRejectDisabledDbRecord_whenActiveCacheIsStale() {
+        AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
+        AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
+        ApiKeyAuthCache authCache = mock(ApiKeyAuthCache.class);
+
+        SecurityProperties props = new SecurityProperties();
+        props.getApiKey().setAuthCacheTtlSeconds(60);
+        props.getApiKey().setLastUsedUpdateIntervalSeconds(0);
+
+        ApiKeyService service = newService(store, passwordHasher, props, authCache);
+
+        String digest = sha256Base64Url("secret");
+        AccountsApiKeyStore.ApiKey apiKey = new AccountsApiKeyStore.ApiKey(
+                123L,
+                1L,
+                null,
+                "test-key",
+                "hash",
+                AccountsConstants.STATUS_DISABLED,
+                null,
+                null
+        );
+        when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, null, AccountsConstants.STATUS_ACTIVE, digest));
+        when(store.findById(123L)).thenReturn(apiKey);
+
+        assertThatThrownBy(() -> service.authenticate("lfk_123_secret"))
+                .isInstanceOf(ApiKeyService.ApiKeyAuthException.class)
+                .extracting(ex -> ((ApiKeyService.ApiKeyAuthException) ex).errorCode())
+                .isEqualTo(OpenApiErrorCode.API_KEY_DISABLED);
+    }
+
+    @Test
+    void authenticate_shouldRejectOldSecret_whenActiveCacheSurvivesRotation() {
+        AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
+        AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
+        ApiKeyAuthCache authCache = mock(ApiKeyAuthCache.class);
+
+        SecurityProperties props = new SecurityProperties();
+        props.getApiKey().setAuthCacheTtlSeconds(60);
+        props.getApiKey().setLastUsedUpdateIntervalSeconds(0);
+
+        ApiKeyService service = newService(store, passwordHasher, props, authCache);
+
+        String oldDigest = sha256Base64Url("old-secret");
+        AccountsApiKeyStore.ApiKey apiKey = new AccountsApiKeyStore.ApiKey(
+                123L,
+                1L,
+                null,
+                "test-key",
+                "new-hash",
+                AccountsConstants.STATUS_ACTIVE,
+                null,
+                null
+        );
+        when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, null, AccountsConstants.STATUS_ACTIVE, oldDigest));
+        when(store.findById(123L)).thenReturn(apiKey);
+        when(passwordHasher.matches("old-secret", "new-hash")).thenReturn(false);
+
+        assertThatThrownBy(() -> service.authenticate("lfk_123_old-secret"))
+                .isInstanceOf(ApiKeyService.ApiKeyAuthException.class)
+                .extracting(ex -> ((ApiKeyService.ApiKeyAuthException) ex).errorCode())
+                .isEqualTo(OpenApiErrorCode.API_KEY_INVALID);
+    }
+
+    @Test
+    void authenticate_shouldReject_whenDbHashDoesNotMatchEvenIfActiveCacheExists() {
         AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
         AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
         ApiKeyAuthCache authCache = mock(ApiKeyAuthCache.class);
@@ -114,15 +190,27 @@ class ApiKeyServiceTest {
         ApiKeyService service = newService(store, passwordHasher, props, authCache);
 
         String wrongDigest = sha256Base64Url("other-secret");
+        AccountsApiKeyStore.ApiKey apiKey = new AccountsApiKeyStore.ApiKey(
+                123L,
+                1L,
+                null,
+                "test-key",
+                "hash",
+                AccountsConstants.STATUS_ACTIVE,
+                null,
+                null
+        );
         when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, null, AccountsConstants.STATUS_ACTIVE, wrongDigest));
+        when(store.findById(123L)).thenReturn(apiKey);
+        when(passwordHasher.matches("secret", "hash")).thenReturn(false);
 
         assertThatThrownBy(() -> service.authenticate("lfk_123_secret"))
                 .isInstanceOf(ApiKeyService.ApiKeyAuthException.class)
                 .extracting(ex -> ((ApiKeyService.ApiKeyAuthException) ex).errorCode())
                 .isEqualTo(OpenApiErrorCode.API_KEY_INVALID);
 
-        verifyNoInteractions(store);
-        verifyNoInteractions(passwordHasher);
+        verify(store).findById(123L);
+        verify(passwordHasher).matches("secret", "hash");
     }
 
     @Test
@@ -149,7 +237,7 @@ class ApiKeyServiceTest {
     }
 
     @Test
-    void authenticate_shouldFallbackToDb_andBackfillCache_onCacheMiss() {
+    void authenticate_shouldFallbackToDb_withoutBackfillingActiveCache_onCacheMiss() {
         AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
         AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
         ApiKeyAuthCache authCache = mock(ApiKeyAuthCache.class);
@@ -179,7 +267,7 @@ class ApiKeyServiceTest {
         assertThat(r.tenantId()).isEqualTo(1L);
         assertThat(r.apiKeyId()).isEqualTo(123L);
 
-        verify(authCache).putActive(eq(123L), eq(1L), isNull(), any(), eq(60L));
+        verify(authCache).read(123L);
     }
 
     @Test
@@ -207,7 +295,7 @@ class ApiKeyServiceTest {
     }
 
     @Test
-    void create_shouldPopulateAuthCacheOnlyAfterCommit() {
+    void create_shouldNotPopulateActiveAuthCache() {
         AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
         AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
         ApiKeyAuthCache authCache = mock(ApiKeyAuthCache.class);
@@ -226,10 +314,7 @@ class ApiKeyServiceTest {
         assertThat(created.id()).isEqualTo(123L);
         verify(store).insert(any());
         verifyNoInteractions(authCache);
-
-        postCommitHook.runCaptured();
-
-        verify(authCache).putActive(eq(123L), eq(1L), eq(2001L), any(), eq(60L));
+        postCommitHook.assertNothingCaptured();
     }
 
     @Test
@@ -278,7 +363,19 @@ class ApiKeyServiceTest {
         ApiKeyService service = newService(store, passwordHasher, props, authCache);
 
         String digest = sha256Base64Url("secret");
+        AccountsApiKeyStore.ApiKey apiKey = new AccountsApiKeyStore.ApiKey(
+                123L,
+                1L,
+                null,
+                "test-key",
+                "hash",
+                AccountsConstants.STATUS_ACTIVE,
+                null,
+                null
+        );
         when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, null, AccountsConstants.STATUS_ACTIVE, digest));
+        when(store.findById(123L)).thenReturn(apiKey);
+        when(passwordHasher.matches("secret", "hash")).thenReturn(true);
         when(authCache.tryAcquireLastUsedToken(123L, 300L)).thenReturn(ApiKeyAuthCache.LastUsedTokenResult.ACQUIRED);
 
         service.authenticate("lfk_123_secret");
@@ -302,7 +399,19 @@ class ApiKeyServiceTest {
         ApiKeyService service = newService(store, passwordHasher, props, authCache, fixedClock);
 
         String digest = sha256Base64Url("secret");
+        AccountsApiKeyStore.ApiKey apiKey = new AccountsApiKeyStore.ApiKey(
+                123L,
+                1L,
+                null,
+                "test-key",
+                "hash",
+                AccountsConstants.STATUS_ACTIVE,
+                null,
+                null
+        );
         when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, null, AccountsConstants.STATUS_ACTIVE, digest));
+        when(store.findById(123L)).thenReturn(apiKey);
+        when(passwordHasher.matches("secret", "hash")).thenReturn(true);
         when(authCache.tryAcquireLastUsedToken(123L, 300L)).thenReturn(ApiKeyAuthCache.LastUsedTokenResult.ACQUIRED);
 
         service.authenticate("lfk_123_secret");
@@ -479,7 +588,7 @@ class ApiKeyServiceTest {
     }
 
     @Test
-    void rotate_shouldPopulateAuthCacheOnlyAfterCommit() {
+    void rotate_shouldEvictAuthCacheOnlyAfterCommit() {
         AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
         AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
         ApiKeyAuthCache authCache = mock(ApiKeyAuthCache.class);
@@ -518,7 +627,7 @@ class ApiKeyServiceTest {
 
         postCommitHook.runCaptured();
 
-        verify(authCache).putActive(eq(123L), eq(1L), eq(2001L), any(), eq(60L));
+        verify(authCache).evict(123L);
     }
 
     private static String sha256Base64Url(String input) {
@@ -634,6 +743,10 @@ class ApiKeyServiceTest {
                 throw new AssertionError("expected post-commit action to be registered");
             }
             action.run();
+        }
+
+        void assertNothingCaptured() {
+            assertThat(captured.get()).isNull();
         }
     }
 }

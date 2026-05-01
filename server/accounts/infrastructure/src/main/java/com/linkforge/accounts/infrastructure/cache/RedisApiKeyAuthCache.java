@@ -44,14 +44,6 @@ public class RedisApiKeyAuthCache implements ApiKeyAuthCache {
     }
 
     @Override
-    public void putActive(long apiKeyId, long tenantId, Long applicationId, String secretDigest, long ttlSeconds) {
-        if (tenantId <= 0 || secretDigest == null || secretDigest.isBlank() || ttlSeconds <= 0) {
-            return;
-        }
-        write(apiKeyId, new Entry(tenantId, applicationId, AccountsConstants.STATUS_ACTIVE, secretDigest), ttlSeconds);
-    }
-
-    @Override
     public void putDisabled(long apiKeyId, long tenantId, Long applicationId, long ttlSeconds) {
         if (tenantId <= 0 || ttlSeconds <= 0) {
             return;
@@ -64,7 +56,7 @@ public class RedisApiKeyAuthCache implements ApiKeyAuthCache {
         try {
             redis.delete(authCacheKey(apiKeyId));
         } catch (Exception e) {
-            log.debug("api key auth cache evict failed: id={}, err={}", apiKeyId, e.getMessage());
+            log.warn("api key auth cache evict failed: id={}, err={}", apiKeyId, e.getMessage());
         }
     }
 
@@ -98,7 +90,7 @@ public class RedisApiKeyAuthCache implements ApiKeyAuthCache {
         try {
             redis.opsForValue().set(authCacheKey(apiKeyId), format(entry), Duration.ofSeconds(ttlSeconds));
         } catch (Exception e) {
-            log.debug("api key auth cache write failed: id={}, err={}", apiKeyId, e.getMessage());
+            log.warn("api key auth cache write failed: id={}, err={}", apiKeyId, e.getMessage());
         }
     }
 

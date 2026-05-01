@@ -55,6 +55,12 @@ public class PlatformApplicationScopeAdapter implements ApplicationScopePort, Do
     }
 
     @Override
+    public Optional<Long> findDomainIdByHostname(long tenantId, String hostname) {
+        return domainRepository.findByTenantIdAndHostname(tenantId, hostname)
+                .map(Domain::id);
+    }
+
+    @Override
     public LegacyApplicationBindingView ensureLegacyDefaultBinding(long tenantId) {
         LegacyApplicationBindingService.LegacyBinding binding = legacyApplicationBindingService.ensureLegacyDefaultBinding(tenantId);
         return new LegacyApplicationBindingView(binding.applicationId(), binding.domainId());

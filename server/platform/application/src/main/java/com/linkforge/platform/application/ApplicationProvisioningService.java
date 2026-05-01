@@ -9,11 +9,14 @@ import com.linkforge.platform.application.port.ApplicationQuotaRepository;
 import com.linkforge.platform.application.port.ApplicationRepository;
 import com.linkforge.platform.application.port.DomainRepository;
 import com.linkforge.platform.domain.Application;
+import com.linkforge.platform.domain.ApplicationKey;
 import com.linkforge.platform.domain.ApplicationPolicy;
 import com.linkforge.platform.domain.ApplicationQuota;
+import com.linkforge.platform.domain.DomainHostname;
 import com.linkforge.platform.domain.Domain;
 import com.linkforge.platform.domain.DomainScope;
 import com.linkforge.platform.domain.DomainStatus;
+import com.linkforge.platform.domain.MonthlyLinkLimit;
 import com.linkforge.platform.domain.TargetTrustClass;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,13 +53,15 @@ public class ApplicationProvisioningService {
     public ApplicationDto createApplication(long tenantId, UserActor actor, CreateApplicationRequest request) {
         requireActor(tenantId, actor);
         validateCreateRequest(request);
+        ApplicationKey applicationKey = normalizeApplicationKey(request.applicationKey());
+        String displayName = normalizeDisplayName(request.displayName());
 
         long applicationId = idGenerator.nextId();
         Application application = new Application(
                 applicationId,
                 tenantId,
-                request.applicationKey().trim(),
-                request.displayName().trim(),
+                applicationKey.value(),
+                displayName,
                 APPLICATION_STATUS_ACTIVE,
                 null,
                 null
@@ -70,20 +75,18 @@ public class ApplicationProvisioningService {
                 null,
                 null
         ));
-        applicationQuotaRepository.insert(new ApplicationQuota(
+        applicationQuotaRepository.insert(ApplicationQuota.create(
                 applicationId,
-                DEFAULT_MONTHLY_LINK_LIMIT,
-                DEFAULT_MONTHLY_CLICK_LIMIT,
-                null,
-                null
+                MonthlyLinkLimit.of(DEFAULT_MONTHLY_LINK_LIMIT),
+                MonthlyLinkLimit.of(DEFAULT_MONTHLY_CLICK_LIMIT)
         ));
-        return new ApplicationDto(applicationId, tenantId, request.applicationKey().trim(), request.displayName().trim());
+        return new ApplicationDto(applicationId, tenantId, applicationKey.value(), displayName);
     }
 
     @Transactional
     public DomainDto createTenantSharedDomain(long tenantId, UserActor actor, String hostname) {
         requireActor(tenantId, actor);
-        String normalizedHostname = normalizeHostname(hostname);
+        String normalizedHostname = normalizeHostname(hostname).value();
         long domainId = idGenerator.nextId();
         domainRepository.insert(new Domain(
                 domainId,
@@ -104,7 +107,7 @@ public class ApplicationProvisioningService {
         requireActor(tenantId, actor);
         Application application = applicationRepository.findByTenantIdAndId(tenantId, applicationId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "应用不存在"));
-        String normalizedHostname = normalizeHostname(hostname);
+        String normalizedHostname = normalizeHostname(hostname).value();
         long domainId = idGenerator.nextId();
         domainRepository.insert(new Domain(
                 domainId,
@@ -137,23 +140,31 @@ public class ApplicationProvisioningService {
         if (request == null) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "请求不能为空");
         }
-        if (request.applicationKey() == null || request.applicationKey().trim().isBlank()) {
+        normalizeApplicationKey(request.applicationKey());
+        normalizeDisplayName(request.displayName());
+    }
+
+    private static ApplicationKey normalizeApplicationKey(String applicationKey) {
+        try {
+            return ApplicationKey.of(applicationKey);
+        } catch (IllegalArgumentException e) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "applicationKey 不能为空");
-        }
-        if (request.displayName() == null || request.displayName().trim().isBlank()) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "displayName 不能为空");
         }
     }
 
-    private static String normalizeHostname(String hostname) {
-        if (hostname == null) {
+    private static String normalizeDisplayName(String displayName) {
+        if (displayName == null || displayName.trim().isBlank()) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "displayName 不能为空");
+        }
+        return displayName.trim();
+    }
+
+    private static DomainHostname normalizeHostname(String hostname) {
+        try {
+            return DomainHostname.of(hostname);
+        } catch (IllegalArgumentException e) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "hostname 不能为空");
         }
-        String value = hostname.trim().toLowerCase();
-        if (value.isBlank()) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "hostname 不能为空");
-        }
-        return value;
     }
 
     private static UserActor requireActor(long tenantId, UserActor actor) {

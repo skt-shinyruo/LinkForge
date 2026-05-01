@@ -20,6 +20,7 @@ import com.linkforge.shortlink.domain.HttpUrl;
 import com.linkforge.shortlink.domain.QueryForwardAllowlist;
 import com.linkforge.shortlink.domain.QueryForwardMode;
 import com.linkforge.shortlink.domain.ShortCode;
+import com.linkforge.shortlink.domain.ShortCodeAllocationPolicy;
 import com.linkforge.shortlink.domain.ShortLinkLifecycleState;
 import com.linkforge.shortlink.domain.ShortLink;
 import com.linkforge.shortlink.domain.ShortLinkDomainException;
@@ -46,6 +47,7 @@ public class CreateShortLinkCommandHandler {
     private final PostCommitHookPort postCommitHookPort;
     private final Clock clock;
     private final ApplicationScopePort applicationScopePort;
+    private final ShortCodeAllocationPolicy shortCodeAllocationPolicy = new ShortCodeAllocationPolicy();
 
     public CreateShortLinkCommandHandler(
             SnowflakeIdGenerator idGenerator,
@@ -120,7 +122,9 @@ public class CreateShortLinkCommandHandler {
                     ? shortLinkRepository.findUnscopedByCode(code.value()).isPresent()
                     : shortLinkRepository.findByDomainIdAndCode(domainId, code.value()).isPresent();
             if (exists) {
-                throw new BusinessException(ShortLinkErrorCode.CODE_ALREADY_EXISTS);
+                if (shortCodeAllocationPolicy.onCollision(true) == ShortCodeAllocationPolicy.CollisionDecision.FAIL) {
+                    throw new BusinessException(ShortLinkErrorCode.CODE_ALREADY_EXISTS);
+                }
             }
         }
 
@@ -155,7 +159,7 @@ public class CreateShortLinkCommandHandler {
         try {
             shortLinkRepository.insert(link);
         } catch (DataIntegrityViolationException ex) {
-            if (custom) {
+            if (shortCodeAllocationPolicy.onCollision(custom) == ShortCodeAllocationPolicy.CollisionDecision.FAIL) {
                 throw new BusinessException(ShortLinkErrorCode.CODE_ALREADY_EXISTS);
             }
             throw ex;

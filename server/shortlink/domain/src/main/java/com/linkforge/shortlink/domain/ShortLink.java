@@ -496,13 +496,7 @@ public class ShortLink {
     }
 
     private static Integer validateRedirectStatusCode(Integer status) {
-        if (status == null) {
-            return null;
-        }
-        if (status != 301 && status != 302) {
-            throw new ShortLinkDomainException(INVALID_REDIRECT_STATUS_CODE, "redirectStatusCode 仅支持 301/302");
-        }
-        return status;
+        return RedirectStatusCode.normalize(status);
     }
 
     private static String normalizeNote(String note) {

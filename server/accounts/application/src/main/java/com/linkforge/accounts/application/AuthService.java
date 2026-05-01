@@ -6,7 +6,16 @@ import com.linkforge.accounts.application.port.AccountsPasswordHasher;
 import com.linkforge.accounts.application.port.AccountsTokenIssuer;
 import com.linkforge.accounts.application.port.AccountsUserRoleStore;
 import com.linkforge.accounts.application.port.AccountsUserStore;
+import com.linkforge.accounts.domain.AccountStatusPolicy;
+import com.linkforge.accounts.domain.AccountUser;
 import com.linkforge.accounts.domain.AccountsConstants;
+import com.linkforge.accounts.domain.EmailAddress;
+import com.linkforge.accounts.domain.RoleAssignment;
+import com.linkforge.accounts.domain.RoleCode;
+import com.linkforge.accounts.domain.RolePolicy;
+import com.linkforge.accounts.domain.Tenant;
+import com.linkforge.accounts.domain.TenantName;
+import com.linkforge.accounts.domain.TokenVersion;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.contract.accounts.AccountsErrorCode;
@@ -30,6 +39,8 @@ public class AuthService {
     private final AccountsPasswordHasher passwordHasher;
     private final AccountsTokenIssuer tokenIssuer;
     private final AccountStatusCache statusCache;
+    private final AccountStatusPolicy accountStatusPolicy = new AccountStatusPolicy();
+    private final RolePolicy rolePolicy = new RolePolicy();
 
     public AuthService(
             SnowflakeIdGenerator idGenerator,
@@ -89,38 +100,36 @@ public class AuthService {
     }
 
     public AuthResult login(String email, String rawPassword) {
-        AccountsUserStore.UserData user = userStore.findFirstByEmail(email);
-        if (user == null) {
+        AccountsUserStore.UserData userData = userStore.findFirstByEmail(email);
+        if (userData == null) {
             throw new BusinessException(AccountsErrorCode.INVALID_CREDENTIALS);
         }
 
-        AccountsTenantStore.TenantData tenant = tenantStore.findById(user.tenantId());
-        if (tenant == null) {
+        AccountsTenantStore.TenantData tenantData = tenantStore.findById(userData.tenantId());
+        if (tenantData == null) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "租户不存在");
         }
 
-        if (!AccountsConstants.STATUS_ACTIVE.equals(tenant.status())) {
-            throw new BusinessException(AccountsErrorCode.TENANT_DISABLED);
-        }
-        if (!AccountsConstants.STATUS_ACTIVE.equals(user.status())) {
+        Tenant tenant = toTenant(tenantData);
+        AccountUser user = toAccountUser(userData);
+        if (!accountStatusPolicy.canAuthenticate(tenant, user)) {
+            if (!tenant.active()) {
+                throw new BusinessException(AccountsErrorCode.TENANT_DISABLED);
+            }
             throw new BusinessException(AccountsErrorCode.USER_DISABLED);
         }
-        if (!passwordHasher.matches(rawPassword, user.passwordHash())) {
+        if (!passwordHasher.matches(rawPassword, userData.passwordHash())) {
             throw new BusinessException(AccountsErrorCode.INVALID_CREDENTIALS);
         }
 
-        Set<String> roles = userRoleStore.findAllByUserId(user.id()).stream()
+        Set<String> roles = rolePolicy.effectiveRoles(userRoleStore.findAllByUserId(user.id()).stream()
                 .filter(r -> r != null)
-                .map(AccountsUserRoleStore.UserRoleData::roleCode)
-                .collect(Collectors.toUnmodifiableSet());
+                .map(r -> RoleAssignment.of(user.id(), RoleCode.of(r.roleCode())))
+                .collect(Collectors.toUnmodifiableSet()));
 
-        if (roles.isEmpty()) {
-            roles = Set.of(StandardRoles.USER);
-        }
-
-        int tokenVersion = user.tokenVersion() == null ? 0 : user.tokenVersion();
-        String token = tokenIssuer.issueToken(user.id(), user.tenantId(), user.email(), roles, tokenVersion);
-        return new AuthResult(token, new AuthPrincipal(user.id(), user.tenantId(), user.email(), roles, tokenVersion));
+        int tokenVersion = user.tokenVersion().value();
+        String token = tokenIssuer.issueToken(user.id(), user.tenantId(), userData.email(), roles, tokenVersion);
+        return new AuthResult(token, new AuthPrincipal(user.id(), user.tenantId(), userData.email(), roles, tokenVersion));
     }
 
     @Transactional
@@ -128,23 +137,40 @@ public class AuthService {
         if (userId <= 0) {
             return;
         }
-        AccountsUserStore.UserData user = userStore.findById(userId);
-        if (user == null) {
+        AccountsUserStore.UserData userData = userStore.findById(userId);
+        if (userData == null) {
             return;
         }
-        userStore.update(withIncrementedTokenVersion(user));
+        AccountUser user = toAccountUser(userData).logout();
+        userStore.update(withTokenVersion(userData, user.tokenVersion()));
         statusCache.evictUserStatus(userId);
     }
 
-    private static AccountsUserStore.UserData withIncrementedTokenVersion(AccountsUserStore.UserData user) {
-        int tokenVersion = user.tokenVersion() == null ? 0 : user.tokenVersion();
+    private static Tenant toTenant(AccountsTenantStore.TenantData tenant) {
+        return Tenant.rehydrate(tenant.id(), TenantName.of(tenant.name()), tenant.status());
+    }
+
+    private static AccountUser toAccountUser(AccountsUserStore.UserData user) {
+        return AccountUser.rehydrate(
+                user.id(),
+                user.tenantId(),
+                EmailAddress.of(user.email()),
+                user.status(),
+                TokenVersion.of(user.tokenVersion())
+        );
+    }
+
+    private static AccountsUserStore.UserData withTokenVersion(
+            AccountsUserStore.UserData user,
+            TokenVersion tokenVersion
+    ) {
         return new AccountsUserStore.UserData(
                 user.id(),
                 user.tenantId(),
                 user.email(),
                 user.passwordHash(),
                 user.status(),
-                tokenVersion + 1,
+                tokenVersion.value(),
                 user.createdAt(),
                 user.updatedAt()
         );

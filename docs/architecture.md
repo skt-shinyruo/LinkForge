@@ -7,11 +7,11 @@ LinkForge is a modular monolith built as a Maven reactor plus a separate Vue fro
 - `server/foundation`: split between pure shared-library packages and explicit runtime support. `foundation.config`, `foundation.id`, `foundation.tx`, and `foundation.util` stay framework-light library code; runtime beans such as `RequestIdFilter`, startup checks, and integration-event MyBatis wiring live under `foundation.runtime..`.
 - `server/contracts/*`: shared vocabulary that still earns its maintenance cost inside the monolith. `contract-api` holds common API contracts, `contract-shortlink` carries shortlink integration-event payloads, `contract-redirect` carries redirect read/cache contracts, `contract-analytics` carries analytics contracts, and `contract-platform` carries application/domain authorization vocabulary.
 - `server/accounts`: account, tenant, auth, and API-key management split into `domain`, `application`, `infrastructure`, and `interfaces` Maven modules. Its application layer now depends on ports/shared contracts instead of infrastructure classes or runtime-security helpers.
-- `server/platform`: control-plane ownership for tenant applications, domains, quotas, and policies. It models `tenant -> application -> domain` relationships and exposes the tenant/platform admin HTTP surfaces used by the self-service console.
-- `server/governance`: approval and audit management. It persists sensitive-operation requests, approval decisions, and audit logs, and exposes narrow application APIs for link destination changes and analytics export approvals.
-- `server/shortlink`: write-side shortlink management split into `domain`, `application`, `infrastructure`, and `interfaces`. It owns durable shortlink state and emits integration events for downstream projections.
-- `server/redirect`: cache-backed redirect serving split into `domain`, `application`, `infrastructure`, and `interfaces`. Redirect correctness uses Redis plus the authoritative shortlink read API on cache miss; it no longer maintains an independent redirect projection model.
-- `server/analytics`: visit recording and read models split into `domain`, `application`, `infrastructure`, and `interfaces`.
+- `server/platform`: control-plane ownership for tenant applications, domains, quotas, and policies. Domain value objects and policies own application keys, hostnames, quota limits, domain authorization, and mutation-approval decisions while application services keep persistence and contract orchestration.
+- `server/governance`: approval and audit management. The approval aggregate owns lifecycle transitions, and domain policies own self-approval, approval-matrix, sensitive-operation, decision-reason, snapshot, and audit vocabulary.
+- `server/shortlink`: write-side shortlink management split into `domain`, `application`, `infrastructure`, and `interfaces`. It owns durable shortlink state, short-code allocation decisions, destination-change policy, redirect status validation, tag rules, and internal mutation facts.
+- `server/redirect`: cache-backed redirect serving split into `domain`, `application`, `infrastructure`, and `interfaces`. Redirect correctness uses Redis plus the authoritative shortlink read API on cache miss; domain policy objects own lookup-key validation, availability decisions, and risk decisions without owning link truth.
+- `server/analytics`: visit recording and read models split into `domain`, `application`, `infrastructure`, and `interfaces`. Domain policy objects own visit facts, normalized dimensions, aggregation windows, and export-window decisions while read models remain private.
 - `server/app`: Spring Boot executable composition root. `LinkForgeApplication` explicitly imports context-owned runtime modules (`FoundationRuntimeModule`, `AccountsRuntimeModule`, `ShortlinkRuntimeModule`, `RedirectRuntimeModule`, `AnalyticsRuntimeModule`, `PlatformRuntimeModule`, and `GovernanceRuntimeModule`) instead of package scans or app-owned wrappers; the bounded-context runtime modules now live with the context export surface in `interfaces`.
 - `server/integration-tests`: Testcontainers-based integration verification for cross-module behavior.
 
@@ -22,39 +22,52 @@ They are not independently deployed services.
 
 ### Accounts
 
-Owns tenants, users, roles, API keys, authentication state, and account-status checks.
+Owns tenants, users, roles, API keys, authentication state, and account-status checks through
+`Tenant`, `AccountUser`, `ApiKey`, role assignments, value objects, and account/role/API-key policies.
 Accounts may publish authentication and account-status capabilities, but persistence details,
 token parsing internals, and role storage remain private to the context.
 
 ### Platform
 
 Owns tenant applications, domains, quotas, and application policies.
+`Application`, `Domain`, `ApplicationQuota`, `ApplicationPolicy`, `ApplicationKey`,
+`DomainHostname`, `MonthlyLinkLimit`, `DomainAuthorizationPolicy`, `QuotaPolicy`, and
+`ApplicationPolicyDecisionService` carry the control-plane domain vocabulary.
 Platform publishes application scope, domain hostname lookup, and quota views through
 `contract-platform`.
 
 ### Shortlink
 
 Owns durable link state, link lifecycle, destination rules, tags, revisions, and shortlink
-mutation events. `ShortLink` is the first aggregate root for tactical DDD hardening.
+mutation events. `ShortLink` is the aggregate root; `ShortCode`, `HttpUrl`, query-forward
+value objects, `RedirectStatusCode`, `LinkTagPolicy`, `DestinationChangePolicy`, and
+`ShortCodeAllocationPolicy` own validation and policy decisions.
 Other contexts may read redirect metadata, ownership, and summaries only through
 `contract-shortlink`.
 
 ### Redirect
 
 Owns traffic-plane redirect resolution, Redis cache behavior, preview/not-found responses,
-and lightweight visit-event append. Redirect does not own link truth; cache misses use the
-shortlink published read contract.
+and lightweight visit-event append. `RedirectLookupKey`, `RedirectDecision`,
+`RedirectAvailabilityPolicy`, and `RedirectRiskPolicy` keep redirect decisions pure and
+testable. Redirect does not own link truth; cache misses use the shortlink published read
+contract.
 
 ### Analytics
 
 Owns visit ingestion, aggregates, detail storage, statistics reads, and export integration.
-Analytics read models remain private. Cross-context link enrichment uses published
-shortlink contracts.
+`VisitFact`, `VisitDimension`, `AggregationWindow`, `AnalyticsExportRequest`,
+`VisitNormalizationPolicy`, `AggregationPolicy`, and `AnalyticsExportPolicy` describe
+analytics facts and policies without turning reporting rows into aggregates. Analytics read
+models remain private. Cross-context link enrichment uses published shortlink contracts.
 
 ### Governance
 
 Owns approval request lifecycle, approval decisions, sensitive-operation records, and audit
-logs. Governance exposes published approval contracts where cross-context callers still need
+logs. `ApprovalRequest` owns submit/approve/execute state transitions; `ApprovalActor`,
+`ApprovalDecisionReason`, `ApprovalSnapshot`, `ApprovalMatrixPolicy`,
+`SensitiveOperationPolicy`, and `AuditPolicy` own approval vocabulary and decision rules.
+Governance exposes published approval contracts where cross-context callers still need
 approval orchestration.
 
 ## Tactical DDD Rules
@@ -65,6 +78,9 @@ approval orchestration.
 - `infrastructure` owns MyBatis, Redis, schedulers, and persistence mapping.
 - `contracts/*` owns published language shared across bounded contexts.
 - Bounded contexts must not import another context's `domain`, `application`, `infrastructure`, or `interfaces` packages.
+- Cross-context callers use `contracts/*` ports and views only; provider application services remain private implementation details.
+- Internal domain events stay framework-free. Application/infrastructure code translates them to stable integration events after persistence succeeds.
+- Compatibility facades may remain at controller/application boundaries, but lifecycle, quota, approval, tag, redirect, and normalization rules belong in domain aggregates or policy objects.
 
 ## Redirect Correctness Path
 

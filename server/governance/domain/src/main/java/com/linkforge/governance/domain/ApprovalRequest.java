@@ -76,7 +76,7 @@ public class ApprovalRequest {
                 ApprovalStatus.APPROVED,
                 approverUserId,
                 approverEmail,
-                decisionReason,
+                ApprovalDecisionReason.of(decisionReason).value(),
                 beforeSnapshot,
                 afterSnapshot,
                 createdAt,

@@ -15,6 +15,7 @@ public class ShortLinkDomainException extends RuntimeException {
         INVALID_URL,
         NOTE_TOO_LONG,
         INVALID_REDIRECT_STATUS_CODE,
+        INVALID_TAG,
         INVALID_QUERY_FORWARD_MODE,
         INVALID_QUERY_FORWARD_ALLOWLIST_ITEM,
         INVALID_QUERY_FORWARD_ALLOWLIST_TOO_LONG,
@@ -43,4 +44,3 @@ public class ShortLinkDomainException extends RuntimeException {
         return field;
     }
 }
-

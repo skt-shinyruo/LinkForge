@@ -5,6 +5,9 @@ import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.shortlink.application.ShortLinkService.TagDto;
 import com.linkforge.shortlink.application.port.TagRepository;
+import com.linkforge.shortlink.application.support.ShortLinkDomainExceptions;
+import com.linkforge.shortlink.domain.LinkTagPolicy;
+import com.linkforge.shortlink.domain.ShortLinkDomainException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,6 +17,7 @@ public class CreateTagCommandHandler {
 
     private final SnowflakeIdGenerator idGenerator;
     private final TagRepository tagRepository;
+    private final LinkTagPolicy linkTagPolicy = new LinkTagPolicy();
 
     public CreateTagCommandHandler(
             SnowflakeIdGenerator idGenerator,
@@ -25,12 +29,11 @@ public class CreateTagCommandHandler {
 
     @Transactional
     public TagDto handle(long tenantId, String name) {
-        String n = normalizeNullable(name);
-        if (n == null) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "标签名不能为空");
-        }
-        if (n.length() > 64) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "标签名过长");
+        String n;
+        try {
+            n = linkTagPolicy.normalizeName(name);
+        } catch (ShortLinkDomainException ex) {
+            throw ShortLinkDomainExceptions.translate(ex);
         }
 
         TagRepository.Tag existing = tagRepository.findByTenantIdAndName(tenantId, n);
@@ -50,13 +53,5 @@ public class CreateTagCommandHandler {
             }
             throw ex;
         }
-    }
-
-    private static String normalizeNullable(String s) {
-        if (s == null) {
-            return null;
-        }
-        String t = s.trim();
-        return t.isBlank() ? null : t;
     }
 }

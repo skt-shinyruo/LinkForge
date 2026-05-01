@@ -1,6 +1,8 @@
 package com.linkforge.analytics.application;
 
 import com.linkforge.analytics.application.port.AnalyticsVisitEventAppender;
+import com.linkforge.analytics.domain.VisitDimension;
+import com.linkforge.analytics.domain.VisitNormalizationPolicy;
 import com.linkforge.contract.analytics.RedirectVisitRecord;
 import com.linkforge.contract.analytics.VisitContext;
 import com.linkforge.contract.analytics.VisitRecorderPort;
@@ -19,6 +21,7 @@ public class AnalyticsVisitEventService implements VisitRecorderPort {
 
     private final AnalyticsVisitEventAppender appender;
     private final AnalyticsProperties analyticsProperties;
+    private final VisitNormalizationPolicy visitNormalizationPolicy;
 
     public AnalyticsVisitEventService(AnalyticsVisitEventAppender appender) {
         this(appender, null);
@@ -26,8 +29,17 @@ public class AnalyticsVisitEventService implements VisitRecorderPort {
 
     @Autowired
     public AnalyticsVisitEventService(AnalyticsVisitEventAppender appender, AnalyticsProperties analyticsProperties) {
+        this(appender, analyticsProperties, new VisitNormalizationPolicy());
+    }
+
+    AnalyticsVisitEventService(
+            AnalyticsVisitEventAppender appender,
+            AnalyticsProperties analyticsProperties,
+            VisitNormalizationPolicy visitNormalizationPolicy
+    ) {
         this.appender = appender;
         this.analyticsProperties = analyticsProperties;
+        this.visitNormalizationPolicy = visitNormalizationPolicy;
     }
 
     @Override
@@ -36,6 +48,13 @@ public class AnalyticsVisitEventService implements VisitRecorderPort {
             return;
         }
         VisitContext context = visit.visitContext();
+        VisitDimension dimension = visitNormalizationPolicy.normalize(
+                context == null ? null : context.ip(),
+                context == null ? null : context.userAgent(),
+                context == null ? null : context.referer(),
+                context == null ? null : context.acceptLanguage(),
+                context == null ? null : context.trackingParams()
+        );
         append(new RedirectVisitEvent(
                 visit.tenantId(),
                 visit.linkId(),
@@ -44,11 +63,11 @@ public class AnalyticsVisitEventService implements VisitRecorderPort {
                 visit.domainId(),
                 visit.code(),
                 visit.originalUrl(),
-                context == null ? null : context.ip(),
-                context == null ? null : context.userAgent(),
-                context == null ? null : context.referer(),
-                context == null ? null : context.acceptLanguage(),
-                context == null ? null : context.trackingParams()
+                dimension.ip(),
+                dimension.userAgent(),
+                dimension.referer(),
+                dimension.acceptLanguage(),
+                dimension.trackingParams()
         ));
     }
 

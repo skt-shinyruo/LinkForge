@@ -91,10 +91,10 @@ export function useStatsPage() {
   }
 
   const auth = useAuthStore();
-  const isAdmin = computed(() => auth.isAdmin);
+  const isTenantAdmin = computed(() => auth.isTenantAdmin);
 
   async function loadApplications() {
-    if (!isAdmin.value) {
+    if (!isTenantAdmin.value) {
       applications.value = [];
       selectedApplicationId.value = null;
       return;
@@ -186,7 +186,7 @@ export function useStatsPage() {
   if (getCurrentInstance()) {
     onMounted(() => {
       void (async () => {
-        if (isAdmin.value) {
+        if (isTenantAdmin.value) {
           try {
             await loadApplications();
           } catch (caught) {

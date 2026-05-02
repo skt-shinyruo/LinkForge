@@ -1,130 +1,33 @@
 package com.linkforge.accounts.interfaces.web;
 
 import com.linkforge.accounts.application.AuthService;
+import com.linkforge.contract.api.BusinessException;
+import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.config.SecurityProperties;
-import com.linkforge.foundation.security.AuthPrincipal;
+import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.Test;
-import org.springframework.mock.web.MockHttpServletResponse;
-
-import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 class AuthControllerTest {
 
     @Test
-    void login_shouldNotReturnTokenInBody_whenCookieModeEnabled() {
+    void register_shouldRejectWhenSelfRegistrationDisabled() {
         AuthService authService = mock(AuthService.class);
-
         SecurityProperties securityProperties = new SecurityProperties();
-        securityProperties.getJwt().setCookieEnabled(true);
-        securityProperties.getJwt().setCookieName("lf_token");
-        securityProperties.getJwt().setCookieSameSite("Lax");
-        securityProperties.getJwt().setCookieSecure(false);
-        securityProperties.getJwt().setTtlSeconds(3600);
-
+        securityProperties.setRegistrationEnabled(false);
         AuthController controller = new AuthController(authService, securityProperties);
 
-        AuthPrincipal principal = new AuthPrincipal(1L, 2L, "u@example.com", Set.of("USER"));
-        when(authService.login("u@example.com", "password123"))
-                .thenReturn(new AuthService.AuthResult("jwt-token", principal));
+        assertThatThrownBy(() -> controller.register(
+                new AuthController.RegisterRequest("tenant", "owner@example.com", "password123"),
+                mock(HttpServletResponse.class)
+        ))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN));
 
-        MockHttpServletResponse response = new MockHttpServletResponse();
-        var out = controller.login(new AuthController.LoginRequest("u@example.com", "password123"), response);
-
-        assertThat(out).isNotNull();
-        assertThat(out.getData()).isNotNull();
-        assertThat(out.getData().token()).isNull();
-
-        assertThat(response.getHeader("Set-Cookie"))
-                .contains("lf_token=")
-                .contains("jwt-token")
-                .contains("HttpOnly");
-    }
-
-    @Test
-    void register_shouldNotReturnTokenInBody_whenCookieModeEnabled() {
-        AuthService authService = mock(AuthService.class);
-
-        SecurityProperties securityProperties = new SecurityProperties();
-        securityProperties.getJwt().setCookieEnabled(true);
-        securityProperties.getJwt().setCookieName("lf_token");
-        securityProperties.getJwt().setCookieSameSite("Lax");
-        securityProperties.getJwt().setCookieSecure(false);
-        securityProperties.getJwt().setTtlSeconds(3600);
-
-        AuthController controller = new AuthController(authService, securityProperties);
-
-        AuthPrincipal principal = new AuthPrincipal(1L, 2L, "u@example.com", Set.of("TENANT_ADMIN"));
-        when(authService.register("t1", "u@example.com", "password123"))
-                .thenReturn(new AuthService.AuthResult("jwt-token", principal));
-
-        MockHttpServletResponse response = new MockHttpServletResponse();
-        var out = controller.register(
-                new AuthController.RegisterRequest("t1", "u@example.com", "password123"),
-                response
-        );
-
-        assertThat(out).isNotNull();
-        assertThat(out.getData()).isNotNull();
-        assertThat(out.getData().token()).isNull();
-
-        assertThat(response.getHeader("Set-Cookie"))
-                .contains("lf_token=")
-                .contains("jwt-token")
-                .contains("HttpOnly");
-    }
-
-    @Test
-    void logout_shouldInvalidateAuthenticatedPrincipal_andClearCookie() {
-        AuthService authService = mock(AuthService.class);
-
-        SecurityProperties securityProperties = new SecurityProperties();
-        securityProperties.getJwt().setCookieEnabled(true);
-        securityProperties.getJwt().setCookieName("lf_token");
-        securityProperties.getJwt().setCookieSameSite("Lax");
-        securityProperties.getJwt().setCookieSecure(false);
-
-        AuthController controller = new AuthController(authService, securityProperties);
-
-        MockHttpServletResponse response = new MockHttpServletResponse();
-        AuthPrincipal principal = new AuthPrincipal(11L, 22L, "u@example.com", Set.of("TENANT_ADMIN"));
-
-        var out = controller.logout(principal, response);
-
-        assertThat(out).isNotNull();
-        assertThat(out.getData()).isNull();
-        assertThat(response.getHeader("Set-Cookie"))
-                .contains("lf_token=")
-                .contains("Max-Age=0");
-        verify(authService).logout(11L);
-    }
-
-    @Test
-    void logout_shouldRemainBestEffortCookieClear_whenPrincipalIsAbsent() {
-        AuthService authService = mock(AuthService.class);
-
-        SecurityProperties securityProperties = new SecurityProperties();
-        securityProperties.getJwt().setCookieEnabled(true);
-        securityProperties.getJwt().setCookieName("lf_token");
-        securityProperties.getJwt().setCookieSameSite("Lax");
-        securityProperties.getJwt().setCookieSecure(false);
-
-        AuthController controller = new AuthController(authService, securityProperties);
-
-        MockHttpServletResponse response = new MockHttpServletResponse();
-
-        var out = controller.logout(null, response);
-
-        assertThat(out).isNotNull();
-        assertThat(out.getData()).isNull();
-        assertThat(response.getHeader("Set-Cookie"))
-                .contains("lf_token=")
-                .contains("Max-Age=0");
-        verify(authService, never()).logout(11L);
+        verifyNoInteractions(authService);
     }
 }

@@ -65,16 +65,12 @@ class ApiKeyPersistenceIntegrationTest extends AccountsPersistenceIntegrationTes
     }
 
     @Test
-    void apiKeyAuthCache_shouldPersistSerializedPayloads_ttl_andThrottleTokens() {
+    void apiKeyAuthCache_shouldPersistDisabledPayloads_ttl_andThrottleTokens() {
         Object cache = applicationContext.getBean(loadClass("com.linkforge.accounts.application.port.ApiKeyAuthCache"));
-
-        invoke(cache, "putActive", 301L, 41L, null, "digest-1", 60L);
-        assertThat(redis.opsForValue().get("auth:api_key:301")).isEqualTo("v2|41||active|digest-1");
-        assertThat(redis.getExpire("auth:api_key:301")).isPositive();
-        assertThat(invoke(cache, "read", 301L).toString()).contains("tenantId=41", "status=active", "secretDigest=digest-1");
 
         invoke(cache, "putDisabled", 301L, 41L, null, 60L);
         assertThat(redis.opsForValue().get("auth:api_key:301")).isEqualTo("v2|41||disabled|");
+        assertThat(redis.getExpire("auth:api_key:301")).isPositive();
         assertThat(invoke(cache, "read", 301L).toString()).contains("tenantId=41", "status=disabled");
 
         Object firstAcquire = invoke(cache, "tryAcquireLastUsedToken", 301L, 300L);

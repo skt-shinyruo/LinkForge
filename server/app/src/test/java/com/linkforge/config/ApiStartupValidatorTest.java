@@ -54,6 +54,21 @@ class ApiStartupValidatorTest {
     }
 
     @Test
+    void strictConfig_shouldRejectSampleAnalyticsSalt() {
+        contextRunner
+                .withPropertyValues(
+                        "app.strict-config=true",
+                        "test.analytics-salt=please_set_a_random_salt"
+                )
+                .run(context -> {
+                    AppStartupValidator validator = context.getBean(AppStartupValidator.class);
+                    assertThatThrownBy(() -> validator.run(null))
+                            .isInstanceOf(IllegalStateException.class)
+                            .hasMessageContaining("analytics salt");
+                });
+    }
+
+    @Test
     void app_checks_should_still_run_alongside_aggregated_startup_checks() {
         contextRunner
                 .withPropertyValues("test.base-url=")
@@ -128,9 +143,9 @@ class ApiStartupValidatorTest {
         }
 
         @Bean
-        AnalyticsProperties analyticsProperties() {
+        AnalyticsProperties analyticsProperties(Environment env) {
             AnalyticsProperties analytics = new AnalyticsProperties();
-            analytics.setSalt("test-analytics-salt");
+            analytics.setSalt(env.getProperty("test.analytics-salt", "test-analytics-salt"));
             analytics.setRedisKeyTtlDays(1);
             return analytics;
         }

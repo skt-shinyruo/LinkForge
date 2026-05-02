@@ -136,6 +136,35 @@ describe("useStatsPage", () => {
     expect(fetchTopLinksStatsMock).toHaveBeenCalledWith(expect.objectContaining({ applicationId: undefined }));
   });
 
+  it("does not load tenant application options for platform admins", async () => {
+    listLinksMock.mockResolvedValue(createLinkPage(0, [createLink(201)], 1));
+
+    const { useAuthStore } = await import("../stores/auth");
+    const { useStatsPage } = await import("./useStatsPage");
+    const auth = useAuthStore();
+    auth.roles = ["PLATFORM_ADMIN"];
+
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    app = createApp({
+      setup() {
+        useStatsPage();
+        return () => h("div");
+      },
+    });
+    app.use(pinia);
+    app.mount(host);
+
+    await flushPromises();
+
+    expect(listApplicationsMock).not.toHaveBeenCalled();
+    expect(listLinksMock).toHaveBeenCalledWith({
+      applicationId: undefined,
+      page: 0,
+      size: 100,
+    });
+  });
+
   it("copies the published short URL without rebuilding it from the console origin", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {

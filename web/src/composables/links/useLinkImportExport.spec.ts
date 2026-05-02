@@ -35,4 +35,32 @@ describe("useLinkImportExport", () => {
     });
     expect(reload).toHaveBeenCalled();
   });
+
+  it("exposes CSV import result counts and errors after import", async () => {
+    importLinksCsvMock.mockResolvedValueOnce({
+      success: 2,
+      failed: 1,
+      errors: ["row 3: invalid URL"],
+    });
+    const importFile = ref<File | null>(new File(["originalUrl\nhttps://example.com"], "links.csv"));
+    const importing = ref(false);
+
+    const { useLinkImportExport } = await import("./useLinkImportExport");
+    const feature = useLinkImportExport({
+      importFile,
+      importing,
+      setError: vi.fn(),
+      getErrorMessage: (error, fallback) => (error instanceof Error ? error.message : fallback),
+      getExportQuery: () => ({}),
+      reload: vi.fn().mockResolvedValue(undefined),
+    });
+
+    await feature.importCsv();
+
+    expect(feature.importResult.value).toEqual({
+      success: 2,
+      failed: 1,
+      errors: ["row 3: invalid URL"],
+    });
+  });
 });

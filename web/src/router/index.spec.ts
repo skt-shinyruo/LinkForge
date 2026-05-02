@@ -111,4 +111,44 @@ describe("router auth bootstrap", () => {
 
     expect(router.currentRoute.value.fullPath).toBe("/links");
   });
+
+  it("redirects platform admins away from tenant-admin-only routes", async () => {
+    apiFetchMock.mockResolvedValue({
+      code: 0,
+      data: {
+        email: "platform@example.com",
+        tenantId: 0,
+        roles: ["PLATFORM_ADMIN"],
+      },
+    });
+
+    const [{ router }] = await Promise.all([import("./index"), import("../stores/auth")]);
+
+    await router.push("/overview");
+    await router.isReady();
+
+    expect(router.currentRoute.value.fullPath).toBe("/links");
+  });
+
+  it("allows platform admins to use shared governance routes", async () => {
+    apiFetchMock.mockResolvedValue({
+      code: 0,
+      data: {
+        email: "platform@example.com",
+        tenantId: 0,
+        roles: ["PLATFORM_ADMIN"],
+      },
+    });
+
+    const [{ router }] = await Promise.all([import("./index"), import("../stores/auth")]);
+
+    await router.push("/approvals");
+    await router.isReady();
+
+    expect(router.currentRoute.value.fullPath).toBe("/approvals");
+
+    await router.push("/audit");
+
+    expect(router.currentRoute.value.fullPath).toBe("/audit");
+  });
 });

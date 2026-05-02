@@ -54,7 +54,7 @@ export function useLinksPage() {
   const editForm = reactive<LinkEditFormState>(createEmptyEditForm());
 
   const auth = useAuthStore();
-  const isAdmin = computed(() => auth.isAdmin);
+  const isAdmin = computed(() => auth.isTenantAdmin);
 
   function resetCreateForm() {
     Object.assign(createForm, createEmptyCreateForm());
@@ -226,6 +226,7 @@ export function useLinksPage() {
     formatInstantLocal,
     importCsv: importExport.importCsv,
     importFileName: importExport.importFileName,
+    importResult: importExport.importResult,
     importing,
     items,
     load,

@@ -173,6 +173,112 @@ class UpdateShortLinkCommandHandlerTest {
     }
 
     @Test
+    void handle_shouldRequestDestinationChangeApproval_evenWhenApplicationLinkIsNotActive() {
+        ShortLinkRepository shortLinkRepository = mock(ShortLinkRepository.class);
+        SetLinkTagsCommandHandler setLinkTagsHandler = mock(SetLinkTagsCommandHandler.class);
+        ShortLinkDomainEventDispatcher domainEventDispatcher = mock(ShortLinkDomainEventDispatcher.class);
+        LinkTagRepository linkTagRepository = mock(LinkTagRepository.class);
+        RedirectCacheSyncPort redirectCacheSync = mock(RedirectCacheSyncPort.class);
+        ShortLinkDtoMapper dtoMapper = mock(ShortLinkDtoMapper.class);
+        PostCommitHookPort postCommitHookPort = mock(PostCommitHookPort.class);
+        Clock clock = Clock.fixed(Instant.parse("2026-04-01T00:00:00Z"), ZoneOffset.UTC);
+        ApprovalSubmissionPort approvalSubmissionPort = mock(ApprovalSubmissionPort.class);
+
+        UpdateShortLinkCommandHandler handler = new UpdateShortLinkCommandHandler(
+                shortLinkRepository,
+                setLinkTagsHandler,
+                domainEventDispatcher,
+                linkTagRepository,
+                redirectCacheSync,
+                dtoMapper,
+                postCommitHookPort,
+                clock,
+                approvalSubmissionPort
+        );
+
+        ShortLink link = ShortLink.create(
+                105L,
+                1L,
+                2001L,
+                3001L,
+                ShortCode.of("inactive"),
+                ShortLinkLifecycleState.DRAFT,
+                HttpUrl.of("https://example.com/old"),
+                null,
+                true,
+                null,
+                null,
+                false,
+                null,
+                null,
+                null,
+                CreatedByType.USER,
+                9L
+        );
+        when(shortLinkRepository.findByTenantIdAndId(1L, 105L)).thenReturn(java.util.Optional.of(link));
+        when(linkTagRepository.findTagNamesByLinkId(105L)).thenReturn(List.of());
+        LinkDto expected = new LinkDto(
+                105L,
+                1L,
+                2001L,
+                3001L,
+                "DRAFT",
+                "inactive",
+                "https://lf/r/inactive",
+                "https://example.com/old",
+                null,
+                true,
+                null,
+                null,
+                null,
+                false,
+                null,
+                null,
+                List.of(),
+                List.of(),
+                Instant.parse("2026-03-31T00:00:00Z")
+        );
+        when(dtoMapper.toDto(link, List.of())).thenReturn(expected);
+
+        LinkDto actual = handler.handle(
+                1L,
+                105L,
+                new UpdateLinkRequest(
+                        "https://example.com/new",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null
+                ),
+                new UserActor(1L, 7L, "reviewer@example.com", Set.of("TENANT_ADMIN")),
+                LocalDateTime.parse("2026-04-01T00:00:00")
+        );
+
+        assertThat(actual).isSameAs(expected);
+        verify(approvalSubmissionPort).requestLinkDestinationChangeApproval(
+                1L,
+                new ApprovalSubmissionPort.LinkDestinationChangeApprovalRequest(
+                        105L,
+                        2001L,
+                        "https://example.com/old",
+                        "https://example.com/new",
+                        new ApprovalRequester(1L, 7L, "reviewer@example.com"),
+                        LocalDateTime.parse("2026-04-01T00:00:00")
+                )
+        );
+        verify(shortLinkRepository, never()).update(link);
+    }
+
+    @Test
     void handle_shouldRejectInvalidDestinationUrlBeforeRequestingApproval() {
         ShortLinkRepository shortLinkRepository = mock(ShortLinkRepository.class);
         SetLinkTagsCommandHandler setLinkTagsHandler = mock(SetLinkTagsCommandHandler.class);

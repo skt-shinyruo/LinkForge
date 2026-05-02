@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import type { LinkCreateFormState } from "../../composables/useLinksPage";
+import type { LinkImportResult } from "../../services/types";
 
 const props = defineProps<{
   form: LinkCreateFormState;
   creating: boolean;
   importing: boolean;
   importFileName: string;
+  importResult: LinkImportResult | null;
   isAdmin: boolean;
   error: string | null;
 }>();
@@ -115,6 +117,12 @@ function onImportFileChange(event: Event) {
       CSV Header：originalUrl, code(可选), expiresAt(可选，推荐 ISO-8601 Instant，如 2026-03-16T12:34:56Z；兼容旧
       LocalDateTime，将按 UTC 解析), note(可选), tags(可选, 逗号分隔)
     </p>
+    <div v-if="props.importResult" class="import-result">
+      <p class="sub">导入结果：成功 {{ props.importResult.success }}，失败 {{ props.importResult.failed }}</p>
+      <ul v-if="props.importResult.errors.length" class="error-list">
+        <li v-for="message in props.importResult.errors" :key="message">{{ message }}</li>
+      </ul>
+    </div>
   </section>
 </template>
 
@@ -211,5 +219,15 @@ textarea {
 .error {
   color: #c00;
   margin: 8px 0 0;
+}
+
+.import-result {
+  margin-top: 8px;
+}
+
+.error-list {
+  color: #c00;
+  margin: 6px 0 0;
+  padding-left: 20px;
 }
 </style>

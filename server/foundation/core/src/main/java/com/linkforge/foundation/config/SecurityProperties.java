@@ -7,6 +7,7 @@ public class SecurityProperties {
 
     private Jwt jwt = new Jwt();
     private ApiKey apiKey = new ApiKey();
+    private boolean registrationEnabled;
 
     public Jwt getJwt() {
         return jwt;
@@ -22,6 +23,14 @@ public class SecurityProperties {
 
     public void setApiKey(ApiKey apiKey) {
         this.apiKey = apiKey;
+    }
+
+    public boolean isRegistrationEnabled() {
+        return registrationEnabled;
+    }
+
+    public void setRegistrationEnabled(boolean registrationEnabled) {
+        this.registrationEnabled = registrationEnabled;
     }
 
     public static class Jwt {

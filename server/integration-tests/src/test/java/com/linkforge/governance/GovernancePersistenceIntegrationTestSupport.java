@@ -1,7 +1,7 @@
 package com.linkforge.governance;
 
-import com.linkforge.accounts.domain.Roles;
 import com.linkforge.foundation.security.AuthPrincipal;
+import com.linkforge.foundation.security.StandardRoles;
 import org.junit.jupiter.api.AfterEach;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -57,11 +57,11 @@ abstract class GovernancePersistenceIntegrationTestSupport {
     }
 
     protected static void authenticateAsTenantAdmin(long tenantId, long userId, String email) {
-        setAuthentication(userId, tenantId, email, Set.of(Roles.TENANT_ADMIN));
+        setAuthentication(userId, tenantId, email, Set.of(StandardRoles.TENANT_ADMIN));
     }
 
     protected static void authenticateAsPlatformAdmin(long tenantId, long userId, String email) {
-        setAuthentication(userId, tenantId, email, Set.of(Roles.PLATFORM_ADMIN));
+        setAuthentication(userId, tenantId, email, Set.of(StandardRoles.PLATFORM_ADMIN));
     }
 
     private static void setAuthentication(long userId, long tenantId, String email, Set<String> roles) {

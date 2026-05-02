@@ -33,6 +33,7 @@
         <module>platform</module>
         <module>governance</module>
         <module>app</module>
+        <module>integration-tests</module>
     </modules>
 
     <properties>
@@ -318,14 +319,5 @@
             </plugins>
         </pluginManagement>
     </build>
-
-    <profiles>
-        <profile>
-            <id>it</id>
-            <modules>
-                <module>integration-tests</module>
-            </modules>
-        </profile>
-    </profiles>
 
 </project>

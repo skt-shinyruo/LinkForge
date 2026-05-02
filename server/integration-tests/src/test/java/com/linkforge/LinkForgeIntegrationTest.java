@@ -6,9 +6,12 @@ import com.linkforge.app.config.MybatisConfig;
 import com.linkforge.analytics.infrastructure.job.AnalyticsDimensionFlushJob;
 import com.linkforge.analytics.infrastructure.job.AnalyticsEventIngestJob;
 import com.linkforge.analytics.infrastructure.job.AnalyticsFlushJob;
-import com.linkforge.LinkForgeApplication;
 import com.linkforge.contract.accounts.AccountsErrorCode;
 import com.linkforge.contract.openapi.OpenApiErrorCode;
+import com.linkforge.governance.interfaces.web.ApprovalController;
+import com.linkforge.governance.interfaces.web.AuditController;
+import com.linkforge.platform.interfaces.web.TenantAdminApplicationController;
+import com.linkforge.platform.interfaces.web.TenantAdminDomainController;
 import org.mybatis.spring.annotation.MapperScan;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -129,6 +132,18 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
         assertThat(AnnotationUtils.findAnnotation(MybatisConfig.class, MapperScan.class))
                 .as("Task 1 bootstrap should not declare empty mapper scan packages")
                 .isNull();
+        assertThat(applicationContext.getBeanNamesForType(TenantAdminApplicationController.class))
+                .as("Runtime bootstrap should include platform application controller")
+                .isNotEmpty();
+        assertThat(applicationContext.getBeanNamesForType(TenantAdminDomainController.class))
+                .as("Runtime bootstrap should include platform domain controller")
+                .isNotEmpty();
+        assertThat(applicationContext.getBeanNamesForType(ApprovalController.class))
+                .as("Runtime bootstrap should include governance approval controller")
+                .isNotEmpty();
+        assertThat(applicationContext.getBeanNamesForType(AuditController.class))
+                .as("Runtime bootstrap should include governance audit controller")
+                .isNotEmpty();
     }
 
     @Test

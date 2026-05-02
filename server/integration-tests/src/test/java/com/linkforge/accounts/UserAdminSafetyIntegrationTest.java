@@ -5,9 +5,9 @@ import com.linkforge.accounts.application.AuthService;
 import com.linkforge.accounts.application.UserAdminService;
 import com.linkforge.accounts.application.port.AccountsUserStore;
 import com.linkforge.accounts.domain.AccountsConstants;
-import com.linkforge.accounts.domain.Roles;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
+import com.linkforge.foundation.security.StandardRoles;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -56,7 +56,7 @@ class UserAdminSafetyIntegrationTest extends AccountsPersistenceIntegrationTestS
 
         UserAdminService.UserDto member = userAdminService.create(
                 owner.principal().getTenantId(),
-                new UserAdminService.CreateUserRequest(uniqueEmail("member"), "password123", Set.of(Roles.USER))
+                new UserAdminService.CreateUserRequest(uniqueEmail("member"), "password123", Set.of(StandardRoles.USER))
         );
 
         assertThatThrownBy(() -> userAdminService.disable(
@@ -77,7 +77,7 @@ class UserAdminSafetyIntegrationTest extends AccountsPersistenceIntegrationTestS
 
         UserAdminService.UserDto secondAdmin = userAdminService.create(
                 owner.principal().getTenantId(),
-                new UserAdminService.CreateUserRequest(uniqueEmail("admin"), "password123", Set.of(Roles.TENANT_ADMIN))
+                new UserAdminService.CreateUserRequest(uniqueEmail("admin"), "password123", Set.of(StandardRoles.TENANT_ADMIN))
         );
 
         UserAdminService.UserDto disabled = userAdminService.disable(

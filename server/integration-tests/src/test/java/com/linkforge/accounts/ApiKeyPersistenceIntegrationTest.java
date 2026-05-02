@@ -4,7 +4,7 @@ import com.linkforge.LinkForgeApplication;
 import com.linkforge.accounts.application.ApiKeyService;
 import com.linkforge.accounts.application.AuthService;
 import com.linkforge.accounts.domain.AccountsConstants;
-import com.linkforge.accounts.domain.Roles;
+import com.linkforge.foundation.security.StandardRoles;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -146,7 +146,7 @@ class ApiKeyPersistenceIntegrationTest extends AccountsPersistenceIntegrationTes
         assertThat(afterAuth).filteredOn(info -> info.id() == firstKey.id())
                 .singleElement()
                 .satisfies(info -> assertThat(info.lastUsedAt()).isNotNull());
-        assertThat(registered.principal().getRoles()).containsExactlyInAnyOrder(Roles.TENANT_ADMIN);
+        assertThat(registered.principal().getRoles()).containsExactlyInAnyOrder(StandardRoles.TENANT_ADMIN);
     }
 
     private long provisionApplication(long tenantId, String applicationKey) {

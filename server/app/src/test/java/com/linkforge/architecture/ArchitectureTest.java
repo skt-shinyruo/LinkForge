@@ -1,5 +1,6 @@
 package com.linkforge.architecture;
 
+import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
@@ -12,20 +13,23 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.lang.reflect.GenericArrayType;
+import java.lang.reflect.Method;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
+import java.lang.reflect.TypeVariable;
+import java.lang.reflect.WildcardType;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 class ArchitectureTest {
 
     private static final JavaClasses CLASSES = new ClassFileImporter()
             .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
             .importPackages("com.linkforge");
-    private static final String FORBIDDEN_GOVERNANCE_ROLES_REFERENCE = "com.linkforge.accounts.domain.Roles";
-    private static final String FORBIDDEN_APP_ACCOUNTS_APPLICATION_REFERENCE = "com.linkforge.accounts.application.";
-    private static final String FORBIDDEN_APP_ACCOUNTS_INFRASTRUCTURE_REFERENCE = "com.linkforge.accounts.infrastructure.";
-    private static final String FORBIDDEN_APP_ACCOUNTS_DOMAIN_ROLES_REFERENCE = "com.linkforge.accounts.domain.Roles";
     private static final List<BoundedContext> BOUNDED_CONTEXTS = List.of(
             new BoundedContext("accounts", "com.linkforge.accounts"),
             new BoundedContext("shortlink", "com.linkforge.shortlink"),
@@ -234,20 +238,12 @@ class ArchitectureTest {
     }
 
     @Test
-    void shortlink_controllers_should_not_expose_application_link_dto_as_http_contract() throws Exception {
-        Path shortlinkWebDir = resolveFromCurrentWorkspace(
-                "shortlink/interfaces/src/main/java/com/linkforge/shortlink/interfaces/web",
-                "server/shortlink/interfaces/src/main/java/com/linkforge/shortlink/interfaces/web"
-        );
-
-        List<Path> violations;
-        try (var stream = Files.walk(shortlinkWebDir)) {
-            violations = stream
-                    .filter(path -> path.getFileName().toString().endsWith("Controller.java"))
-                    .filter(path -> sourceContainsAny(path, "ApiResponse<LinkDto>", "ShortLinkPageHttpResponse<LinkDto>"))
-                    .sorted()
-                    .toList();
-        }
+    void shortlink_controllers_should_not_expose_application_link_dto_as_http_contract() {
+        List<String> violations = shortlinkControllerMethods().stream()
+                .filter(method -> typeMentions(method.getGenericReturnType(), "com.linkforge.shortlink.application.LinkDto"))
+                .map(method -> method.getDeclaringClass().getName() + "#" + method.getName())
+                .sorted()
+                .toList();
 
         assertThat(violations)
                 .withFailMessage("Shortlink controllers must map application LinkDto to HTTP response DTOs: %s", violations)
@@ -255,54 +251,30 @@ class ArchitectureTest {
     }
 
     @Test
-    void shortlink_interfaces_should_depend_on_specific_use_case_interfaces() throws Exception {
-        Path shortlinkWebDir = resolveFromCurrentWorkspace(
-                "shortlink/interfaces/src/main/java/com/linkforge/shortlink/interfaces/web",
-                "server/shortlink/interfaces/src/main/java/com/linkforge/shortlink/interfaces/web"
-        );
-
-        List<Path> violations;
-        try (var stream = Files.walk(shortlinkWebDir)) {
-            violations = stream
-                    .filter(path -> path.getFileName().toString().endsWith("Controller.java"))
-                    .filter(path -> sourceContainsAny(path, "ShortLinkService"))
-                    .sorted()
-                    .toList();
-        }
-
-        assertThat(violations)
-                .withFailMessage("Shortlink controllers must inject focused use-case interfaces instead of ShortLinkService: %s", violations)
-                .isEmpty();
+    void shortlink_interfaces_should_depend_on_specific_use_case_interfaces() {
+        ArchRule rule = noClasses()
+                .that()
+                .areAnnotatedWith(RestController.class)
+                .and()
+                .resideInAnyPackage("com.linkforge.shortlink.interfaces.web..")
+                .should()
+                .dependOnClassesThat()
+                .haveFullyQualifiedName("com.linkforge.shortlink.application.ShortLinkService");
+        rule.check(CLASSES);
     }
 
     @Test
-    void shortlink_application_should_not_keep_shortlink_service_as_dto_container() throws Exception {
-        Path shortlinkApplicationDir = resolveFromCurrentWorkspace(
-                "shortlink/application/src/main/java/com/linkforge/shortlink/application",
-                "server/shortlink/application/src/main/java/com/linkforge/shortlink/application"
-        );
-
-        assertThat(shortlinkApplicationDir.resolve("ShortLinkService.java"))
+    void shortlink_application_should_not_keep_shortlink_service_as_dto_container() {
+        assertThat(CLASSES.stream().map(JavaClass::getName))
                 .as("ShortLinkService was a large interface plus nested DTO container; use focused use-case interfaces and top-level records")
-                .doesNotExist();
+                .doesNotContain("com.linkforge.shortlink.application.ShortLinkService");
     }
 
     @Test
-    void removed_shortlink_service_should_not_have_live_references() throws Exception {
-        Path shortlinkDir = resolveFromCurrentWorkspace("shortlink", "server/shortlink");
-
-        List<Path> violations;
-        try (var stream = Files.walk(shortlinkDir)) {
-            violations = stream
-                    .filter(path -> path.toString().endsWith(".java"))
-                    .filter(path -> sourceContainsAny(path, "ShortLinkService"))
-                    .sorted()
-                    .toList();
-        }
-
-        assertThat(violations)
-                .withFailMessage("ShortLinkService was removed; use focused use cases or more specific test names: %s", violations)
-                .isEmpty();
+    void accounts_domain_should_not_expose_deprecated_roles_alias() {
+        assertThat(CLASSES.stream().map(JavaClass::getName))
+                .as("Cross-context code must use foundation StandardRoles instead of accounts-owned role aliases")
+                .doesNotContain("com.linkforge.accounts.domain.Roles");
     }
 
     @Test
@@ -401,80 +373,36 @@ class ArchitectureTest {
     }
 
     @Test
-    void governance_service_source_should_not_import_accounts_roles() throws Exception {
-        // ArchUnit can miss constant-only dependencies after javac inlines static final String fields.
-        // Keep this source-level guard until governance stops importing accounts-domain Roles.
-        Path governanceService = resolveFromCurrentWorkspace(
-                "governance/application/src/main/java/com/linkforge/governance/application/GovernanceService.java",
-                "server/governance/application/src/main/java/com/linkforge/governance/application/GovernanceService.java"
-        );
-        String source = Files.readString(governanceService);
-        assertThat(source).doesNotContain(FORBIDDEN_GOVERNANCE_ROLES_REFERENCE);
+    void app_security_should_not_depend_on_accounts_internals() {
+        ArchRule rule = noClasses()
+                .that()
+                .resideInAnyPackage("com.linkforge.app.security..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAnyPackage(
+                        "com.linkforge.accounts.domain..",
+                        "com.linkforge.accounts.application..",
+                        "com.linkforge.accounts.infrastructure.."
+                );
+        rule.check(CLASSES);
     }
 
     @Test
-    void app_security_source_should_not_gain_new_accounts_internal_imports() throws Exception {
-        Path securityDir = resolveFromCurrentWorkspace(
-                "app/src/main/java/com/linkforge/app/security",
-                "server/app/src/main/java/com/linkforge/app/security"
-        );
-
-        List<Path> sources;
-        try (var stream = Files.walk(securityDir)) {
-            sources = stream
-                    .filter(path -> path.toString().endsWith(".java"))
-                    .sorted()
-                    .toList();
-        }
-
+    void shortlink_application_code_should_publish_shortlink_events_only_through_domain_event_dispatcher() {
         List<String> violations = new ArrayList<>();
-        for (Path source : sources) {
-            String text = Files.readString(source);
-            if (text.contains(FORBIDDEN_APP_ACCOUNTS_APPLICATION_REFERENCE)
-                    || text.contains(FORBIDDEN_APP_ACCOUNTS_INFRASTRUCTURE_REFERENCE)
-                    || text.contains(FORBIDDEN_APP_ACCOUNTS_DOMAIN_ROLES_REFERENCE)) {
-                violations.add(source.toString());
-            }
-        }
+        CLASSES.stream()
+                .filter(javaClass -> javaClass.getPackageName().startsWith("com.linkforge.shortlink.application"))
+                .filter(javaClass -> !javaClass.getPackageName().equals("com.linkforge.shortlink.application.eventing"))
+                .filter(javaClass -> !javaClass.getPackageName().equals("com.linkforge.shortlink.application.port"))
+                .filter(javaClass -> javaClass.getDirectDependenciesFromSelf().stream()
+                        .anyMatch(dependency -> dependency.getTargetClass().getName()
+                                .equals("com.linkforge.shortlink.application.port.ShortLinkEventPublisher")))
+                .map(JavaClass::getName)
+                .sorted()
+                .forEach(violations::add);
 
         assertThat(violations)
-                .withFailMessage("New app/security accounts-internal imports are forbidden: %s", violations)
-                .isEmpty();
-    }
-
-    @Test
-    void shortlink_create_update_application_code_should_dispatch_domain_events_instead_of_publishing_directly() throws Exception {
-        Path shortlinkCommandDir = resolveFromCurrentWorkspace(
-                "shortlink/application/src/main/java/com/linkforge/shortlink/application/command",
-                "server/shortlink/application/src/main/java/com/linkforge/shortlink/application/command"
-        );
-        Path shortlinkApprovalDir = resolveFromCurrentWorkspace(
-                "shortlink/application/src/main/java/com/linkforge/shortlink/application/approval",
-                "server/shortlink/application/src/main/java/com/linkforge/shortlink/application/approval"
-        );
-
-        List<Path> sources;
-        try (var commandStream = Files.walk(shortlinkCommandDir);
-             var approvalStream = Files.walk(shortlinkApprovalDir)) {
-            sources = java.util.stream.Stream
-                    .concat(commandStream, approvalStream)
-                    .filter(path -> path.toString().endsWith(".java"))
-                    .sorted()
-                    .toList();
-        }
-
-        List<String> violations = new ArrayList<>();
-        for (Path source : sources) {
-            String text = Files.readString(source);
-            if (text.contains("ShortLinkEventPublisher")
-                    || text.contains(".created(")
-                    || text.contains(".updated(")) {
-                violations.add(source.toString());
-            }
-        }
-
-        assertThat(violations)
-                .withFailMessage("Shortlink application code must dispatch aggregate domain events instead of directly publishing create/update events: %s", violations)
+                .withFailMessage("Shortlink application code must dispatch aggregate domain events before publishing integration events: %s", violations)
                 .isEmpty();
     }
 
@@ -525,18 +453,43 @@ class ArchitectureTest {
         throw new IllegalStateException("Could not resolve any of " + String.join(", ", relativePaths) + " from " + cwd);
     }
 
-    private static boolean sourceContainsAny(Path source, String... needles) {
+    private static List<Method> shortlinkControllerMethods() {
+        return CLASSES.stream()
+                .filter(javaClass -> javaClass.isAnnotatedWith(RestController.class))
+                .filter(javaClass -> javaClass.getPackageName().startsWith("com.linkforge.shortlink.interfaces.web"))
+                .map(ArchitectureTest::loadClass)
+                .flatMap(clazz -> Arrays.stream(clazz.getDeclaredMethods()))
+                .toList();
+    }
+
+    private static Class<?> loadClass(JavaClass javaClass) {
         try {
-            String text = Files.readString(source);
-            for (String needle : needles) {
-                if (text.contains(needle)) {
-                    return true;
-                }
-            }
-            return false;
-        } catch (java.io.IOException e) {
-            throw new IllegalStateException("Could not read " + source, e);
+            return Class.forName(javaClass.getName());
+        } catch (ClassNotFoundException e) {
+            throw new IllegalStateException("Could not load " + javaClass.getName(), e);
         }
+    }
+
+    private static boolean typeMentions(Type type, String fullyQualifiedName) {
+        if (type instanceof Class<?> clazz) {
+            return clazz.getName().equals(fullyQualifiedName);
+        }
+        if (type instanceof ParameterizedType parameterizedType) {
+            return typeMentions(parameterizedType.getRawType(), fullyQualifiedName)
+                    || Arrays.stream(parameterizedType.getActualTypeArguments())
+                    .anyMatch(argument -> typeMentions(argument, fullyQualifiedName));
+        }
+        if (type instanceof GenericArrayType genericArrayType) {
+            return typeMentions(genericArrayType.getGenericComponentType(), fullyQualifiedName);
+        }
+        if (type instanceof WildcardType wildcardType) {
+            return Arrays.stream(wildcardType.getUpperBounds()).anyMatch(bound -> typeMentions(bound, fullyQualifiedName))
+                    || Arrays.stream(wildcardType.getLowerBounds()).anyMatch(bound -> typeMentions(bound, fullyQualifiedName));
+        }
+        if (type instanceof TypeVariable<?> typeVariable) {
+            return Arrays.stream(typeVariable.getBounds()).anyMatch(bound -> typeMentions(bound, fullyQualifiedName));
+        }
+        return false;
     }
 
     private record BoundedContext(String name, String basePackage) {

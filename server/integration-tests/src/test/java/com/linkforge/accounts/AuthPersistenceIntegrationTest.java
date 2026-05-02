@@ -5,7 +5,6 @@ import com.linkforge.accounts.application.AuthService;
 import com.linkforge.accounts.application.UserAdminService;
 import com.linkforge.accounts.application.port.AccountStatusCache;
 import com.linkforge.accounts.application.port.AccountsUserStore;
-import com.linkforge.accounts.domain.Roles;
 import com.linkforge.accounts.infrastructure.security.JwtService;
 import com.linkforge.accounts.infrastructure.persistence.entity.ApiKeyEntity;
 import com.linkforge.accounts.infrastructure.persistence.entity.TenantEntity;
@@ -13,6 +12,7 @@ import com.linkforge.accounts.infrastructure.persistence.entity.UserEntity;
 import com.linkforge.accounts.infrastructure.persistence.entity.UserRoleEntity;
 import com.linkforge.accounts.infrastructure.persistence.entity.UserRoleId;
 import com.linkforge.foundation.security.AuthPrincipal;
+import com.linkforge.foundation.security.StandardRoles;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -185,11 +185,11 @@ class AuthPersistenceIntegrationTest extends AccountsPersistenceIntegrationTestS
         long tenantId = registered.principal().getTenantId();
 
         assertThat(registered.principal().getEmail()).isEqualTo(ownerEmail);
-        assertThat(registered.principal().getRoles()).containsExactlyInAnyOrder(Roles.TENANT_ADMIN);
+        assertThat(registered.principal().getRoles()).containsExactlyInAnyOrder(StandardRoles.TENANT_ADMIN);
 
         AuthService.AuthResult loggedIn = authService.login(ownerEmail, password);
         assertThat(loggedIn.principal().getTenantId()).isEqualTo(tenantId);
-        assertThat(loggedIn.principal().getRoles()).containsExactlyInAnyOrder(Roles.TENANT_ADMIN);
+        assertThat(loggedIn.principal().getRoles()).containsExactlyInAnyOrder(StandardRoles.TENANT_ADMIN);
 
         authenticateAs(loggedIn.principal());
         pauseForCreatedAtOrdering();
@@ -201,15 +201,15 @@ class AuthPersistenceIntegrationTest extends AccountsPersistenceIntegrationTestS
 
         assertThat(createdUser.tenantId()).isEqualTo(tenantId);
         assertThat(createdUser.email()).isEqualTo(memberEmail);
-        assertThat(createdUser.roles()).containsExactlyInAnyOrder(Roles.USER);
+        assertThat(createdUser.roles()).containsExactlyInAnyOrder(StandardRoles.USER);
 
         List<UserAdminService.UserDto> users = userAdminService.list(tenantId);
 
         assertThat(users).hasSize(2);
         assertThat(users).extracting(UserAdminService.UserDto::email)
                 .containsExactly(memberEmail, ownerEmail);
-        assertThat(users.get(0).roles()).containsExactlyInAnyOrder(Roles.USER);
-        assertThat(users.get(1).roles()).containsExactlyInAnyOrder(Roles.TENANT_ADMIN);
+        assertThat(users.get(0).roles()).containsExactlyInAnyOrder(StandardRoles.USER);
+        assertThat(users.get(1).roles()).containsExactlyInAnyOrder(StandardRoles.TENANT_ADMIN);
     }
 
     @Test

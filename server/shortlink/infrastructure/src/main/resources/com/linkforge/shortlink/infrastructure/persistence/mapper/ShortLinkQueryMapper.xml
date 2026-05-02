@@ -130,6 +130,7 @@
         FROM short_links sl
         JOIN domains d ON d.id = sl.domain_id
         WHERE d.hostname = #{hostname}
+          AND d.status = 'ACTIVE'
           AND sl.code = #{code}
           AND sl.archived_at IS NULL
         LIMIT 1
@@ -142,6 +143,7 @@
         FROM short_links sl
         JOIN domains d ON d.id = sl.domain_id
         WHERE d.hostname = CONCAT('legacy-', sl.tenant_id, '.', #{baseHost})
+          AND d.status = 'ACTIVE'
           AND sl.code = #{code}
           AND sl.archived_at IS NULL
         LIMIT 1

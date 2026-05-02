@@ -17,7 +17,7 @@ const page = useLinksPage();
     @navigate="navigation.navigate"
     @logout="navigation.logout"
   >
-    <section v-if="navigation.isAdmin.value" class="scope card">
+    <section v-if="navigation.isTenantAdmin.value" class="scope card">
       <h2>应用范围</h2>
       <div class="scope-grid">
         <label class="field">
@@ -52,7 +52,8 @@ const page = useLinksPage();
       :creating="page.creating.value"
       :importing="page.importing.value"
       :import-file-name="page.importFileName.value"
-      :is-admin="navigation.isAdmin.value"
+      :import-result="page.importResult.value"
+      :is-admin="navigation.isTenantAdmin.value"
       :error="page.error.value"
       @create="page.createLink"
       @import="page.importCsv"
@@ -68,7 +69,7 @@ const page = useLinksPage();
       :keyword="page.filters.keyword"
       :editing-id="page.editingId.value"
       :edit-form="page.editForm"
-      :is-admin="navigation.isAdmin.value"
+      :is-admin="navigation.isTenantAdmin.value"
       :page="page.page.value"
       :size="page.size.value"
       :total="page.total.value"

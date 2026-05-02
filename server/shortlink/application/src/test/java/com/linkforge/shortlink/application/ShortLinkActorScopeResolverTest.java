@@ -52,6 +52,32 @@ class ShortLinkActorScopeResolverTest {
     }
 
     @Test
+    void resolveCreateForUser_shouldRejectApplicationScopeForNonTenantAdmin() {
+        ShortLinkActorScopeResolver resolver = new ShortLinkActorScopeResolver(mock(ApplicationScopePort.class));
+        UserActor actor = new UserActor(1L, 99L, "user@example.com", Set.of("USER"));
+
+        assertThatThrownBy(() -> resolver.resolveCreateForUser(
+                actor,
+                new ScopedCreateLinkRequest(createRequest(2001L), null)
+        ))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN));
+    }
+
+    @Test
+    void resolveBrowseForUser_shouldRejectApplicationFilterForNonTenantAdmin() {
+        ShortLinkActorScopeResolver resolver = new ShortLinkActorScopeResolver(mock(ApplicationScopePort.class));
+        UserActor actor = new UserActor(1L, 99L, "user@example.com", Set.of("USER"));
+
+        assertThatThrownBy(() -> resolver.resolveBrowseForUser(
+                actor,
+                new BrowseLinksRequest(false, true, null, null, 2001L, null, 0, 20, 100)
+        ))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN));
+    }
+
+    @Test
     void resolveCreateForApiKey_shouldRequireApplicationWhenActorIsUnscoped() {
         ShortLinkActorScopeResolver resolver = new ShortLinkActorScopeResolver(mock(ApplicationScopePort.class));
         ApiKeyActor actor = new ApiKeyActor(1L, 55L, null);

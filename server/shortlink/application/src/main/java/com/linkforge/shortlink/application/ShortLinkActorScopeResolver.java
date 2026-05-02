@@ -6,6 +6,7 @@ import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.foundation.context.ApiKeyActor;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.persistence.PageQuery;
+import com.linkforge.foundation.security.StandardRoles;
 import com.linkforge.shortlink.application.csv.ShortLinkCsvImportRow;
 import com.linkforge.shortlink.application.query.ShortLinkSearchQuery;
 import org.springframework.stereotype.Component;
@@ -28,8 +29,12 @@ public class ShortLinkActorScopeResolver {
         CreateLinkRequest createRequest = requireCreateRequest(request);
         Long pathApplicationId = request.pathApplicationId();
         if (pathApplicationId == null) {
+            if (createRequest.applicationId() != null || createRequest.domainId() != null) {
+                requireTenantAdmin(actor);
+            }
             return createRequest;
         }
+        requireTenantAdmin(actor);
         applicationScopePort.requireApplicationExists(actor.tenantId(), pathApplicationId);
         Long requestApplicationId = createRequest.applicationId();
         if (requestApplicationId != null && !requestApplicationId.equals(pathApplicationId)) {
@@ -55,8 +60,8 @@ public class ShortLinkActorScopeResolver {
         return effectiveApplicationId == null ? createRequest : withApplicationId(createRequest, effectiveApplicationId);
     }
 
-    public ShortLinkSearchQuery resolveBrowseForUser(long tenantId, BrowseLinksRequest request) {
-        Long applicationId = resolveRequestedApplicationId(tenantId, request);
+    public ShortLinkSearchQuery resolveBrowseForUser(UserActor actor, BrowseLinksRequest request) {
+        Long applicationId = resolveRequestedApplicationId(actor, request);
         return new ShortLinkSearchQuery(
                 request.archived() != null && request.archived(),
                 request.enabled(),
@@ -107,15 +112,25 @@ public class ShortLinkActorScopeResolver {
         return new ImportScope(request.rows(), pathApplicationId, request.domainId());
     }
 
-    private Long resolveRequestedApplicationId(long tenantId, BrowseLinksRequest request) {
+    private Long resolveRequestedApplicationId(UserActor actor, BrowseLinksRequest request) {
         if (request.pathApplicationId() == null) {
+            if (request.requestedApplicationId() != null) {
+                requireTenantAdmin(actor);
+            }
             return request.requestedApplicationId();
         }
+        requireTenantAdmin(actor);
         if (request.requestedApplicationId() != null && !request.pathApplicationId().equals(request.requestedApplicationId())) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "请求中的 applicationId 与路径不一致");
         }
-        applicationScopePort.requireApplicationExists(tenantId, request.pathApplicationId());
+        applicationScopePort.requireApplicationExists(actor.tenantId(), request.pathApplicationId());
         return request.pathApplicationId();
+    }
+
+    private static void requireTenantAdmin(UserActor actor) {
+        if (actor == null || actor.roles() == null || !actor.roles().contains(StandardRoles.TENANT_ADMIN)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "应用级短链需要租户管理员权限");
+        }
     }
 
     private static Long resolveAuthorizedApplicationId(

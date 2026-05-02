@@ -1,4 +1,4 @@
-import { getCurrentInstance, onMounted, ref } from "vue";
+import { getCurrentInstance, onMounted, reactive, ref } from "vue";
 import { approveRequest, listApprovals } from "../services/approvals";
 import type { ApprovalRequestDto } from "../services/types";
 
@@ -11,6 +11,7 @@ export function useApprovalsPage() {
   const loading = ref(false);
   const actingId = ref<number | null>(null);
   const error = ref<string | null>(null);
+  const decisionReasons = reactive<Record<number, string>>({});
 
   async function load() {
     loading.value = true;
@@ -24,11 +25,16 @@ export function useApprovalsPage() {
     }
   }
 
-  async function approve(requestId: number, reason = "") {
+  function setDecisionReason(requestId: number, reason: string) {
+    decisionReasons[requestId] = reason;
+  }
+
+  async function approve(requestId: number, reason = decisionReasons[requestId] ?? "") {
     actingId.value = requestId;
     error.value = null;
     try {
       await approveRequest(requestId, { reason: reason.trim() || undefined });
+      delete decisionReasons[requestId];
       await load();
     } catch (caught) {
       error.value = getErrorMessage(caught, "审批失败");
@@ -47,8 +53,10 @@ export function useApprovalsPage() {
     actingId,
     approvals,
     approve,
+    decisionReasons,
     error,
     load,
     loading,
+    setDecisionReason,
   };
 }

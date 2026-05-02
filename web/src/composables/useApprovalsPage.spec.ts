@@ -48,4 +48,20 @@ describe("useApprovalsPage", () => {
     expect(approveRequestMock).toHaveBeenCalledWith(1, { reason: "approved" });
     expect(page.approvals.value[0]?.status).toBe("EXECUTED");
   });
+
+  it("stores editable approval reasons and passes the selected reason to the API", async () => {
+    listApprovalsMock.mockResolvedValueOnce([createApproval(7)]).mockResolvedValueOnce([]);
+    approveRequestMock.mockResolvedValue(createApproval(7, "EXECUTED"));
+
+    const { useApprovalsPage } = await import("./useApprovalsPage");
+    const page = useApprovalsPage();
+
+    await page.load();
+    page.setDecisionReason(7, " reviewed for export ");
+    await page.approve(7);
+
+    expect(approveRequestMock).toHaveBeenCalledWith(7, { reason: "reviewed for export" });
+    expect(page.decisionReasons[7]).toBeUndefined();
+  });
+
 });

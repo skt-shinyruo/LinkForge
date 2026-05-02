@@ -88,7 +88,7 @@ public class ShortLinkApplicationService implements
     public PageResult<LinkDto> browseForUser(UserActor actor, BrowseLinksRequest request) {
         return search(
                 actor.tenantId(),
-                actorScopeResolver.resolveBrowseForUser(actor.tenantId(), request),
+                actorScopeResolver.resolveBrowseForUser(actor, request),
                 actorScopeResolver.pageQuery(request)
         );
     }
@@ -126,7 +126,7 @@ public class ShortLinkApplicationService implements
     public ShortLinkCsvExport exportCsvForUser(UserActor actor, BrowseLinksRequest request) {
         return exportCsv(
                 actor.tenantId(),
-                actorScopeResolver.resolveBrowseForUser(actor.tenantId(), request),
+                actorScopeResolver.resolveBrowseForUser(actor, request),
                 actorScopeResolver.pageQuery(request)
         );
     }

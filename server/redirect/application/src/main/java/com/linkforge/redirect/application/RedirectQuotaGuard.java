@@ -7,6 +7,8 @@ import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.contract.redirect.LinkMeta;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
@@ -22,17 +24,29 @@ public class RedirectQuotaGuard {
     private final Clock clock;
     private final ApplicationScopePort applicationScopePort;
     private final ApplicationClickQuotaReservationPort applicationClickQuotaReservationPort;
+    private final boolean failOpenOnQuotaErrors;
 
+    @Autowired
     public RedirectQuotaGuard(
             Clock clock,
             ApplicationScopePort applicationScopePort,
-            ApplicationClickQuotaReservationPort applicationClickQuotaReservationPort
+            ApplicationClickQuotaReservationPort applicationClickQuotaReservationPort,
+            @Value("${app.analytics.quota.fail-open:false}") boolean failOpenOnQuotaErrors
     ) {
         this.clock = clock;
         this.applicationScopePort = applicationScopePort == null ? noQuotaApplicationScopePort() : applicationScopePort;
         this.applicationClickQuotaReservationPort = applicationClickQuotaReservationPort == null
                 ? allowAllClickQuotaReservationPort()
                 : applicationClickQuotaReservationPort;
+        this.failOpenOnQuotaErrors = failOpenOnQuotaErrors;
+    }
+
+    public RedirectQuotaGuard(
+            Clock clock,
+            ApplicationScopePort applicationScopePort,
+            ApplicationClickQuotaReservationPort applicationClickQuotaReservationPort
+    ) {
+        this(clock, applicationScopePort, applicationClickQuotaReservationPort, false);
     }
 
     static RedirectQuotaGuard from(
@@ -64,12 +78,13 @@ public class RedirectQuotaGuard {
             quota = applicationScopePort.findApplicationQuota(meta.tenantId(), applicationId);
         } catch (Exception e) {
             log.debug(
-                    "find application quota failed; allow redirect: tenantId={}, applicationId={}, err={}",
+                    "find application quota failed (failOpen={}): tenantId={}, applicationId={}, err={}",
+                    failOpenOnQuotaErrors,
                     meta.tenantId(),
                     applicationId,
                     e.getMessage()
             );
-            return null;
+            return quotaFailureReason();
         }
         if (quota == null || quota.isEmpty()) {
             return null;
@@ -91,15 +106,20 @@ public class RedirectQuotaGuard {
             );
         } catch (Exception e) {
             log.debug(
-                    "reserve monthly click quota failed; allow redirect: tenantId={}, applicationId={}, monthStart={}, err={}",
+                    "reserve monthly click quota failed (failOpen={}): tenantId={}, applicationId={}, monthStart={}, err={}",
+                    failOpenOnQuotaErrors,
                     meta.tenantId(),
                     applicationId,
                     monthStart,
                     e.getMessage()
             );
-            return null;
+            return quotaFailureReason();
         }
         return reserved ? null : RedirectResolution.UnavailableReason.QUOTA_EXCEEDED;
+    }
+
+    private RedirectResolution.UnavailableReason quotaFailureReason() {
+        return failOpenOnQuotaErrors ? null : RedirectResolution.UnavailableReason.QUOTA_EXCEEDED;
     }
 
     private static ApplicationClickQuotaReservationPort fallbackClickQuotaReservationPort(

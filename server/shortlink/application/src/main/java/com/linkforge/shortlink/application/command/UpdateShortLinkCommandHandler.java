@@ -81,10 +81,8 @@ public class UpdateShortLinkCommandHandler {
         }
 
         boolean appAwareLink = link.applicationId() != null && link.domainId() != null;
-        ShortLinkLifecycleState persistedLifecycleState = link.lifecycleState();
         boolean requiresDestinationApproval = req.originalUrl() != null
                 && appAwareLink
-                && persistedLifecycleState == ShortLinkLifecycleState.ACTIVE
                 && !link.originalUrl().value().equals(req.originalUrl());
 
         List<String> existingTags = null;

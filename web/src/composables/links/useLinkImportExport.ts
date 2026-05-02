@@ -1,6 +1,6 @@
-import { computed, type Ref } from "vue";
+import { computed, ref, type Ref } from "vue";
 import { exportLinksCsv, importLinksCsv } from "../../services/links";
-import type { LinkExportQuery, LinkImportQuery } from "../../services/types";
+import type { LinkExportQuery, LinkImportQuery, LinkImportResult } from "../../services/types";
 
 export function useLinkImportExport(args: {
   importFile: Ref<File | null>;
@@ -13,6 +13,7 @@ export function useLinkImportExport(args: {
 }) {
   const { importFile, importing, setError, getErrorMessage, getImportQuery, getExportQuery, reload } = args;
 
+  const importResult = ref<LinkImportResult | null>(null);
   const importFileName = computed(() => importFile.value?.name ?? "");
 
   function setImportFile(file: File | null) {
@@ -26,9 +27,10 @@ export function useLinkImportExport(args: {
 
     importing.value = true;
     setError(null);
+    importResult.value = null;
 
     try {
-      await importLinksCsv(importFile.value, getImportQuery?.() ?? {});
+      importResult.value = await importLinksCsv(importFile.value, getImportQuery?.() ?? {});
       importFile.value = null;
       await reload();
     } catch (caught) {
@@ -58,6 +60,7 @@ export function useLinkImportExport(args: {
     exportCsv,
     importCsv,
     importFileName,
+    importResult,
     setImportFile,
   };
 }

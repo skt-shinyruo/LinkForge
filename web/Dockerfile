@@ -2,6 +2,8 @@
 
 FROM node:20-alpine AS build
 WORKDIR /app
+ARG VITE_AUTH_MODE=bearer
+ENV VITE_AUTH_MODE=$VITE_AUTH_MODE
 
 COPY package.json package-lock.json* /app/
 RUN npm ci

@@ -65,4 +65,15 @@ describe("useAuthStore", () => {
     expect(auth.email).toBe("");
     expect(auth.roles).toEqual([]);
   });
+
+  it("separates tenant admin privileges from platform admin privileges", async () => {
+    const { useAuthStore } = await import("./auth");
+    const auth = useAuthStore();
+
+    auth.roles = ["PLATFORM_ADMIN"];
+
+    expect(auth.isPlatformAdmin).toBe(true);
+    expect(auth.isTenantAdmin).toBe(false);
+    expect(auth.isAdmin).toBe(true);
+  });
 });

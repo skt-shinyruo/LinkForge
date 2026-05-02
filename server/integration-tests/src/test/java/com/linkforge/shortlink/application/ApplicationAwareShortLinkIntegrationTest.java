@@ -227,8 +227,10 @@ class ApplicationAwareShortLinkIntegrationTest extends ApplicationAwareShortLink
                 approvalId
         );
         assertThat(afterSnapshot)
-                .contains("linkId=" + created.id())
-                .contains("originalUrl=https://example.com/approved-change");
+                .contains("\"type\":\"linkDestinationChange\"")
+                .contains("\"version\":1")
+                .contains("\"linkId\":" + created.id())
+                .contains("\"originalUrl\":\"https://example.com/approved-change\"");
 
         GovernanceService.ApprovalRequestDto approved = governanceService.approveRequest(
                 TENANT_ID,

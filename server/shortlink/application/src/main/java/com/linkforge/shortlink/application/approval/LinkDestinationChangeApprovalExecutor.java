@@ -4,6 +4,8 @@ import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.contract.governance.ApprovalExecutionPort;
 import com.linkforge.contract.governance.ApprovalExecutionRequest;
+import com.linkforge.contract.governance.ApprovalPayloadCodec;
+import com.linkforge.contract.governance.ApprovalPayloads;
 import com.linkforge.contract.governance.SensitiveOperation;
 import com.linkforge.contract.shortlink.ShortLinkErrorCode;
 import com.linkforge.foundation.tx.PostCommitHookPort;
@@ -100,33 +102,20 @@ public class LinkDestinationChangeApprovalExecutor implements ApprovalExecutionP
             if (snapshot == null || snapshot.isBlank()) {
                 throw new BusinessException(ErrorCode.BAD_REQUEST, fieldName + " 缺少审批快照");
             }
-            long linkId = 0L;
-            String originalUrl = null;
-            for (String line : snapshot.split("\\R")) {
-                int separator = line.indexOf('=');
-                if (separator <= 0) {
-                    continue;
-                }
-                String key = line.substring(0, separator).trim();
-                String value = line.substring(separator + 1);
-                if ("linkId".equals(key)) {
-                    linkId = parseLinkId(value, fieldName);
-                } else if ("originalUrl".equals(key)) {
-                    originalUrl = value;
-                }
+            ApprovalPayloads.LinkDestinationChangePayload payload;
+            try {
+                payload = ApprovalPayloadCodec.read(snapshot, ApprovalPayloads.LinkDestinationChangePayload.class);
+            } catch (IllegalArgumentException ex) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, fieldName + " 审批 payload 不合法");
             }
-            if (linkId <= 0 || originalUrl == null || originalUrl.isBlank()) {
+            if (!ApprovalPayloads.LINK_DESTINATION_CHANGE.equals(payload.type())
+                    || payload.version() != ApprovalPayloads.VERSION_1) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, fieldName + " 审批 payload 版本不支持");
+            }
+            if (payload.linkId() <= 0 || payload.originalUrl() == null || payload.originalUrl().isBlank()) {
                 throw new BusinessException(ErrorCode.BAD_REQUEST, fieldName + " 缺少短链目标地址变更信息");
             }
-            return new LinkDestinationSnapshot(linkId, originalUrl);
-        }
-
-        private static long parseLinkId(String value, String fieldName) {
-            try {
-                return Long.parseLong(value.trim());
-            } catch (NumberFormatException ex) {
-                throw new BusinessException(ErrorCode.BAD_REQUEST, fieldName + " linkId 不合法");
-            }
+            return new LinkDestinationSnapshot(payload.linkId(), payload.originalUrl());
         }
     }
 }

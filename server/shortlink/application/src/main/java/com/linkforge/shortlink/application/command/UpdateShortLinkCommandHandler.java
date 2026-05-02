@@ -95,6 +95,7 @@ public class UpdateShortLinkCommandHandler {
             if (actor.tenantId() != tenantId) {
                 throw new BusinessException(ErrorCode.FORBIDDEN, "actor 租户不匹配");
             }
+            String requestedOriginalUrl = normalizeOriginalUrlForApproval(req.originalUrl());
             existingTags = linkTagRepository.findTagNamesByLinkId(linkId);
             if (hasOtherEffectiveChangesForApproval(link, req, existingTags)) {
                 throw new BusinessException(ErrorCode.BAD_REQUEST, "请先单独提交目标地址变更，再保存其他修改");
@@ -105,7 +106,7 @@ public class UpdateShortLinkCommandHandler {
                             linkId,
                             link.applicationId(),
                             link.originalUrl().value(),
-                            req.originalUrl(),
+                            requestedOriginalUrl,
                             new ApprovalRequester(actor.tenantId(), actor.userId(), actor.email()),
                             requestedAt
                     )
@@ -219,6 +220,14 @@ public class UpdateShortLinkCommandHandler {
             return hasOtherEffectiveChanges(link, req, existingTags);
         } catch (IllegalArgumentException ex) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "lifecycleState 不合法");
+        } catch (ShortLinkDomainException ex) {
+            throw ShortLinkDomainExceptions.translate(ex);
+        }
+    }
+
+    private static String normalizeOriginalUrlForApproval(String originalUrl) {
+        try {
+            return HttpUrl.of(originalUrl).value();
         } catch (ShortLinkDomainException ex) {
             throw ShortLinkDomainExceptions.translate(ex);
         }

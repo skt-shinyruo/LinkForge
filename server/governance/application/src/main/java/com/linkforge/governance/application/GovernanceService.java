@@ -4,6 +4,8 @@ import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.contract.governance.ApprovalExecutionPort;
 import com.linkforge.contract.governance.ApprovalExecutionRequest;
+import com.linkforge.contract.governance.ApprovalPayloadCodec;
+import com.linkforge.contract.governance.ApprovalPayloads;
 import com.linkforge.contract.governance.SensitiveOperation;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.context.UserActor;
@@ -215,18 +217,20 @@ public class GovernanceService {
     }
 
     private long parseRequestedMonthlyLinkLimit(String snapshot) {
-        if (snapshot == null || snapshot.isBlank()) {
-            return 0L;
+        ApprovalPayloads.ApplicationQuotaIncreasePayload payload;
+        try {
+            payload = ApprovalPayloadCodec.read(snapshot, ApprovalPayloads.ApplicationQuotaIncreasePayload.class);
+        } catch (IllegalArgumentException ex) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "配额审批 payload 不合法");
         }
-        String marker = "monthlyLinkLimit=";
-        int start = snapshot.indexOf(marker);
-        if (start < 0) {
-            return 0L;
+        if (!ApprovalPayloads.APPLICATION_QUOTA_INCREASE.equals(payload.type())
+                || payload.version() != ApprovalPayloads.VERSION_1) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "配额审批 payload 版本不支持");
         }
-        int valueStart = start + marker.length();
-        int valueEnd = snapshot.indexOf(',', valueStart);
-        String raw = valueEnd < 0 ? snapshot.substring(valueStart) : snapshot.substring(valueStart, valueEnd);
-        return Long.parseLong(raw.trim());
+        if (payload.monthlyLinkLimit() == null) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "配额审批 payload 缺少 monthlyLinkLimit");
+        }
+        return payload.monthlyLinkLimit();
     }
 
     private void appendAuditLog(

@@ -2,6 +2,8 @@ package com.linkforge.governance;
 
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.TestTenantFixtures;
+import com.linkforge.contract.governance.ApprovalPayloadCodec;
+import com.linkforge.contract.governance.ApprovalPayloads;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.governance.application.GovernanceService;
 import com.linkforge.governance.domain.ApprovalStatus;
@@ -49,7 +51,7 @@ class ApprovalWorkflowIntegrationTest extends GovernancePersistenceIntegrationTe
                         SensitiveOperationType.APPLICATION_QUOTA_INCREASE,
                         9001L,
                         null,
-                        "monthlyLinkLimit=50000,monthlyClickLimit=1000000",
+                        quotaPayload(50_000L, 1_000_000L),
                         requester,
                         LocalDateTime.now(ZoneOffset.UTC)
                 )
@@ -69,7 +71,7 @@ class ApprovalWorkflowIntegrationTest extends GovernancePersistenceIntegrationTe
                         SensitiveOperationType.APPLICATION_QUOTA_INCREASE,
                         9002L,
                         null,
-                        "monthlyLinkLimit=50000,monthlyClickLimit=1000000",
+                        quotaPayload(50_000L, 1_000_000L),
                         requester,
                         LocalDateTime.now(ZoneOffset.UTC)
                 )
@@ -80,7 +82,7 @@ class ApprovalWorkflowIntegrationTest extends GovernancePersistenceIntegrationTe
                         SensitiveOperationType.APPLICATION_QUOTA_INCREASE,
                         9003L,
                         null,
-                        "monthlyLinkLimit=250000,monthlyClickLimit=1000000",
+                        quotaPayload(250_000L, 1_000_000L),
                         requester,
                         LocalDateTime.now(ZoneOffset.UTC)
                 )
@@ -159,7 +161,7 @@ class ApprovalWorkflowIntegrationTest extends GovernancePersistenceIntegrationTe
                         SensitiveOperationType.APPLICATION_QUOTA_INCREASE,
                         9004L,
                         null,
-                        "monthlyLinkLimit=50000,monthlyClickLimit=1000000",
+                        quotaPayload(50_000L, 1_000_000L),
                         requester,
                         LocalDateTime.now(ZoneOffset.UTC)
                 )
@@ -197,5 +199,12 @@ class ApprovalWorkflowIntegrationTest extends GovernancePersistenceIntegrationTe
         );
         assertThat(approveAuditCount).isEqualTo(1L);
         assertThat(winningApprover).isEqualTo(208L);
+    }
+
+    private static String quotaPayload(long monthlyLinkLimit, long monthlyClickLimit) {
+        return ApprovalPayloadCodec.write(ApprovalPayloads.ApplicationQuotaIncreasePayload.v1(
+                monthlyLinkLimit,
+                monthlyClickLimit
+        ));
     }
 }

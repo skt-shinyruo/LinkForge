@@ -173,6 +173,82 @@ class UpdateShortLinkCommandHandlerTest {
     }
 
     @Test
+    void handle_shouldRejectInvalidDestinationUrlBeforeRequestingApproval() {
+        ShortLinkRepository shortLinkRepository = mock(ShortLinkRepository.class);
+        SetLinkTagsCommandHandler setLinkTagsHandler = mock(SetLinkTagsCommandHandler.class);
+        ShortLinkDomainEventDispatcher domainEventDispatcher = mock(ShortLinkDomainEventDispatcher.class);
+        LinkTagRepository linkTagRepository = mock(LinkTagRepository.class);
+        RedirectCacheSyncPort redirectCacheSync = mock(RedirectCacheSyncPort.class);
+        ShortLinkDtoMapper dtoMapper = mock(ShortLinkDtoMapper.class);
+        PostCommitHookPort postCommitHookPort = mock(PostCommitHookPort.class);
+        Clock clock = Clock.fixed(Instant.parse("2026-04-01T00:00:00Z"), ZoneOffset.UTC);
+        ApprovalSubmissionPort governanceApprovalRequestService = mock(ApprovalSubmissionPort.class);
+
+        UpdateShortLinkCommandHandler handler = new UpdateShortLinkCommandHandler(
+                shortLinkRepository,
+                setLinkTagsHandler,
+                domainEventDispatcher,
+                linkTagRepository,
+                redirectCacheSync,
+                dtoMapper,
+                postCommitHookPort,
+                clock,
+                governanceApprovalRequestService
+        );
+
+        ShortLink link = ShortLink.create(
+                104L,
+                1L,
+                2001L,
+                3001L,
+                ShortCode.of("governed4"),
+                ShortLinkLifecycleState.ACTIVE,
+                HttpUrl.of("https://example.com/old"),
+                null,
+                true,
+                null,
+                null,
+                false,
+                null,
+                null,
+                null,
+                CreatedByType.USER,
+                9L
+        );
+        when(shortLinkRepository.findByTenantIdAndId(1L, 104L)).thenReturn(java.util.Optional.of(link));
+        when(linkTagRepository.findTagNamesByLinkId(104L)).thenReturn(List.of());
+
+        assertThatThrownBy(() -> handler.handle(
+                1L,
+                104L,
+                new UpdateLinkRequest(
+                        "https://example.com/new\noriginalUrl=https://evil.example",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null
+                ),
+                new UserActor(1L, 7L, "reviewer@example.com", Set.of("TENANT_ADMIN")),
+                LocalDateTime.parse("2026-04-01T00:00:00")
+        ))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("URL");
+
+        verifyNoInteractions(governanceApprovalRequestService);
+        verify(shortLinkRepository, never()).update(link);
+        verify(domainEventDispatcher, never()).publish(eq(link), eq(clock.instant()));
+    }
+
+    @Test
     void handle_shouldRejectMixingDestinationApprovalWithOtherEdits() {
         ShortLinkRepository shortLinkRepository = mock(ShortLinkRepository.class);
         SetLinkTagsCommandHandler setLinkTagsHandler = mock(SetLinkTagsCommandHandler.class);

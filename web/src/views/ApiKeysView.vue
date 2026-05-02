@@ -71,7 +71,7 @@ const page = useApiKeysPage();
                 轮换
               </button>
               <button
-                v-if="key.status === 'enabled'"
+                v-if="key.status === 'active'"
                 class="btn secondary"
                 :disabled="page.actingId.value === key.id"
                 @click="page.disable(key.id)"

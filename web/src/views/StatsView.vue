@@ -19,7 +19,7 @@ const page = useStatsPage();
     @navigate="navigation.navigate"
     @logout="navigation.logout"
   >
-    <section v-if="navigation.isAdmin.value" class="scope card">
+    <section v-if="navigation.isTenantAdmin.value" class="scope card">
       <h2>统计范围</h2>
       <label class="field">
         <span class="sub">应用</span>

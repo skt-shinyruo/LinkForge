@@ -39,12 +39,18 @@ const page = useApprovalsPage();
             <td>{{ approval.operationType }}</td>
             <td>{{ approval.targetApplicationId ?? "-" }}</td>
             <td>{{ approval.status }}</td>
-            <td>
+            <td class="actions">
+              <input
+                v-if="approval.status === 'PENDING_APPROVAL'"
+                :value="page.decisionReasons[approval.id] ?? ''"
+                placeholder="审批原因（可选）"
+                @input="page.setDecisionReason(approval.id, ($event.target as HTMLInputElement).value)"
+              />
               <button
                 v-if="approval.status === 'PENDING_APPROVAL'"
                 class="btn"
                 :disabled="page.actingId.value === approval.id"
-                @click="page.approve(approval.id, 'approved from console')"
+                @click="page.approve(approval.id)"
               >
                 批准
               </button>
@@ -67,10 +73,15 @@ const page = useApprovalsPage();
   margin-bottom: 16px;
 }
 
-.card-head {
+.card-head,
+.actions {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 8px;
+}
+
+.card-head {
+  justify-content: space-between;
 }
 
 .btn {
@@ -97,6 +108,12 @@ const page = useApprovalsPage();
   border-top: 1px solid #eee;
   padding: 10px 8px;
   text-align: left;
+}
+
+input {
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
 }
 
 .mono {

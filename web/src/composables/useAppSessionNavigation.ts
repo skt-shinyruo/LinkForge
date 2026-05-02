@@ -31,11 +31,14 @@ export type AppPageNavItem = {
   variant?: "primary" | "secondary";
 };
 
-const adminOnlyPaths = new Set([
+const tenantAdminOnlyPaths = new Set([
   "/overview",
   "/applications",
   "/domains",
   "/api-keys",
+]);
+
+const adminOnlyPaths = new Set([
   "/approvals",
   "/audit",
 ]);
@@ -174,12 +177,17 @@ export function useAppSessionNavigation(page: AppPageKey) {
 
   const userEmail = computed(() => auth.email);
   const isAdmin = computed(() => auth.isAdmin);
+  const isTenantAdmin = computed(() => auth.isTenantAdmin);
   const { title, navItems: rawNavItems } = pageConfig[page];
-  const navItems = computed(() =>
-    isAdmin.value
-      ? rawNavItems
-      : rawNavItems.filter((item) => !adminOnlyPaths.has(item.path)),
-  );
+  const navItems = computed(() => rawNavItems.filter((item) => {
+    if (!isTenantAdmin.value && tenantAdminOnlyPaths.has(item.path)) {
+      return false;
+    }
+    if (!isAdmin.value && adminOnlyPaths.has(item.path)) {
+      return false;
+    }
+    return true;
+  }));
 
   async function navigate(path: AppRoutePath) {
     if (router.currentRoute.value.path === path) {
@@ -198,6 +206,7 @@ export function useAppSessionNavigation(page: AppPageKey) {
     navItems: navItems.value,
     userEmail,
     isAdmin,
+    isTenantAdmin,
     navigate,
     logout,
   };

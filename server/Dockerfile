@@ -24,6 +24,10 @@ RUN mvn -q -DskipTests -pl app -am package \
 FROM eclipse-temurin:17-jre
 WORKDIR /app
 
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl \
+ && rm -rf /var/lib/apt/lists/*
+
 ENV SERVER_PORT=8080
 EXPOSE 8080
 

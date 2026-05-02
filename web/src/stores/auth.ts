@@ -16,6 +16,8 @@ export const useAuthStore = defineStore("auth", {
   }),
   getters: {
     isAuthed: (s) => (AUTH_MODE === "cookie" ? !!s.email : !!s.token),
+    isTenantAdmin: (s) => s.roles.includes("TENANT_ADMIN"),
+    isPlatformAdmin: (s) => s.roles.includes("PLATFORM_ADMIN"),
     isAdmin: (s) => s.roles.includes("TENANT_ADMIN") || s.roles.includes("PLATFORM_ADMIN"),
   },
   actions: {

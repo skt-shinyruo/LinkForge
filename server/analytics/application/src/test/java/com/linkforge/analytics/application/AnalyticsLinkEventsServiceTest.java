@@ -58,4 +58,42 @@ class AnalyticsLinkEventsServiceTest {
                 .extracting(ex -> ((BusinessException) ex).getErrorCode())
                 .isEqualTo(ErrorCode.BAD_REQUEST);
     }
+
+    @Test
+    void listLinkEvents_shouldRejectNonAdminActor() {
+        AnalyticsLinkEventsService service = new AnalyticsLinkEventsService(
+                mock(AnalyticsQueryService.class),
+                Clock.fixed(Instant.parse("2026-04-06T12:00:00Z"), ZoneOffset.UTC)
+        );
+
+        assertThatThrownBy(() -> service.listLinkEvents(
+                new UserActor(1L, 9L, "user@example.com", Set.of("USER")),
+                101L,
+                null,
+                null,
+                null
+        ))
+                .isInstanceOf(BusinessException.class)
+                .extracting(ex -> ((BusinessException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.FORBIDDEN);
+    }
+
+    @Test
+    void listLinkEvents_shouldRejectOversizedTimeRange() {
+        AnalyticsLinkEventsService service = new AnalyticsLinkEventsService(
+                mock(AnalyticsQueryService.class),
+                Clock.fixed(Instant.parse("2026-04-06T12:00:00Z"), ZoneOffset.UTC)
+        );
+
+        assertThatThrownBy(() -> service.listLinkEvents(
+                new UserActor(1L, 9L, "tenant-admin@example.com", Set.of("TENANT_ADMIN")),
+                101L,
+                LocalDateTime.parse("2026-03-01T00:00:00"),
+                LocalDateTime.parse("2026-03-10T00:00:00"),
+                50
+        ))
+                .isInstanceOf(BusinessException.class)
+                .extracting(ex -> ((BusinessException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.BAD_REQUEST);
+    }
 }

@@ -21,20 +21,20 @@ export const router = createRouter({
     {
       path: "/overview",
       component: TenantOverviewView,
-      meta: { requiresAuth: true, requiresAdmin: true },
+      meta: { requiresAuth: true, requiresTenantAdmin: true },
     },
     {
       path: "/applications",
       component: ApplicationsView,
-      meta: { requiresAuth: true, requiresAdmin: true },
+      meta: { requiresAuth: true, requiresTenantAdmin: true },
     },
     {
       path: "/applications/:applicationId",
       component: ApplicationDetailView,
-      meta: { requiresAuth: true, requiresAdmin: true },
+      meta: { requiresAuth: true, requiresTenantAdmin: true },
     },
-    { path: "/domains", component: DomainsView, meta: { requiresAuth: true, requiresAdmin: true } },
-    { path: "/api-keys", component: ApiKeysView, meta: { requiresAuth: true, requiresAdmin: true } },
+    { path: "/domains", component: DomainsView, meta: { requiresAuth: true, requiresTenantAdmin: true } },
+    { path: "/api-keys", component: ApiKeysView, meta: { requiresAuth: true, requiresTenantAdmin: true } },
     { path: "/approvals", component: ApprovalsView, meta: { requiresAuth: true, requiresAdmin: true } },
     { path: "/audit", component: AuditView, meta: { requiresAuth: true, requiresAdmin: true } },
     { path: "/links", component: LinksView, meta: { requiresAuth: true } },
@@ -50,7 +50,10 @@ router.beforeEach(async (to) => {
     return { path: "/login", query: { redirect: to.fullPath } };
   }
   if (to.path === "/login" && auth.isAuthed) {
-    return { path: auth.isAdmin ? "/overview" : "/links" };
+    return { path: auth.isTenantAdmin ? "/overview" : "/links" };
+  }
+  if (to.meta.requiresTenantAdmin && auth.initialized && !auth.isTenantAdmin) {
+    return { path: "/links" };
   }
   if (to.meta.requiresAdmin && auth.initialized && !auth.isAdmin) {
     return { path: "/links" };

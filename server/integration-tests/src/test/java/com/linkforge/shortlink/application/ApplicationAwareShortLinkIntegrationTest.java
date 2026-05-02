@@ -374,7 +374,7 @@ class ApplicationAwareShortLinkIntegrationTest extends ApplicationAwareShortLink
     }
 
     @Test
-    void draft_link_should_allow_direct_edit_without_approval_state_on_link_row() {
+    void draft_application_link_destination_change_should_create_approval_request() {
         LinkDto created = shortLinkService.create(
                 TENANT_ID,
                 CreatedBy.user(USER_ID),
@@ -424,14 +424,14 @@ class ApplicationAwareShortLinkIntegrationTest extends ApplicationAwareShortLink
                 String.class,
                 created.id()
         );
-        assertThat(originalUrl).isEqualTo("https://example.com/draft-updated");
+        assertThat(originalUrl).isEqualTo("https://example.com/draft");
 
         Integer requestCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM approval_requests WHERE target_application_id = ?",
+                "SELECT COUNT(*) FROM approval_requests WHERE operation_type = 'PUBLIC_LINK_DESTINATION_CHANGE' AND target_application_id = ?",
                 Integer.class,
                 applicationId
         );
-        assertThat(requestCount).isZero();
+        assertThat(requestCount).isEqualTo(1);
     }
 
     private static Future<ApprovalAttempt> submitApprovalAttempt(

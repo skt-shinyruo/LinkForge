@@ -42,6 +42,7 @@ app:
     worker-id: ${ID_WORKER_ID:1}
     datacenter-id: ${ID_DATACENTER_ID:1}
   security:
+    registration-enabled: ${AUTH_REGISTRATION_ENABLED:false}
     jwt:
       # 生产环境务必通过环境变量覆盖，并保证长度足够（>= 32 bytes）
       secret: ${JWT_SECRET:dev-change-me-please-set-env-and-long-enough-32-bytes}
@@ -69,6 +70,8 @@ app:
   analytics:
     salt: ${ANALYTICS_SALT:dev-salt-change-me}
     redis-key-ttl-days: ${ANALYTICS_REDIS_TTL_DAYS:45}
+    quota:
+      fail-open: ${ANALYTICS_QUOTA_FAIL_OPEN:false}
     # flush 回补窗口（最近 N 天，包含今天），用于部署中断后的追赶补齐
     flush-backfill-days: ${ANALYTICS_FLUSH_BACKFILL_DAYS:7}
     # 可选：追踪参数采集白名单（逗号分隔），为空时 Edge 采用安全默认值 utm_*,gclid,fbclid

@@ -14,11 +14,13 @@ import com.linkforge.foundation.runtime.startup.StartupCheck;
 import com.linkforge.redirect.interfaces.startup.RedirectStartupCheck;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.core.env.Environment;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 
@@ -80,6 +82,15 @@ class ApiStartupValidatorTest {
                             .isInstanceOf(IllegalStateException.class)
                             .hasMessageContaining("app.base-url");
                 });
+    }
+
+    @Test
+    void applicationConfig_shouldDefaultSelfRegistrationToEnabled() throws Exception {
+        String applicationYaml = new ClassPathResource("application.yml")
+                .getContentAsString(StandardCharsets.UTF_8);
+
+        assertThat(applicationYaml)
+                .contains("registration-enabled: ${AUTH_REGISTRATION_ENABLED:true}");
     }
 
     @Configuration(proxyBeanMethods = false)

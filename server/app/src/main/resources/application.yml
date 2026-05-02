@@ -42,7 +42,7 @@ app:
     worker-id: ${ID_WORKER_ID:1}
     datacenter-id: ${ID_DATACENTER_ID:1}
   security:
-    registration-enabled: ${AUTH_REGISTRATION_ENABLED:false}
+    registration-enabled: ${AUTH_REGISTRATION_ENABLED:true}
     jwt:
       # 生产环境务必通过环境变量覆盖，并保证长度足够（>= 32 bytes）
       secret: ${JWT_SECRET:dev-change-me-please-set-env-and-long-enough-32-bytes}

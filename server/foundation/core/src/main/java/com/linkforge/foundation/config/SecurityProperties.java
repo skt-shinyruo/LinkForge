@@ -7,7 +7,7 @@ public class SecurityProperties {
 
     private Jwt jwt = new Jwt();
     private ApiKey apiKey = new ApiKey();
-    private boolean registrationEnabled;
+    private boolean registrationEnabled = true;
 
     public Jwt getJwt() {
         return jwt;

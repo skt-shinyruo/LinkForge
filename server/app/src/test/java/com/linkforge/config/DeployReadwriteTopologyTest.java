@@ -60,6 +60,15 @@ class DeployReadwriteTopologyTest {
     }
 
     @Test
+    void deployDefaults_should_keep_selfRegistrationEnabled() throws Exception {
+        String compose = Files.readString(Path.of("../../deploy/docker-compose.yml"));
+        String env = Files.readString(Path.of("../../deploy/.env.example"));
+
+        assertThat(compose).contains("AUTH_REGISTRATION_ENABLED: ${AUTH_REGISTRATION_ENABLED:-true}");
+        assertThat(env).contains("AUTH_REGISTRATION_ENABLED=true");
+    }
+
+    @Test
     void mysql_init_scripts_should_create_accounts_and_start_replication() throws Exception {
         String primary = Files.readString(Path.of("../../deploy/mysql/primary/init/01-create-users.sh"));
         String replica = Files.readString(Path.of("../../deploy/mysql/replica/init/01-start-replication.sh"));

@@ -29,7 +29,7 @@ cp deploy/.env.example deploy/.env
 - `JWT_SECRET`：生产或共享环境请使用长度不少于 32 bytes 的随机密钥。
 - `ANALYTICS_SALT`：统计访客指纹 hash 使用的盐。
 - `APP_STRICT_CONFIG`：默认开启；如果保留模板中的示例密钥，后端会拒绝启动。
-- `AUTH_REGISTRATION_ENABLED`：自助注册开关，默认关闭。本地首次创建租户可临时设为 `true`，生产建议保持关闭并使用受控初始化/邀请流程。
+- `AUTH_REGISTRATION_ENABLED`：自助注册开关，默认开启；如需关闭请显式设为 `false`。
 - `APP_BASE_URL`：创建短链时拼接 `shortUrl` 的基准地址，本地默认 `http://localhost:18080`。
 - `LINKFORGE_HTTP_BIND` / `LINKFORGE_HTTP_PORT`：网关监听地址和端口，本地默认 `127.0.0.1:18080`。
 - `JWT_COOKIE_ENABLED` / `VITE_AUTH_MODE`：如启用 HttpOnly Cookie 会话，后端需 `JWT_COOKIE_ENABLED=true`，前端镜像构建需 `VITE_AUTH_MODE=cookie`。
@@ -104,7 +104,7 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 - `EDGE_TRUSTED_PROXIES`：可信代理 CIDR。生产环境应按实际网关/反代地址精确配置。
 - `ID_WORKER_ID` / `ID_DATACENTER_ID`：Snowflake 节点参数，多实例部署时必须保证唯一。
 - `APP_STRICT_CONFIG`：启动期严格配置校验，默认开启；会拒绝示例 JWT secret、示例 analytics salt 和默认 Snowflake 节点组合。
-- `AUTH_REGISTRATION_ENABLED`：自助注册开关，默认关闭。
+- `AUTH_REGISTRATION_ENABLED`：自助注册开关，默认开启。
 - `VITE_AUTH_MODE`：前端构建认证模式，`bearer` 或 `cookie`。必须与后端 `JWT_COOKIE_ENABLED` 保持一致。
 
 ## 注意事项

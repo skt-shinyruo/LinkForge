@@ -2,7 +2,7 @@ package com.linkforge.shortlink.application.mapper;
 
 import com.linkforge.contract.platform.DomainHostnameLookupPort;
 import com.linkforge.foundation.config.CoreProperties;
-import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
+import com.linkforge.shortlink.application.LinkDto;
 import com.linkforge.shortlink.domain.QueryForwardMode;
 import com.linkforge.shortlink.domain.ShortLink;
 import org.springframework.stereotype.Component;

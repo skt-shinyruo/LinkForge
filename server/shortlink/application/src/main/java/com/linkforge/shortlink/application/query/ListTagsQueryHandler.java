@@ -1,6 +1,6 @@
 package com.linkforge.shortlink.application.query;
 
-import com.linkforge.shortlink.application.ShortLinkService.TagDto;
+import com.linkforge.shortlink.application.TagDto;
 import com.linkforge.shortlink.application.port.TagRepository;
 import org.springframework.stereotype.Component;
 

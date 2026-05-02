@@ -46,8 +46,8 @@ class ShortLinkCsvTimeSemanticsTest {
 
         long tenantId = 1L;
         long userId = 1L;
-        ShortLinkService.CreatedBy createdBy = ShortLinkService.CreatedBy.user(userId);
-        ShortLinkService.ImportResult result = handler.handle(
+        CreatedBy createdBy = CreatedBy.user(userId);
+        ImportResult result = handler.handle(
                 tenantId,
                 createdBy,
                 List.of(
@@ -61,10 +61,10 @@ class ShortLinkCsvTimeSemanticsTest {
         assertThat(result.success()).isEqualTo(3);
         assertThat(result.errors()).isEmpty();
 
-        ArgumentCaptor<ShortLinkService.CreateLinkRequest> reqCaptor = ArgumentCaptor.forClass(ShortLinkService.CreateLinkRequest.class);
+        ArgumentCaptor<CreateLinkRequest> reqCaptor = ArgumentCaptor.forClass(CreateLinkRequest.class);
         verify(createHandler, times(3)).handle(eq(tenantId), eq(createdBy), reqCaptor.capture());
 
-        List<ShortLinkService.CreateLinkRequest> reqs = reqCaptor.getAllValues();
+        List<CreateLinkRequest> reqs = reqCaptor.getAllValues();
         assertThat(reqs).hasSize(3);
 
         Object expiresAt1 = reqs.get(0).expiresAt();
@@ -88,9 +88,9 @@ class ShortLinkCsvTimeSemanticsTest {
         RequiresNewTransactionPort requiresNewTransactionPort = Runnable::run;
         ImportShortLinksCsvCommandHandler handler = new ImportShortLinksCsvCommandHandler(createHandler, requiresNewTransactionPort);
 
-        ShortLinkService.ImportResult result = handler.handle(
+        ImportResult result = handler.handle(
                 1L,
-                ShortLinkService.CreatedBy.user(1L),
+                CreatedBy.user(1L),
                 List.of(
                         new ShortLinkCsvImportRow(1L, "https://example.com/1", "code-1", "2026-03-10T12:00:00Z", null, "marketing,spring"),
                         new ShortLinkCsvImportRow(2L, "https://example.com/2", "code-2", "not-a-date", null, null),
@@ -114,9 +114,9 @@ class ShortLinkCsvTimeSemanticsTest {
 
         ImportShortLinksCsvCommandHandler handler = new ImportShortLinksCsvCommandHandler(createHandler, Runnable::run);
 
-        ShortLinkService.ImportResult result = handler.handle(
+        ImportResult result = handler.handle(
                 1L,
-                ShortLinkService.CreatedBy.user(1L),
+                CreatedBy.user(1L),
                 List.of(new ShortLinkCsvImportRow(1L, "https://example.com/1", "code-1", null, null, null)),
                 2001L,
                 3001L
@@ -124,8 +124,8 @@ class ShortLinkCsvTimeSemanticsTest {
 
         assertThat(result.failed()).isEqualTo(0);
 
-        ArgumentCaptor<ShortLinkService.CreateLinkRequest> reqCaptor = ArgumentCaptor.forClass(ShortLinkService.CreateLinkRequest.class);
-        verify(createHandler).handle(eq(1L), eq(ShortLinkService.CreatedBy.user(1L)), reqCaptor.capture());
+        ArgumentCaptor<CreateLinkRequest> reqCaptor = ArgumentCaptor.forClass(CreateLinkRequest.class);
+        verify(createHandler).handle(eq(1L), eq(CreatedBy.user(1L)), reqCaptor.capture());
         assertThat(reqCaptor.getValue().applicationId()).isEqualTo(2001L);
         assertThat(reqCaptor.getValue().domainId()).isEqualTo(3001L);
     }
@@ -137,9 +137,9 @@ class ShortLinkCsvTimeSemanticsTest {
 
         ImportShortLinksCsvCommandHandler handler = new ImportShortLinksCsvCommandHandler(createHandler, Runnable::run);
 
-        ShortLinkService.ImportResult result = handler.handle(
+        ImportResult result = handler.handle(
                 1L,
-                ShortLinkService.CreatedBy.user(1L),
+                CreatedBy.user(1L),
                 List.of(new ShortLinkCsvImportRow(
                         1L,
                         "2001",
@@ -155,8 +155,8 @@ class ShortLinkCsvTimeSemanticsTest {
 
         assertThat(result.failed()).isEqualTo(0);
 
-        ArgumentCaptor<ShortLinkService.CreateLinkRequest> reqCaptor = ArgumentCaptor.forClass(ShortLinkService.CreateLinkRequest.class);
-        verify(createHandler).handle(eq(1L), eq(ShortLinkService.CreatedBy.user(1L)), reqCaptor.capture());
+        ArgumentCaptor<CreateLinkRequest> reqCaptor = ArgumentCaptor.forClass(CreateLinkRequest.class);
+        verify(createHandler).handle(eq(1L), eq(CreatedBy.user(1L)), reqCaptor.capture());
         assertThat(reqCaptor.getValue().applicationId()).isEqualTo(2001L);
         assertThat(reqCaptor.getValue().domainId()).isEqualTo(3001L);
     }
@@ -174,9 +174,9 @@ class ShortLinkCsvTimeSemanticsTest {
                 domainHostnameLookupPort
         );
 
-        ShortLinkService.ImportResult result = handler.handle(
+        ImportResult result = handler.handle(
                 1L,
-                ShortLinkService.CreatedBy.user(1L),
+                CreatedBy.user(1L),
                 List.of(new ShortLinkCsvImportRow(
                         1L,
                         "2001",
@@ -192,8 +192,8 @@ class ShortLinkCsvTimeSemanticsTest {
 
         assertThat(result.failed()).isEqualTo(0);
 
-        ArgumentCaptor<ShortLinkService.CreateLinkRequest> reqCaptor = ArgumentCaptor.forClass(ShortLinkService.CreateLinkRequest.class);
-        verify(createHandler).handle(eq(1L), eq(ShortLinkService.CreatedBy.user(1L)), reqCaptor.capture());
+        ArgumentCaptor<CreateLinkRequest> reqCaptor = ArgumentCaptor.forClass(CreateLinkRequest.class);
+        verify(createHandler).handle(eq(1L), eq(CreatedBy.user(1L)), reqCaptor.capture());
         assertThat(reqCaptor.getValue().applicationId()).isEqualTo(2001L);
         assertThat(reqCaptor.getValue().domainId()).isEqualTo(3001L);
         verify(domainHostnameLookupPort).findDomainIdByHostname(1L, "go.example.test");
@@ -211,9 +211,9 @@ class ShortLinkCsvTimeSemanticsTest {
                 domainHostnameLookupPort
         );
 
-        ShortLinkService.ImportResult result = handler.handle(
+        ImportResult result = handler.handle(
                 1L,
-                ShortLinkService.CreatedBy.user(1L),
+                CreatedBy.user(1L),
                 List.of(new ShortLinkCsvImportRow(
                         7L,
                         "2001",

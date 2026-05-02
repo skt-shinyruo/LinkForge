@@ -2,7 +2,7 @@ package com.linkforge.shortlink.application.query;
 
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.shortlink.ShortLinkErrorCode;
-import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
+import com.linkforge.shortlink.application.LinkDto;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
 import com.linkforge.shortlink.application.port.ShortLinkRepository;

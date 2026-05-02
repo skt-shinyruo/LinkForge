@@ -2,12 +2,13 @@ package com.linkforge.shortlink.application.command;
 
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
+import com.linkforge.contract.governance.ApprovalRequester;
 import com.linkforge.contract.governance.ApprovalSubmissionPort;
 import com.linkforge.contract.shortlink.ShortLinkErrorCode;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.tx.PostCommitHookPort;
-import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
-import com.linkforge.shortlink.application.ShortLinkService.UpdateLinkRequest;
+import com.linkforge.shortlink.application.LinkDto;
+import com.linkforge.shortlink.application.UpdateLinkRequest;
 import com.linkforge.shortlink.application.eventing.ShortLinkDomainEventDispatcher;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
@@ -105,7 +106,7 @@ public class UpdateShortLinkCommandHandler {
                             link.applicationId(),
                             link.originalUrl().value(),
                             req.originalUrl(),
-                            actor,
+                            new ApprovalRequester(actor.tenantId(), actor.userId(), actor.email()),
                             requestedAt
                     )
             );

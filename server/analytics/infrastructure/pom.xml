@@ -29,10 +29,6 @@
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-foundation-runtime-security</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.linkforge</groupId>
             <artifactId>linkforge-foundation-runtime-persistence</artifactId>
         </dependency>
         <dependency>

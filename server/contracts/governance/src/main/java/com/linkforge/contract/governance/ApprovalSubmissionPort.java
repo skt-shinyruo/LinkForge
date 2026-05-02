@@ -1,7 +1,5 @@
 package com.linkforge.contract.governance;
 
-import com.linkforge.foundation.context.UserActor;
-
 import java.time.LocalDateTime;
 
 public interface ApprovalSubmissionPort {
@@ -21,7 +19,7 @@ public interface ApprovalSubmissionPort {
             Long targetApplicationId,
             String currentOriginalUrl,
             String requestedOriginalUrl,
-            UserActor actor,
+            ApprovalRequester requester,
             LocalDateTime requestedAt
     ) {
     }
@@ -31,7 +29,7 @@ public interface ApprovalSubmissionPort {
             Long targetApplicationId,
             LocalDateTime from,
             LocalDateTime to,
-            UserActor actor,
+            ApprovalRequester requester,
             LocalDateTime requestedAt
     ) {
     }

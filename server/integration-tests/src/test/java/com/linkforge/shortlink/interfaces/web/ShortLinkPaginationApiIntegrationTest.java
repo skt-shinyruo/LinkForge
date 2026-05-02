@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.foundation.persistence.PageQuery;
-import com.linkforge.shortlink.application.ShortLinkService;
+import com.linkforge.shortlink.application.*;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -301,7 +301,8 @@ class ShortLinkPaginationApiIntegrationTest {
     void pagingContracts_shouldNotExposeSpringDataTypes() {
         assertNoSpringDataPagingLeak(ShortLinkController.class, "list", "exportCsv");
         assertNoSpringDataPagingLeak(OpenApiShortLinkController.class, "list");
-        assertNoSpringDataPagingLeak(ShortLinkService.class, "search", "exportCsv");
+        assertNoSpringDataPagingLeak(ShortLinkQueryUseCase.class, "search");
+        assertNoSpringDataPagingLeak(ShortLinkCsvUseCase.class, "exportCsv");
     }
 
     private void assertNoSpringDataPagingLeak(Class<?> type, String... methodNames) {

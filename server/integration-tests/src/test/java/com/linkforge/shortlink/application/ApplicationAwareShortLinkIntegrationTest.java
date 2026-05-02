@@ -43,7 +43,7 @@ class ApplicationAwareShortLinkIntegrationTest extends ApplicationAwareShortLink
     ApplicationProvisioningService applicationProvisioningService;
 
     @Autowired
-    ShortLinkService shortLinkService;
+    ShortLinkApplicationService shortLinkService;
 
     @Autowired
     GovernanceService governanceService;
@@ -82,7 +82,7 @@ class ApplicationAwareShortLinkIntegrationTest extends ApplicationAwareShortLink
 
     @Test
     void createLink_should_require_application_and_domain_ownership() {
-        ShortLinkService.CreateLinkRequest request = new ShortLinkService.CreateLinkRequest(
+        CreateLinkRequest request = new CreateLinkRequest(
                 "https://example.com/app-aware",
                 "note",
                 null,
@@ -99,16 +99,16 @@ class ApplicationAwareShortLinkIntegrationTest extends ApplicationAwareShortLink
                 "ACTIVE"
         );
 
-        assertThatThrownBy(() -> shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), request))
+        assertThatThrownBy(() -> shortLinkService.create(TENANT_ID, CreatedBy.user(USER_ID), request))
                 .hasMessageContaining("应用未获授权使用该共享域名");
     }
 
     @Test
     void active_public_link_destination_change_should_create_request_instead_of_direct_mutation() {
-        ShortLinkService.LinkDto created = shortLinkService.create(
+        LinkDto created = shortLinkService.create(
                 TENANT_ID,
-                ShortLinkService.CreatedBy.user(USER_ID),
-                new ShortLinkService.CreateLinkRequest(
+                CreatedBy.user(USER_ID),
+                new CreateLinkRequest(
                         "https://example.com/original",
                         "note",
                         null,
@@ -129,7 +129,7 @@ class ApplicationAwareShortLinkIntegrationTest extends ApplicationAwareShortLink
         shortLinkService.update(
                 TENANT_ID,
                 created.id(),
-                new ShortLinkService.UpdateLinkRequest(
+                new UpdateLinkRequest(
                         "https://example.com/changed",
                         null,
                         null,
@@ -166,10 +166,10 @@ class ApplicationAwareShortLinkIntegrationTest extends ApplicationAwareShortLink
 
     @Test
     void approved_public_link_destination_change_should_mutate_original_url() {
-        ShortLinkService.LinkDto created = shortLinkService.create(
+        LinkDto created = shortLinkService.create(
                 TENANT_ID,
-                ShortLinkService.CreatedBy.user(USER_ID),
-                new ShortLinkService.CreateLinkRequest(
+                CreatedBy.user(USER_ID),
+                new CreateLinkRequest(
                         "https://example.com/original-for-approval",
                         "note",
                         null,
@@ -190,7 +190,7 @@ class ApplicationAwareShortLinkIntegrationTest extends ApplicationAwareShortLink
         shortLinkService.update(
                 TENANT_ID,
                 created.id(),
-                new ShortLinkService.UpdateLinkRequest(
+                new UpdateLinkRequest(
                         "https://example.com/approved-change",
                         null,
                         null,
@@ -249,10 +249,10 @@ class ApplicationAwareShortLinkIntegrationTest extends ApplicationAwareShortLink
 
     @Test
     void concurrent_public_link_destination_approval_should_execute_once_and_audit_once() throws Exception {
-        ShortLinkService.LinkDto created = shortLinkService.create(
+        LinkDto created = shortLinkService.create(
                 TENANT_ID,
-                ShortLinkService.CreatedBy.user(USER_ID),
-                new ShortLinkService.CreateLinkRequest(
+                CreatedBy.user(USER_ID),
+                new CreateLinkRequest(
                         "https://example.com/concurrent-original",
                         "note",
                         null,
@@ -273,7 +273,7 @@ class ApplicationAwareShortLinkIntegrationTest extends ApplicationAwareShortLink
         shortLinkService.update(
                 TENANT_ID,
                 created.id(),
-                new ShortLinkService.UpdateLinkRequest(
+                new UpdateLinkRequest(
                         "https://example.com/concurrent-approved",
                         null,
                         null,
@@ -373,10 +373,10 @@ class ApplicationAwareShortLinkIntegrationTest extends ApplicationAwareShortLink
 
     @Test
     void draft_link_should_allow_direct_edit_without_approval_state_on_link_row() {
-        ShortLinkService.LinkDto created = shortLinkService.create(
+        LinkDto created = shortLinkService.create(
                 TENANT_ID,
-                ShortLinkService.CreatedBy.user(USER_ID),
-                new ShortLinkService.CreateLinkRequest(
+                CreatedBy.user(USER_ID),
+                new CreateLinkRequest(
                         "https://example.com/draft",
                         "note",
                         null,
@@ -397,7 +397,7 @@ class ApplicationAwareShortLinkIntegrationTest extends ApplicationAwareShortLink
         shortLinkService.update(
                 TENANT_ID,
                 created.id(),
-                new ShortLinkService.UpdateLinkRequest(
+                new UpdateLinkRequest(
                         "https://example.com/draft-updated",
                         null,
                         null,

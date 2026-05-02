@@ -1,6 +1,7 @@
 package com.linkforge.governance.application;
 
 import com.linkforge.contract.governance.ApprovalRequestView;
+import com.linkforge.contract.governance.ApprovalRequester;
 import com.linkforge.contract.governance.ApprovalSubmissionPort;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.governance.domain.ApprovalStatus;
@@ -23,7 +24,8 @@ class GovernanceApprovalApplicationServiceTest {
     void requestLinkDestinationChangeApproval_shouldBuildGovernanceSubmissionInternally() {
         GovernanceService governanceService = mock(GovernanceService.class);
         ApprovalSubmissionPort service = new GovernanceApprovalApplicationService(governanceService);
-        UserActor actor = new UserActor(1L, 7L, "reviewer@example.com", Set.of("TENANT_ADMIN"));
+        ApprovalRequester requester = new ApprovalRequester(1L, 7L, "reviewer@example.com");
+        UserActor expectedActor = new UserActor(1L, 7L, "reviewer@example.com", Set.of());
         LocalDateTime requestedAt = LocalDateTime.parse("2026-04-01T00:00:00");
 
         when(governanceService.submitRequest(
@@ -32,7 +34,7 @@ class GovernanceApprovalApplicationServiceTest {
                         && req.targetApplicationId().equals(2001L)
                         && "linkId=101\noriginalUrl=https://example.com/old".equals(req.beforeSnapshot())
                         && "linkId=101\noriginalUrl=https://example.com/new".equals(req.afterSnapshot())
-                        && req.actor().equals(actor)
+                        && req.actor().equals(expectedActor)
                         && requestedAt.equals(req.requestedAt()))
         )).thenReturn(new GovernanceService.ApprovalRequestDto(
                 501L,
@@ -54,7 +56,7 @@ class GovernanceApprovalApplicationServiceTest {
                         2001L,
                         "https://example.com/old",
                         "https://example.com/new",
-                        actor,
+                        requester,
                         requestedAt
                 )
         );
@@ -77,7 +79,7 @@ class GovernanceApprovalApplicationServiceTest {
                         && req.targetApplicationId().equals(2001L)
                         && "linkId=101\noriginalUrl=https://example.com/old".equals(req.beforeSnapshot())
                         && "linkId=101\noriginalUrl=https://example.com/new".equals(req.afterSnapshot())
-                        && req.actor().equals(actor)
+                        && req.actor().equals(expectedActor)
                         && requestedAt.equals(req.requestedAt()))
         );
     }
@@ -86,7 +88,8 @@ class GovernanceApprovalApplicationServiceTest {
     void requestAnalyticsDetailExportApproval_shouldBuildGovernanceSubmissionInternally() {
         GovernanceService governanceService = mock(GovernanceService.class);
         ApprovalSubmissionPort service = new GovernanceApprovalApplicationService(governanceService);
-        UserActor actor = new UserActor(1L, 9L, "tenant-admin@example.com", Set.of("TENANT_ADMIN"));
+        ApprovalRequester requester = new ApprovalRequester(1L, 9L, "tenant-admin@example.com");
+        UserActor expectedActor = new UserActor(1L, 9L, "tenant-admin@example.com", Set.of());
         LocalDateTime from = LocalDateTime.parse("2026-04-05T00:00:00");
         LocalDateTime to = LocalDateTime.parse("2026-04-06T00:00:00");
         LocalDateTime requestedAt = LocalDateTime.parse("2026-04-06T12:00:00");
@@ -97,7 +100,7 @@ class GovernanceApprovalApplicationServiceTest {
                         && req.targetApplicationId().equals(2001L)
                         && req.beforeSnapshot() == null
                         && "linkId=101,from=2026-04-05T00:00,to=2026-04-06T00:00".equals(req.afterSnapshot())
-                        && req.actor().equals(actor)
+                        && req.actor().equals(expectedActor)
                         && requestedAt.equals(req.requestedAt()))
         )).thenReturn(new GovernanceService.ApprovalRequestDto(
                 502L,
@@ -119,7 +122,7 @@ class GovernanceApprovalApplicationServiceTest {
                         2001L,
                         from,
                         to,
-                        actor,
+                        requester,
                         requestedAt
                 )
         );
@@ -142,7 +145,7 @@ class GovernanceApprovalApplicationServiceTest {
                         && req.targetApplicationId().equals(2001L)
                         && req.beforeSnapshot() == null
                         && "linkId=101,from=2026-04-05T00:00,to=2026-04-06T00:00".equals(req.afterSnapshot())
-                        && req.actor().equals(actor)
+                        && req.actor().equals(expectedActor)
                         && requestedAt.equals(req.requestedAt()))
         );
     }

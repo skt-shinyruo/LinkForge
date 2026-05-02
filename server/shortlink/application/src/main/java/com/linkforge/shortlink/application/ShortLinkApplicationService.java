@@ -24,7 +24,12 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
-public class ShortLinkApplicationService implements ShortLinkService {
+public class ShortLinkApplicationService implements
+        ShortLinkCreationUseCase,
+        ShortLinkQueryUseCase,
+        ShortLinkLifecycleUseCase,
+        ShortLinkCsvUseCase,
+        ShortLinkTagUseCase {
 
     private final CreateShortLinkCommandHandler createHandler;
     private final UpdateShortLinkCommandHandler updateHandler;

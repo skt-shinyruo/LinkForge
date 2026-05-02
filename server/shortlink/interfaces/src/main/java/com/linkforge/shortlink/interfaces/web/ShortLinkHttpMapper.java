@@ -1,8 +1,11 @@
 package com.linkforge.shortlink.interfaces.web;
 
 import com.linkforge.foundation.persistence.PageResult;
-import com.linkforge.shortlink.application.ShortLinkService;
+import com.linkforge.shortlink.application.CreateLinkRequest;
+import com.linkforge.shortlink.application.LinkDto;
+import com.linkforge.shortlink.application.UpdateLinkRequest;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkCreateHttpRequest;
+import com.linkforge.shortlink.interfaces.web.dto.ShortLinkHttpResponse;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkPageHttpResponse;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkUpdateHttpRequest;
 
@@ -11,8 +14,8 @@ public final class ShortLinkHttpMapper {
     private ShortLinkHttpMapper() {
     }
 
-    public static ShortLinkService.CreateLinkRequest toCreateRequest(ShortLinkCreateHttpRequest req) {
-        return new ShortLinkService.CreateLinkRequest(
+    public static CreateLinkRequest toCreateRequest(ShortLinkCreateHttpRequest req) {
+        return new CreateLinkRequest(
                 req.originalUrl(),
                 req.note(),
                 req.expiresAt(),
@@ -30,8 +33,8 @@ public final class ShortLinkHttpMapper {
         );
     }
 
-    public static ShortLinkService.UpdateLinkRequest toUpdateRequest(ShortLinkUpdateHttpRequest req) {
-        return new ShortLinkService.UpdateLinkRequest(
+    public static UpdateLinkRequest toUpdateRequest(ShortLinkUpdateHttpRequest req) {
+        return new UpdateLinkRequest(
                 req.originalUrl(),
                 req.note(),
                 req.expiresAt(),
@@ -49,7 +52,36 @@ public final class ShortLinkHttpMapper {
         );
     }
 
-    public static <T> ShortLinkPageHttpResponse<T> toPageResponse(PageResult<T> result) {
-        return new ShortLinkPageHttpResponse<>(result.items(), result.total(), result.page(), result.size());
+    public static ShortLinkHttpResponse toLinkResponse(LinkDto dto) {
+        return new ShortLinkHttpResponse(
+                dto.id(),
+                dto.tenantId(),
+                dto.applicationId(),
+                dto.domainId(),
+                dto.lifecycleState(),
+                dto.code(),
+                dto.shortUrl(),
+                dto.originalUrl(),
+                dto.note(),
+                dto.enabled(),
+                dto.expiresAt(),
+                dto.archivedAt(),
+                dto.redirectStatusCode(),
+                dto.previewEnabled(),
+                dto.unavailableLandingUrl(),
+                dto.queryForwardMode(),
+                dto.queryForwardAllowlist(),
+                dto.tags(),
+                dto.createdAt()
+        );
+    }
+
+    public static ShortLinkPageHttpResponse<ShortLinkHttpResponse> toPageResponse(PageResult<LinkDto> result) {
+        return new ShortLinkPageHttpResponse<>(
+                result.items().stream().map(ShortLinkHttpMapper::toLinkResponse).toList(),
+                result.total(),
+                result.page(),
+                result.size()
+        );
     }
 }

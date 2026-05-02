@@ -2,7 +2,6 @@ package com.linkforge.analytics.infrastructure.query;
 
 import com.linkforge.analytics.application.AnalyticsQueryService;
 import com.linkforge.analytics.infrastructure.persistence.AnalyticsQueryRepository;
-import com.linkforge.foundation.runtime.security.TenantGuard;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
@@ -18,8 +17,7 @@ class AnalyticsQueryServiceImplTest {
     @Test
     void applicationDaily_shouldUseAnalyticsCatalogScope() {
         AnalyticsQueryRepository queryRepository = mock(AnalyticsQueryRepository.class);
-        TenantGuard tenantGuard = mock(TenantGuard.class);
-        AnalyticsQueryServiceImpl service = new AnalyticsQueryServiceImpl(queryRepository, tenantGuard);
+        AnalyticsQueryServiceImpl service = new AnalyticsQueryServiceImpl(queryRepository);
 
         LocalDate from = LocalDate.parse("2026-04-01");
         LocalDate to = LocalDate.parse("2026-04-24");
@@ -35,8 +33,7 @@ class AnalyticsQueryServiceImplTest {
     @Test
     void domainTopLinks_shouldUseAnalyticsCatalogScope() {
         AnalyticsQueryRepository queryRepository = mock(AnalyticsQueryRepository.class);
-        TenantGuard tenantGuard = mock(TenantGuard.class);
-        AnalyticsQueryServiceImpl service = new AnalyticsQueryServiceImpl(queryRepository, tenantGuard);
+        AnalyticsQueryServiceImpl service = new AnalyticsQueryServiceImpl(queryRepository);
 
         LocalDate from = LocalDate.parse("2026-04-01");
         LocalDate to = LocalDate.parse("2026-04-24");

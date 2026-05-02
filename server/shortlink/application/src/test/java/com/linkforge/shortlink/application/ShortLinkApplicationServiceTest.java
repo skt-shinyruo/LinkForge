@@ -43,7 +43,7 @@ class ShortLinkApplicationServiceTest {
         ApplicationScopePort applicationScopePort = mock(ApplicationScopePort.class);
         ShortLinkApplicationService service = newService(applicationScopePort);
 
-        ShortLinkService.CreateLinkRequest createRequest = new ShortLinkService.CreateLinkRequest(
+        CreateLinkRequest createRequest = new CreateLinkRequest(
                 "https://example.com/source",
                 null,
                 null,
@@ -62,7 +62,7 @@ class ShortLinkApplicationServiceTest {
 
         assertThatThrownBy(() -> service.createForUser(
                 new UserActor(1L, 9L, "tenant-admin@example.com", Set.of("TENANT_ADMIN")),
-                new ShortLinkService.ScopedCreateLinkRequest(createRequest, 2001L)
+                new ScopedCreateLinkRequest(createRequest, 2001L)
         ))
                 .isInstanceOf(BusinessException.class)
                 .extracting(ex -> ((BusinessException) ex).getErrorCode())
@@ -81,12 +81,12 @@ class ShortLinkApplicationServiceTest {
                 mock(CreateShortLinkCommandHandler.class)
         );
 
-        PageResult<ShortLinkService.LinkDto> expected = new PageResult<>(List.of(), 0L, 0, 20);
+        PageResult<LinkDto> expected = new PageResult<>(List.of(), 0L, 0, 20);
         when(searchHandler.handle(eq(1L), any(), any())).thenReturn(expected);
 
-        PageResult<ShortLinkService.LinkDto> result = service.browseForUser(
+        PageResult<LinkDto> result = service.browseForUser(
                 new UserActor(1L, 9L, "tenant-admin@example.com", Set.of("TENANT_ADMIN")),
-                new ShortLinkService.BrowseLinksRequest(false, true, "launch", "marketing", null, 2001L, 2, 25, 100)
+                new BrowseLinksRequest(false, true, "launch", "marketing", null, 2001L, 2, 25, 100)
         );
 
         assertThat(result).isSameAs(expected);
@@ -104,7 +104,7 @@ class ShortLinkApplicationServiceTest {
 
         assertThatThrownBy(() -> service.browseForApiKey(
                 new ApiKeyActor(1L, 88L, 2001L),
-                new ShortLinkService.BrowseLinksRequest(false, true, null, null, null, 3001L, 0, 20, 100)
+                new BrowseLinksRequest(false, true, null, null, null, 3001L, 0, 20, 100)
         ))
                 .isInstanceOf(BusinessException.class)
                 .extracting(ex -> ((BusinessException) ex).getErrorCode())
@@ -119,7 +119,7 @@ class ShortLinkApplicationServiceTest {
         CreateShortLinkCommandHandler createHandler = mock(CreateShortLinkCommandHandler.class);
         ShortLinkApplicationService service = newService(applicationScopePort, mock(SearchShortLinksQueryHandler.class), createHandler);
 
-        ShortLinkService.LinkDto expected = new ShortLinkService.LinkDto(
+        LinkDto expected = new LinkDto(
                 42L,
                 1L,
                 2001L,
@@ -142,7 +142,7 @@ class ShortLinkApplicationServiceTest {
         );
         when(createHandler.handle(eq(1L), any(), any())).thenReturn(expected);
 
-        ShortLinkService.CreateLinkRequest createRequest = new ShortLinkService.CreateLinkRequest(
+        CreateLinkRequest createRequest = new CreateLinkRequest(
                 "https://example.com/source",
                 null,
                 null,
@@ -161,11 +161,11 @@ class ShortLinkApplicationServiceTest {
 
         assertThat(service.createForApiKey(
                 new ApiKeyActor(1L, 88L, 2001L),
-                new ShortLinkService.ScopedCreateLinkRequest(createRequest, null)
+                new ScopedCreateLinkRequest(createRequest, null)
         )).isSameAs(expected);
 
-        ArgumentCaptor<ShortLinkService.CreateLinkRequest> requestCaptor = ArgumentCaptor.forClass(ShortLinkService.CreateLinkRequest.class);
-        verify(createHandler).handle(eq(1L), eq(ShortLinkService.CreatedBy.apiKey(88L)), requestCaptor.capture());
+        ArgumentCaptor<CreateLinkRequest> requestCaptor = ArgumentCaptor.forClass(CreateLinkRequest.class);
+        verify(createHandler).handle(eq(1L), eq(CreatedBy.apiKey(88L)), requestCaptor.capture());
         assertThat(requestCaptor.getValue().applicationId()).isEqualTo(2001L);
     }
 
@@ -179,21 +179,21 @@ class ShortLinkApplicationServiceTest {
                 mock(CreateShortLinkCommandHandler.class),
                 importHandler
         );
-        ShortLinkService.ImportResult expected = new ShortLinkService.ImportResult(1, 0, List.of());
+        ImportResult expected = new ImportResult(1, 0, List.of());
         when(importHandler.handle(anyLong(), any(), any(), any(), any())).thenReturn(expected);
 
         List<ShortLinkCsvImportRow> rows = List.of(new ShortLinkCsvImportRow(1L, "https://example.com/source", "launch", null, null, null));
 
-        ShortLinkService.ImportResult actual = service.importCsv(
+        ImportResult actual = service.importCsv(
                 new UserActor(1L, 9L, "tenant-admin@example.com", Set.of("TENANT_ADMIN")),
-                new ShortLinkService.ScopedImportCsvRequest(rows, 2001L, 3001L)
+                new ScopedImportCsvRequest(rows, 2001L, 3001L)
         );
 
         assertThat(actual).isSameAs(expected);
         verify(applicationScopePort).requireApplicationExists(1L, 2001L);
         verify(importHandler).handle(
                 eq(1L),
-                eq(ShortLinkService.CreatedBy.user(9L)),
+                eq(CreatedBy.user(9L)),
                 eq(rows),
                 eq(2001L),
                 eq(3001L)

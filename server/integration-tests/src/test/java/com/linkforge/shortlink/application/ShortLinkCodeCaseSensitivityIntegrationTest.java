@@ -74,7 +74,7 @@ class ShortLinkCodeCaseSensitivityIntegrationTest {
     }
 
     @Autowired
-    ShortLinkService shortLinkService;
+    ShortLinkApplicationService shortLinkService;
 
     @Autowired
     ShortLinkQueryMapper shortLinkQueryMapper;
@@ -107,7 +107,7 @@ class ShortLinkCodeCaseSensitivityIntegrationTest {
 
     @Test
     void customCode_shouldBeCaseSensitive_andReadThroughShouldNotCollapse() {
-        ShortLinkService.CreateLinkRequest req1 = new ShortLinkService.CreateLinkRequest(
+        CreateLinkRequest req1 = new CreateLinkRequest(
                 "https://example.com/a",
                 null,
                 null,
@@ -123,7 +123,7 @@ class ShortLinkCodeCaseSensitivityIntegrationTest {
                 null,
                 null
         );
-        ShortLinkService.CreateLinkRequest req2 = new ShortLinkService.CreateLinkRequest(
+        CreateLinkRequest req2 = new CreateLinkRequest(
                 "https://example.com/b",
                 null,
                 null,
@@ -140,8 +140,8 @@ class ShortLinkCodeCaseSensitivityIntegrationTest {
                 null
         );
 
-        ShortLinkService.LinkDto a = shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), req1);
-        ShortLinkService.LinkDto b = shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), req2);
+        LinkDto a = shortLinkService.create(TENANT_ID, CreatedBy.user(USER_ID), req1);
+        LinkDto b = shortLinkService.create(TENANT_ID, CreatedBy.user(USER_ID), req2);
 
         assertThat(a.code()).isEqualTo("Abcdef");
         assertThat(b.code()).isEqualTo("abcdef");
@@ -172,10 +172,10 @@ class ShortLinkCodeCaseSensitivityIntegrationTest {
         insertDedicatedDomain(domainId, TENANT_ID, appId, "custom-" + suffix + ".example.test");
         insertScopedShortLink(suffix + 31, TENANT_ID, appId, domainId, code, "https://example.com/custom");
 
-        ShortLinkService.LinkDto created = shortLinkService.create(
+        LinkDto created = shortLinkService.create(
                 TENANT_ID,
-                ShortLinkService.CreatedBy.user(USER_ID),
-                new ShortLinkService.CreateLinkRequest(
+                CreatedBy.user(USER_ID),
+                new CreateLinkRequest(
                         "https://example.com/base",
                         null,
                         null,

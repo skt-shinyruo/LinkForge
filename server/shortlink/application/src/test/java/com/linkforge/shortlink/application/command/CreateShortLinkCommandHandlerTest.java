@@ -6,7 +6,7 @@ import com.linkforge.contract.platform.ApplicationQuotaView;
 import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.tx.PostCommitHookPort;
-import com.linkforge.shortlink.application.ShortLinkService;
+import com.linkforge.shortlink.application.*;
 import com.linkforge.shortlink.application.eventing.ShortLinkDomainEventDispatcher;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
 import com.linkforge.shortlink.application.port.ApplicationLinkQuotaReservationPort;
@@ -116,7 +116,7 @@ class CreateShortLinkCommandHandlerTest {
         }).when(shortLinkRepository).insert(any(ShortLink.class));
         when(linkTagRepository.findTagNamesByLinkId(101L)).thenReturn(List.of("alpha"));
 
-        ShortLinkService.LinkDto expected = new ShortLinkService.LinkDto(
+        LinkDto expected = new LinkDto(
                 101L,
                 1L,
                 2001L,
@@ -139,10 +139,10 @@ class CreateShortLinkCommandHandlerTest {
         );
         when(dtoMapper.toDto(any(ShortLink.class), eq(List.of("alpha")))).thenReturn(expected);
 
-        ShortLinkService.LinkDto actual = handler.handle(
+        LinkDto actual = handler.handle(
                 1L,
-                ShortLinkService.CreatedBy.user(99L),
-                new ShortLinkService.CreateLinkRequest(
+                CreatedBy.user(99L),
+                new CreateLinkRequest(
                         "https://example.com",
                         "note",
                         null,
@@ -208,8 +208,8 @@ class CreateShortLinkCommandHandlerTest {
 
         assertThatThrownBy(() -> handler.handle(
                 1L,
-                ShortLinkService.CreatedBy.user(99L),
-                new ShortLinkService.CreateLinkRequest(
+                CreatedBy.user(99L),
+                new CreateLinkRequest(
                         "https://example.com",
                         "note",
                         null,
@@ -244,7 +244,7 @@ class CreateShortLinkCommandHandlerTest {
         ShortLinkDtoMapper dtoMapper = mock(ShortLinkDtoMapper.class);
         when(dtoMapper.toDto(any(ShortLink.class), eq(List.of()))).thenAnswer(invocation -> {
             ShortLink link = invocation.getArgument(0);
-            return new ShortLinkService.LinkDto(
+            return new LinkDto(
                     link.id(),
                     link.tenantId(),
                     link.applicationId(),
@@ -323,8 +323,8 @@ class CreateShortLinkCommandHandlerTest {
 
         assertThatThrownBy(() -> handler.handle(
                 1L,
-                ShortLinkService.CreatedBy.user(99L),
-                new ShortLinkService.CreateLinkRequest(
+                CreatedBy.user(99L),
+                new CreateLinkRequest(
                         "https://example.com",
                         "note",
                         null,
@@ -352,8 +352,8 @@ class CreateShortLinkCommandHandlerTest {
             try {
                 handler.handle(
                         1L,
-                        ShortLinkService.CreatedBy.user(99L),
-                        new ShortLinkService.CreateLinkRequest(
+                        CreatedBy.user(99L),
+                        new CreateLinkRequest(
                                 "https://example.com/" + code,
                                 "note",
                                 null,

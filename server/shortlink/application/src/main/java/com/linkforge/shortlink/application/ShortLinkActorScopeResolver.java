@@ -21,11 +21,11 @@ public class ShortLinkActorScopeResolver {
         this.applicationScopePort = applicationScopePort;
     }
 
-    public ShortLinkService.CreateLinkRequest resolveCreateForUser(
+    public CreateLinkRequest resolveCreateForUser(
             UserActor actor,
-            ShortLinkService.ScopedCreateLinkRequest request
+            ScopedCreateLinkRequest request
     ) {
-        ShortLinkService.CreateLinkRequest createRequest = requireCreateRequest(request);
+        CreateLinkRequest createRequest = requireCreateRequest(request);
         Long pathApplicationId = request.pathApplicationId();
         if (pathApplicationId == null) {
             return createRequest;
@@ -38,11 +38,11 @@ public class ShortLinkActorScopeResolver {
         return withApplicationId(createRequest, pathApplicationId);
     }
 
-    public ShortLinkService.CreateLinkRequest resolveCreateForApiKey(
+    public CreateLinkRequest resolveCreateForApiKey(
             ApiKeyActor actor,
-            ShortLinkService.ScopedCreateLinkRequest request
+            ScopedCreateLinkRequest request
     ) {
-        ShortLinkService.CreateLinkRequest createRequest = requireCreateRequest(request);
+        CreateLinkRequest createRequest = requireCreateRequest(request);
         Long effectiveApplicationId = resolveAuthorizedApplicationId(
                 actor,
                 createRequest.applicationId(),
@@ -55,7 +55,7 @@ public class ShortLinkActorScopeResolver {
         return effectiveApplicationId == null ? createRequest : withApplicationId(createRequest, effectiveApplicationId);
     }
 
-    public ShortLinkSearchQuery resolveBrowseForUser(long tenantId, ShortLinkService.BrowseLinksRequest request) {
+    public ShortLinkSearchQuery resolveBrowseForUser(long tenantId, BrowseLinksRequest request) {
         Long applicationId = resolveRequestedApplicationId(tenantId, request);
         return new ShortLinkSearchQuery(
                 request.archived() != null && request.archived(),
@@ -66,7 +66,7 @@ public class ShortLinkActorScopeResolver {
         );
     }
 
-    public ShortLinkSearchQuery resolveBrowseForApiKey(ApiKeyActor actor, ShortLinkService.BrowseLinksRequest request) {
+    public ShortLinkSearchQuery resolveBrowseForApiKey(ApiKeyActor actor, BrowseLinksRequest request) {
         Long effectiveApplicationId = resolveAuthorizedApplicationId(
                 actor,
                 request.requestedApplicationId(),
@@ -85,14 +85,14 @@ public class ShortLinkActorScopeResolver {
         );
     }
 
-    public PageQuery pageQuery(ShortLinkService.BrowseLinksRequest request) {
+    public PageQuery pageQuery(BrowseLinksRequest request) {
         if (request == null) {
             return PageQuery.of(0, 20, 100);
         }
         return PageQuery.of(request.page(), request.size(), request.maxPageSize());
     }
 
-    public ImportScope resolveImportForUser(UserActor actor, ShortLinkService.ScopedImportCsvRequest request) {
+    public ImportScope resolveImportForUser(UserActor actor, ScopedImportCsvRequest request) {
         if (request == null) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "导入请求不能为空");
         }
@@ -107,7 +107,7 @@ public class ShortLinkActorScopeResolver {
         return new ImportScope(request.rows(), pathApplicationId, request.domainId());
     }
 
-    private Long resolveRequestedApplicationId(long tenantId, ShortLinkService.BrowseLinksRequest request) {
+    private Long resolveRequestedApplicationId(long tenantId, BrowseLinksRequest request) {
         if (request.pathApplicationId() == null) {
             return request.requestedApplicationId();
         }
@@ -138,8 +138,8 @@ public class ShortLinkActorScopeResolver {
         return requestedApplicationId;
     }
 
-    private static ShortLinkService.CreateLinkRequest requireCreateRequest(
-            ShortLinkService.ScopedCreateLinkRequest request
+    private static CreateLinkRequest requireCreateRequest(
+            ScopedCreateLinkRequest request
     ) {
         if (request == null || request.createRequest() == null) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "CreateLinkRequest 不能为空");
@@ -147,11 +147,11 @@ public class ShortLinkActorScopeResolver {
         return request.createRequest();
     }
 
-    private static ShortLinkService.CreateLinkRequest withApplicationId(
-            ShortLinkService.CreateLinkRequest createRequest,
+    private static CreateLinkRequest withApplicationId(
+            CreateLinkRequest createRequest,
             long applicationId
     ) {
-        return new ShortLinkService.CreateLinkRequest(
+        return new CreateLinkRequest(
                 createRequest.originalUrl(),
                 createRequest.note(),
                 createRequest.expiresAt(),

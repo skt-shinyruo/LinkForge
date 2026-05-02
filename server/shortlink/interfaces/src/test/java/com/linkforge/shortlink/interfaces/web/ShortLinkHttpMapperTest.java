@@ -1,11 +1,12 @@
 package com.linkforge.shortlink.interfaces.web;
 
 import com.linkforge.foundation.persistence.PageResult;
-import com.linkforge.shortlink.application.ShortLinkService;
+import com.linkforge.shortlink.application.*;
 import com.linkforge.shortlink.application.csv.ShortLinkCsvExport;
 import com.linkforge.shortlink.application.csv.ShortLinkCsvExportRow;
 import com.linkforge.shortlink.application.csv.ShortLinkCsvImportRow;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkCreateHttpRequest;
+import com.linkforge.shortlink.interfaces.web.dto.ShortLinkHttpResponse;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkPageHttpResponse;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkUpdateHttpRequest;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,7 +49,7 @@ class ShortLinkHttpMapperTest {
         );
 
         assertThat(ShortLinkHttpMapper.toCreateRequest(httpRequest)).isEqualTo(
-                new ShortLinkService.CreateLinkRequest(
+                new CreateLinkRequest(
                         "https://example.com/source",
                         "launch note",
                         Instant.parse("2026-03-18T09:10:11Z"),
@@ -87,7 +88,7 @@ class ShortLinkHttpMapperTest {
         );
 
         assertThat(ShortLinkHttpMapper.toUpdateRequest(httpRequest)).isEqualTo(
-                new ShortLinkService.UpdateLinkRequest(
+                new UpdateLinkRequest(
                         "https://example.com/updated",
                         "updated note",
                         Instant.parse("2026-04-01T01:02:03Z"),
@@ -107,8 +108,8 @@ class ShortLinkHttpMapperTest {
     }
 
     @Test
-    void toPageResponse_shouldPreserveItemsAndPagination() {
-        ShortLinkService.LinkDto link = new ShortLinkService.LinkDto(
+    void toLinkResponse_shouldTranslateApplicationDtoToHttpContract() {
+        LinkDto link = new LinkDto(
                 42L,
                 7L,
                 11L,
@@ -129,10 +130,82 @@ class ShortLinkHttpMapperTest {
                 List.of("marketing"),
                 Instant.parse("2026-03-18T09:10:11Z")
         );
-        PageResult<ShortLinkService.LinkDto> result = new PageResult<>(List.of(link), 11L, 2, 5);
+
+        assertThat(ShortLinkHttpMapper.toLinkResponse(link)).isEqualTo(new ShortLinkHttpResponse(
+                42L,
+                7L,
+                11L,
+                12L,
+                "ACTIVE",
+                "launch",
+                "https://lnk.forge/launch",
+                "https://example.com/source",
+                "launch note",
+                true,
+                Instant.parse("2026-04-01T01:02:03Z"),
+                null,
+                302,
+                true,
+                "https://example.com/unavailable",
+                "ALLOWLIST",
+                List.of("utm_*"),
+                List.of("marketing"),
+                Instant.parse("2026-03-18T09:10:11Z")
+        ));
+    }
+
+    @Test
+    void toPageResponse_shouldMapItemsToHttpContractAndPreservePagination() {
+        LinkDto link = new LinkDto(
+                42L,
+                7L,
+                11L,
+                12L,
+                "ACTIVE",
+                "launch",
+                "https://lnk.forge/launch",
+                "https://example.com/source",
+                "launch note",
+                true,
+                Instant.parse("2026-04-01T01:02:03Z"),
+                null,
+                302,
+                true,
+                "https://example.com/unavailable",
+                "ALLOWLIST",
+                List.of("utm_*"),
+                List.of("marketing"),
+                Instant.parse("2026-03-18T09:10:11Z")
+        );
+        PageResult<LinkDto> result = new PageResult<>(List.of(link), 11L, 2, 5);
 
         assertThat(ShortLinkHttpMapper.toPageResponse(result)).isEqualTo(
-                new ShortLinkPageHttpResponse<>(List.of(link), 11L, 2, 5)
+                new ShortLinkPageHttpResponse<>(
+                        List.of(new ShortLinkHttpResponse(
+                                42L,
+                                7L,
+                                11L,
+                                12L,
+                                "ACTIVE",
+                                "launch",
+                                "https://lnk.forge/launch",
+                                "https://example.com/source",
+                                "launch note",
+                                true,
+                                Instant.parse("2026-04-01T01:02:03Z"),
+                                null,
+                                302,
+                                true,
+                                "https://example.com/unavailable",
+                                "ALLOWLIST",
+                                List.of("utm_*"),
+                                List.of("marketing"),
+                                Instant.parse("2026-03-18T09:10:11Z")
+                        )),
+                        11L,
+                        2,
+                        5
+                )
         );
     }
 

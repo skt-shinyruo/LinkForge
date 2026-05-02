@@ -4,7 +4,7 @@ import com.linkforge.LinkForgeApplication;
 import com.linkforge.TestTenantFixtures;
 import com.linkforge.platform.application.ApplicationProvisioningService;
 import com.linkforge.contract.api.BusinessException;
-import com.linkforge.shortlink.application.ShortLinkService;
+import com.linkforge.shortlink.application.*;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,7 +32,7 @@ class ApplicationProvisioningIntegrationTest extends PlatformPersistenceIntegrat
     JdbcTemplate jdbcTemplate;
 
     @Autowired
-    ShortLinkService shortLinkService;
+    ShortLinkApplicationService shortLinkService;
 
     @BeforeEach
     void setUpTenantAndAuth() {
@@ -113,7 +113,7 @@ class ApplicationProvisioningIntegrationTest extends PlatformPersistenceIntegrat
                 app.id()
         );
 
-        ShortLinkService.CreateLinkRequest req = new ShortLinkService.CreateLinkRequest(
+        CreateLinkRequest req = new CreateLinkRequest(
                 "https://example.com/quota-a",
                 null,
                 null,
@@ -129,9 +129,9 @@ class ApplicationProvisioningIntegrationTest extends PlatformPersistenceIntegrat
                 domain.id(),
                 null
         );
-        shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(1L), req);
+        shortLinkService.create(TENANT_ID, CreatedBy.user(1L), req);
 
-        ShortLinkService.CreateLinkRequest overLimitReq = new ShortLinkService.CreateLinkRequest(
+        CreateLinkRequest overLimitReq = new CreateLinkRequest(
                 "https://example.com/quota-b",
                 null,
                 null,
@@ -150,7 +150,7 @@ class ApplicationProvisioningIntegrationTest extends PlatformPersistenceIntegrat
 
         Assertions.assertThrows(
                 BusinessException.class,
-                () -> shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(1L), overLimitReq)
+                () -> shortLinkService.create(TENANT_ID, CreatedBy.user(1L), overLimitReq)
         );
     }
 }

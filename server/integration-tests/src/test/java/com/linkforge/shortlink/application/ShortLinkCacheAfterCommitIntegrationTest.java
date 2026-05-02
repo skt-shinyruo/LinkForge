@@ -81,7 +81,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
     }
 
     @Autowired
-    ShortLinkService shortLinkService;
+    ShortLinkApplicationService shortLinkService;
 
     @Autowired
     StringRedisTemplate redis;
@@ -121,7 +121,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
         TransactionTemplate tx = new TransactionTemplate(transactionManager);
 
         String code = tx.execute(status -> {
-            ShortLinkService.CreateLinkRequest req = new ShortLinkService.CreateLinkRequest(
+            CreateLinkRequest req = new CreateLinkRequest(
                     "https://example.com",
                     "note",
                     null,
@@ -137,7 +137,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
                     null,
                     null
             );
-            ShortLinkService.LinkDto dto = shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), req);
+            LinkDto dto = shortLinkService.create(TENANT_ID, CreatedBy.user(USER_ID), req);
 
             // BEFORE_COMMIT: cache write is after-commit only.
             assertThat(redis.opsForValue().get(key(dto.code()))).isNull();
@@ -153,7 +153,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
 
     @Test
     void update_rollback_shouldNotAppendEventOrChangeRedisCache() {
-        ShortLinkService.CreateLinkRequest createReq = new ShortLinkService.CreateLinkRequest(
+        CreateLinkRequest createReq = new CreateLinkRequest(
                 "https://example.com/old",
                 "note",
                 null,
@@ -169,7 +169,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
                 null,
                 null
         );
-        ShortLinkService.LinkDto created = shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), createReq);
+        LinkDto created = shortLinkService.create(TENANT_ID, CreatedBy.user(USER_ID), createReq);
         String key = key(created.code());
 
         assertThat(redirectService.resolve(created.code()).originalUrl()).isEqualTo("https://example.com/old");
@@ -180,7 +180,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
 
         TransactionTemplate tx = new TransactionTemplate(transactionManager);
         tx.executeWithoutResult(status -> {
-            ShortLinkService.UpdateLinkRequest updateReq = new ShortLinkService.UpdateLinkRequest(
+            UpdateLinkRequest updateReq = new UpdateLinkRequest(
                     "https://example.com/new",
                     null,
                     null,
@@ -217,7 +217,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
         assertLinkNotFound(code);
         assertThat(redis.opsForValue().get(key)).isNotNull();
 
-        ShortLinkService.CreateLinkRequest req = new ShortLinkService.CreateLinkRequest(
+        CreateLinkRequest req = new CreateLinkRequest(
                 "https://example.com/create",
                 "note",
                 null,
@@ -233,7 +233,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
                 null,
                 null
         );
-        shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), req);
+        shortLinkService.create(TENANT_ID, CreatedBy.user(USER_ID), req);
 
         assertThat(redis.opsForValue().get(key)).isNull();
         assertThat(redirectService.resolve(code).originalUrl()).isEqualTo("https://example.com/create");
@@ -243,7 +243,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
     @Test
     void draftLink_shouldNotPubliclyRedirectEvenWhenEnabled() {
         String code = uniqueCode("draft");
-        ShortLinkService.CreateLinkRequest req = new ShortLinkService.CreateLinkRequest(
+        CreateLinkRequest req = new CreateLinkRequest(
                 "https://example.com/draft",
                 "note",
                 null,
@@ -259,7 +259,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
                 null,
                 "DRAFT"
         );
-        shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), req);
+        shortLinkService.create(TENANT_ID, CreatedBy.user(USER_ID), req);
 
         RedirectResolution resolution = redirectService.resolve(
                 new ResolveRedirectRequest(code, null, false, false, null)
@@ -271,7 +271,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
 
     @Test
     void update_commit_shouldEvictPositiveCacheAndResolveUpdatedLinkWithoutProjectorDrain() {
-        ShortLinkService.CreateLinkRequest createReq = new ShortLinkService.CreateLinkRequest(
+        CreateLinkRequest createReq = new CreateLinkRequest(
                 "https://example.com/old",
                 "note",
                 null,
@@ -287,7 +287,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
                 null,
                 null
         );
-        ShortLinkService.LinkDto created = shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), createReq);
+        LinkDto created = shortLinkService.create(TENANT_ID, CreatedBy.user(USER_ID), createReq);
         String code = created.code();
         String key = key(code);
 
@@ -295,7 +295,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
         String before = redis.opsForValue().get(key);
         assertThat(before).isNotNull();
 
-        ShortLinkService.UpdateLinkRequest updateReq = new ShortLinkService.UpdateLinkRequest(
+        UpdateLinkRequest updateReq = new UpdateLinkRequest(
                 "https://example.com/new",
                 null,
                 null,
@@ -323,7 +323,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
 
     @Test
     void archive_restore_delete_commits_shouldInvalidateCacheWithoutProjectorDrain() {
-        ShortLinkService.CreateLinkRequest createReq = new ShortLinkService.CreateLinkRequest(
+        CreateLinkRequest createReq = new CreateLinkRequest(
                 "https://example.com/live",
                 "note",
                 null,
@@ -339,7 +339,7 @@ class ShortLinkCacheAfterCommitIntegrationTest {
                 null,
                 null
         );
-        ShortLinkService.LinkDto created = shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), createReq);
+        LinkDto created = shortLinkService.create(TENANT_ID, CreatedBy.user(USER_ID), createReq);
         String code = created.code();
         String key = key(code);
 
@@ -377,9 +377,9 @@ class ShortLinkCacheAfterCommitIntegrationTest {
             assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isTrue();
             int before = TransactionSynchronizationManager.getSynchronizations().size();
 
-            ShortLinkService.ImportResult r = shortLinkService.importCsv(
+            ImportResult r = shortLinkService.importCsv(
                     TENANT_ID,
-                    ShortLinkService.CreatedBy.user(USER_ID),
+                    CreatedBy.user(USER_ID),
                     List.of(
                             new ShortLinkCsvImportRow(1L, "https://example.com/a", null, null, null, null),
                             new ShortLinkCsvImportRow(2L, "https://example.com/b", null, null, null, null)

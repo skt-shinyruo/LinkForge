@@ -7,7 +7,6 @@ import com.linkforge.analytics.application.AnalyticsQueryService.TopLinkStat;
 import com.linkforge.analytics.application.AnalyticsQueryService.TopSortBy;
 import com.linkforge.analytics.application.AnalyticsQueryService.VisitEvent;
 import com.linkforge.analytics.infrastructure.persistence.AnalyticsQueryRepository;
-import com.linkforge.foundation.runtime.security.TenantGuard;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -17,19 +16,13 @@ import java.util.List;
 public class AnalyticsQueryServiceImpl implements AnalyticsQueryService {
 
     private final AnalyticsQueryRepository queryRepository;
-    private final TenantGuard tenantGuard;
 
-    public AnalyticsQueryServiceImpl(
-            AnalyticsQueryRepository queryRepository,
-            TenantGuard tenantGuard
-    ) {
+    public AnalyticsQueryServiceImpl(AnalyticsQueryRepository queryRepository) {
         this.queryRepository = queryRepository;
-        this.tenantGuard = tenantGuard;
     }
 
     @Override
     public List<DailyStat> linkDaily(long tenantId, long linkId, LocalDate from, LocalDate to) {
-        tenantGuard.requireCurrentTenant(tenantId);
         return queryRepository.linkDaily(tenantId, linkId, from, to)
                 .stream()
                 .map(r -> new DailyStat(r.day(), r.pv(), r.uv()))
@@ -38,7 +31,6 @@ public class AnalyticsQueryServiceImpl implements AnalyticsQueryService {
 
     @Override
     public List<DailyStat> tenantDaily(long tenantId, LocalDate from, LocalDate to) {
-        tenantGuard.requireCurrentTenant(tenantId);
         return queryRepository.tenantDaily(tenantId, from, to)
                 .stream()
                 .map(r -> new DailyStat(r.day(), r.pv(), r.uv()))
@@ -47,7 +39,6 @@ public class AnalyticsQueryServiceImpl implements AnalyticsQueryService {
 
     @Override
     public List<DailyStat> applicationDaily(long tenantId, long applicationId, LocalDate from, LocalDate to) {
-        tenantGuard.requireCurrentTenant(tenantId);
         return queryRepository.applicationDaily(tenantId, applicationId, from, to)
                 .stream()
                 .map(r -> new DailyStat(r.day(), r.pv(), r.uv()))
@@ -56,7 +47,6 @@ public class AnalyticsQueryServiceImpl implements AnalyticsQueryService {
 
     @Override
     public List<DailyStat> domainDaily(long tenantId, long domainId, LocalDate from, LocalDate to) {
-        tenantGuard.requireCurrentTenant(tenantId);
         return queryRepository.domainDaily(tenantId, domainId, from, to)
                 .stream()
                 .map(r -> new DailyStat(r.day(), r.pv(), r.uv()))
@@ -65,13 +55,11 @@ public class AnalyticsQueryServiceImpl implements AnalyticsQueryService {
 
     @Override
     public List<TopLinkStat> topLinks(long tenantId, LocalDate from, LocalDate to, int limit) {
-        tenantGuard.requireCurrentTenant(tenantId);
         return topLinks(tenantId, from, to, limit, TopSortBy.PV);
     }
 
     @Override
     public List<TopLinkStat> topLinks(long tenantId, LocalDate from, LocalDate to, int limit, TopSortBy sortBy) {
-        tenantGuard.requireCurrentTenant(tenantId);
         TopSortBy s = (sortBy == null ? TopSortBy.PV : sortBy);
         List<AnalyticsQueryRepository.TopLinkRow> rows = (s == TopSortBy.UV
                 ? queryRepository.topLinksOrderByUv(tenantId, from, to, limit)
@@ -81,7 +69,6 @@ public class AnalyticsQueryServiceImpl implements AnalyticsQueryService {
 
     @Override
     public List<TopLinkStat> applicationTopLinks(long tenantId, long applicationId, LocalDate from, LocalDate to, int limit, TopSortBy sortBy) {
-        tenantGuard.requireCurrentTenant(tenantId);
         TopSortBy s = (sortBy == null ? TopSortBy.PV : sortBy);
         List<AnalyticsQueryRepository.TopLinkRow> rows = (s == TopSortBy.UV
                 ? queryRepository.applicationTopLinksOrderByUv(tenantId, applicationId, from, to, limit)
@@ -91,7 +78,6 @@ public class AnalyticsQueryServiceImpl implements AnalyticsQueryService {
 
     @Override
     public List<TopLinkStat> domainTopLinks(long tenantId, long domainId, LocalDate from, LocalDate to, int limit, TopSortBy sortBy) {
-        tenantGuard.requireCurrentTenant(tenantId);
         TopSortBy s = (sortBy == null ? TopSortBy.PV : sortBy);
         List<AnalyticsQueryRepository.TopLinkRow> rows = (s == TopSortBy.UV
                 ? queryRepository.domainTopLinksOrderByUv(tenantId, domainId, from, to, limit)
@@ -108,7 +94,6 @@ public class AnalyticsQueryServiceImpl implements AnalyticsQueryService {
             String dimType,
             int limit
     ) {
-        tenantGuard.requireCurrentTenant(tenantId);
         String t = normalizeDimType(dimType);
 
         Long totalPv = queryRepository.linkDimTotalPv(tenantId, linkId, from, to, t);
@@ -125,7 +110,6 @@ public class AnalyticsQueryServiceImpl implements AnalyticsQueryService {
 
     @Override
     public List<VisitEvent> linkEvents(long tenantId, long linkId, LocalDateTime from, LocalDateTime to, int limit) {
-        tenantGuard.requireCurrentTenant(tenantId);
         return queryRepository.linkEvents(tenantId, linkId, from, to, limit)
                 .stream()
                 .map(r -> new VisitEvent(

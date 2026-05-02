@@ -2,6 +2,7 @@ package com.linkforge.analytics.application;
 
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
+import com.linkforge.contract.governance.ApprovalRequester;
 import com.linkforge.contract.governance.ApprovalRequestView;
 import com.linkforge.contract.governance.ApprovalSubmissionPort;
 import com.linkforge.contract.shortlink.ShortLinkReadPort;
@@ -55,7 +56,7 @@ public class AnalyticsExportRequestService {
                         link.applicationId(),
                         effectiveFrom,
                         effectiveTo,
-                        actor,
+                        new ApprovalRequester(actor.tenantId(), actor.userId(), actor.email()),
                         nowUtc()
                 )
         );

@@ -6,11 +6,13 @@ import com.linkforge.foundation.persistence.PageResult;
 import com.linkforge.foundation.runtime.security.AuthContext;
 import com.linkforge.foundation.runtime.security.PrincipalActorMapper;
 import com.linkforge.foundation.web.RequestId;
-import com.linkforge.shortlink.application.ShortLinkService;
-import com.linkforge.shortlink.application.ShortLinkService.BrowseLinksRequest;
-import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
-import com.linkforge.shortlink.application.ShortLinkService.ScopedCreateLinkRequest;
+import com.linkforge.shortlink.application.BrowseLinksRequest;
+import com.linkforge.shortlink.application.LinkDto;
+import com.linkforge.shortlink.application.ScopedCreateLinkRequest;
+import com.linkforge.shortlink.application.ShortLinkCreationUseCase;
+import com.linkforge.shortlink.application.ShortLinkQueryUseCase;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkCreateHttpRequest;
+import com.linkforge.shortlink.interfaces.web.dto.ShortLinkHttpResponse;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkPageHttpResponse;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -25,54 +27,57 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/open")
 public class OpenApiShortLinkController {
 
-    private final ShortLinkService shortLinkService;
+    private final ShortLinkCreationUseCase shortLinkCreationUseCase;
+    private final ShortLinkQueryUseCase shortLinkQueryUseCase;
     private final ShortLinkWriteGuard writeGuard;
     private final PrincipalActorMapper principalActorMapper;
 
     public OpenApiShortLinkController(
-            ShortLinkService shortLinkService,
+            ShortLinkCreationUseCase shortLinkCreationUseCase,
+            ShortLinkQueryUseCase shortLinkQueryUseCase,
             ShortLinkWriteGuard writeGuard,
             PrincipalActorMapper principalActorMapper
     ) {
-        this.shortLinkService = shortLinkService;
+        this.shortLinkCreationUseCase = shortLinkCreationUseCase;
+        this.shortLinkQueryUseCase = shortLinkQueryUseCase;
         this.writeGuard = writeGuard;
         this.principalActorMapper = principalActorMapper;
     }
 
     @PostMapping("/links")
-    public ApiResponse<LinkDto> create(@Valid @RequestBody ShortLinkCreateHttpRequest req) {
+    public ApiResponse<ShortLinkHttpResponse> create(@Valid @RequestBody ShortLinkCreateHttpRequest req) {
         writeGuard.requireWriteEnabled();
         ApiKeyActor actor = principalActorMapper.requireApiKey(AuthContext.requirePrincipal());
-        LinkDto dto = shortLinkService.createForApiKey(
+        LinkDto dto = shortLinkCreationUseCase.createForApiKey(
                 actor,
                 new ScopedCreateLinkRequest(ShortLinkHttpMapper.toCreateRequest(req), null)
         );
-        return ApiResponse.ok(dto, RequestId.get());
+        return ApiResponse.ok(ShortLinkHttpMapper.toLinkResponse(dto), RequestId.get());
     }
 
     @PostMapping("/applications/{applicationId}/links")
-    public ApiResponse<LinkDto> createForApplication(
+    public ApiResponse<ShortLinkHttpResponse> createForApplication(
             @PathVariable("applicationId") long applicationId,
             @Valid @RequestBody ShortLinkCreateHttpRequest req
     ) {
         writeGuard.requireWriteEnabled();
         ApiKeyActor actor = principalActorMapper.requireApiKey(AuthContext.requirePrincipal());
-        LinkDto dto = shortLinkService.createForApiKey(
+        LinkDto dto = shortLinkCreationUseCase.createForApiKey(
                 actor,
                 new ScopedCreateLinkRequest(ShortLinkHttpMapper.toCreateRequest(req), applicationId)
         );
-        return ApiResponse.ok(dto, RequestId.get());
+        return ApiResponse.ok(ShortLinkHttpMapper.toLinkResponse(dto), RequestId.get());
     }
 
     @GetMapping("/links")
-    public ApiResponse<ShortLinkPageHttpResponse<LinkDto>> list(
+    public ApiResponse<ShortLinkPageHttpResponse<ShortLinkHttpResponse>> list(
             @RequestParam(required = false) Boolean enabled,
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
         ApiKeyActor actor = principalActorMapper.requireApiKey(AuthContext.requirePrincipal());
-        PageResult<LinkDto> result = shortLinkService.browseForApiKey(
+        PageResult<LinkDto> result = shortLinkQueryUseCase.browseForApiKey(
                 actor,
                 new BrowseLinksRequest(false, enabled, keyword, null, null, null, page, size, 100)
         );
@@ -80,7 +85,7 @@ public class OpenApiShortLinkController {
     }
 
     @GetMapping("/applications/{applicationId}/links")
-    public ApiResponse<ShortLinkPageHttpResponse<LinkDto>> listByApplication(
+    public ApiResponse<ShortLinkPageHttpResponse<ShortLinkHttpResponse>> listByApplication(
             @PathVariable("applicationId") long applicationId,
             @RequestParam(required = false) Boolean enabled,
             @RequestParam(required = false) String keyword,
@@ -88,7 +93,7 @@ public class OpenApiShortLinkController {
             @RequestParam(defaultValue = "20") int size
     ) {
         ApiKeyActor actor = principalActorMapper.requireApiKey(AuthContext.requirePrincipal());
-        PageResult<LinkDto> result = shortLinkService.browseForApiKey(
+        PageResult<LinkDto> result = shortLinkQueryUseCase.browseForApiKey(
                 actor,
                 new BrowseLinksRequest(false, enabled, keyword, null, null, applicationId, page, size, 100)
         );

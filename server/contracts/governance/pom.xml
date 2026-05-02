@@ -15,10 +15,4 @@
     <name>linkforge-contract-governance</name>
     <description>Published language for governance approval submission and execution</description>
 
-    <dependencies>
-        <dependency>
-            <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-foundation-core</artifactId>
-        </dependency>
-    </dependencies>
 </project>

@@ -2,10 +2,11 @@ package com.linkforge.shortlink.application.command;
 
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
+import com.linkforge.contract.governance.ApprovalRequester;
 import com.linkforge.contract.governance.ApprovalSubmissionPort;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.tx.PostCommitHookPort;
-import com.linkforge.shortlink.application.ShortLinkService;
+import com.linkforge.shortlink.application.*;
 import com.linkforge.shortlink.application.eventing.ShortLinkDomainEventDispatcher;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
@@ -109,7 +110,7 @@ class UpdateShortLinkCommandHandlerTest {
         when(shortLinkRepository.findByTenantIdAndId(1L, 101L)).thenReturn(java.util.Optional.of(link));
         when(linkTagRepository.findTagNamesByLinkId(101L)).thenReturn(List.of("alpha"));
 
-        ShortLinkService.LinkDto expected = new ShortLinkService.LinkDto(
+        LinkDto expected = new LinkDto(
                 101L,
                 1L,
                 2001L,
@@ -131,10 +132,10 @@ class UpdateShortLinkCommandHandlerTest {
                 Instant.parse("2026-03-31T00:00:00Z")
         );
         when(dtoMapper.toDto(link, List.of("alpha"))).thenReturn(expected);
-        ShortLinkService.LinkDto actual = handler.handle(
+        LinkDto actual = handler.handle(
                 1L,
                 101L,
-                new ShortLinkService.UpdateLinkRequest(
+                new UpdateLinkRequest(
                         "https://example.com/new",
                         null,
                         null,
@@ -162,7 +163,7 @@ class UpdateShortLinkCommandHandlerTest {
                         2001L,
                         "https://example.com/old",
                         "https://example.com/new",
-                        new UserActor(1L, 7L, "reviewer@example.com", Set.of("TENANT_ADMIN")),
+                        new ApprovalRequester(1L, 7L, "reviewer@example.com"),
                         LocalDateTime.parse("2026-04-01T00:00:00")
                 )
         );
@@ -219,7 +220,7 @@ class UpdateShortLinkCommandHandlerTest {
         assertThatThrownBy(() -> handler.handle(
                 1L,
                 102L,
-                new ShortLinkService.UpdateLinkRequest(
+                new UpdateLinkRequest(
                         "https://example.com/new",
                         "new-note",
                         null,
@@ -246,7 +247,7 @@ class UpdateShortLinkCommandHandlerTest {
                         2001L,
                         "https://example.com/old",
                         "https://example.com/new",
-                        new UserActor(1L, 7L, "reviewer@example.com", Set.of("TENANT_ADMIN")),
+                        new ApprovalRequester(1L, 7L, "reviewer@example.com"),
                         LocalDateTime.parse("2026-04-01T00:00:00")
                 ))
         );
@@ -303,7 +304,7 @@ class UpdateShortLinkCommandHandlerTest {
         assertThatThrownBy(() -> handler.handle(
                 1L,
                 103L,
-                new ShortLinkService.UpdateLinkRequest(
+                new UpdateLinkRequest(
                         "https://example.com/new",
                         null,
                         null,

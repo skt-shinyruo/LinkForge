@@ -185,6 +185,127 @@ class ArchitectureTest {
     }
 
     @Test
+    void infrastructure_should_not_depend_on_runtime_security_context() {
+        ArchRule rule = noClasses()
+                .that()
+                .resideInAnyPackage("..infrastructure..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAnyPackage("com.linkforge.foundation.runtime.security..");
+        rule.check(CLASSES);
+    }
+
+    @Test
+    void contracts_should_not_depend_on_foundation_context_security_or_runtime_language() throws Exception {
+        ArchRule rule = noClasses()
+                .that()
+                .resideInAnyPackage("com.linkforge.contract..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAnyPackage(
+                        "com.linkforge.foundation.context..",
+                        "com.linkforge.foundation.security..",
+                        "com.linkforge.foundation.runtime.."
+                );
+        rule.check(CLASSES);
+
+        Path contractsDir = resolveFromCurrentWorkspace(
+                "contracts",
+                "server/contracts"
+        );
+        List<Path> poms;
+        try (var stream = Files.walk(contractsDir)) {
+            poms = stream
+                    .filter(path -> path.getFileName().toString().equals("pom.xml"))
+                    .sorted()
+                    .toList();
+        }
+
+        List<Path> violations = new ArrayList<>();
+        for (Path pom : poms) {
+            if (Files.readString(pom).contains("linkforge-foundation")) {
+                violations.add(pom);
+            }
+        }
+
+        assertThat(violations)
+                .withFailMessage("Contract modules must not depend on foundation modules: %s", violations)
+                .isEmpty();
+    }
+
+    @Test
+    void shortlink_controllers_should_not_expose_application_link_dto_as_http_contract() throws Exception {
+        Path shortlinkWebDir = resolveFromCurrentWorkspace(
+                "shortlink/interfaces/src/main/java/com/linkforge/shortlink/interfaces/web",
+                "server/shortlink/interfaces/src/main/java/com/linkforge/shortlink/interfaces/web"
+        );
+
+        List<Path> violations;
+        try (var stream = Files.walk(shortlinkWebDir)) {
+            violations = stream
+                    .filter(path -> path.getFileName().toString().endsWith("Controller.java"))
+                    .filter(path -> sourceContainsAny(path, "ApiResponse<LinkDto>", "ShortLinkPageHttpResponse<LinkDto>"))
+                    .sorted()
+                    .toList();
+        }
+
+        assertThat(violations)
+                .withFailMessage("Shortlink controllers must map application LinkDto to HTTP response DTOs: %s", violations)
+                .isEmpty();
+    }
+
+    @Test
+    void shortlink_interfaces_should_depend_on_specific_use_case_interfaces() throws Exception {
+        Path shortlinkWebDir = resolveFromCurrentWorkspace(
+                "shortlink/interfaces/src/main/java/com/linkforge/shortlink/interfaces/web",
+                "server/shortlink/interfaces/src/main/java/com/linkforge/shortlink/interfaces/web"
+        );
+
+        List<Path> violations;
+        try (var stream = Files.walk(shortlinkWebDir)) {
+            violations = stream
+                    .filter(path -> path.getFileName().toString().endsWith("Controller.java"))
+                    .filter(path -> sourceContainsAny(path, "ShortLinkService"))
+                    .sorted()
+                    .toList();
+        }
+
+        assertThat(violations)
+                .withFailMessage("Shortlink controllers must inject focused use-case interfaces instead of ShortLinkService: %s", violations)
+                .isEmpty();
+    }
+
+    @Test
+    void shortlink_application_should_not_keep_shortlink_service_as_dto_container() throws Exception {
+        Path shortlinkApplicationDir = resolveFromCurrentWorkspace(
+                "shortlink/application/src/main/java/com/linkforge/shortlink/application",
+                "server/shortlink/application/src/main/java/com/linkforge/shortlink/application"
+        );
+
+        assertThat(shortlinkApplicationDir.resolve("ShortLinkService.java"))
+                .as("ShortLinkService was a large interface plus nested DTO container; use focused use-case interfaces and top-level records")
+                .doesNotExist();
+    }
+
+    @Test
+    void removed_shortlink_service_should_not_have_live_references() throws Exception {
+        Path shortlinkDir = resolveFromCurrentWorkspace("shortlink", "server/shortlink");
+
+        List<Path> violations;
+        try (var stream = Files.walk(shortlinkDir)) {
+            violations = stream
+                    .filter(path -> path.toString().endsWith(".java"))
+                    .filter(path -> sourceContainsAny(path, "ShortLinkService"))
+                    .sorted()
+                    .toList();
+        }
+
+        assertThat(violations)
+                .withFailMessage("ShortLinkService was removed; use focused use cases or more specific test names: %s", violations)
+                .isEmpty();
+    }
+
+    @Test
     void domain_should_not_depend_on_outer_layers() {
         ArchRule rule = noClasses()
                 .that()
@@ -402,6 +523,20 @@ class ArchitectureTest {
             }
         }
         throw new IllegalStateException("Could not resolve any of " + String.join(", ", relativePaths) + " from " + cwd);
+    }
+
+    private static boolean sourceContainsAny(Path source, String... needles) {
+        try {
+            String text = Files.readString(source);
+            for (String needle : needles) {
+                if (text.contains(needle)) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("Could not read " + source, e);
+        }
     }
 
     private record BoundedContext(String name, String basePackage) {

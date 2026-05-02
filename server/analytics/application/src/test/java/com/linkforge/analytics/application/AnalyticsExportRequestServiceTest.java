@@ -2,6 +2,7 @@ package com.linkforge.analytics.application;
 
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
+import com.linkforge.contract.governance.ApprovalRequester;
 import com.linkforge.contract.governance.ApprovalRequestView;
 import com.linkforge.contract.governance.ApprovalSubmissionPort;
 import com.linkforge.contract.shortlink.ShortLinkReadPort;
@@ -114,7 +115,7 @@ class AnalyticsExportRequestServiceTest {
                         2001L,
                         from,
                         to,
-                        actor,
+                        new ApprovalRequester(1L, 9L, "tenant-admin@example.com"),
                         LocalDateTime.parse("2026-04-06T12:00:00")
                 )
         )).thenReturn(expected);
@@ -130,7 +131,7 @@ class AnalyticsExportRequestServiceTest {
                         2001L,
                         from,
                         to,
-                        actor,
+                        new ApprovalRequester(1L, 9L, "tenant-admin@example.com"),
                         LocalDateTime.parse("2026-04-06T12:00:00")
                 )
         );

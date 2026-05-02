@@ -87,7 +87,7 @@ class ShortLinkOptimisticLockIntegrationTest {
     private static final long USER_ID = 1L;
 
     @Autowired
-    ShortLinkService shortLinkService;
+    ShortLinkApplicationService shortLinkService;
 
     @Autowired
     ShortLinkQueryMapper shortLinkQueryMapper;
@@ -113,13 +113,13 @@ class ShortLinkOptimisticLockIntegrationTest {
 
     @Test
     void stale_update_should_fail_instead_of_overwriting_newer_state() throws Exception {
-        ShortLinkService.LinkDto created = createLink("update-start");
+        LinkDto created = createLink("update-start");
         WriteGate gate = new WriteGate();
         doAnswer(gate.aroundRealMethod()).when(shortLinkRepository).update(any());
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
-            Future<ShortLinkService.LinkDto> first = submitWithAuth(executor, () -> shortLinkService.update(
+            Future<LinkDto> first = submitWithAuth(executor, () -> shortLinkService.update(
                     TENANT_ID,
                     created.id(),
                     updateRequest("https://example.com/update-first"),
@@ -129,7 +129,7 @@ class ShortLinkOptimisticLockIntegrationTest {
 
             gate.awaitFirstEntry();
 
-            Future<ShortLinkService.LinkDto> second = submitWithAuth(executor, () -> shortLinkService.update(
+            Future<LinkDto> second = submitWithAuth(executor, () -> shortLinkService.update(
                     TENANT_ID,
                     created.id(),
                     updateRequest("https://example.com/update-second"),
@@ -140,7 +140,7 @@ class ShortLinkOptimisticLockIntegrationTest {
             gate.awaitSecondEntry();
             gate.releaseFirst();
 
-            ShortLinkService.LinkDto firstResult = first.get(10, TimeUnit.SECONDS);
+            LinkDto firstResult = first.get(10, TimeUnit.SECONDS);
             gate.releaseSecond();
 
             assertConflict(second);
@@ -154,20 +154,20 @@ class ShortLinkOptimisticLockIntegrationTest {
 
     @Test
     void stale_archive_should_fail_as_business_conflict() throws Exception {
-        ShortLinkService.LinkDto created = createLink("archive-start");
+        LinkDto created = createLink("archive-start");
         WriteGate gate = new WriteGate();
         doAnswer(gate.aroundRealMethod()).when(shortLinkRepository).update(any());
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
-            Future<ShortLinkService.LinkDto> first = submitWithAuth(executor, () -> shortLinkService.archive(TENANT_ID, created.id()));
+            Future<LinkDto> first = submitWithAuth(executor, () -> shortLinkService.archive(TENANT_ID, created.id()));
             gate.awaitFirstEntry();
 
-            Future<ShortLinkService.LinkDto> second = submitWithAuth(executor, () -> shortLinkService.archive(TENANT_ID, created.id()));
+            Future<LinkDto> second = submitWithAuth(executor, () -> shortLinkService.archive(TENANT_ID, created.id()));
             gate.awaitSecondEntry();
 
             gate.releaseFirst();
-            ShortLinkService.LinkDto firstResult = first.get(10, TimeUnit.SECONDS);
+            LinkDto firstResult = first.get(10, TimeUnit.SECONDS);
             gate.releaseSecond();
 
             assertConflict(second);
@@ -180,20 +180,20 @@ class ShortLinkOptimisticLockIntegrationTest {
 
     @Test
     void stale_restore_should_fail_as_business_conflict() throws Exception {
-        ShortLinkService.LinkDto archived = archive(createLink("restore-start").id());
+        LinkDto archived = archive(createLink("restore-start").id());
         WriteGate gate = new WriteGate();
         doAnswer(gate.aroundRealMethod()).when(shortLinkRepository).update(any());
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
-            Future<ShortLinkService.LinkDto> first = submitWithAuth(executor, () -> shortLinkService.restore(TENANT_ID, archived.id()));
+            Future<LinkDto> first = submitWithAuth(executor, () -> shortLinkService.restore(TENANT_ID, archived.id()));
             gate.awaitFirstEntry();
 
-            Future<ShortLinkService.LinkDto> second = submitWithAuth(executor, () -> shortLinkService.restore(TENANT_ID, archived.id()));
+            Future<LinkDto> second = submitWithAuth(executor, () -> shortLinkService.restore(TENANT_ID, archived.id()));
             gate.awaitSecondEntry();
 
             gate.releaseFirst();
-            ShortLinkService.LinkDto firstResult = first.get(10, TimeUnit.SECONDS);
+            LinkDto firstResult = first.get(10, TimeUnit.SECONDS);
             gate.releaseSecond();
 
             assertConflict(second);
@@ -206,7 +206,7 @@ class ShortLinkOptimisticLockIntegrationTest {
 
     @Test
     void stale_delete_should_fail_as_business_conflict() throws Exception {
-        ShortLinkService.LinkDto archived = archive(createLink("delete-start").id());
+        LinkDto archived = archive(createLink("delete-start").id());
         WriteGate gate = new WriteGate();
         doAnswer(gate.aroundRealMethod()).when(shortLinkRepository).deleteByTenantIdAndId(anyLong(), anyLong(), anyLong());
 
@@ -235,11 +235,11 @@ class ShortLinkOptimisticLockIntegrationTest {
         }
     }
 
-    private ShortLinkService.LinkDto createLink(String suffix) {
+    private LinkDto createLink(String suffix) {
         return shortLinkService.create(
                 TENANT_ID,
-                ShortLinkService.CreatedBy.user(USER_ID),
-                new ShortLinkService.CreateLinkRequest(
+                CreatedBy.user(USER_ID),
+                new CreateLinkRequest(
                         "https://example.com/" + suffix + "/" + Long.toUnsignedString(System.nanoTime()),
                         "note",
                         null,
@@ -258,12 +258,12 @@ class ShortLinkOptimisticLockIntegrationTest {
         );
     }
 
-    private ShortLinkService.LinkDto archive(long linkId) {
+    private LinkDto archive(long linkId) {
         return shortLinkService.archive(TENANT_ID, linkId);
     }
 
-    private ShortLinkService.UpdateLinkRequest updateRequest(String originalUrl) {
-        return new ShortLinkService.UpdateLinkRequest(
+    private UpdateLinkRequest updateRequest(String originalUrl) {
+        return new UpdateLinkRequest(
                 originalUrl,
                 null,
                 null,

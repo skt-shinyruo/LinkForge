@@ -75,7 +75,7 @@ class ShortLinkDeleteRetentionIntegrationTest {
     }
 
     @Autowired
-    ShortLinkService shortLinkService;
+    ShortLinkApplicationService shortLinkService;
 
     @Autowired
     ShortLinkQueryMapper shortLinkQueryMapper;
@@ -114,7 +114,7 @@ class ShortLinkDeleteRetentionIntegrationTest {
 
     @Test
     void delete_shouldNotDeleteAnalyticsRows() {
-        ShortLinkService.CreateLinkRequest req = new ShortLinkService.CreateLinkRequest(
+        CreateLinkRequest req = new CreateLinkRequest(
                 "https://example.com",
                 "note",
                 null,
@@ -130,7 +130,7 @@ class ShortLinkDeleteRetentionIntegrationTest {
                 null,
                 null
         );
-        ShortLinkService.LinkDto created = shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), req);
+        LinkDto created = shortLinkService.create(TENANT_ID, CreatedBy.user(USER_ID), req);
         long linkId = created.id();
 
         LocalDate day = LocalDate.of(2026, 1, 1);

@@ -3,7 +3,7 @@ package com.linkforge.shortlink.application.command;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
-import com.linkforge.shortlink.application.ShortLinkService.TagDto;
+import com.linkforge.shortlink.application.TagDto;
 import com.linkforge.shortlink.application.port.TagRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;

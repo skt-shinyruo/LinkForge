@@ -26,9 +26,9 @@ class ShortLinkActorScopeResolverTest {
         ShortLinkActorScopeResolver resolver = new ShortLinkActorScopeResolver(applicationScopePort);
         UserActor actor = new UserActor(1L, 99L, "user@example.com", Set.of("TENANT_ADMIN"));
 
-        ShortLinkService.CreateLinkRequest request = resolver.resolveCreateForUser(
+        CreateLinkRequest request = resolver.resolveCreateForUser(
                 actor,
-                new ShortLinkService.ScopedCreateLinkRequest(
+                new ScopedCreateLinkRequest(
                         createRequest(2001L),
                         2001L
                 )
@@ -45,7 +45,7 @@ class ShortLinkActorScopeResolverTest {
 
         assertThatThrownBy(() -> resolver.resolveCreateForUser(
                 actor,
-                new ShortLinkService.ScopedCreateLinkRequest(createRequest(2002L), 2001L)
+                new ScopedCreateLinkRequest(createRequest(2002L), 2001L)
         ))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN));
@@ -58,7 +58,7 @@ class ShortLinkActorScopeResolverTest {
 
         assertThatThrownBy(() -> resolver.resolveCreateForApiKey(
                 actor,
-                new ShortLinkService.ScopedCreateLinkRequest(createRequest(null), null)
+                new ScopedCreateLinkRequest(createRequest(null), null)
         ))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.BAD_REQUEST));
@@ -72,7 +72,7 @@ class ShortLinkActorScopeResolverTest {
 
         ShortLinkSearchQuery query = resolver.resolveBrowseForApiKey(
                 actor,
-                new ShortLinkService.BrowseLinksRequest(false, true, "abc", "tag", null, null, 0, 20, 100)
+                new BrowseLinksRequest(false, true, "abc", "tag", null, null, 0, 20, 100)
         );
 
         assertThat(query.applicationId()).isEqualTo(2001L);
@@ -90,7 +90,7 @@ class ShortLinkActorScopeResolverTest {
 
         ShortLinkActorScopeResolver.ImportScope scope = resolver.resolveImportForUser(
                 actor,
-                new ShortLinkService.ScopedImportCsvRequest(rows, 2001L, 3001L)
+                new ScopedImportCsvRequest(rows, 2001L, 3001L)
         );
 
         assertThat(scope.rows()).isSameAs(rows);
@@ -106,14 +106,14 @@ class ShortLinkActorScopeResolverTest {
 
         assertThatThrownBy(() -> resolver.resolveImportForUser(
                 actor,
-                new ShortLinkService.ScopedImportCsvRequest(List.of(), 2001L, null)
+                new ScopedImportCsvRequest(List.of(), 2001L, null)
         ))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.BAD_REQUEST));
     }
 
-    private static ShortLinkService.CreateLinkRequest createRequest(Long applicationId) {
-        return new ShortLinkService.CreateLinkRequest(
+    private static CreateLinkRequest createRequest(Long applicationId) {
+        return new CreateLinkRequest(
                 "https://example.com",
                 "note",
                 null,

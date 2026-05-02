@@ -3,7 +3,7 @@ package com.linkforge;
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.contract.shortlink.ShortLinkEventTypes;
 import com.linkforge.foundation.security.AuthPrincipal;
-import com.linkforge.shortlink.application.ShortLinkService;
+import com.linkforge.shortlink.application.*;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -69,7 +69,7 @@ class ShortLinkIntegrationEventAppendIntegrationTest {
     private static final long USER_ID = 1L;
 
     @Autowired
-    ShortLinkService shortLinkService;
+    ShortLinkApplicationService shortLinkService;
 
     @Autowired
     JdbcTemplate jdbcTemplate;
@@ -90,7 +90,7 @@ class ShortLinkIntegrationEventAppendIntegrationTest {
 
     @Test
     void create_should_append_integration_event() {
-        ShortLinkService.CreateLinkRequest req = new ShortLinkService.CreateLinkRequest(
+        CreateLinkRequest req = new CreateLinkRequest(
                 "https://example.com",
                 "note",
                 null,
@@ -106,7 +106,7 @@ class ShortLinkIntegrationEventAppendIntegrationTest {
                 null,
                 null
         );
-        ShortLinkService.LinkDto dto = shortLinkService.create(TENANT_ID, ShortLinkService.CreatedBy.user(USER_ID), req);
+        LinkDto dto = shortLinkService.create(TENANT_ID, CreatedBy.user(USER_ID), req);
 
         Integer count = jdbcTemplate.queryForObject(
                 """

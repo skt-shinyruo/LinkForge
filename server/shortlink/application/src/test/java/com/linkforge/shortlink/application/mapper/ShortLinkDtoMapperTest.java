@@ -2,7 +2,7 @@ package com.linkforge.shortlink.application.mapper;
 
 import com.linkforge.contract.platform.DomainHostnameLookupPort;
 import com.linkforge.foundation.config.CoreProperties;
-import com.linkforge.shortlink.application.ShortLinkService;
+import com.linkforge.shortlink.application.*;
 import com.linkforge.shortlink.domain.CreatedByType;
 import com.linkforge.shortlink.domain.HttpUrl;
 import com.linkforge.shortlink.domain.ShortCode;
@@ -29,7 +29,7 @@ class ShortLinkDtoMapperTest {
                 .thenReturn(Optional.of("go.example.test"));
         ShortLinkDtoMapper mapper = new ShortLinkDtoMapper(coreProperties, domainHostnameLookupPort);
 
-        ShortLinkService.LinkDto actual = mapper.toDto(domainScopedLink(), List.of());
+        LinkDto actual = mapper.toDto(domainScopedLink(), List.of());
 
         assertThat(actual.shortUrl()).isEqualTo("https://go.example.test/r/AbC123");
         verify(domainHostnameLookupPort).findDomainHostname(22L, 44L);
@@ -42,7 +42,7 @@ class ShortLinkDtoMapperTest {
         DomainHostnameLookupPort domainHostnameLookupPort = mock(DomainHostnameLookupPort.class);
         ShortLinkDtoMapper mapper = new ShortLinkDtoMapper(coreProperties, domainHostnameLookupPort);
 
-        ShortLinkService.LinkDto actual = mapper.toDto(unscopedLink(), List.of());
+        LinkDto actual = mapper.toDto(unscopedLink(), List.of());
 
         assertThat(actual.shortUrl()).isEqualTo("https://go.example.test/r/AbC123");
         verifyNoInteractions(domainHostnameLookupPort);

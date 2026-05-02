@@ -4,19 +4,21 @@ import com.linkforge.contract.api.ApiResponse;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.persistence.PageResult;
 import com.linkforge.foundation.runtime.security.AuthContext;
-import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.runtime.security.PrincipalActorMapper;
+import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.web.RequestId;
-import com.linkforge.shortlink.application.ShortLinkService;
-import com.linkforge.shortlink.application.ShortLinkService.CreatedBy;
-import com.linkforge.shortlink.application.ShortLinkService.CreateLinkRequest;
-import com.linkforge.shortlink.application.ShortLinkService.ImportResult;
-import com.linkforge.shortlink.application.ShortLinkService.LinkDto;
-import com.linkforge.shortlink.application.ShortLinkService.BrowseLinksRequest;
-import com.linkforge.shortlink.application.ShortLinkService.ScopedCreateLinkRequest;
-import com.linkforge.shortlink.application.ShortLinkService.ScopedImportCsvRequest;
+import com.linkforge.shortlink.application.BrowseLinksRequest;
+import com.linkforge.shortlink.application.ImportResult;
+import com.linkforge.shortlink.application.LinkDto;
+import com.linkforge.shortlink.application.ScopedCreateLinkRequest;
+import com.linkforge.shortlink.application.ScopedImportCsvRequest;
+import com.linkforge.shortlink.application.ShortLinkCreationUseCase;
+import com.linkforge.shortlink.application.ShortLinkCsvUseCase;
+import com.linkforge.shortlink.application.ShortLinkLifecycleUseCase;
+import com.linkforge.shortlink.application.ShortLinkQueryUseCase;
 import com.linkforge.shortlink.application.csv.ShortLinkCsvExport;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkCreateHttpRequest;
+import com.linkforge.shortlink.interfaces.web.dto.ShortLinkHttpResponse;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkPageHttpResponse;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkUpdateHttpRequest;
 import jakarta.validation.Valid;
@@ -41,51 +43,60 @@ import java.time.ZoneOffset;
 @RequestMapping("/api/v1")
 public class ShortLinkController {
 
-    private final ShortLinkService shortLinkService;
+    private final ShortLinkCreationUseCase shortLinkCreationUseCase;
+    private final ShortLinkQueryUseCase shortLinkQueryUseCase;
+    private final ShortLinkLifecycleUseCase shortLinkLifecycleUseCase;
+    private final ShortLinkCsvUseCase shortLinkCsvUseCase;
     private final ShortLinkWriteGuard writeGuard;
     private final PrincipalActorMapper principalActorMapper;
     private final ShortLinkCsvHttpMapper shortLinkCsvHttpMapper;
 
     public ShortLinkController(
-            ShortLinkService shortLinkService,
+            ShortLinkCreationUseCase shortLinkCreationUseCase,
+            ShortLinkQueryUseCase shortLinkQueryUseCase,
+            ShortLinkLifecycleUseCase shortLinkLifecycleUseCase,
+            ShortLinkCsvUseCase shortLinkCsvUseCase,
             ShortLinkWriteGuard writeGuard,
             PrincipalActorMapper principalActorMapper,
             ShortLinkCsvHttpMapper shortLinkCsvHttpMapper
     ) {
-        this.shortLinkService = shortLinkService;
+        this.shortLinkCreationUseCase = shortLinkCreationUseCase;
+        this.shortLinkQueryUseCase = shortLinkQueryUseCase;
+        this.shortLinkLifecycleUseCase = shortLinkLifecycleUseCase;
+        this.shortLinkCsvUseCase = shortLinkCsvUseCase;
         this.writeGuard = writeGuard;
         this.principalActorMapper = principalActorMapper;
         this.shortLinkCsvHttpMapper = shortLinkCsvHttpMapper;
     }
 
     @PostMapping("/links")
-    public ApiResponse<LinkDto> create(@Valid @RequestBody ShortLinkCreateHttpRequest req) {
+    public ApiResponse<ShortLinkHttpResponse> create(@Valid @RequestBody ShortLinkCreateHttpRequest req) {
         writeGuard.requireWriteEnabled();
         UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
-        LinkDto dto = shortLinkService.createForUser(
+        LinkDto dto = shortLinkCreationUseCase.createForUser(
                 actor,
                 new ScopedCreateLinkRequest(ShortLinkHttpMapper.toCreateRequest(req), null)
         );
-        return ApiResponse.ok(dto, RequestId.get());
+        return ApiResponse.ok(ShortLinkHttpMapper.toLinkResponse(dto), RequestId.get());
     }
 
     @PostMapping("/applications/{applicationId}/links")
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<LinkDto> createForApplication(
+    public ApiResponse<ShortLinkHttpResponse> createForApplication(
             @PathVariable("applicationId") long applicationId,
             @Valid @RequestBody ShortLinkCreateHttpRequest req
     ) {
         writeGuard.requireWriteEnabled();
         UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
-        LinkDto dto = shortLinkService.createForUser(
+        LinkDto dto = shortLinkCreationUseCase.createForUser(
                 actor,
                 new ScopedCreateLinkRequest(ShortLinkHttpMapper.toCreateRequest(req), applicationId)
         );
-        return ApiResponse.ok(dto, RequestId.get());
+        return ApiResponse.ok(ShortLinkHttpMapper.toLinkResponse(dto), RequestId.get());
     }
 
     @GetMapping("/links")
-    public ApiResponse<ShortLinkPageHttpResponse<LinkDto>> list(
+    public ApiResponse<ShortLinkPageHttpResponse<ShortLinkHttpResponse>> list(
             @RequestParam(required = false) Boolean archived,
             @RequestParam(required = false) Boolean enabled,
             @RequestParam(required = false) String keyword,
@@ -95,7 +106,7 @@ public class ShortLinkController {
             @RequestParam(defaultValue = "20") int size
     ) {
         UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
-        PageResult<LinkDto> result = shortLinkService.browseForUser(
+        PageResult<LinkDto> result = shortLinkQueryUseCase.browseForUser(
                 actor,
                 new BrowseLinksRequest(archived, enabled, keyword, tag, applicationId, null, page, size, 100)
         );
@@ -104,7 +115,7 @@ public class ShortLinkController {
 
     @GetMapping("/applications/{applicationId}/links")
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<ShortLinkPageHttpResponse<LinkDto>> listByApplication(
+    public ApiResponse<ShortLinkPageHttpResponse<ShortLinkHttpResponse>> listByApplication(
             @PathVariable("applicationId") long applicationId,
             @RequestParam(required = false) Boolean archived,
             @RequestParam(required = false) Boolean enabled,
@@ -114,7 +125,7 @@ public class ShortLinkController {
             @RequestParam(defaultValue = "20") int size
     ) {
         UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
-        PageResult<LinkDto> result = shortLinkService.browseForUser(
+        PageResult<LinkDto> result = shortLinkQueryUseCase.browseForUser(
                 actor,
                 new BrowseLinksRequest(archived, enabled, keyword, tag, null, applicationId, page, size, 100)
         );
@@ -122,22 +133,27 @@ public class ShortLinkController {
     }
 
     @GetMapping("/links/{id}")
-    public ApiResponse<LinkDto> detail(@PathVariable("id") long id) {
+    public ApiResponse<ShortLinkHttpResponse> detail(@PathVariable("id") long id) {
         AuthPrincipal p = AuthContext.requirePrincipal();
-        return ApiResponse.ok(shortLinkService.detail(p.getTenantId(), id), RequestId.get());
+        return ApiResponse.ok(
+                ShortLinkHttpMapper.toLinkResponse(shortLinkQueryUseCase.detail(p.getTenantId(), id)),
+                RequestId.get()
+        );
     }
 
     @PutMapping("/links/{id}")
-    public ApiResponse<LinkDto> update(@PathVariable("id") long id, @Valid @RequestBody ShortLinkUpdateHttpRequest req) {
+    public ApiResponse<ShortLinkHttpResponse> update(@PathVariable("id") long id, @Valid @RequestBody ShortLinkUpdateHttpRequest req) {
         writeGuard.requireWriteEnabled();
         UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
         return ApiResponse.ok(
-                shortLinkService.update(
-                        actor.tenantId(),
-                        id,
-                        ShortLinkHttpMapper.toUpdateRequest(req),
-                        actor,
-                        LocalDateTime.now(ZoneOffset.UTC)
+                ShortLinkHttpMapper.toLinkResponse(
+                        shortLinkLifecycleUseCase.update(
+                                actor.tenantId(),
+                                id,
+                                ShortLinkHttpMapper.toUpdateRequest(req),
+                                actor,
+                                LocalDateTime.now(ZoneOffset.UTC)
+                        )
                 ),
                 RequestId.get()
         );
@@ -145,18 +161,24 @@ public class ShortLinkController {
 
     @PostMapping("/links/{id}/archive")
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<LinkDto> archive(@PathVariable("id") long id) {
+    public ApiResponse<ShortLinkHttpResponse> archive(@PathVariable("id") long id) {
         writeGuard.requireWriteEnabled();
         AuthPrincipal p = AuthContext.requirePrincipal();
-        return ApiResponse.ok(shortLinkService.archive(p.getTenantId(), id), RequestId.get());
+        return ApiResponse.ok(
+                ShortLinkHttpMapper.toLinkResponse(shortLinkLifecycleUseCase.archive(p.getTenantId(), id)),
+                RequestId.get()
+        );
     }
 
     @PostMapping("/links/{id}/restore")
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<LinkDto> restore(@PathVariable("id") long id) {
+    public ApiResponse<ShortLinkHttpResponse> restore(@PathVariable("id") long id) {
         writeGuard.requireWriteEnabled();
         AuthPrincipal p = AuthContext.requirePrincipal();
-        return ApiResponse.ok(shortLinkService.restore(p.getTenantId(), id), RequestId.get());
+        return ApiResponse.ok(
+                ShortLinkHttpMapper.toLinkResponse(shortLinkLifecycleUseCase.restore(p.getTenantId(), id)),
+                RequestId.get()
+        );
     }
 
     @DeleteMapping("/links/{id}")
@@ -164,7 +186,7 @@ public class ShortLinkController {
     public ApiResponse<Void> delete(@PathVariable("id") long id) {
         writeGuard.requireWriteEnabled();
         AuthPrincipal p = AuthContext.requirePrincipal();
-        shortLinkService.delete(p.getTenantId(), id);
+        shortLinkLifecycleUseCase.delete(p.getTenantId(), id);
         return ApiResponse.ok(null, RequestId.get());
     }
 
@@ -173,7 +195,7 @@ public class ShortLinkController {
     public ApiResponse<ImportResult> importCsv(@RequestParam("file") MultipartFile file) {
         writeGuard.requireWriteEnabled();
         UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
-        ImportResult result = shortLinkService.importCsv(actor, shortLinkCsvHttpMapper.parse(file));
+        ImportResult result = shortLinkCsvUseCase.importCsv(actor, shortLinkCsvHttpMapper.parse(file));
         return ApiResponse.ok(result, RequestId.get());
     }
 
@@ -186,7 +208,7 @@ public class ShortLinkController {
     ) {
         writeGuard.requireWriteEnabled();
         UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
-        ImportResult result = shortLinkService.importCsv(
+        ImportResult result = shortLinkCsvUseCase.importCsv(
                 actor,
                 new ScopedImportCsvRequest(shortLinkCsvHttpMapper.parse(file), applicationId, domainId)
         );
@@ -206,7 +228,7 @@ public class ShortLinkController {
             @RequestParam(defaultValue = "200") int size
     ) {
         UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
-        ShortLinkCsvExport export = shortLinkService.exportCsvForUser(
+        ShortLinkCsvExport export = shortLinkCsvUseCase.exportCsvForUser(
                 actor,
                 new BrowseLinksRequest(archived, enabled, keyword, tag, applicationId, null, page, size, 1000)
         );
@@ -226,7 +248,7 @@ public class ShortLinkController {
             @RequestParam(defaultValue = "200") int size
     ) {
         UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
-        ShortLinkCsvExport export = shortLinkService.exportCsvForUser(
+        ShortLinkCsvExport export = shortLinkCsvUseCase.exportCsvForUser(
                 actor,
                 new BrowseLinksRequest(archived, enabled, keyword, tag, null, applicationId, page, size, 1000)
         );

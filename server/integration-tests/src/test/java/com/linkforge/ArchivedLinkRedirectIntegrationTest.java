@@ -2,7 +2,7 @@ package com.linkforge;
 
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.TestTenantFixtures;
-import com.linkforge.shortlink.application.ShortLinkService;
+import com.linkforge.shortlink.application.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -79,7 +79,7 @@ class ArchivedLinkRedirectIntegrationTest {
     StringRedisTemplate redis;
 
     @Autowired
-    ShortLinkService shortLinkService;
+    ShortLinkApplicationService shortLinkService;
 
     @Autowired
     JdbcTemplate jdbcTemplate;
@@ -108,10 +108,10 @@ class ArchivedLinkRedirectIntegrationTest {
         insertApplication(applicationId, TENANT_ID, "app-" + suffix, "App " + suffix);
         insertDedicatedDomain(domainId, TENANT_ID, applicationId, host);
 
-        ShortLinkService.LinkDto created = shortLinkService.create(
+        LinkDto created = shortLinkService.create(
                 TENANT_ID,
-                ShortLinkService.CreatedBy.user(USER_ID),
-                new ShortLinkService.CreateLinkRequest(
+                CreatedBy.user(USER_ID),
+                new CreateLinkRequest(
                         originalUrl,
                         null,
                         null,

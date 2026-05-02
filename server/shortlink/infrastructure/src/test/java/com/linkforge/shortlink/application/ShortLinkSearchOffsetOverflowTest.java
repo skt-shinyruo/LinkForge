@@ -16,7 +16,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 
-class ShortLinkServiceOffsetOverflowTest {
+class ShortLinkSearchOffsetOverflowTest {
 
     @Test
     void search_shouldRejectHugePageToAvoidOffsetOverflowAndSlowQuery() {

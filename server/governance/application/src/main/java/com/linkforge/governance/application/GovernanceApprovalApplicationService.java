@@ -1,9 +1,13 @@
 package com.linkforge.governance.application;
 
 import com.linkforge.contract.governance.ApprovalRequestView;
+import com.linkforge.contract.governance.ApprovalRequester;
 import com.linkforge.contract.governance.ApprovalSubmissionPort;
+import com.linkforge.foundation.context.UserActor;
 import com.linkforge.governance.domain.SensitiveOperationType;
 import org.springframework.stereotype.Service;
+
+import java.util.Set;
 
 @Service
 public class GovernanceApprovalApplicationService implements ApprovalSubmissionPort {
@@ -26,7 +30,7 @@ public class GovernanceApprovalApplicationService implements ApprovalSubmissionP
                         request.targetApplicationId(),
                         linkDestinationSnapshot(request.linkId(), request.currentOriginalUrl()),
                         linkDestinationSnapshot(request.linkId(), request.requestedOriginalUrl()),
-                        request.actor(),
+                        toUserActor(request.requester()),
                         request.requestedAt()
                 )
         );
@@ -45,7 +49,7 @@ public class GovernanceApprovalApplicationService implements ApprovalSubmissionP
                         request.targetApplicationId(),
                         null,
                         "linkId=" + request.linkId() + ",from=" + request.from() + ",to=" + request.to(),
-                        request.actor(),
+                        toUserActor(request.requester()),
                         request.requestedAt()
                 )
         );
@@ -54,6 +58,13 @@ public class GovernanceApprovalApplicationService implements ApprovalSubmissionP
 
     private static String linkDestinationSnapshot(long linkId, String originalUrl) {
         return "linkId=" + linkId + "\noriginalUrl=" + originalUrl;
+    }
+
+    private static UserActor toUserActor(ApprovalRequester requester) {
+        if (requester == null) {
+            return null;
+        }
+        return new UserActor(requester.tenantId(), requester.userId(), requester.email(), Set.of());
     }
 
     private static ApprovalRequestView toResult(GovernanceService.ApprovalRequestDto dto) {

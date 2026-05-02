@@ -16,6 +16,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class RedisApplicationClickQuotaReservationPortTest {
@@ -30,6 +31,12 @@ class RedisApplicationClickQuotaReservationPortTest {
                 LocalDate.parse("2026-04-01"),
                 LocalDate.parse("2026-05-01")
         )).thenReturn(9L);
+        when(redis.execute(
+                any(DefaultRedisScript.class),
+                eq(List.of(AnalyticsKeys.applicationClickQuotaKey(22L, 33L, LocalDate.parse("2026-04-01")))),
+                eq("10"),
+                eq(String.valueOf(LocalDate.parse("2026-05-03").atStartOfDay(ZoneOffset.UTC).toEpochSecond()))
+        )).thenReturn(-1L);
         when(redis.execute(
                 any(DefaultRedisScript.class),
                 eq(List.of(AnalyticsKeys.applicationClickQuotaKey(22L, 33L, LocalDate.parse("2026-04-01")))),
@@ -70,6 +77,33 @@ class RedisApplicationClickQuotaReservationPortTest {
     }
 
     @Test
+    void tryReserveMonthlyClick_shouldNotQueryMysqlWhenRedisCounterExists() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        AnalyticsQueryRepository queryRepository = mock(AnalyticsQueryRepository.class);
+        when(redis.execute(
+                any(DefaultRedisScript.class),
+                eq(List.of(AnalyticsKeys.applicationClickQuotaKey(22L, 33L, LocalDate.parse("2026-04-01")))),
+                eq("10"),
+                eq(String.valueOf(LocalDate.parse("2026-05-03").atStartOfDay(ZoneOffset.UTC).toEpochSecond()))
+        )).thenReturn(1L);
+        RedisApplicationClickQuotaReservationPort port = new RedisApplicationClickQuotaReservationPort(
+                redis,
+                queryRepository
+        );
+
+        boolean reserved = port.tryReserveMonthlyClick(
+                22L,
+                33L,
+                LocalDate.parse("2026-04-01"),
+                LocalDate.parse("2026-05-01"),
+                10L
+        );
+
+        assertThat(reserved).isTrue();
+        verifyNoInteractions(queryRepository);
+    }
+
+    @Test
     void tryReserveMonthlyClick_shouldRejectWhenRedisScriptRejects() {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         AnalyticsQueryRepository queryRepository = mock(AnalyticsQueryRepository.class);
@@ -79,6 +113,12 @@ class RedisApplicationClickQuotaReservationPortTest {
                 LocalDate.parse("2026-04-01"),
                 LocalDate.parse("2026-05-01")
         )).thenReturn(10L);
+        when(redis.execute(
+                any(DefaultRedisScript.class),
+                any(List.class),
+                eq("10"),
+                any(String.class)
+        )).thenReturn(-1L);
         when(redis.execute(any(DefaultRedisScript.class), any(List.class), eq("10"), eq("10"), any(String.class)))
                 .thenReturn(0L);
         RedisApplicationClickQuotaReservationPort port = new RedisApplicationClickQuotaReservationPort(
@@ -95,5 +135,60 @@ class RedisApplicationClickQuotaReservationPortTest {
         );
 
         assertThat(reserved).isFalse();
+    }
+
+    @Test
+    void tryReserveMonthlyClick_shouldFailOpenWhenRedisReservationFails() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        AnalyticsQueryRepository queryRepository = mock(AnalyticsQueryRepository.class);
+        when(queryRepository.countApplicationPv(
+                22L,
+                33L,
+                LocalDate.parse("2026-04-01"),
+                LocalDate.parse("2026-05-01")
+        )).thenReturn(9L);
+        when(redis.execute(any(DefaultRedisScript.class), any(List.class), eq("10"), any(String.class)))
+                .thenThrow(new IllegalStateException("redis unavailable"));
+        RedisApplicationClickQuotaReservationPort port = new RedisApplicationClickQuotaReservationPort(
+                redis,
+                queryRepository
+        );
+
+        boolean reserved = port.tryReserveMonthlyClick(
+                22L,
+                33L,
+                LocalDate.parse("2026-04-01"),
+                LocalDate.parse("2026-05-01"),
+                10L
+        );
+
+        assertThat(reserved).isTrue();
+    }
+
+    @Test
+    void tryReserveMonthlyClick_shouldFailOpenWithoutMysqlQueryWhenRedisReturnsNull() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        AnalyticsQueryRepository queryRepository = mock(AnalyticsQueryRepository.class);
+        when(redis.execute(
+                any(DefaultRedisScript.class),
+                eq(List.of(AnalyticsKeys.applicationClickQuotaKey(22L, 33L, LocalDate.parse("2026-04-01")))),
+                eq("10"),
+                eq(String.valueOf(LocalDate.parse("2026-05-03").atStartOfDay(ZoneOffset.UTC).toEpochSecond()))
+        )).thenReturn(null);
+        RedisApplicationClickQuotaReservationPort port = new RedisApplicationClickQuotaReservationPort(
+                redis,
+                queryRepository
+        );
+
+        boolean reserved = port.tryReserveMonthlyClick(
+                22L,
+                33L,
+                LocalDate.parse("2026-04-01"),
+                LocalDate.parse("2026-05-01"),
+                10L
+        );
+
+        assertThat(reserved).isTrue();
+        verifyNoInteractions(queryRepository);
     }
 }

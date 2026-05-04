@@ -8,6 +8,12 @@ import com.tngtech.archunit.lang.ArchRule;
 import org.junit.jupiter.api.Test;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
@@ -18,12 +24,14 @@ import java.nio.file.Path;
 import java.lang.reflect.GenericArrayType;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
 import java.lang.reflect.WildcardType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Predicate;
 
 class ArchitectureTest {
 
@@ -256,7 +264,8 @@ class ArchitectureTest {
                 .filter(javaClass -> javaClass.isAnnotatedWith(RestController.class))
                 .map(ArchitectureTest::loadClass)
                 .flatMap(clazz -> Arrays.stream(clazz.getDeclaredMethods()))
-                .filter(method -> typeMentionsPackage(method.getGenericReturnType(), ".application."))
+                .filter(ArchitectureTest::isMappedEndpoint)
+                .filter(method -> exposesApplicationType(method))
                 .map(method -> method.getDeclaringClass().getName() + "#" + method.getName())
                 .sorted()
                 .toList();
@@ -270,8 +279,12 @@ class ArchitectureTest {
     void application_services_should_not_own_nested_public_dto_records() {
         List<String> violations = CLASSES.stream()
                 .filter(javaClass -> javaClass.getPackageName().contains(".application"))
-                .filter(javaClass -> javaClass.getName().matches(".*\\$.*(Dto|Result|Request|Command|Info|Created).*"))
-                .map(JavaClass::getName)
+                .map(ArchitectureTest::loadClass)
+                .flatMap(outerClass -> Arrays.stream(outerClass.getDeclaredClasses())
+                        .filter(Class::isRecord)
+                        .filter(nestedClass -> Modifier.isPublic(nestedClass.getModifiers()))
+                        .filter(nestedClass -> nestedClass.getSimpleName().matches(".*(Dto|Result|Request|Command|Info|Created).*"))
+                        .map(Class::getName))
                 .sorted()
                 .toList();
 
@@ -501,52 +514,49 @@ class ArchitectureTest {
     }
 
     private static boolean typeMentions(Type type, String fullyQualifiedName) {
-        if (type instanceof Class<?> clazz) {
-            return clazz.getName().equals(fullyQualifiedName);
-        }
-        if (type instanceof ParameterizedType parameterizedType) {
-            return typeMentions(parameterizedType.getRawType(), fullyQualifiedName)
-                    || Arrays.stream(parameterizedType.getActualTypeArguments())
-                    .anyMatch(argument -> typeMentions(argument, fullyQualifiedName));
-        }
-        if (type instanceof GenericArrayType genericArrayType) {
-            return typeMentions(genericArrayType.getGenericComponentType(), fullyQualifiedName);
-        }
-        if (type instanceof WildcardType wildcardType) {
-            return Arrays.stream(wildcardType.getUpperBounds()).anyMatch(bound -> typeMentions(bound, fullyQualifiedName))
-                    || Arrays.stream(wildcardType.getLowerBounds()).anyMatch(bound -> typeMentions(bound, fullyQualifiedName));
-        }
-        if (type instanceof TypeVariable<?> typeVariable) {
-            return Arrays.stream(typeVariable.getBounds()).anyMatch(bound -> typeMentions(bound, fullyQualifiedName));
-        }
-        return false;
+        return typeMatches(type, clazz -> clazz.getName().equals(fullyQualifiedName));
     }
 
     private static boolean typeMentionsPackage(Type type, String packageSegment) {
+        return typeMatches(type, clazz -> clazz.getName().contains(packageSegment));
+    }
+
+    private static boolean typeMatches(Type type, Predicate<Class<?>> classPredicate) {
         if (type == null) {
             return false;
         }
         if (type instanceof Class<?> clazz) {
-            return clazz.getName().contains(packageSegment);
+            return classPredicate.test(clazz);
         }
         if (type instanceof ParameterizedType parameterizedType) {
-            if (typeMentionsPackage(parameterizedType.getRawType(), packageSegment)) {
-                return true;
-            }
-            return Arrays.stream(parameterizedType.getActualTypeArguments())
-                    .anyMatch(t -> typeMentionsPackage(t, packageSegment));
+            return typeMatches(parameterizedType.getRawType(), classPredicate)
+                    || Arrays.stream(parameterizedType.getActualTypeArguments())
+                    .anyMatch(argument -> typeMatches(argument, classPredicate));
         }
         if (type instanceof GenericArrayType genericArrayType) {
-            return typeMentionsPackage(genericArrayType.getGenericComponentType(), packageSegment);
+            return typeMatches(genericArrayType.getGenericComponentType(), classPredicate);
         }
         if (type instanceof WildcardType wildcardType) {
-            return Arrays.stream(wildcardType.getUpperBounds()).anyMatch(t -> typeMentionsPackage(t, packageSegment))
-                    || Arrays.stream(wildcardType.getLowerBounds()).anyMatch(t -> typeMentionsPackage(t, packageSegment));
+            return Arrays.stream(wildcardType.getUpperBounds()).anyMatch(bound -> typeMatches(bound, classPredicate))
+                    || Arrays.stream(wildcardType.getLowerBounds()).anyMatch(bound -> typeMatches(bound, classPredicate));
         }
         if (type instanceof TypeVariable<?> typeVariable) {
-            return Arrays.stream(typeVariable.getBounds()).anyMatch(t -> typeMentionsPackage(t, packageSegment));
+            return Arrays.stream(typeVariable.getBounds()).anyMatch(bound -> typeMatches(bound, classPredicate));
         }
         return false;
+    }
+
+    private static boolean isMappedEndpoint(Method method) {
+        return method.isAnnotationPresent(GetMapping.class)
+                || method.isAnnotationPresent(PostMapping.class)
+                || method.isAnnotationPresent(PutMapping.class)
+                || method.isAnnotationPresent(PatchMapping.class)
+                || method.isAnnotationPresent(DeleteMapping.class)
+                || method.isAnnotationPresent(RequestMapping.class);
+    }
+
+    private static boolean exposesApplicationType(Method method) {
+        return typeMentionsPackage(method.getGenericReturnType(), ".application.");
     }
 
     private record BoundedContext(String name, String basePackage) {

@@ -251,6 +251,36 @@ class ArchitectureTest {
     }
 
     @Test
+    void controllers_should_not_expose_application_dtos_as_http_contracts() {
+        List<String> violations = CLASSES.stream()
+                .filter(javaClass -> javaClass.isAnnotatedWith(RestController.class))
+                .map(ArchitectureTest::loadClass)
+                .flatMap(clazz -> Arrays.stream(clazz.getDeclaredMethods()))
+                .filter(method -> typeMentionsPackage(method.getGenericReturnType(), ".application."))
+                .map(method -> method.getDeclaringClass().getName() + "#" + method.getName())
+                .sorted()
+                .toList();
+
+        assertThat(violations)
+                .withFailMessage("Controllers must map application results to interface-owned HTTP DTOs: %s", violations)
+                .isEmpty();
+    }
+
+    @Test
+    void application_services_should_not_own_nested_public_dto_records() {
+        List<String> violations = CLASSES.stream()
+                .filter(javaClass -> javaClass.getPackageName().contains(".application"))
+                .filter(javaClass -> javaClass.getName().matches(".*\\$.*(Dto|Result|Request|Command|Info|Created).*"))
+                .map(JavaClass::getName)
+                .sorted()
+                .toList();
+
+        assertThat(violations)
+                .withFailMessage("Application DTO/request/result models must be top-level types: %s", violations)
+                .isEmpty();
+    }
+
+    @Test
     void shortlink_interfaces_should_depend_on_specific_use_case_interfaces() {
         ArchRule rule = noClasses()
                 .that()
@@ -488,6 +518,33 @@ class ArchitectureTest {
         }
         if (type instanceof TypeVariable<?> typeVariable) {
             return Arrays.stream(typeVariable.getBounds()).anyMatch(bound -> typeMentions(bound, fullyQualifiedName));
+        }
+        return false;
+    }
+
+    private static boolean typeMentionsPackage(Type type, String packageSegment) {
+        if (type == null) {
+            return false;
+        }
+        if (type instanceof Class<?> clazz) {
+            return clazz.getName().contains(packageSegment);
+        }
+        if (type instanceof ParameterizedType parameterizedType) {
+            if (typeMentionsPackage(parameterizedType.getRawType(), packageSegment)) {
+                return true;
+            }
+            return Arrays.stream(parameterizedType.getActualTypeArguments())
+                    .anyMatch(t -> typeMentionsPackage(t, packageSegment));
+        }
+        if (type instanceof GenericArrayType genericArrayType) {
+            return typeMentionsPackage(genericArrayType.getGenericComponentType(), packageSegment);
+        }
+        if (type instanceof WildcardType wildcardType) {
+            return Arrays.stream(wildcardType.getUpperBounds()).anyMatch(t -> typeMentionsPackage(t, packageSegment))
+                    || Arrays.stream(wildcardType.getLowerBounds()).anyMatch(t -> typeMentionsPackage(t, packageSegment));
+        }
+        if (type instanceof TypeVariable<?> typeVariable) {
+            return Arrays.stream(typeVariable.getBounds()).anyMatch(t -> typeMentionsPackage(t, packageSegment));
         }
         return false;
     }

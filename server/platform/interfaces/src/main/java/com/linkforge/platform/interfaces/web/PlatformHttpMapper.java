@@ -1,13 +1,14 @@
 package com.linkforge.platform.interfaces.web;
 
-import com.linkforge.platform.application.ApplicationProvisioningService;
+import com.linkforge.platform.application.ApplicationResult;
+import com.linkforge.platform.application.DomainResult;
 
 final class PlatformHttpMapper {
 
     private PlatformHttpMapper() {
     }
 
-    static ApplicationHttpResponse toApplicationResponse(ApplicationProvisioningService.ApplicationDto dto) {
+    static ApplicationHttpResponse toApplicationResponse(ApplicationResult dto) {
         return new ApplicationHttpResponse(
                 dto.id(),
                 dto.tenantId(),
@@ -16,7 +17,7 @@ final class PlatformHttpMapper {
         );
     }
 
-    static DomainHttpResponse toDomainResponse(ApplicationProvisioningService.DomainDto dto) {
+    static DomainHttpResponse toDomainResponse(DomainResult dto) {
         return new DomainHttpResponse(
                 dto.id(),
                 dto.tenantId(),

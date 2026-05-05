@@ -2,7 +2,10 @@ package com.linkforge.platform;
 
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.TestTenantFixtures;
+import com.linkforge.platform.application.ApplicationResult;
 import com.linkforge.platform.application.ApplicationProvisioningService;
+import com.linkforge.platform.application.CreateApplicationCommand;
+import com.linkforge.platform.application.DomainResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,17 +37,17 @@ class DomainAuthorizationIntegrationTest extends PlatformPersistenceIntegrationT
 
     @Test
     void createTenantSharedDomain_should_allow_authorization_to_multiple_applications() {
-        ApplicationProvisioningService.ApplicationDto firstApplication = provisioningService.createApplication(
+        ApplicationResult firstApplication = provisioningService.createApplication(
                 TENANT_ID,
                 tenantAdminActor(TENANT_ID),
-                new ApplicationProvisioningService.CreateApplicationRequest("api-gateway", "API Gateway")
+                new CreateApplicationCommand("api-gateway", "API Gateway")
         );
-        ApplicationProvisioningService.ApplicationDto secondApplication = provisioningService.createApplication(
+        ApplicationResult secondApplication = provisioningService.createApplication(
                 TENANT_ID,
                 tenantAdminActor(TENANT_ID),
-                new ApplicationProvisioningService.CreateApplicationRequest("campaign-console", "Campaign Console")
+                new CreateApplicationCommand("campaign-console", "Campaign Console")
         );
-        ApplicationProvisioningService.DomainDto domain = provisioningService.createTenantSharedDomain(
+        DomainResult domain = provisioningService.createTenantSharedDomain(
                 TENANT_ID,
                 tenantAdminActor(TENANT_ID),
                 "go.tenant.example"

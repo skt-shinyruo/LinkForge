@@ -7,7 +7,10 @@ import com.linkforge.foundation.context.UserActor;
 import com.linkforge.governance.application.ApprovalRequestResult;
 import com.linkforge.governance.application.GovernanceService;
 import com.linkforge.governance.domain.ApprovalStatus;
+import com.linkforge.platform.application.ApplicationResult;
 import com.linkforge.platform.application.ApplicationProvisioningService;
+import com.linkforge.platform.application.CreateApplicationCommand;
+import com.linkforge.platform.application.DomainResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -59,17 +62,17 @@ class ApplicationAwareShortLinkIntegrationTest extends ApplicationAwareShortLink
         authenticateAsTenantAdmin(TENANT_ID, USER_ID, "tenant-admin@example.com");
         String suffix = Long.toUnsignedString(System.nanoTime());
 
-        ApplicationProvisioningService.ApplicationDto app = applicationProvisioningService.createApplication(
+        ApplicationResult app = applicationProvisioningService.createApplication(
                 TENANT_ID,
                 tenantAdminActor(),
-                new ApplicationProvisioningService.CreateApplicationRequest("order-center-" + suffix, "Order Center")
+                new CreateApplicationCommand("order-center-" + suffix, "Order Center")
         );
-        ApplicationProvisioningService.ApplicationDto otherApp = applicationProvisioningService.createApplication(
+        ApplicationResult otherApp = applicationProvisioningService.createApplication(
                 TENANT_ID,
                 tenantAdminActor(),
-                new ApplicationProvisioningService.CreateApplicationRequest("campaign-center-" + suffix, "Campaign Center")
+                new CreateApplicationCommand("campaign-center-" + suffix, "Campaign Center")
         );
-        ApplicationProvisioningService.DomainDto domain = applicationProvisioningService.createTenantSharedDomain(
+        DomainResult domain = applicationProvisioningService.createTenantSharedDomain(
                 TENANT_ID,
                 tenantAdminActor(),
                 "go-" + suffix + ".tenant.example"

@@ -5,6 +5,7 @@ import com.linkforge.contract.api.AppErrorCode;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.openapi.OpenApiErrorCode;
 import com.linkforge.foundation.security.AccountStatusVerifier;
+import com.linkforge.foundation.security.ApiKeyAuthenticationDetails;
 import com.linkforge.foundation.security.ApiKeyAuthenticationException;
 import com.linkforge.foundation.security.ApiKeyAuthenticationFailure;
 import com.linkforge.foundation.security.ApiKeyAuthenticationResult;
@@ -76,15 +77,14 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
                     0L,
                     r.tenantId(),
                     null,
-                    Set.of(StandardRoles.OPENAPI),
-                    r.apiKeyId(),
-                    r.applicationId()
+                    Set.of(StandardRoles.OPENAPI)
             );
             UsernamePasswordAuthenticationToken at = new UsernamePasswordAuthenticationToken(
                     principal,
                     "N/A",
                     Set.of(new SimpleGrantedAuthority("ROLE_" + StandardRoles.OPENAPI))
             );
+            at.setDetails(new ApiKeyAuthenticationDetails(r.apiKeyId(), r.applicationId()));
             SecurityContextHolder.getContext().setAuthentication(at);
             filterChain.doFilter(request, response);
         } catch (ApiKeyAuthenticationException e) {

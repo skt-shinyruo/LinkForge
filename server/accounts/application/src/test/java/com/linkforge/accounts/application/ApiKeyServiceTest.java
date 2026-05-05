@@ -104,7 +104,7 @@ class ApiKeyServiceTest {
         when(store.findById(123L)).thenReturn(apiKey);
         when(passwordHasher.matches("secret", "hash")).thenReturn(true);
 
-        ApiKeyService.ApiKeyAuthResult r = service.authenticate("lfk_123_secret");
+        ApiKeyAuthResult r = service.authenticate("lfk_123_secret");
         assertThat(r.tenantId()).isEqualTo(1L);
         assertThat(r.apiKeyId()).isEqualTo(123L);
 
@@ -263,7 +263,7 @@ class ApiKeyServiceTest {
         when(store.findById(123L)).thenReturn(apiKey);
         when(passwordHasher.matches("secret", "hash")).thenReturn(true);
 
-        ApiKeyService.ApiKeyAuthResult r = service.authenticate("lfk_123_secret");
+        ApiKeyAuthResult r = service.authenticate("lfk_123_secret");
         assertThat(r.tenantId()).isEqualTo(1L);
         assertThat(r.apiKeyId()).isEqualTo(123L);
 
@@ -284,7 +284,7 @@ class ApiKeyServiceTest {
         ApiKeyService service = newService(store, passwordHasher, props, authCache, applicationScopePort);
         when(passwordHasher.encode(any())).thenReturn("encoded-secret");
 
-        ApiKeyService.CreatedApiKey created = service.create(1L, 2001L, "openapi-app");
+        CreatedApiKeyResult created = service.create(1L, 2001L, "openapi-app");
 
         assertThat(created.id()).isPositive();
         ArgumentCaptor<AccountsApiKeyStore.ApiKey> captor = ArgumentCaptor.forClass(AccountsApiKeyStore.ApiKey.class);
@@ -309,7 +309,7 @@ class ApiKeyServiceTest {
         ApiKeyService service = newService(store, passwordHasher, props, authCache, postCommitHook, applicationScopePort);
         when(passwordHasher.encode(any())).thenReturn("encoded-secret");
 
-        ApiKeyService.CreatedApiKey created = service.create(1L, 2001L, "openapi-app");
+        CreatedApiKeyResult created = service.create(1L, 2001L, "openapi-app");
 
         assertThat(created.id()).isEqualTo(123L);
         verify(store).insert(any());
@@ -343,7 +343,7 @@ class ApiKeyServiceTest {
         when(store.findById(123L)).thenReturn(apiKey);
         when(passwordHasher.matches("secret", "hash")).thenReturn(true);
 
-        ApiKeyService.ApiKeyAuthResult result = service.authenticate("lfk_123_secret");
+        ApiKeyAuthResult result = service.authenticate("lfk_123_secret");
 
         assertThat(result.tenantId()).isEqualTo(1L);
         assertThat(result.apiKeyId()).isEqualTo(123L);
@@ -475,7 +475,7 @@ class ApiKeyServiceTest {
         );
         when(store.findById(123L)).thenReturn(existing);
 
-        ApiKeyService.ApiKeyInfo info = service.disable(1L, 123L);
+        ApiKeyInfoResult info = service.disable(1L, 123L);
 
         assertThat(info.status()).isEqualTo(AccountsConstants.STATUS_DISABLED);
         verify(store).update(argThat(apiKey -> AccountsConstants.STATUS_DISABLED.equals(apiKey.status())));
@@ -544,7 +544,7 @@ class ApiKeyServiceTest {
         );
         when(store.findById(123L)).thenReturn(existing);
 
-        ApiKeyService.ApiKeyInfo info = service.enable(1L, 123L);
+        ApiKeyInfoResult info = service.enable(1L, 123L);
 
         assertThat(info.status()).isEqualTo(AccountsConstants.STATUS_ACTIVE);
         verify(store).update(argThat(apiKey -> AccountsConstants.STATUS_ACTIVE.equals(apiKey.status())));

@@ -1,5 +1,6 @@
 package com.linkforge.accounts.interfaces.web;
 
+import com.linkforge.accounts.application.AuthResult;
 import com.linkforge.accounts.application.AuthService;
 import com.linkforge.contract.api.ApiResponse;
 import com.linkforge.contract.api.BusinessException;
@@ -41,14 +42,14 @@ public class AuthController {
         if (securityProperties == null || !securityProperties.isRegistrationEnabled()) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "自助注册未开启");
         }
-        AuthService.AuthResult r = authService.register(req.tenantName(), req.email(), req.password());
+        AuthResult r = authService.register(req.tenantName(), req.email(), req.password());
         setJwtCookieIfEnabled(response, r.token());
         return ApiResponse.ok(AuthResponse.from(exposeTokenToBodyIfNeeded(r.token()), r.principal()), RequestId.get());
     }
 
     @PostMapping("/login")
     public ApiResponse<AuthResponse> login(@Valid @RequestBody LoginRequest req, HttpServletResponse response) {
-        AuthService.AuthResult r = authService.login(req.email(), req.password());
+        AuthResult r = authService.login(req.email(), req.password());
         setJwtCookieIfEnabled(response, r.token());
         return ApiResponse.ok(AuthResponse.from(exposeTokenToBodyIfNeeded(r.token()), r.principal()), RequestId.get());
     }

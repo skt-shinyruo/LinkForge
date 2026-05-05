@@ -1,6 +1,10 @@
 package com.linkforge.accounts;
 
 import com.linkforge.LinkForgeApplication;
+import com.linkforge.accounts.application.ApiKeyAuthResult;
+import com.linkforge.accounts.application.ApiKeyInfoResult;
+import com.linkforge.accounts.application.AuthResult;
+import com.linkforge.accounts.application.CreatedApiKeyResult;
 import com.linkforge.accounts.application.ApiKeyService;
 import com.linkforge.accounts.application.AuthService;
 import com.linkforge.accounts.domain.AccountsConstants;
@@ -92,34 +96,34 @@ class ApiKeyPersistenceIntegrationTest extends AccountsPersistenceIntegrationTes
         String email = uniqueEmail("api-owner");
         String password = "password123";
 
-        AuthService.AuthResult registered = authService.register(tenantName, email, password);
+        AuthResult registered = authService.register(tenantName, email, password);
         authenticateAs(registered.principal());
 
         long applicationId = provisionApplication(registered.principal().getTenantId(), "accounts-api-key-app");
 
-        ApiKeyService.CreatedApiKey firstKey = apiKeyService.create(registered.principal().getTenantId(), applicationId, "first");
+        CreatedApiKeyResult firstKey = apiKeyService.create(registered.principal().getTenantId(), applicationId, "first");
         pauseForCreatedAtOrdering();
-        ApiKeyService.CreatedApiKey secondKey = apiKeyService.create(registered.principal().getTenantId(), applicationId, "second");
+        CreatedApiKeyResult secondKey = apiKeyService.create(registered.principal().getTenantId(), applicationId, "second");
 
-        List<ApiKeyService.ApiKeyInfo> listed = apiKeyService.list(registered.principal().getTenantId());
-        assertThat(listed).extracting(ApiKeyService.ApiKeyInfo::id)
+        List<ApiKeyInfoResult> listed = apiKeyService.list(registered.principal().getTenantId());
+        assertThat(listed).extracting(ApiKeyInfoResult::id)
                 .containsExactly(secondKey.id(), firstKey.id());
-        assertThat(listed).extracting(ApiKeyService.ApiKeyInfo::applicationId)
+        assertThat(listed).extracting(ApiKeyInfoResult::applicationId)
                 .containsOnly(applicationId);
-        assertThat(listed).extracting(ApiKeyService.ApiKeyInfo::status)
+        assertThat(listed).extracting(ApiKeyInfoResult::status)
                 .containsOnly(AccountsConstants.STATUS_ACTIVE);
         assertThat(listed).allSatisfy(info -> assertThat(info.createdAt()).isNotNull());
         assertThat(listed).filteredOn(info -> info.id() == firstKey.id())
                 .singleElement()
-                .extracting(ApiKeyService.ApiKeyInfo::lastUsedAt)
+                .extracting(ApiKeyInfoResult::lastUsedAt)
                 .isNull();
 
-        ApiKeyService.ApiKeyAuthResult authenticated = apiKeyService.authenticate(firstKey.apiKey());
+        ApiKeyAuthResult authenticated = apiKeyService.authenticate(firstKey.apiKey());
         assertThat(authenticated.tenantId()).isEqualTo(registered.principal().getTenantId());
         assertThat(authenticated.applicationId()).isEqualTo(applicationId);
         assertThat(authenticated.apiKeyId()).isEqualTo(firstKey.id());
 
-        ApiKeyService.CreatedApiKey rotated = apiKeyService.rotate(registered.principal().getTenantId(), firstKey.id());
+        CreatedApiKeyResult rotated = apiKeyService.rotate(registered.principal().getTenantId(), firstKey.id());
         assertThat(rotated.id()).isEqualTo(firstKey.id());
         assertThat(rotated.apiKey()).startsWith("lfk_" + firstKey.id() + "_");
 
@@ -128,17 +132,17 @@ class ApiKeyPersistenceIntegrationTest extends AccountsPersistenceIntegrationTes
                 .extracting(throwable -> ((ApiKeyService.ApiKeyAuthException) throwable).errorCode())
                 .isEqualTo(com.linkforge.contract.openapi.OpenApiErrorCode.API_KEY_INVALID);
 
-        ApiKeyService.ApiKeyInfo disabled = apiKeyService.disable(registered.principal().getTenantId(), firstKey.id());
+        ApiKeyInfoResult disabled = apiKeyService.disable(registered.principal().getTenantId(), firstKey.id());
         assertThat(disabled.status()).isEqualTo(AccountsConstants.STATUS_DISABLED);
 
-        ApiKeyService.ApiKeyInfo enabled = apiKeyService.enable(registered.principal().getTenantId(), firstKey.id());
+        ApiKeyInfoResult enabled = apiKeyService.enable(registered.principal().getTenantId(), firstKey.id());
         assertThat(enabled.status()).isEqualTo(AccountsConstants.STATUS_ACTIVE);
 
-        ApiKeyService.ApiKeyAuthResult authenticatedRotated = apiKeyService.authenticate(rotated.apiKey());
+        ApiKeyAuthResult authenticatedRotated = apiKeyService.authenticate(rotated.apiKey());
         assertThat(authenticatedRotated.applicationId()).isEqualTo(applicationId);
         assertThat(authenticatedRotated.apiKeyId()).isEqualTo(firstKey.id());
 
-        List<ApiKeyService.ApiKeyInfo> afterAuth = apiKeyService.list(registered.principal().getTenantId());
+        List<ApiKeyInfoResult> afterAuth = apiKeyService.list(registered.principal().getTenantId());
         assertThat(afterAuth).filteredOn(info -> info.id() == firstKey.id())
                 .singleElement()
                 .satisfies(info -> assertThat(info.lastUsedAt()).isNotNull());

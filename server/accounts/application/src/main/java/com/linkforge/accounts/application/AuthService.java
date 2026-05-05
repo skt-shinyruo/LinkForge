@@ -150,6 +150,4 @@ public class AuthService {
         );
     }
 
-    public record AuthResult(String token, AuthPrincipal principal) {
-    }
 }

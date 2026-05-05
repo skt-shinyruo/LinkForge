@@ -1,10 +1,11 @@
 package com.linkforge.governance.application;
 
 import com.linkforge.contract.api.BusinessException;
+import com.linkforge.contract.governance.AnalyticsDetailExportApprovalPayload;
 import com.linkforge.contract.governance.ApprovalExecutionPort;
 import com.linkforge.contract.governance.ApprovalExecutionRequest;
 import com.linkforge.contract.governance.ApprovalPayloadCodec;
-import com.linkforge.contract.governance.ApprovalPayloads;
+import com.linkforge.contract.governance.LinkDestinationChangeApprovalPayload;
 import com.linkforge.contract.governance.SensitiveOperation;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
@@ -364,11 +365,11 @@ class GovernanceServiceTest {
     }
 
     private static String linkDestinationPayload(long linkId, String originalUrl) {
-        return ApprovalPayloadCodec.write(ApprovalPayloads.LinkDestinationChangePayload.v1(linkId, originalUrl));
+        return ApprovalPayloadCodec.write(LinkDestinationChangeApprovalPayload.v1(linkId, originalUrl));
     }
 
     private static String analyticsDetailExportPayload() {
-        return ApprovalPayloadCodec.write(ApprovalPayloads.AnalyticsDetailExportPayload.v1(
+        return ApprovalPayloadCodec.write(AnalyticsDetailExportApprovalPayload.v1(
                 101L,
                 LocalDateTime.parse("2026-04-01T00:00:00"),
                 LocalDateTime.parse("2026-04-02T00:00:00")

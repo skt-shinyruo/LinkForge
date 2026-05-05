@@ -2,8 +2,8 @@ package com.linkforge.governance;
 
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.TestTenantFixtures;
+import com.linkforge.contract.governance.ApplicationQuotaIncreaseApprovalPayload;
 import com.linkforge.contract.governance.ApprovalPayloadCodec;
-import com.linkforge.contract.governance.ApprovalPayloads;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.governance.application.ApprovalRequestResult;
 import com.linkforge.governance.application.GovernanceService;
@@ -204,7 +204,7 @@ class ApprovalWorkflowIntegrationTest extends GovernancePersistenceIntegrationTe
     }
 
     private static String quotaPayload(long monthlyLinkLimit, long monthlyClickLimit) {
-        return ApprovalPayloadCodec.write(ApprovalPayloads.ApplicationQuotaIncreasePayload.v1(
+        return ApprovalPayloadCodec.write(ApplicationQuotaIncreaseApprovalPayload.v1(
                 monthlyLinkLimit,
                 monthlyClickLimit
         ));

@@ -1,10 +1,11 @@
 package com.linkforge.governance.application;
 
+import com.linkforge.contract.governance.AnalyticsDetailExportApprovalPayload;
 import com.linkforge.contract.governance.ApprovalPayloadCodec;
-import com.linkforge.contract.governance.ApprovalPayloads;
 import com.linkforge.contract.governance.ApprovalRequestView;
 import com.linkforge.contract.governance.ApprovalRequester;
 import com.linkforge.contract.governance.ApprovalSubmissionPort;
+import com.linkforge.contract.governance.LinkDestinationChangeApprovalPayload;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.governance.domain.SensitiveOperationType;
 import org.springframework.stereotype.Service;
@@ -50,7 +51,7 @@ public class GovernanceApprovalApplicationService implements ApprovalSubmissionP
                         SensitiveOperationType.ANALYTICS_DETAIL_EXPORT,
                         request.targetApplicationId(),
                         null,
-                        ApprovalPayloadCodec.write(ApprovalPayloads.AnalyticsDetailExportPayload.v1(
+                        ApprovalPayloadCodec.write(AnalyticsDetailExportApprovalPayload.v1(
                                 request.linkId(),
                                 request.from(),
                                 request.to()
@@ -63,7 +64,7 @@ public class GovernanceApprovalApplicationService implements ApprovalSubmissionP
     }
 
     private static String linkDestinationSnapshot(long linkId, String originalUrl) {
-        return ApprovalPayloadCodec.write(ApprovalPayloads.LinkDestinationChangePayload.v1(linkId, originalUrl));
+        return ApprovalPayloadCodec.write(LinkDestinationChangeApprovalPayload.v1(linkId, originalUrl));
     }
 
     private static UserActor toUserActor(ApprovalRequester requester) {

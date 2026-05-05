@@ -2,10 +2,11 @@ package com.linkforge.governance.application;
 
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
+import com.linkforge.contract.governance.ApplicationQuotaIncreaseApprovalPayload;
 import com.linkforge.contract.governance.ApprovalExecutionPort;
 import com.linkforge.contract.governance.ApprovalExecutionRequest;
 import com.linkforge.contract.governance.ApprovalPayloadCodec;
-import com.linkforge.contract.governance.ApprovalPayloads;
+import com.linkforge.contract.governance.ApprovalPayloadTypes;
 import com.linkforge.contract.governance.SensitiveOperation;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.context.UserActor;
@@ -217,14 +218,14 @@ public class GovernanceService {
     }
 
     private long parseRequestedMonthlyLinkLimit(String snapshot) {
-        ApprovalPayloads.ApplicationQuotaIncreasePayload payload;
+        ApplicationQuotaIncreaseApprovalPayload payload;
         try {
-            payload = ApprovalPayloadCodec.read(snapshot, ApprovalPayloads.ApplicationQuotaIncreasePayload.class);
+            payload = ApprovalPayloadCodec.read(snapshot, ApplicationQuotaIncreaseApprovalPayload.class);
         } catch (IllegalArgumentException ex) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "配额审批 payload 不合法");
         }
-        if (!ApprovalPayloads.APPLICATION_QUOTA_INCREASE.equals(payload.type())
-                || payload.version() != ApprovalPayloads.VERSION_1) {
+        if (!ApprovalPayloadTypes.APPLICATION_QUOTA_INCREASE.equals(payload.type())
+                || payload.version() != ApprovalPayloadTypes.VERSION_1) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "配额审批 payload 版本不支持");
         }
         if (payload.monthlyLinkLimit() == null) {

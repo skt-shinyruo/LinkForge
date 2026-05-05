@@ -3,7 +3,7 @@ package com.linkforge.shortlink.application.approval;
 import com.linkforge.foundation.tx.PostCommitHookPort;
 import com.linkforge.contract.governance.ApprovalExecutionRequest;
 import com.linkforge.contract.governance.ApprovalPayloadCodec;
-import com.linkforge.contract.governance.ApprovalPayloads;
+import com.linkforge.contract.governance.LinkDestinationChangeApprovalPayload;
 import com.linkforge.contract.governance.SensitiveOperation;
 import com.linkforge.shortlink.application.eventing.ShortLinkDomainEventDispatcher;
 import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
@@ -147,6 +147,6 @@ class LinkDestinationChangeApprovalExecutorTest {
     }
 
     private static String linkDestinationPayload(long linkId, String originalUrl) {
-        return ApprovalPayloadCodec.write(ApprovalPayloads.LinkDestinationChangePayload.v1(linkId, originalUrl));
+        return ApprovalPayloadCodec.write(LinkDestinationChangeApprovalPayload.v1(linkId, originalUrl));
     }
 }

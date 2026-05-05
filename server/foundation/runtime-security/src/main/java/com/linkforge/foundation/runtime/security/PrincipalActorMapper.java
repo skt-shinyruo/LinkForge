@@ -4,7 +4,10 @@ import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.context.ApiKeyActor;
 import com.linkforge.foundation.context.UserActor;
+import com.linkforge.foundation.security.ApiKeyAuthenticationDetails;
 import com.linkforge.foundation.security.AuthPrincipal;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -26,10 +29,11 @@ public class PrincipalActorMapper {
         if (principal == null) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED);
         }
-        Long apiKeyId = principal.getApiKeyId();
-        if (apiKeyId == null || apiKeyId <= 0) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        Object details = auth == null ? null : auth.getDetails();
+        if (!(details instanceof ApiKeyAuthenticationDetails apiKeyDetails) || apiKeyDetails.apiKeyId() <= 0) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED);
         }
-        return new ApiKeyActor(principal.getTenantId(), apiKeyId, principal.getApplicationId());
+        return new ApiKeyActor(principal.getTenantId(), apiKeyDetails.apiKeyId(), apiKeyDetails.applicationId());
     }
 }

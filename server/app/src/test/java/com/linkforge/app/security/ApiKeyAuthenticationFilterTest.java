@@ -5,10 +5,12 @@ import com.linkforge.app.api.error.ApiErrorResponseWriter;
 import com.linkforge.contract.accounts.AccountsErrorCode;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.foundation.security.AccountStatusVerifier;
+import com.linkforge.foundation.security.ApiKeyAuthenticationDetails;
 import com.linkforge.foundation.security.ApiKeyAuthenticationException;
 import com.linkforge.foundation.security.ApiKeyAuthenticationFailure;
 import com.linkforge.foundation.security.ApiKeyAuthenticationResult;
 import com.linkforge.foundation.security.ApiKeyAuthenticator;
+import com.linkforge.foundation.security.AuthPrincipal;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockFilterChain;
@@ -103,5 +105,34 @@ class ApiKeyAuthenticationFilterTest {
         assertThat(resp.getStatus()).isEqualTo(403);
         assertThat(resp.getContentType()).startsWith("application/json");
         assertThat(resp.getContentAsString()).contains("\"code\":40301");
+    }
+
+    @Test
+    void openApi_withValidApiKey_shouldStoreApiKeyMetadataInAuthenticationDetails() throws Exception {
+        ApiKeyAuthenticator apiKeyService = mock(ApiKeyAuthenticator.class);
+        AccountStatusVerifier accountStatusService = mock(AccountStatusVerifier.class);
+        ApiErrorResponseWriter writer = new ApiErrorResponseWriter(new ObjectMapper());
+
+        ApiKeyAuthenticationFilter filter = new ApiKeyAuthenticationFilter(
+                apiKeyService,
+                accountStatusService,
+                writer
+        );
+
+        when(apiKeyService.authenticateApiKey("lfk_123_secret"))
+                .thenReturn(new ApiKeyAuthenticationResult(1L, 2001L, 123L));
+
+        MockHttpServletRequest req = new MockHttpServletRequest("GET", "/api/v1/open/ping");
+        req.addHeader("X-API-Key", "lfk_123_secret");
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+
+        filter.doFilter(req, resp, new MockFilterChain());
+
+        assertThat(resp.getStatus()).isEqualTo(200);
+        assertThat(SecurityContextHolder.getContext().getAuthentication().getPrincipal())
+                .isInstanceOfSatisfying(AuthPrincipal.class, principal ->
+                        assertThat(principal.getTenantId()).isEqualTo(1L));
+        assertThat(SecurityContextHolder.getContext().getAuthentication().getDetails())
+                .isEqualTo(new ApiKeyAuthenticationDetails(123L, 2001L));
     }
 }

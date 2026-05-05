@@ -2,12 +2,16 @@ package com.linkforge.shortlink.interfaces.web;
 
 import com.linkforge.foundation.persistence.PageResult;
 import com.linkforge.shortlink.application.CreateLinkRequest;
+import com.linkforge.shortlink.application.ImportResult;
 import com.linkforge.shortlink.application.LinkDto;
+import com.linkforge.shortlink.application.TagDto;
 import com.linkforge.shortlink.application.UpdateLinkRequest;
+import com.linkforge.shortlink.interfaces.web.dto.ImportHttpResponse;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkCreateHttpRequest;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkHttpResponse;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkPageHttpResponse;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkUpdateHttpRequest;
+import com.linkforge.shortlink.interfaces.web.dto.TagHttpResponse;
 
 public final class ShortLinkHttpMapper {
 
@@ -83,5 +87,13 @@ public final class ShortLinkHttpMapper {
                 result.page(),
                 result.size()
         );
+    }
+
+    public static ImportHttpResponse toImportResponse(ImportResult result) {
+        return new ImportHttpResponse(result.success(), result.failed(), result.errors());
+    }
+
+    public static TagHttpResponse toTagResponse(TagDto dto) {
+        return new TagHttpResponse(dto.id(), dto.name());
     }
 }

@@ -17,6 +17,7 @@ import com.linkforge.shortlink.application.ShortLinkCsvUseCase;
 import com.linkforge.shortlink.application.ShortLinkLifecycleUseCase;
 import com.linkforge.shortlink.application.ShortLinkQueryUseCase;
 import com.linkforge.shortlink.application.csv.ShortLinkCsvExport;
+import com.linkforge.shortlink.interfaces.web.dto.ImportHttpResponse;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkCreateHttpRequest;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkHttpResponse;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkPageHttpResponse;
@@ -192,16 +193,16 @@ public class ShortLinkController {
 
     @PostMapping(value = "/links/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<ImportResult> importCsv(@RequestParam("file") MultipartFile file) {
+    public ApiResponse<ImportHttpResponse> importCsv(@RequestParam("file") MultipartFile file) {
         writeGuard.requireWriteEnabled();
         UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
         ImportResult result = shortLinkCsvUseCase.importCsv(actor, shortLinkCsvHttpMapper.parse(file));
-        return ApiResponse.ok(result, RequestId.get());
+        return ApiResponse.ok(ShortLinkHttpMapper.toImportResponse(result), RequestId.get());
     }
 
     @PostMapping(value = "/applications/{applicationId}/links/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<ImportResult> importCsvByApplication(
+    public ApiResponse<ImportHttpResponse> importCsvByApplication(
             @PathVariable("applicationId") long applicationId,
             @RequestParam("domainId") long domainId,
             @RequestParam("file") MultipartFile file
@@ -212,7 +213,7 @@ public class ShortLinkController {
                 actor,
                 new ScopedImportCsvRequest(shortLinkCsvHttpMapper.parse(file), applicationId, domainId)
         );
-        return ApiResponse.ok(result, RequestId.get());
+        return ApiResponse.ok(ShortLinkHttpMapper.toImportResponse(result), RequestId.get());
     }
 
     @GetMapping("/links/export")

@@ -42,9 +42,9 @@ class LegacyShortLinkBackfillServiceTest {
                 backfillRepository
         );
 
-        LegacyShortLinkBackfillService.BackfillResult result = service.backfillTenant(9L);
+        BackfillResult result = service.backfillTenant(9L);
 
-        assertThat(result).isEqualTo(new LegacyShortLinkBackfillService.BackfillResult(9L, 101L, 202L, 7));
+        assertThat(result).isEqualTo(new BackfillResult(9L, 101L, 202L, 7));
         verify(backfillRepository).backfillTenant(9L, 101L, 202L);
         verify(provisioningPort).ensureLegacyDefaultBinding(9L);
     }

@@ -2,6 +2,7 @@ package com.linkforge.platform;
 
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.TestTenantFixtures;
+import com.linkforge.shortlink.application.migration.BackfillResult;
 import com.linkforge.shortlink.application.migration.LegacyShortLinkBackfillService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -56,8 +57,8 @@ class LegacyShortLinkMigrationIntegrationTest extends PlatformPersistenceIntegra
 
     @Test
     void backfill_should_place_existing_tenant_links_into_default_application_and_legacy_domain_idempotently() {
-        LegacyShortLinkBackfillService.BackfillResult first = backfillService.backfillTenant(TENANT_ID);
-        LegacyShortLinkBackfillService.BackfillResult second = backfillService.backfillTenant(TENANT_ID);
+        BackfillResult first = backfillService.backfillTenant(TENANT_ID);
+        BackfillResult second = backfillService.backfillTenant(TENANT_ID);
 
         assertThat(first.updatedCount()).isEqualTo(1);
         assertThat(second.updatedCount()).isZero();

@@ -5,10 +5,12 @@ import com.linkforge.shortlink.application.*;
 import com.linkforge.shortlink.application.csv.ShortLinkCsvExport;
 import com.linkforge.shortlink.application.csv.ShortLinkCsvExportRow;
 import com.linkforge.shortlink.application.csv.ShortLinkCsvImportRow;
+import com.linkforge.shortlink.interfaces.web.dto.ImportHttpResponse;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkCreateHttpRequest;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkHttpResponse;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkPageHttpResponse;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkUpdateHttpRequest;
+import com.linkforge.shortlink.interfaces.web.dto.TagHttpResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -207,6 +209,22 @@ class ShortLinkHttpMapperTest {
                         5
                 )
         );
+    }
+
+    @Test
+    void toImportResponse_shouldTranslateApplicationResultToHttpContract() {
+        ImportResult result = new ImportResult(2, 1, List.of("row 3: missing url"));
+
+        assertThat(ShortLinkHttpMapper.toImportResponse(result))
+                .isEqualTo(new ImportHttpResponse(2, 1, List.of("row 3: missing url")));
+    }
+
+    @Test
+    void toTagResponse_shouldTranslateApplicationDtoToHttpContract() {
+        TagDto tag = new TagDto(101L, "launch");
+
+        assertThat(ShortLinkHttpMapper.toTagResponse(tag))
+                .isEqualTo(new TagHttpResponse(101L, "launch"));
     }
 
     @Test

@@ -26,7 +26,4 @@ public class LegacyShortLinkBackfillService {
         int updated = backfillRepository.backfillTenant(tenantId, binding.applicationId(), binding.domainId());
         return new BackfillResult(tenantId, binding.applicationId(), binding.domainId(), updated);
     }
-
-    public record BackfillResult(long tenantId, long applicationId, long domainId, int updatedCount) {
-    }
 }

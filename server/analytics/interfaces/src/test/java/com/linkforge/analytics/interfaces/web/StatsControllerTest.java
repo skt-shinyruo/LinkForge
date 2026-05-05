@@ -23,7 +23,6 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -174,13 +173,39 @@ class StatsControllerTest {
         UserActor actor = new UserActor(1L, 9L, "tenant-admin@example.com", Set.of("TENANT_ADMIN"));
         LocalDateTime from = LocalDateTime.parse("2026-03-30T00:00:00");
         LocalDateTime to = LocalDateTime.parse("2026-03-31T00:00:00");
-        List<AnalyticsQueryService.VisitEvent> expected = List.of();
+        List<AnalyticsQueryService.VisitEvent> expected = List.of(new AnalyticsQueryService.VisitEvent(
+                LocalDateTime.parse("2026-03-30T12:34:56"),
+                "visit-req-1",
+                "ip-hash-1",
+                "Mozilla/5.0",
+                "Chrome",
+                "macOS",
+                "desktop",
+                "example.com",
+                "en-US",
+                "newsletter",
+                "email",
+                "spring"
+        ));
         when(principalActorMapper.requireUser(any(AuthPrincipal.class))).thenReturn(actor);
         when(linkEventsService.listLinkEvents(actor, 101L, from, to, 123)).thenReturn(expected);
 
-        ApiResponse<List<AnalyticsQueryService.VisitEvent>> response = controller.linkEvents(101L, from, to, 123);
+        ApiResponse<List<VisitEventHttpResponse>> response = controller.linkEvents(101L, from, to, 123);
 
-        assertThat(response.getData()).isSameAs(expected);
+        assertThat(response.getData()).containsExactly(new VisitEventHttpResponse(
+                LocalDateTime.parse("2026-03-30T12:34:56"),
+                "visit-req-1",
+                "ip-hash-1",
+                "Mozilla/5.0",
+                "Chrome",
+                "macOS",
+                "desktop",
+                "example.com",
+                "en-US",
+                "newsletter",
+                "email",
+                "spring"
+        ));
         assertThat(response.getRequestId()).isEqualTo("req-456");
         verify(linkEventsService).listLinkEvents(actor, 101L, from, to, 123);
     }
@@ -210,13 +235,29 @@ class StatsControllerTest {
         LocalDate from = LocalDate.parse("2026-04-01");
         LocalDate to = LocalDate.parse("2026-04-24");
         List<AnalyticsQueryService.TopLinkStat> expected = List.of(
-                new AnalyticsQueryService.TopLinkStat(101L, "abc123", "https://example.com/a", 50L, 40L, false)
+                new AnalyticsQueryService.TopLinkStat(
+                        101L,
+                        "abc123",
+                        "https://sho.rt/abc123",
+                        "https://example.com/a",
+                        50L,
+                        40L,
+                        false
+                )
         );
         when(reportingService.topLinks(1L, from, to, 10, AnalyticsQueryService.TopSortBy.PV)).thenReturn(expected);
 
-        ApiResponse<List<AnalyticsQueryService.TopLinkStat>> response = controller.topLinks(from, to, null, null);
+        ApiResponse<List<TopLinkStatHttpResponse>> response = controller.topLinks(from, to, null, null);
 
-        assertThat(response.getData()).isSameAs(expected);
+        assertThat(response.getData()).containsExactly(new TopLinkStatHttpResponse(
+                101L,
+                "abc123",
+                "https://sho.rt/abc123",
+                "https://example.com/a",
+                50L,
+                40L,
+                false
+        ));
         assertThat(response.getRequestId()).isEqualTo("req-top");
         verify(reportingService).topLinks(1L, from, to, 10, AnalyticsQueryService.TopSortBy.PV);
     }

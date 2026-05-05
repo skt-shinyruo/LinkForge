@@ -5,7 +5,8 @@ import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.contract.governance.ApprovalExecutionPort;
 import com.linkforge.contract.governance.ApprovalExecutionRequest;
 import com.linkforge.contract.governance.ApprovalPayloadCodec;
-import com.linkforge.contract.governance.ApprovalPayloads;
+import com.linkforge.contract.governance.ApprovalPayloadTypes;
+import com.linkforge.contract.governance.LinkDestinationChangeApprovalPayload;
 import com.linkforge.contract.governance.SensitiveOperation;
 import com.linkforge.contract.shortlink.ShortLinkErrorCode;
 import com.linkforge.foundation.tx.PostCommitHookPort;
@@ -102,14 +103,14 @@ public class LinkDestinationChangeApprovalExecutor implements ApprovalExecutionP
             if (snapshot == null || snapshot.isBlank()) {
                 throw new BusinessException(ErrorCode.BAD_REQUEST, fieldName + " 缺少审批快照");
             }
-            ApprovalPayloads.LinkDestinationChangePayload payload;
+            LinkDestinationChangeApprovalPayload payload;
             try {
-                payload = ApprovalPayloadCodec.read(snapshot, ApprovalPayloads.LinkDestinationChangePayload.class);
+                payload = ApprovalPayloadCodec.read(snapshot, LinkDestinationChangeApprovalPayload.class);
             } catch (IllegalArgumentException ex) {
                 throw new BusinessException(ErrorCode.BAD_REQUEST, fieldName + " 审批 payload 不合法");
             }
-            if (!ApprovalPayloads.LINK_DESTINATION_CHANGE.equals(payload.type())
-                    || payload.version() != ApprovalPayloads.VERSION_1) {
+            if (!ApprovalPayloadTypes.LINK_DESTINATION_CHANGE.equals(payload.type())
+                    || payload.version() != ApprovalPayloadTypes.VERSION_1) {
                 throw new BusinessException(ErrorCode.BAD_REQUEST, fieldName + " 审批 payload 版本不支持");
             }
             if (payload.linkId() <= 0 || payload.originalUrl() == null || payload.originalUrl().isBlank()) {

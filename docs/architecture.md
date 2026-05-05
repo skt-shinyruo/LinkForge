@@ -12,7 +12,7 @@ LinkForge is a modular monolith built as a Maven reactor plus a separate Vue fro
 - `server/shortlink`: write-side shortlink management split into `domain`, `application`, `infrastructure`, `interfaces`, and `runtime`. It owns durable shortlink state and emits integration events for downstream projections. Its public application entry points are focused use-case interfaces rather than one aggregate service interface.
 - `server/redirect`: cache-backed redirect serving split into `domain`, `application`, `infrastructure`, `interfaces`, and `runtime`. Redirect correctness uses Redis plus the authoritative shortlink read API on cache miss; it no longer maintains an independent redirect projection model.
 - `server/analytics`: visit recording and read models split into `domain`, `application`, `infrastructure`, `interfaces`, and `runtime`.
-- `server/app`: Spring Boot executable composition root. `LinkForgeApplication` explicitly imports context-owned runtime modules (`FoundationRuntimeModule`, `AccountsRuntimeModule`, `ShortlinkRuntimeModule`, `RedirectRuntimeModule`, `AnalyticsRuntimeModule`, `PlatformRuntimeModule`, and `GovernanceRuntimeModule`) instead of package scans or app-owned wrappers; bounded-context runtime modules now live in each context's `runtime` Maven module.
+- `server/app`: Spring Boot executable composition root. `LinkForgeApplication` explicitly imports context-owned runtime modules (`FoundationRuntimeModule`, `AccountsRuntimeModule`, `ShortlinkRuntimeModule`, `RedirectRuntimeModule`, `AnalyticsRuntimeModule`, `PlatformRuntimeModule`, and `GovernanceRuntimeModule`) instead of package scans or app-owned wrappers; bounded-context runtime modules now live in each context's `runtime` Maven module. Security wiring is split by request family instead of one monolithic security class.
 - `server/integration-tests`: Testcontainers-based integration verification for cross-module behavior.
 
 ## DDD Context Map
@@ -60,7 +60,7 @@ approval orchestration.
 ## Tactical DDD Rules
 
 - `domain` owns aggregate behavior, invariants, value objects, domain services, and internal domain events.
-- `application` owns use-case orchestration, transactions, repository ports, authorization input handling, and integration-event publication. Application services may accept explicit actor/input objects, but they must not read hidden runtime security context.
+- `application` owns use-case orchestration, transactions, repository ports, authorization input handling, and integration-event publication. Application services may accept explicit actor/input objects, but they must not read hidden runtime security context. Public request/result models in application code should be top-level types, not nested DTO/result/request containers inside service classes.
 - `interfaces` owns HTTP mapping, request validation, principal extraction, and transport response shaping. Controllers map application DTOs to transport DTOs instead of exposing application records as HTTP contracts.
 - `infrastructure` owns MyBatis, Redis, schedulers, and persistence mapping. Infrastructure adapters must not depend on runtime-security helpers such as `AuthContext` or `TenantGuard`; tenant scope is passed explicitly through application ports.
 - `runtime` owns context-local Spring composition by importing the context's application, infrastructure, and interfaces configs.

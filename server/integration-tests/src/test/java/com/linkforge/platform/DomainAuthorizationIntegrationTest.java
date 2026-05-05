@@ -6,6 +6,7 @@ import com.linkforge.platform.application.ApplicationResult;
 import com.linkforge.platform.application.ApplicationProvisioningService;
 import com.linkforge.platform.application.CreateApplicationCommand;
 import com.linkforge.platform.application.DomainResult;
+import com.linkforge.platform.application.PlatformControlPlaneService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,6 +26,9 @@ class DomainAuthorizationIntegrationTest extends PlatformPersistenceIntegrationT
 
     @Autowired
     ApplicationProvisioningService provisioningService;
+
+    @Autowired
+    PlatformControlPlaneService controlPlaneService;
 
     @Autowired
     JdbcTemplate jdbcTemplate;
@@ -77,5 +81,39 @@ class DomainAuthorizationIntegrationTest extends PlatformPersistenceIntegrationT
                 domain.id()
         );
         assertThat(scope).isEqualTo("TENANT_SHARED");
+    }
+
+    @Test
+    void listDomainsForApplication_shouldExcludeInactiveAuthorizedDomains() {
+        ApplicationResult application = provisioningService.createApplication(
+                TENANT_ID,
+                tenantAdminActor(TENANT_ID),
+                new CreateApplicationCommand("landing-pages", "Landing Pages")
+        );
+        DomainResult activeDomain = provisioningService.createTenantSharedDomain(
+                TENANT_ID,
+                tenantAdminActor(TENANT_ID),
+                "active.tenant.example"
+        );
+        DomainResult inactiveDomain = provisioningService.createTenantSharedDomain(
+                TENANT_ID,
+                tenantAdminActor(TENANT_ID),
+                "inactive.tenant.example"
+        );
+        provisioningService.authorizeDomain(TENANT_ID, tenantAdminActor(TENANT_ID), application.id(), activeDomain.id());
+        provisioningService.authorizeDomain(TENANT_ID, tenantAdminActor(TENANT_ID), application.id(), inactiveDomain.id());
+        jdbcTemplate.update(
+                """
+                        UPDATE domains
+                        SET status = 'DISABLED'
+                        WHERE id = ?
+                        """,
+                inactiveDomain.id()
+        );
+
+        assertThat(controlPlaneService.listDomainsForApplication(TENANT_ID, application.id()))
+                .extracting(DomainResult::id)
+                .contains(activeDomain.id())
+                .doesNotContain(inactiveDomain.id());
     }
 }

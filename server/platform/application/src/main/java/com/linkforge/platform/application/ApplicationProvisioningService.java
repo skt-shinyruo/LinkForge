@@ -134,6 +134,9 @@ public class ApplicationProvisioningService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "应用不存在"));
         Domain domain = domainRepository.findByTenantIdAndId(tenantId, domainId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "域名不存在"));
+        if (domain.status() != DomainStatus.ACTIVE) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "域名未启用");
+        }
         if (domain.scope() != DomainScope.TENANT_SHARED) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "仅租户共享域名允许授权");
         }

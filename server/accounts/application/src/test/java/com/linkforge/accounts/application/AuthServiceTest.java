@@ -46,7 +46,7 @@ class AuthServiceTest {
         when(tokenIssuer.issueToken(100L, 200L, "admin@example.com", Set.of(StandardRoles.TENANT_ADMIN), 0))
                 .thenReturn("jwt-token");
 
-        AuthService.AuthResult result = service.register("Tenant A", "admin@example.com", "password123");
+        AuthResult result = service.register("Tenant A", "admin@example.com", "password123");
 
         verify(userRoleStore).insert(new AccountsUserRoleStore.UserRoleData(100L, StandardRoles.TENANT_ADMIN));
         verify(tokenIssuer).issueToken(100L, 200L, "admin@example.com", Set.of(StandardRoles.TENANT_ADMIN), 0);
@@ -97,7 +97,7 @@ class AuthServiceTest {
         when(tokenIssuer.issueToken(100L, 200L, "member@example.com", Set.of(StandardRoles.USER), 0))
                 .thenReturn("jwt-token");
 
-        AuthService.AuthResult result = service.login("member@example.com", "password123");
+        AuthResult result = service.login("member@example.com", "password123");
 
         verify(tokenIssuer).issueToken(100L, 200L, "member@example.com", Set.of(StandardRoles.USER), 0);
         assertThat(result.principal().getRoles()).containsExactly(StandardRoles.USER);

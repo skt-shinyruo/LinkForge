@@ -1,6 +1,9 @@
 package com.linkforge.accounts;
 
 import com.linkforge.LinkForgeApplication;
+import com.linkforge.accounts.application.AuthResult;
+import com.linkforge.accounts.application.CreateUserCommand;
+import com.linkforge.accounts.application.UserResult;
 import com.linkforge.accounts.application.AuthService;
 import com.linkforge.accounts.application.UserAdminService;
 import com.linkforge.accounts.application.port.AccountStatusCache;
@@ -181,32 +184,32 @@ class AuthPersistenceIntegrationTest extends AccountsPersistenceIntegrationTestS
         String memberEmail = uniqueEmail("member");
         String password = "password123";
 
-        AuthService.AuthResult registered = authService.register(tenantName, ownerEmail, password);
+        AuthResult registered = authService.register(tenantName, ownerEmail, password);
         long tenantId = registered.principal().getTenantId();
 
         assertThat(registered.principal().getEmail()).isEqualTo(ownerEmail);
         assertThat(registered.principal().getRoles()).containsExactlyInAnyOrder(StandardRoles.TENANT_ADMIN);
 
-        AuthService.AuthResult loggedIn = authService.login(ownerEmail, password);
+        AuthResult loggedIn = authService.login(ownerEmail, password);
         assertThat(loggedIn.principal().getTenantId()).isEqualTo(tenantId);
         assertThat(loggedIn.principal().getRoles()).containsExactlyInAnyOrder(StandardRoles.TENANT_ADMIN);
 
         authenticateAs(loggedIn.principal());
         pauseForCreatedAtOrdering();
 
-        UserAdminService.UserDto createdUser = userAdminService.create(
+        UserResult createdUser = userAdminService.create(
                 tenantId,
-                new UserAdminService.CreateUserRequest(memberEmail, password, Set.of())
+                new CreateUserCommand(memberEmail, password, Set.of())
         );
 
         assertThat(createdUser.tenantId()).isEqualTo(tenantId);
         assertThat(createdUser.email()).isEqualTo(memberEmail);
         assertThat(createdUser.roles()).containsExactlyInAnyOrder(StandardRoles.USER);
 
-        List<UserAdminService.UserDto> users = userAdminService.list(tenantId);
+        List<UserResult> users = userAdminService.list(tenantId);
 
         assertThat(users).hasSize(2);
-        assertThat(users).extracting(UserAdminService.UserDto::email)
+        assertThat(users).extracting(UserResult::email)
                 .containsExactly(memberEmail, ownerEmail);
         assertThat(users.get(0).roles()).containsExactlyInAnyOrder(StandardRoles.USER);
         assertThat(users.get(1).roles()).containsExactlyInAnyOrder(StandardRoles.TENANT_ADMIN);
@@ -219,16 +222,16 @@ class AuthPersistenceIntegrationTest extends AccountsPersistenceIntegrationTestS
         String memberEmail = uniqueEmail("member");
         String password = "password123";
 
-        AuthService.AuthResult owner = authService.register(tenantName, ownerEmail, password);
+        AuthResult owner = authService.register(tenantName, ownerEmail, password);
         long tenantId = owner.principal().getTenantId();
 
         authenticateAs(owner.principal());
-        UserAdminService.UserDto member = userAdminService.create(
+        UserResult member = userAdminService.create(
                 tenantId,
-                new UserAdminService.CreateUserRequest(memberEmail, password, Set.of())
+                new CreateUserCommand(memberEmail, password, Set.of())
         );
 
-        AuthService.AuthResult memberLogin = authService.login(memberEmail, password);
+        AuthResult memberLogin = authService.login(memberEmail, password);
 
         mockMvc.perform(get("/api/v1/me")
                         .header("Authorization", "Bearer " + memberLogin.token()))
@@ -249,15 +252,15 @@ class AuthPersistenceIntegrationTest extends AccountsPersistenceIntegrationTestS
         String memberEmail = uniqueEmail("member");
         String password = "password123";
 
-        AuthService.AuthResult owner = authService.register(tenantName, ownerEmail, password);
+        AuthResult owner = authService.register(tenantName, ownerEmail, password);
         long tenantId = owner.principal().getTenantId();
 
         authenticateAs(owner.principal());
-        UserAdminService.UserDto member = userAdminService.create(
+        UserResult member = userAdminService.create(
                 tenantId,
-                new UserAdminService.CreateUserRequest(memberEmail, password, Set.of())
+                new CreateUserCommand(memberEmail, password, Set.of())
         );
-        AuthService.AuthResult memberLogin = authService.login(memberEmail, password);
+        AuthResult memberLogin = authService.login(memberEmail, password);
 
         userAdminService.disable(tenantId, owner.principal().getUserId(), member.id());
 
@@ -280,7 +283,7 @@ class AuthPersistenceIntegrationTest extends AccountsPersistenceIntegrationTestS
         String oldPassword = "password123";
         String newPassword = "new-password123";
 
-        AuthService.AuthResult registered = authService.register(tenantName, ownerEmail, oldPassword);
+        AuthResult registered = authService.register(tenantName, ownerEmail, oldPassword);
         long tenantId = registered.principal().getTenantId();
         long userId = registered.principal().getUserId();
 
@@ -304,7 +307,7 @@ class AuthPersistenceIntegrationTest extends AccountsPersistenceIntegrationTestS
                         .header("Authorization", "Bearer " + registered.token()))
                 .andExpect(status().isUnauthorized());
 
-        AuthService.AuthResult loggedIn = authService.login(ownerEmail, newPassword);
+        AuthResult loggedIn = authService.login(ownerEmail, newPassword);
         assertThat(loggedIn.principal().getTokenVersion()).isEqualTo(1);
 
         mockMvc.perform(get("/api/v1/me")
@@ -318,7 +321,7 @@ class AuthPersistenceIntegrationTest extends AccountsPersistenceIntegrationTestS
         String ownerEmail = uniqueEmail("owner");
         String password = "password123";
 
-        AuthService.AuthResult registered = authService.register(tenantName, ownerEmail, password);
+        AuthResult registered = authService.register(tenantName, ownerEmail, password);
         long userId = registered.principal().getUserId();
         String userCacheKey = "auth:user_status:" + userId;
 

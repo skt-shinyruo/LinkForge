@@ -47,7 +47,7 @@ public class UserAdminService {
         this.statusCache = statusCache;
     }
 
-    public List<UserDto> list(long tenantId) {
+    public List<UserResult> list(long tenantId) {
         List<AccountsUserStore.UserData> users = userStore.findAllByTenantIdOrderByCreatedAtDesc(tenantId);
         if (users.isEmpty()) {
             return List.of();
@@ -57,7 +57,7 @@ public class UserAdminService {
         Map<Long, Set<String>> rolesByUserId = loadRolesByUserIds(userIds);
 
         return users.stream()
-                .map(u -> new UserDto(
+                .map(u -> new UserResult(
                         u.id(),
                         u.tenantId(),
                         u.email(),
@@ -68,7 +68,7 @@ public class UserAdminService {
     }
 
     @Transactional
-    public UserDto create(long tenantId, CreateUserRequest req) {
+    public UserResult create(long tenantId, CreateUserCommand req) {
         if (req == null) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "请求不能为空");
         }
@@ -100,11 +100,11 @@ public class UserAdminService {
             userRoleStore.insert(new AccountsUserRoleStore.UserRoleData(userId, role));
         }
 
-        return new UserDto(userId, tenantId, user.email(), user.status(), roles);
+        return new UserResult(userId, tenantId, user.email(), user.status(), roles);
     }
 
     @Transactional
-    public UserDto disable(long tenantId, long actorUserId, long userId) {
+    public UserResult disable(long tenantId, long actorUserId, long userId) {
         AccountsUserStore.UserData user = requireUserInTenant(tenantId, userId);
         Set<String> roles = loadRolesByUserId(userId);
         requireDisableAllowed(tenantId, actorUserId, user, roles);
@@ -112,22 +112,22 @@ public class UserAdminService {
             userStore.update(withStatus(user, AccountsConstants.STATUS_DISABLED));
         }
         statusCache.evictUserStatus(userId);
-        return new UserDto(user.id(), tenantId, user.email(), AccountsConstants.STATUS_DISABLED, roles);
+        return new UserResult(user.id(), tenantId, user.email(), AccountsConstants.STATUS_DISABLED, roles);
     }
 
     @Transactional
-    public UserDto enable(long tenantId, long userId) {
+    public UserResult enable(long tenantId, long userId) {
         AccountsUserStore.UserData user = requireUserInTenant(tenantId, userId);
         if (!AccountsConstants.STATUS_ACTIVE.equals(user.status())) {
             userStore.update(withStatus(user, AccountsConstants.STATUS_ACTIVE));
         }
         statusCache.evictUserStatus(userId);
         Set<String> roles = loadRolesByUserId(userId);
-        return new UserDto(user.id(), tenantId, user.email(), AccountsConstants.STATUS_ACTIVE, roles);
+        return new UserResult(user.id(), tenantId, user.email(), AccountsConstants.STATUS_ACTIVE, roles);
     }
 
     @Transactional
-    public UserDto resetPassword(long tenantId, long userId, String newPassword) {
+    public UserResult resetPassword(long tenantId, long userId, String newPassword) {
         if (newPassword == null || newPassword.isBlank()) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "密码不能为空");
         }
@@ -150,7 +150,7 @@ public class UserAdminService {
         statusCache.evictUserStatus(userId);
 
         Set<String> roles = loadRolesByUserId(userId);
-        return new UserDto(user.id(), tenantId, user.email(), user.status(), roles);
+        return new UserResult(user.id(), tenantId, user.email(), user.status(), roles);
     }
 
     private Map<Long, Set<String>> loadRolesByUserIds(List<Long> userIds) {
@@ -236,12 +236,6 @@ public class UserAdminService {
 
     private static boolean tenantIdEquals(Long actualTenantId, long expectedTenantId) {
         return actualTenantId != null && actualTenantId == expectedTenantId;
-    }
-
-    public record CreateUserRequest(String email, String password, Set<String> roles) {
-    }
-
-    public record UserDto(long id, long tenantId, String email, String status, Set<String> roles) {
     }
 
     private static Set<String> normalizeAndValidateRoles(Set<String> roles) {

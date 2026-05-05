@@ -1,6 +1,9 @@
 package com.linkforge.accounts;
 
 import com.linkforge.LinkForgeApplication;
+import com.linkforge.accounts.application.AuthResult;
+import com.linkforge.accounts.application.CreateUserCommand;
+import com.linkforge.accounts.application.UserResult;
 import com.linkforge.accounts.application.AuthService;
 import com.linkforge.accounts.application.UserAdminService;
 import com.linkforge.accounts.application.port.AccountsUserStore;
@@ -35,7 +38,7 @@ class UserAdminSafetyIntegrationTest extends AccountsPersistenceIntegrationTestS
 
     @Test
     void disable_shouldRejectSelfDisable_forTenantAdmin() {
-        AuthService.AuthResult owner = authService.register(uniqueTenantName(), uniqueEmail("owner"), "password123");
+        AuthResult owner = authService.register(uniqueTenantName(), uniqueEmail("owner"), "password123");
         authenticateAs(owner.principal());
 
         assertThatThrownBy(() -> userAdminService.disable(
@@ -51,12 +54,12 @@ class UserAdminSafetyIntegrationTest extends AccountsPersistenceIntegrationTestS
 
     @Test
     void disable_shouldRejectDisablingLastActiveTenantAdmin_evenWhenActorDiffers() {
-        AuthService.AuthResult owner = authService.register(uniqueTenantName(), uniqueEmail("owner"), "password123");
+        AuthResult owner = authService.register(uniqueTenantName(), uniqueEmail("owner"), "password123");
         authenticateAs(owner.principal());
 
-        UserAdminService.UserDto member = userAdminService.create(
+        UserResult member = userAdminService.create(
                 owner.principal().getTenantId(),
-                new UserAdminService.CreateUserRequest(uniqueEmail("member"), "password123", Set.of(StandardRoles.USER))
+                new CreateUserCommand(uniqueEmail("member"), "password123", Set.of(StandardRoles.USER))
         );
 
         assertThatThrownBy(() -> userAdminService.disable(
@@ -72,15 +75,15 @@ class UserAdminSafetyIntegrationTest extends AccountsPersistenceIntegrationTestS
 
     @Test
     void disable_shouldAllowDisablingTenantAdmin_whenAnotherActiveTenantAdminRemains() {
-        AuthService.AuthResult owner = authService.register(uniqueTenantName(), uniqueEmail("owner"), "password123");
+        AuthResult owner = authService.register(uniqueTenantName(), uniqueEmail("owner"), "password123");
         authenticateAs(owner.principal());
 
-        UserAdminService.UserDto secondAdmin = userAdminService.create(
+        UserResult secondAdmin = userAdminService.create(
                 owner.principal().getTenantId(),
-                new UserAdminService.CreateUserRequest(uniqueEmail("admin"), "password123", Set.of(StandardRoles.TENANT_ADMIN))
+                new CreateUserCommand(uniqueEmail("admin"), "password123", Set.of(StandardRoles.TENANT_ADMIN))
         );
 
-        UserAdminService.UserDto disabled = userAdminService.disable(
+        UserResult disabled = userAdminService.disable(
                 owner.principal().getTenantId(),
                 owner.principal().getUserId(),
                 secondAdmin.id()

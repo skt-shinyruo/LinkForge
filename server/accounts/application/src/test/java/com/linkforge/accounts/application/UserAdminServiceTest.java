@@ -55,7 +55,7 @@ class UserAdminServiceTest {
                 statusCache
         );
 
-        UserAdminService.CreateUserRequest req = new UserAdminService.CreateUserRequest(
+        CreateUserCommand req = new CreateUserCommand(
                 "u@example.com",
                 "password123",
                 Set.of("UNKNOWN_ROLE")
@@ -102,7 +102,7 @@ class UserAdminServiceTest {
         when(userRoleStore.findAllByUserId(100L)).thenReturn(List.of(new AccountsUserRoleStore.UserRoleData(100L, StandardRoles.USER)));
         when(passwordHasher.encode("new-password123")).thenReturn("new-hash");
 
-        UserAdminService.UserDto result = service.resetPassword(200L, 100L, "new-password123");
+        UserResult result = service.resetPassword(200L, 100L, "new-password123");
 
         assertThat(result.id()).isEqualTo(100L);
 

@@ -21,8 +21,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Clock;
 import java.security.SecureRandom;
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Base64;
@@ -68,12 +68,12 @@ public class ApiKeyService implements ApiKeyAuthenticator {
     }
 
     @Transactional
-    public CreatedApiKey create(long tenantId, String name) {
+    public CreatedApiKeyResult create(long tenantId, String name) {
         throw new BusinessException(ErrorCode.BAD_REQUEST, "applicationId 不能为空");
     }
 
     @Transactional
-    public CreatedApiKey create(long tenantId, long applicationId, String name) {
+    public CreatedApiKeyResult create(long tenantId, long applicationId, String name) {
         applicationScopePort.requireApplicationExists(tenantId, applicationId);
         long id = idGenerator.nextId();
         String secret = randomSecret();
@@ -91,7 +91,7 @@ public class ApiKeyService implements ApiKeyAuthenticator {
         );
         apiKeyStore.insert(apiKey);
 
-        return new CreatedApiKey(id, name, key);
+        return new CreatedApiKeyResult(id, name, key);
     }
 
     public ApiKeyAuthResult authenticate(String apiKey) {
@@ -147,19 +147,19 @@ public class ApiKeyService implements ApiKeyAuthenticator {
         return ApiKeyAuthenticationFailure.INVALID;
     }
 
-    public List<ApiKeyInfo> list(long tenantId) {
+    public List<ApiKeyInfoResult> list(long tenantId) {
         return list(tenantId, null);
     }
 
-    public List<ApiKeyInfo> list(long tenantId, Long applicationId) {
+    public List<ApiKeyInfoResult> list(long tenantId, Long applicationId) {
         return apiKeyStore.findAllByTenantIdOrderByCreatedAtDesc(tenantId).stream()
                 .filter(e -> applicationId == null || applicationId.equals(e.applicationId()))
-                .map(e -> new ApiKeyInfo(e.id(), e.applicationId(), e.name(), e.status(), e.lastUsedAt(), e.createdAt()))
+                .map(e -> new ApiKeyInfoResult(e.id(), e.applicationId(), e.name(), e.status(), e.lastUsedAt(), e.createdAt()))
                 .toList();
     }
 
     @Transactional
-    public ApiKeyInfo disable(long tenantId, long apiKeyId) {
+    public ApiKeyInfoResult disable(long tenantId, long apiKeyId) {
         AccountsApiKeyStore.ApiKey apiKey = apiKeyStore.findById(apiKeyId);
         if (apiKey == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "API Key 不存在");
@@ -178,11 +178,11 @@ public class ApiKeyService implements ApiKeyAuthenticator {
                 apiKey.applicationId(),
                 authCacheTtlSeconds
         );
-        return new ApiKeyInfo(apiKey.id(), apiKey.applicationId(), apiKey.name(), apiKey.status(), apiKey.lastUsedAt(), apiKey.createdAt());
+        return new ApiKeyInfoResult(apiKey.id(), apiKey.applicationId(), apiKey.name(), apiKey.status(), apiKey.lastUsedAt(), apiKey.createdAt());
     }
 
     @Transactional
-    public ApiKeyInfo enable(long tenantId, long apiKeyId) {
+    public ApiKeyInfoResult enable(long tenantId, long apiKeyId) {
         AccountsApiKeyStore.ApiKey apiKey = apiKeyStore.findById(apiKeyId);
         if (apiKey == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "API Key 不存在");
@@ -195,11 +195,11 @@ public class ApiKeyService implements ApiKeyAuthenticator {
             apiKeyStore.update(apiKey);
         }
         evictAfterCommit(apiKeyId);
-        return new ApiKeyInfo(apiKey.id(), apiKey.applicationId(), apiKey.name(), apiKey.status(), apiKey.lastUsedAt(), apiKey.createdAt());
+        return new ApiKeyInfoResult(apiKey.id(), apiKey.applicationId(), apiKey.name(), apiKey.status(), apiKey.lastUsedAt(), apiKey.createdAt());
     }
 
     @Transactional
-    public CreatedApiKey rotate(long tenantId, long apiKeyId) {
+    public CreatedApiKeyResult rotate(long tenantId, long apiKeyId) {
         AccountsApiKeyStore.ApiKey apiKey = apiKeyStore.findById(apiKeyId);
         if (apiKey == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "API Key 不存在");
@@ -214,16 +214,7 @@ public class ApiKeyService implements ApiKeyAuthenticator {
 
         evictAfterCommit(apiKeyId);
 
-        return new CreatedApiKey(apiKey.id(), apiKey.name(), key);
-    }
-
-    public record CreatedApiKey(long id, String name, String apiKey) {
-    }
-
-    public record ApiKeyAuthResult(long tenantId, Long applicationId, long apiKeyId) {
-    }
-
-    public record ApiKeyInfo(long id, Long applicationId, String name, String status, LocalDateTime lastUsedAt, LocalDateTime createdAt) {
+        return new CreatedApiKeyResult(apiKey.id(), apiKey.name(), key);
     }
 
     public static class ApiKeyAuthException extends RuntimeException {

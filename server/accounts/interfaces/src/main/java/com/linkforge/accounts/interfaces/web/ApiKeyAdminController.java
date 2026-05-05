@@ -1,6 +1,8 @@
 package com.linkforge.accounts.interfaces.web;
 
+import com.linkforge.accounts.application.ApiKeyInfoResult;
 import com.linkforge.accounts.application.ApiKeyService;
+import com.linkforge.accounts.application.CreatedApiKeyResult;
 import com.linkforge.contract.api.ApiResponse;
 import com.linkforge.foundation.runtime.security.AuthContext;
 import com.linkforge.foundation.web.RequestId;
@@ -34,7 +36,7 @@ public class ApiKeyAdminController {
     @PreAuthorize("hasRole('TENANT_ADMIN')")
     public ApiResponse<CreateApiKeyResponse> create(@Valid @RequestBody CreateApiKeyRequest req) {
         long tenantId = AuthContext.requirePrincipal().getTenantId();
-        ApiKeyService.CreatedApiKey created = apiKeyService.create(tenantId, req.applicationId(), req.name());
+        CreatedApiKeyResult created = apiKeyService.create(tenantId, req.applicationId(), req.name());
         return ApiResponse.ok(new CreateApiKeyResponse(created.id(), created.name(), created.apiKey()), RequestId.get());
     }
 
@@ -52,7 +54,7 @@ public class ApiKeyAdminController {
     @PreAuthorize("hasRole('TENANT_ADMIN')")
     public ApiResponse<ApiKeyDto> disable(@PathVariable("id") long id) {
         long tenantId = AuthContext.requirePrincipal().getTenantId();
-        ApiKeyService.ApiKeyInfo e = apiKeyService.disable(tenantId, id);
+        ApiKeyInfoResult e = apiKeyService.disable(tenantId, id);
         return ApiResponse.ok(new ApiKeyDto(e.id(), e.applicationId(), e.name(), e.status(), e.lastUsedAt(), e.createdAt()), RequestId.get());
     }
 
@@ -60,7 +62,7 @@ public class ApiKeyAdminController {
     @PreAuthorize("hasRole('TENANT_ADMIN')")
     public ApiResponse<ApiKeyDto> enable(@PathVariable("id") long id) {
         long tenantId = AuthContext.requirePrincipal().getTenantId();
-        ApiKeyService.ApiKeyInfo e = apiKeyService.enable(tenantId, id);
+        ApiKeyInfoResult e = apiKeyService.enable(tenantId, id);
         return ApiResponse.ok(new ApiKeyDto(e.id(), e.applicationId(), e.name(), e.status(), e.lastUsedAt(), e.createdAt()), RequestId.get());
     }
 
@@ -68,7 +70,7 @@ public class ApiKeyAdminController {
     @PreAuthorize("hasRole('TENANT_ADMIN')")
     public ApiResponse<CreateApiKeyResponse> rotate(@PathVariable("id") long id) {
         long tenantId = AuthContext.requirePrincipal().getTenantId();
-        ApiKeyService.CreatedApiKey created = apiKeyService.rotate(tenantId, id);
+        CreatedApiKeyResult created = apiKeyService.rotate(tenantId, id);
         return ApiResponse.ok(new CreateApiKeyResponse(created.id(), created.name(), created.apiKey()), RequestId.get());
     }
 

@@ -64,7 +64,7 @@ public class StatsController {
 
     @GetMapping("/stats/links/{id}/daily")
     @PreAuthorize("!hasRole('OPENAPI')")
-    public ApiResponse<List<AnalyticsQueryService.DailyStat>> linkDaily(
+    public ApiResponse<List<DailyStatHttpResponse>> linkDaily(
             @PathVariable("id") long linkId,
             @RequestParam("from") @NotNull LocalDate from,
             @RequestParam("to") @NotNull LocalDate to
@@ -73,13 +73,15 @@ public class StatsController {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "from 不能晚于 to");
         }
         AuthPrincipal p = AuthContext.requirePrincipal();
-        List<AnalyticsQueryService.DailyStat> r = queryService.linkDaily(p.getTenantId(), linkId, from, to);
+        List<DailyStatHttpResponse> r = queryService.linkDaily(p.getTenantId(), linkId, from, to).stream()
+                .map(AnalyticsHttpMapper::toDailyStatResponse)
+                .toList();
         return ApiResponse.ok(r, RequestId.get());
     }
 
     @GetMapping("/stats/overview")
     @PreAuthorize("!hasRole('OPENAPI')")
-    public ApiResponse<List<AnalyticsQueryService.DailyStat>> overview(
+    public ApiResponse<List<DailyStatHttpResponse>> overview(
             @RequestParam("from") @NotNull LocalDate from,
             @RequestParam("to") @NotNull LocalDate to
     ) {
@@ -87,12 +89,14 @@ public class StatsController {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "from 不能晚于 to");
         }
         AuthPrincipal p = AuthContext.requirePrincipal();
-        return ApiResponse.ok(queryService.tenantDaily(p.getTenantId(), from, to), RequestId.get());
+        return ApiResponse.ok(queryService.tenantDaily(p.getTenantId(), from, to).stream()
+                .map(AnalyticsHttpMapper::toDailyStatResponse)
+                .toList(), RequestId.get());
     }
 
     @GetMapping("/stats/applications/{id}/overview")
     @PreAuthorize("!hasRole('OPENAPI')")
-    public ApiResponse<List<AnalyticsQueryService.DailyStat>> applicationOverview(
+    public ApiResponse<List<DailyStatHttpResponse>> applicationOverview(
             @PathVariable("id") long applicationId,
             @RequestParam("from") @NotNull LocalDate from,
             @RequestParam("to") @NotNull LocalDate to
@@ -101,12 +105,14 @@ public class StatsController {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "from 不能晚于 to");
         }
         AuthPrincipal p = AuthContext.requirePrincipal();
-        return ApiResponse.ok(queryService.applicationDaily(p.getTenantId(), applicationId, from, to), RequestId.get());
+        return ApiResponse.ok(queryService.applicationDaily(p.getTenantId(), applicationId, from, to).stream()
+                .map(AnalyticsHttpMapper::toDailyStatResponse)
+                .toList(), RequestId.get());
     }
 
     @GetMapping("/applications/{id}/stats/overview")
     @PreAuthorize("!hasRole('OPENAPI')")
-    public ApiResponse<List<AnalyticsQueryService.DailyStat>> applicationOverviewAlias(
+    public ApiResponse<List<DailyStatHttpResponse>> applicationOverviewAlias(
             @PathVariable("id") long applicationId,
             @RequestParam("from") @NotNull LocalDate from,
             @RequestParam("to") @NotNull LocalDate to
@@ -116,7 +122,7 @@ public class StatsController {
 
     @GetMapping("/stats/domains/{id}/overview")
     @PreAuthorize("!hasRole('OPENAPI')")
-    public ApiResponse<List<AnalyticsQueryService.DailyStat>> domainOverview(
+    public ApiResponse<List<DailyStatHttpResponse>> domainOverview(
             @PathVariable("id") long domainId,
             @RequestParam("from") @NotNull LocalDate from,
             @RequestParam("to") @NotNull LocalDate to
@@ -125,12 +131,14 @@ public class StatsController {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "from 不能晚于 to");
         }
         AuthPrincipal p = AuthContext.requirePrincipal();
-        return ApiResponse.ok(queryService.domainDaily(p.getTenantId(), domainId, from, to), RequestId.get());
+        return ApiResponse.ok(queryService.domainDaily(p.getTenantId(), domainId, from, to).stream()
+                .map(AnalyticsHttpMapper::toDailyStatResponse)
+                .toList(), RequestId.get());
     }
 
     @GetMapping("/stats/top-links")
     @PreAuthorize("!hasRole('OPENAPI')")
-    public ApiResponse<List<AnalyticsQueryService.TopLinkStat>> topLinks(
+    public ApiResponse<List<TopLinkStatHttpResponse>> topLinks(
             @RequestParam("from") @NotNull LocalDate from,
             @RequestParam("to") @NotNull LocalDate to,
             @RequestParam(value = "limit", required = false) Integer limit,
@@ -159,12 +167,14 @@ public class StatsController {
             }
         }
         AuthPrincipal p = AuthContext.requirePrincipal();
-        return ApiResponse.ok(reportingService.topLinks(p.getTenantId(), from, to, l, s), RequestId.get());
+        return ApiResponse.ok(reportingService.topLinks(p.getTenantId(), from, to, l, s).stream()
+                .map(AnalyticsHttpMapper::toTopLinkStatResponse)
+                .toList(), RequestId.get());
     }
 
     @GetMapping("/stats/applications/{id}/top-links")
     @PreAuthorize("!hasRole('OPENAPI')")
-    public ApiResponse<List<AnalyticsQueryService.TopLinkStat>> applicationTopLinks(
+    public ApiResponse<List<TopLinkStatHttpResponse>> applicationTopLinks(
             @PathVariable("id") long applicationId,
             @RequestParam("from") @NotNull LocalDate from,
             @RequestParam("to") @NotNull LocalDate to,
@@ -174,12 +184,14 @@ public class StatsController {
         AnalyticsQueryService.TopSortBy sort = resolveTopSortBy(from, to, limit, sortBy);
         int l = normalizeTopLimit(limit);
         AuthPrincipal p = AuthContext.requirePrincipal();
-        return ApiResponse.ok(reportingService.applicationTopLinks(p.getTenantId(), applicationId, from, to, l, sort), RequestId.get());
+        return ApiResponse.ok(reportingService.applicationTopLinks(p.getTenantId(), applicationId, from, to, l, sort).stream()
+                .map(AnalyticsHttpMapper::toTopLinkStatResponse)
+                .toList(), RequestId.get());
     }
 
     @GetMapping("/applications/{id}/stats/top-links")
     @PreAuthorize("!hasRole('OPENAPI')")
-    public ApiResponse<List<AnalyticsQueryService.TopLinkStat>> applicationTopLinksAlias(
+    public ApiResponse<List<TopLinkStatHttpResponse>> applicationTopLinksAlias(
             @PathVariable("id") long applicationId,
             @RequestParam("from") @NotNull LocalDate from,
             @RequestParam("to") @NotNull LocalDate to,
@@ -191,7 +203,7 @@ public class StatsController {
 
     @GetMapping("/stats/domains/{id}/top-links")
     @PreAuthorize("!hasRole('OPENAPI')")
-    public ApiResponse<List<AnalyticsQueryService.TopLinkStat>> domainTopLinks(
+    public ApiResponse<List<TopLinkStatHttpResponse>> domainTopLinks(
             @PathVariable("id") long domainId,
             @RequestParam("from") @NotNull LocalDate from,
             @RequestParam("to") @NotNull LocalDate to,
@@ -201,12 +213,14 @@ public class StatsController {
         AnalyticsQueryService.TopSortBy sort = resolveTopSortBy(from, to, limit, sortBy);
         int l = normalizeTopLimit(limit);
         AuthPrincipal p = AuthContext.requirePrincipal();
-        return ApiResponse.ok(reportingService.domainTopLinks(p.getTenantId(), domainId, from, to, l, sort), RequestId.get());
+        return ApiResponse.ok(reportingService.domainTopLinks(p.getTenantId(), domainId, from, to, l, sort).stream()
+                .map(AnalyticsHttpMapper::toTopLinkStatResponse)
+                .toList(), RequestId.get());
     }
 
     @GetMapping("/stats/links/{id}/dimensions")
     @PreAuthorize("!hasRole('OPENAPI')")
-    public ApiResponse<List<AnalyticsQueryService.DimensionStat>> linkDimensions(
+    public ApiResponse<List<DimensionStatHttpResponse>> linkDimensions(
             @PathVariable("id") long linkId,
             @RequestParam("from") @NotNull LocalDate from,
             @RequestParam("to") @NotNull LocalDate to,
@@ -230,19 +244,23 @@ public class StatsController {
         }
 
         AuthPrincipal p = AuthContext.requirePrincipal();
-        return ApiResponse.ok(queryService.linkDimensions(p.getTenantId(), linkId, from, to, t, l), RequestId.get());
+        return ApiResponse.ok(queryService.linkDimensions(p.getTenantId(), linkId, from, to, t, l).stream()
+                .map(AnalyticsHttpMapper::toDimensionStatResponse)
+                .toList(), RequestId.get());
     }
 
     @GetMapping("/stats/links/{id}/events")
     @PreAuthorize("!hasRole('OPENAPI')")
-    public ApiResponse<List<AnalyticsQueryService.VisitEvent>> linkEvents(
+    public ApiResponse<List<VisitEventHttpResponse>> linkEvents(
             @PathVariable("id") long linkId,
             @RequestParam(value = "from", required = false) LocalDateTime from,
             @RequestParam(value = "to", required = false) LocalDateTime to,
             @RequestParam(value = "limit", required = false) Integer limit
     ) {
         UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
-        return ApiResponse.ok(linkEventsService.listLinkEvents(actor, linkId, from, to, limit), RequestId.get());
+        return ApiResponse.ok(linkEventsService.listLinkEvents(actor, linkId, from, to, limit).stream()
+                .map(AnalyticsHttpMapper::toVisitEventResponse)
+                .toList(), RequestId.get());
     }
 
     @PostMapping("/stats/links/{id}/events/export-requests")

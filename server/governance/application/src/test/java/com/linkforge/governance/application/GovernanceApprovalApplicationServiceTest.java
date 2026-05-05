@@ -29,8 +29,8 @@ class GovernanceApprovalApplicationServiceTest {
         UserActor expectedActor = new UserActor(1L, 7L, "reviewer@example.com", Set.of());
         LocalDateTime requestedAt = LocalDateTime.parse("2026-04-01T00:00:00");
 
-        when(governanceService.submitRequest(eq(1L), any(GovernanceService.SubmitApprovalRequest.class)))
-                .thenReturn(new GovernanceService.ApprovalRequestDto(
+        when(governanceService.submitRequest(eq(1L), any(SubmitApprovalRequest.class)))
+                .thenReturn(new ApprovalRequestResult(
                 501L,
                 1L,
                 SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE,
@@ -68,10 +68,10 @@ class GovernanceApprovalApplicationServiceTest {
                 null
         ));
 
-        ArgumentCaptor<GovernanceService.SubmitApprovalRequest> captor =
-                ArgumentCaptor.forClass(GovernanceService.SubmitApprovalRequest.class);
+        ArgumentCaptor<SubmitApprovalRequest> captor =
+                ArgumentCaptor.forClass(SubmitApprovalRequest.class);
         verify(governanceService).submitRequest(eq(1L), captor.capture());
-        GovernanceService.SubmitApprovalRequest submitted = captor.getValue();
+        SubmitApprovalRequest submitted = captor.getValue();
         assertThat(submitted.operationType()).isEqualTo(SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE);
         assertThat(submitted.targetApplicationId()).isEqualTo(2001L);
         assertThat(submitted.actor()).isEqualTo(expectedActor);
@@ -91,8 +91,8 @@ class GovernanceApprovalApplicationServiceTest {
         LocalDateTime to = LocalDateTime.parse("2026-04-06T00:00:00");
         LocalDateTime requestedAt = LocalDateTime.parse("2026-04-06T12:00:00");
 
-        when(governanceService.submitRequest(eq(1L), any(GovernanceService.SubmitApprovalRequest.class)))
-                .thenReturn(new GovernanceService.ApprovalRequestDto(
+        when(governanceService.submitRequest(eq(1L), any(SubmitApprovalRequest.class)))
+                .thenReturn(new ApprovalRequestResult(
                 502L,
                 1L,
                 SensitiveOperationType.ANALYTICS_DETAIL_EXPORT,
@@ -130,10 +130,10 @@ class GovernanceApprovalApplicationServiceTest {
                 null
         ));
 
-        ArgumentCaptor<GovernanceService.SubmitApprovalRequest> captor =
-                ArgumentCaptor.forClass(GovernanceService.SubmitApprovalRequest.class);
+        ArgumentCaptor<SubmitApprovalRequest> captor =
+                ArgumentCaptor.forClass(SubmitApprovalRequest.class);
         verify(governanceService).submitRequest(eq(1L), captor.capture());
-        GovernanceService.SubmitApprovalRequest submitted = captor.getValue();
+        SubmitApprovalRequest submitted = captor.getValue();
         assertThat(submitted.operationType()).isEqualTo(SensitiveOperationType.ANALYTICS_DETAIL_EXPORT);
         assertThat(submitted.targetApplicationId()).isEqualTo(2001L);
         assertThat(submitted.beforeSnapshot()).isNull();

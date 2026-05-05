@@ -52,7 +52,7 @@ public class GovernanceService {
     }
 
     @Transactional
-    public ApprovalRequestDto submitRequest(long tenantId, SubmitApprovalRequest request) {
+    public ApprovalRequestResult submitRequest(long tenantId, SubmitApprovalRequest request) {
         UserActor actor = requireActor(tenantId, request.actor());
         LocalDateTime now = request.requestedAt() == null ? LocalDateTime.now(clock) : request.requestedAt();
         long requestId = idGenerator.nextId();
@@ -75,11 +75,11 @@ public class GovernanceService {
         );
         approvalRepository.insert(approvalRequest);
         appendAuditLog(tenantId, actor, "SUBMIT_REQUEST", "approval_request", String.valueOf(requestId), requestId, null, request.afterSnapshot(), now);
-        return toDto(approvalRequest);
+        return toResult(approvalRequest);
     }
 
     @Transactional
-    public ApprovalRequestDto approveRequest(long tenantId, long requestId, String reason, UserActor actor, LocalDateTime requestedAt) {
+    public ApprovalRequestResult approveRequest(long tenantId, long requestId, String reason, UserActor actor, LocalDateTime requestedAt) {
         UserActor effectiveActor = requireActor(tenantId, actor);
         ApprovalRequest request = approvalRepository.findByTenantIdAndId(tenantId, requestId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "审批请求不存在"));
@@ -111,7 +111,7 @@ public class GovernanceService {
 
         appendAuditLog(tenantId, effectiveActor, "APPROVE_REQUEST", "approval_request", String.valueOf(requestId), requestId, request.beforeSnapshot(), request.afterSnapshot(), now);
         return approvalRepository.findByTenantIdAndId(tenantId, requestId)
-                .map(this::toDto)
+                .map(this::toResult)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_ERROR, "审批请求更新失败"));
     }
 
@@ -174,15 +174,15 @@ public class GovernanceService {
         return SensitiveOperation.valueOf(operationType.name());
     }
 
-    public List<ApprovalRequestDto> listRequests(long tenantId, UserActor actor) {
+    public List<ApprovalRequestResult> listRequests(long tenantId, UserActor actor) {
         requireActor(tenantId, actor);
-        return approvalRepository.listByTenantId(tenantId).stream().map(this::toDto).toList();
+        return approvalRepository.listByTenantId(tenantId).stream().map(this::toResult).toList();
     }
 
-    public List<AuditLogDto> listAuditLogs(long tenantId, UserActor actor) {
+    public List<AuditLogResult> listAuditLogs(long tenantId, UserActor actor) {
         requireActor(tenantId, actor);
         return auditLogRepository.listByTenantId(tenantId).stream()
-                .map(log -> new AuditLogDto(
+                .map(log -> new AuditLogResult(
                         log.id(),
                         log.tenantId(),
                         log.actorUserId(),
@@ -269,8 +269,8 @@ public class GovernanceService {
         return actor;
     }
 
-    private ApprovalRequestDto toDto(ApprovalRequest request) {
-        return new ApprovalRequestDto(
+    private ApprovalRequestResult toResult(ApprovalRequest request) {
+        return new ApprovalRequestResult(
                 request.id(),
                 request.tenantId(),
                 request.operationType(),
@@ -282,44 +282,5 @@ public class GovernanceService {
                 request.approverEmail(),
                 request.decisionReason()
         );
-    }
-
-    public record SubmitApprovalRequest(
-            SensitiveOperationType operationType,
-            Long targetApplicationId,
-            String beforeSnapshot,
-            String afterSnapshot,
-            UserActor actor,
-            LocalDateTime requestedAt
-    ) {
-    }
-
-    public record ApprovalRequestDto(
-            long id,
-            long tenantId,
-            SensitiveOperationType operationType,
-            Long targetApplicationId,
-            long requestedByUserId,
-            String requestedByEmail,
-            ApprovalStatus status,
-            Long approverUserId,
-            String approverEmail,
-            String decisionReason
-    ) {
-    }
-
-    public record AuditLogDto(
-            long id,
-            long tenantId,
-            long actorUserId,
-            String actorEmail,
-            String actionType,
-            String resourceType,
-            String resourceId,
-            Long requestId,
-            String beforeSnapshot,
-            String afterSnapshot,
-            LocalDateTime createdAt
-    ) {
     }
 }

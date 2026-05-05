@@ -5,7 +5,9 @@ import com.linkforge.TestTenantFixtures;
 import com.linkforge.contract.governance.ApprovalPayloadCodec;
 import com.linkforge.contract.governance.ApprovalPayloads;
 import com.linkforge.foundation.context.UserActor;
+import com.linkforge.governance.application.ApprovalRequestResult;
 import com.linkforge.governance.application.GovernanceService;
+import com.linkforge.governance.application.SubmitApprovalRequest;
 import com.linkforge.governance.domain.ApprovalStatus;
 import com.linkforge.governance.domain.SensitiveOperationType;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,9 +47,9 @@ class ApprovalWorkflowIntegrationTest extends GovernancePersistenceIntegrationTe
     void requester_should_not_be_able_to_approve_own_sensitive_request() {
         UserActor requester = new UserActor(TENANT_ID, 201L, "requester@example.com", Set.of("TENANT_ADMIN"));
         authenticateAsTenantAdmin(TENANT_ID, 201L, "requester@example.com");
-        GovernanceService.ApprovalRequestDto request = governanceService.submitRequest(
+        ApprovalRequestResult request = governanceService.submitRequest(
                 TENANT_ID,
-                new GovernanceService.SubmitApprovalRequest(
+                new SubmitApprovalRequest(
                         SensitiveOperationType.APPLICATION_QUOTA_INCREASE,
                         9001L,
                         null,
@@ -65,9 +67,9 @@ class ApprovalWorkflowIntegrationTest extends GovernancePersistenceIntegrationTe
     void tenant_admin_should_only_approve_quota_increase_within_tenant_ceiling() {
         UserActor requester = new UserActor(TENANT_ID, 202L, "requester@example.com", Set.of("TENANT_ADMIN"));
         authenticateAsTenantAdmin(TENANT_ID, 202L, "requester@example.com");
-        GovernanceService.ApprovalRequestDto withinCeiling = governanceService.submitRequest(
+        ApprovalRequestResult withinCeiling = governanceService.submitRequest(
                 TENANT_ID,
-                new GovernanceService.SubmitApprovalRequest(
+                new SubmitApprovalRequest(
                         SensitiveOperationType.APPLICATION_QUOTA_INCREASE,
                         9002L,
                         null,
@@ -76,9 +78,9 @@ class ApprovalWorkflowIntegrationTest extends GovernancePersistenceIntegrationTe
                         LocalDateTime.now(ZoneOffset.UTC)
                 )
         );
-        GovernanceService.ApprovalRequestDto aboveCeiling = governanceService.submitRequest(
+        ApprovalRequestResult aboveCeiling = governanceService.submitRequest(
                 TENANT_ID,
-                new GovernanceService.SubmitApprovalRequest(
+                new SubmitApprovalRequest(
                         SensitiveOperationType.APPLICATION_QUOTA_INCREASE,
                         9003L,
                         null,
@@ -90,7 +92,7 @@ class ApprovalWorkflowIntegrationTest extends GovernancePersistenceIntegrationTe
 
         UserActor approver = new UserActor(TENANT_ID, 203L, "approver@example.com", Set.of("TENANT_ADMIN"));
         authenticateAsTenantAdmin(TENANT_ID, 203L, "approver@example.com");
-        GovernanceService.ApprovalRequestDto approved = governanceService.approveRequest(
+        ApprovalRequestResult approved = governanceService.approveRequest(
                 TENANT_ID,
                 withinCeiling.id(),
                 "within ceiling",
@@ -113,9 +115,9 @@ class ApprovalWorkflowIntegrationTest extends GovernancePersistenceIntegrationTe
     void platform_admin_should_be_required_for_external_domain_binding() {
         UserActor requester = new UserActor(TENANT_ID, 204L, "requester@example.com", Set.of("TENANT_ADMIN"));
         authenticateAsTenantAdmin(TENANT_ID, 204L, "requester@example.com");
-        GovernanceService.ApprovalRequestDto request = governanceService.submitRequest(
+        ApprovalRequestResult request = governanceService.submitRequest(
                 TENANT_ID,
-                new GovernanceService.SubmitApprovalRequest(
+                new SubmitApprovalRequest(
                         SensitiveOperationType.EXTERNAL_DOMAIN_BINDING,
                         null,
                         null,
@@ -138,7 +140,7 @@ class ApprovalWorkflowIntegrationTest extends GovernancePersistenceIntegrationTe
 
         UserActor platformApprover = new UserActor(TENANT_ID, 206L, "platform-approver@example.com", Set.of("PLATFORM_ADMIN"));
         authenticateAsPlatformAdmin(TENANT_ID, 206L, "platform-approver@example.com");
-        GovernanceService.ApprovalRequestDto approved = governanceService.approveRequest(
+        ApprovalRequestResult approved = governanceService.approveRequest(
                 TENANT_ID,
                 request.id(),
                 "platform approve",
@@ -155,9 +157,9 @@ class ApprovalWorkflowIntegrationTest extends GovernancePersistenceIntegrationTe
     void approved_request_should_not_be_approved_again_or_write_duplicate_audit() {
         UserActor requester = new UserActor(TENANT_ID, 207L, "requester-duplicate@example.com", Set.of("TENANT_ADMIN"));
         authenticateAsTenantAdmin(TENANT_ID, 207L, "requester-duplicate@example.com");
-        GovernanceService.ApprovalRequestDto request = governanceService.submitRequest(
+        ApprovalRequestResult request = governanceService.submitRequest(
                 TENANT_ID,
-                new GovernanceService.SubmitApprovalRequest(
+                new SubmitApprovalRequest(
                         SensitiveOperationType.APPLICATION_QUOTA_INCREASE,
                         9004L,
                         null,
@@ -168,7 +170,7 @@ class ApprovalWorkflowIntegrationTest extends GovernancePersistenceIntegrationTe
         );
 
         UserActor firstApprover = new UserActor(TENANT_ID, 208L, "first-approver@example.com", Set.of("TENANT_ADMIN"));
-        GovernanceService.ApprovalRequestDto approved = governanceService.approveRequest(
+        ApprovalRequestResult approved = governanceService.approveRequest(
                 TENANT_ID,
                 request.id(),
                 "first",

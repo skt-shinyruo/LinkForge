@@ -32,7 +32,7 @@ public class ApprovalController {
 
     @GetMapping
     @PreAuthorize("hasRole('TENANT_ADMIN') or hasRole('PLATFORM_ADMIN')")
-    public ApiResponse<List<GovernanceService.ApprovalRequestDto>> list() {
+    public ApiResponse<List<ApprovalRequestHttpResponse>> list() {
         AuthPrincipal principal = AuthContext.requirePrincipal();
         UserActor actor = new UserActor(
                 principal.getTenantId(),
@@ -40,12 +40,17 @@ public class ApprovalController {
                 principal.getEmail(),
                 principal.getRoles()
         );
-        return ApiResponse.ok(governanceService.listRequests(principal.getTenantId(), actor), RequestId.get());
+        return ApiResponse.ok(
+                governanceService.listRequests(principal.getTenantId(), actor).stream()
+                        .map(GovernanceHttpMapper::toApprovalResponse)
+                        .toList(),
+                RequestId.get()
+        );
     }
 
     @PostMapping("/{requestId}/approve")
     @PreAuthorize("hasRole('TENANT_ADMIN') or hasRole('PLATFORM_ADMIN')")
-    public ApiResponse<GovernanceService.ApprovalRequestDto> approve(
+    public ApiResponse<ApprovalRequestHttpResponse> approve(
             @PathVariable("requestId") long requestId,
             @Valid @RequestBody ApproveRequest req
     ) {
@@ -57,7 +62,9 @@ public class ApprovalController {
                 principal.getRoles()
         );
         return ApiResponse.ok(
-                governanceService.approveRequest(principal.getTenantId(), requestId, req.reason(), actor, LocalDateTime.now(ZoneOffset.UTC)),
+                GovernanceHttpMapper.toApprovalResponse(
+                        governanceService.approveRequest(principal.getTenantId(), requestId, req.reason(), actor, LocalDateTime.now(ZoneOffset.UTC))
+                ),
                 RequestId.get()
         );
     }

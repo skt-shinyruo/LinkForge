@@ -101,7 +101,7 @@ class GovernanceServiceTest {
                 .thenReturn(true);
         when(approvalRepository.markExecutedIfApproved(1L, 501L, NOW)).thenReturn(true);
 
-        GovernanceService.ApprovalRequestDto actual =
+        ApprovalRequestResult actual =
                 service.approveRequest(1L, 501L, "ok", approver(), NOW);
 
         assertThat(actual.status()).isEqualTo(ApprovalStatus.EXECUTED);
@@ -136,7 +136,7 @@ class GovernanceServiceTest {
         when(approvalRepository.markApprovedIfPending(1L, 502L, 8L, "approver@example.com", "ok", NOW))
                 .thenReturn(true);
 
-        GovernanceService.ApprovalRequestDto actual =
+        ApprovalRequestResult actual =
                 service.approveRequest(1L, 502L, "ok", approver(), NOW);
 
         assertThat(actual.status()).isEqualTo(ApprovalStatus.APPROVED);

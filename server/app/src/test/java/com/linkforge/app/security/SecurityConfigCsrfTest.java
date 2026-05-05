@@ -50,6 +50,8 @@ import static org.mockito.Mockito.when;
 })
 @Import({
         SecurityConfig.class,
+        OpenApiSecurityConfig.class,
+        ApiSecurityConfig.class,
         RestAuthenticationEntryPoint.class,
         RestAccessDeniedHandler.class,
         ApiErrorResponseWriter.class,

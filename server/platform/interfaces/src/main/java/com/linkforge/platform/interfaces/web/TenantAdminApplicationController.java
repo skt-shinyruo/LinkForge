@@ -32,14 +32,19 @@ public class TenantAdminApplicationController {
 
     @GetMapping
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<List<ApplicationProvisioningService.ApplicationDto>> list() {
+    public ApiResponse<List<ApplicationHttpResponse>> list() {
         long tenantId = AuthContext.requirePrincipal().getTenantId();
-        return ApiResponse.ok(platformControlPlaneService.listApplications(tenantId), RequestId.get());
+        return ApiResponse.ok(
+                platformControlPlaneService.listApplications(tenantId).stream()
+                        .map(PlatformHttpMapper::toApplicationResponse)
+                        .toList(),
+                RequestId.get()
+        );
     }
 
     @PostMapping
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<ApplicationProvisioningService.ApplicationDto> create(@Valid @RequestBody CreateApplicationRequest req) {
+    public ApiResponse<ApplicationHttpResponse> create(@Valid @RequestBody CreateApplicationRequest req) {
         AuthPrincipal principal = AuthContext.requirePrincipal();
         UserActor actor = new UserActor(
                 principal.getTenantId(),
@@ -48,11 +53,11 @@ public class TenantAdminApplicationController {
                 principal.getRoles()
         );
         return ApiResponse.ok(
-                platformControlPlaneService.createApplication(
+                PlatformHttpMapper.toApplicationResponse(platformControlPlaneService.createApplication(
                         principal.getTenantId(),
                         actor,
                         new ApplicationProvisioningService.CreateApplicationRequest(req.applicationKey(), req.displayName())
-                ),
+                )),
                 RequestId.get()
         );
     }

@@ -50,7 +50,7 @@ public class ApplicationProvisioningService {
     }
 
     @Transactional
-    public ApplicationDto createApplication(long tenantId, UserActor actor, CreateApplicationRequest request) {
+    public ApplicationResult createApplication(long tenantId, UserActor actor, CreateApplicationCommand request) {
         requireActor(tenantId, actor);
         validateCreateRequest(request);
 
@@ -80,11 +80,11 @@ public class ApplicationProvisioningService {
                 null,
                 null
         ));
-        return new ApplicationDto(applicationId, tenantId, request.applicationKey().trim(), request.displayName().trim());
+        return new ApplicationResult(applicationId, tenantId, request.applicationKey().trim(), request.displayName().trim());
     }
 
     @Transactional
-    public DomainDto createTenantSharedDomain(long tenantId, UserActor actor, String hostname) {
+    public DomainResult createTenantSharedDomain(long tenantId, UserActor actor, String hostname) {
         requireActor(tenantId, actor);
         String normalizedHostname = normalizeHostname(hostname);
         long domainId = idGenerator.nextId();
@@ -99,11 +99,11 @@ public class ApplicationProvisioningService {
                 null,
                 null
         ));
-        return new DomainDto(domainId, tenantId, null, normalizedHostname, DomainScope.TENANT_SHARED);
+        return new DomainResult(domainId, tenantId, null, normalizedHostname, DomainScope.TENANT_SHARED);
     }
 
     @Transactional
-    public DomainDto createApplicationDedicatedDomain(long tenantId, UserActor actor, long applicationId, String hostname) {
+    public DomainResult createApplicationDedicatedDomain(long tenantId, UserActor actor, long applicationId, String hostname) {
         requireActor(tenantId, actor);
         Application application = applicationRepository.findByTenantIdAndId(tenantId, applicationId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "应用不存在"));
@@ -120,7 +120,7 @@ public class ApplicationProvisioningService {
                 null,
                 null
         ));
-        return new DomainDto(domainId, tenantId, application.id(), normalizedHostname, DomainScope.APPLICATION_DEDICATED);
+        return new DomainResult(domainId, tenantId, application.id(), normalizedHostname, DomainScope.APPLICATION_DEDICATED);
     }
 
     @Transactional
@@ -136,7 +136,7 @@ public class ApplicationProvisioningService {
         domainRepository.authorizeApplicationUse(applicationId, domainId);
     }
 
-    private static void validateCreateRequest(CreateApplicationRequest request) {
+    private static void validateCreateRequest(CreateApplicationCommand request) {
         if (request == null) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "请求不能为空");
         }
@@ -228,12 +228,4 @@ public class ApplicationProvisioningService {
         return actor;
     }
 
-    public record CreateApplicationRequest(String applicationKey, String displayName) {
-    }
-
-    public record ApplicationDto(long id, long tenantId, String applicationKey, String displayName) {
-    }
-
-    public record DomainDto(long id, long tenantId, Long applicationId, String hostname, DomainScope scope) {
-    }
 }

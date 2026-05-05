@@ -2,6 +2,9 @@ package com.linkforge.platform;
 
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.TestTenantFixtures;
+import com.linkforge.platform.application.ApplicationResult;
+import com.linkforge.platform.application.CreateApplicationCommand;
+import com.linkforge.platform.application.DomainResult;
 import com.linkforge.platform.application.ApplicationProvisioningService;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.shortlink.application.*;
@@ -42,10 +45,10 @@ class ApplicationProvisioningIntegrationTest extends PlatformPersistenceIntegrat
 
     @Test
     void createApplication_should_persist_tenant_scoped_application_with_default_policy() {
-        ApplicationProvisioningService.ApplicationDto created = provisioningService.createApplication(
+        ApplicationResult created = provisioningService.createApplication(
                 TENANT_ID,
                 tenantAdminActor(TENANT_ID),
-                new ApplicationProvisioningService.CreateApplicationRequest("control-plane", "Internal control plane")
+                new CreateApplicationCommand("control-plane", "Internal control plane")
         );
 
         Map<String, Object> applicationRow = jdbcTemplate.queryForMap(
@@ -92,12 +95,12 @@ class ApplicationProvisioningIntegrationTest extends PlatformPersistenceIntegrat
 
     @Test
     void link_create_should_fail_when_application_quota_is_exceeded() {
-        ApplicationProvisioningService.ApplicationDto app = provisioningService.createApplication(
+        ApplicationResult app = provisioningService.createApplication(
                 TENANT_ID,
                 tenantAdminActor(TENANT_ID),
-                new ApplicationProvisioningService.CreateApplicationRequest("quota-app", "Quota App")
+                new CreateApplicationCommand("quota-app", "Quota App")
         );
-        ApplicationProvisioningService.DomainDto domain = provisioningService.createApplicationDedicatedDomain(
+        DomainResult domain = provisioningService.createApplicationDedicatedDomain(
                 TENANT_ID,
                 tenantAdminActor(TENANT_ID),
                 app.id(),

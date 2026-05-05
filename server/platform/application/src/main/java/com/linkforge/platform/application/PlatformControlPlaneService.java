@@ -38,19 +38,19 @@ public class PlatformControlPlaneService {
         this.domainRepository = domainRepository;
     }
 
-    public ApplicationProvisioningService.ApplicationDto createApplication(
+    public ApplicationResult createApplication(
             long tenantId,
             UserActor actor,
-            ApplicationProvisioningService.CreateApplicationRequest request
+            CreateApplicationCommand request
     ) {
         return provisioningService.createApplication(tenantId, actor, request);
     }
 
-    public ApplicationProvisioningService.DomainDto createTenantSharedDomain(long tenantId, UserActor actor, String hostname) {
+    public DomainResult createTenantSharedDomain(long tenantId, UserActor actor, String hostname) {
         return provisioningService.createTenantSharedDomain(tenantId, actor, hostname);
     }
 
-    public ApplicationProvisioningService.DomainDto createApplicationDedicatedDomain(
+    public DomainResult createApplicationDedicatedDomain(
             long tenantId,
             UserActor actor,
             long applicationId,
@@ -90,9 +90,9 @@ public class PlatformControlPlaneService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "应用不存在"));
     }
 
-    public List<ApplicationProvisioningService.ApplicationDto> listApplications(long tenantId) {
+    public List<ApplicationResult> listApplications(long tenantId) {
         return applicationRepository.listByTenantId(tenantId).stream()
-                .map(application -> new ApplicationProvisioningService.ApplicationDto(
+                .map(application -> new ApplicationResult(
                         application.id(),
                         application.tenantId(),
                         application.applicationKey(),
@@ -101,22 +101,22 @@ public class PlatformControlPlaneService {
                 .toList();
     }
 
-    public List<ApplicationProvisioningService.DomainDto> listDomains(long tenantId) {
+    public List<DomainResult> listDomains(long tenantId) {
         return domainRepository.listByTenantId(tenantId).stream()
-                .map(PlatformControlPlaneService::toDomainDto)
+                .map(PlatformControlPlaneService::toDomainResult)
                 .toList();
     }
 
-    public List<ApplicationProvisioningService.DomainDto> listDomainsForApplication(long tenantId, long applicationId) {
+    public List<DomainResult> listDomainsForApplication(long tenantId, long applicationId) {
         requireApplicationExists(tenantId, applicationId);
         return domainRepository.listUsableByApplication(tenantId, applicationId).stream()
-                .map(PlatformControlPlaneService::toDomainDto)
+                .map(PlatformControlPlaneService::toDomainResult)
                 .toList();
     }
 
-    public List<ApplicationProvisioningService.ApplicationDto> listAllApplications() {
+    public List<ApplicationResult> listAllApplications() {
         return applicationRepository.listAll().stream()
-                .map(application -> new ApplicationProvisioningService.ApplicationDto(
+                .map(application -> new ApplicationResult(
                         application.id(),
                         application.tenantId(),
                         application.applicationKey(),
@@ -125,9 +125,9 @@ public class PlatformControlPlaneService {
                 .toList();
     }
 
-    public List<ApplicationProvisioningService.DomainDto> listAllDomains() {
+    public List<DomainResult> listAllDomains() {
         return domainRepository.listAll().stream()
-                .map(PlatformControlPlaneService::toDomainDto)
+                .map(PlatformControlPlaneService::toDomainResult)
                 .toList();
     }
 
@@ -136,8 +136,8 @@ public class PlatformControlPlaneService {
         return applicationQuotaRepository.findByApplicationId(applicationId);
     }
 
-    private static ApplicationProvisioningService.DomainDto toDomainDto(Domain domain) {
-        return new ApplicationProvisioningService.DomainDto(
+    private static DomainResult toDomainResult(Domain domain) {
+        return new DomainResult(
                 domain.id(),
                 domain.tenantId(),
                 domain.applicationId(),

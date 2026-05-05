@@ -48,7 +48,7 @@ class ApplicationProvisioningServiceTest {
         DomainRepository domainRepository = mock(DomainRepository.class);
         ApplicationProvisioningService service = newService(domainRepository);
 
-        ApplicationProvisioningService.DomainDto dto = service.createTenantSharedDomain(1L, actor(), " Go.Example.COM ");
+        DomainResult dto = service.createTenantSharedDomain(1L, actor(), " Go.Example.COM ");
 
         assertThat(dto.hostname()).isEqualTo("go.example.com");
         ArgumentCaptor<Domain> domainCaptor = ArgumentCaptor.forClass(Domain.class);

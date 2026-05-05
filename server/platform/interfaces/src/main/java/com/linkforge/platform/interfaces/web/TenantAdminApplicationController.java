@@ -5,7 +5,7 @@ import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.runtime.security.AuthContext;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.web.RequestId;
-import com.linkforge.platform.application.ApplicationProvisioningService;
+import com.linkforge.platform.application.CreateApplicationCommand;
 import com.linkforge.platform.application.PlatformControlPlaneService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -56,7 +56,7 @@ public class TenantAdminApplicationController {
                 PlatformHttpMapper.toApplicationResponse(platformControlPlaneService.createApplication(
                         principal.getTenantId(),
                         actor,
-                        new ApplicationProvisioningService.CreateApplicationRequest(req.applicationKey(), req.displayName())
+                        new CreateApplicationCommand(req.applicationKey(), req.displayName())
                 )),
                 RequestId.get()
         );

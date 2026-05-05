@@ -16,11 +16,15 @@ import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ApiKeyAuthenticationFilterTest {
@@ -134,5 +138,71 @@ class ApiKeyAuthenticationFilterTest {
                         assertThat(principal.getTenantId()).isEqualTo(1L));
         assertThat(SecurityContextHolder.getContext().getAuthentication().getDetails())
                 .isEqualTo(new ApiKeyAuthenticationDetails(123L, 2001L));
+    }
+
+    @Test
+    void openApi_withNonApiKeyAuthenticationInContext_shouldStillValidateApiKey() throws Exception {
+        ApiKeyAuthenticator apiKeyService = mock(ApiKeyAuthenticator.class);
+        AccountStatusVerifier accountStatusService = mock(AccountStatusVerifier.class);
+        ApiErrorResponseWriter writer = new ApiErrorResponseWriter(new ObjectMapper());
+
+        ApiKeyAuthenticationFilter filter = new ApiKeyAuthenticationFilter(
+                apiKeyService,
+                accountStatusService,
+                writer
+        );
+
+        AuthPrincipal existingPrincipal = new AuthPrincipal(99L, 77L, "user@example.com", Set.of("USER"));
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                existingPrincipal,
+                "N/A",
+                Set.of()
+        ));
+        when(apiKeyService.authenticateApiKey("lfk_123_secret"))
+                .thenReturn(new ApiKeyAuthenticationResult(1L, 2001L, 123L));
+
+        MockHttpServletRequest req = new MockHttpServletRequest("GET", "/api/v1/open/ping");
+        req.addHeader("X-API-Key", "lfk_123_secret");
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+
+        filter.doFilter(req, resp, new MockFilterChain());
+
+        assertThat(resp.getStatus()).isEqualTo(200);
+        assertThat(SecurityContextHolder.getContext().getAuthentication().getDetails())
+                .isEqualTo(new ApiKeyAuthenticationDetails(123L, 2001L));
+        verify(apiKeyService).authenticateApiKey("lfk_123_secret");
+    }
+
+    @Test
+    void openApi_withCurrentApiKeyAuthenticationInContext_shouldStillValidateApiKey() throws Exception {
+        ApiKeyAuthenticator apiKeyService = mock(ApiKeyAuthenticator.class);
+        AccountStatusVerifier accountStatusService = mock(AccountStatusVerifier.class);
+        ApiErrorResponseWriter writer = new ApiErrorResponseWriter(new ObjectMapper());
+
+        ApiKeyAuthenticationFilter filter = new ApiKeyAuthenticationFilter(
+                apiKeyService,
+                accountStatusService,
+                writer
+        );
+
+        AuthPrincipal principal = new AuthPrincipal(0L, 1L, null, Set.of("OPENAPI"));
+        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                principal,
+                "N/A",
+                Set.of()
+        );
+        authentication.setDetails(new ApiKeyAuthenticationDetails(123L, 2001L));
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+        when(apiKeyService.authenticateApiKey("lfk_123_secret"))
+                .thenReturn(new ApiKeyAuthenticationResult(1L, 2001L, 123L));
+
+        MockHttpServletRequest req = new MockHttpServletRequest("GET", "/api/v1/open/ping");
+        req.addHeader("X-API-Key", "lfk_123_secret");
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+
+        filter.doFilter(req, resp, new MockFilterChain());
+
+        assertThat(resp.getStatus()).isEqualTo(200);
+        verify(apiKeyService).authenticateApiKey("lfk_123_secret");
     }
 }

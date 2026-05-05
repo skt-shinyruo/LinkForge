@@ -26,7 +26,11 @@ class PrincipalActorMapperSecurityTest {
     @Test
     void requireApiKey_shouldBuildActorFromAuthenticationDetails() {
         AuthPrincipal principal = new AuthPrincipal(0L, 1L, null, Set.of("OPENAPI"));
-        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(principal, "N/A");
+        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                principal,
+                "N/A",
+                Set.of()
+        );
         authentication.setDetails(new ApiKeyAuthenticationDetails(123L, 2001L));
         SecurityContextHolder.getContext().setAuthentication(authentication);
 
@@ -40,9 +44,40 @@ class PrincipalActorMapperSecurityTest {
     @Test
     void requireApiKey_shouldRejectMissingAuthenticationDetails() {
         AuthPrincipal principal = new AuthPrincipal(0L, 1L, null, Set.of("OPENAPI"));
-        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(principal, "N/A"));
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                principal,
+                "N/A",
+                Set.of()
+        ));
 
         assertThatThrownBy(() -> mapper.requireApiKey(principal))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void requireApiKey_shouldRejectUnauthenticatedContext() {
+        AuthPrincipal principal = new AuthPrincipal(0L, 1L, null, Set.of("OPENAPI"));
+        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(principal, "N/A");
+        authentication.setDetails(new ApiKeyAuthenticationDetails(123L, 2001L));
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+
+        assertThatThrownBy(() -> mapper.requireApiKey(principal))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void requireApiKey_shouldRejectMismatchedContextPrincipal() {
+        AuthPrincipal contextPrincipal = new AuthPrincipal(0L, 1L, null, Set.of("OPENAPI"));
+        AuthPrincipal argumentPrincipal = new AuthPrincipal(0L, 2L, null, Set.of("OPENAPI"));
+        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                contextPrincipal,
+                "N/A",
+                Set.of()
+        );
+        authentication.setDetails(new ApiKeyAuthenticationDetails(123L, 2001L));
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+
+        assertThatThrownBy(() -> mapper.requireApiKey(argumentPrincipal))
                 .isInstanceOf(BusinessException.class);
     }
 }

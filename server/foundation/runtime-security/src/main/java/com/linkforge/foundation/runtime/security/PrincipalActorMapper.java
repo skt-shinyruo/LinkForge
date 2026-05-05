@@ -30,7 +30,10 @@ public class PrincipalActorMapper {
             throw new BusinessException(ErrorCode.UNAUTHORIZED);
         }
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        Object details = auth == null ? null : auth.getDetails();
+        if (auth == null || !auth.isAuthenticated() || auth.getPrincipal() != principal) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED);
+        }
+        Object details = auth.getDetails();
         if (!(details instanceof ApiKeyAuthenticationDetails apiKeyDetails) || apiKeyDetails.apiKeyId() <= 0) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED);
         }

@@ -18,7 +18,7 @@ public class AuthPrincipal {
         this.userId = userId;
         this.tenantId = tenantId;
         this.email = email;
-        this.roles = roles == null ? Set.of() : Set.copyOf(roles);
+        this.roles = roles;
         this.tokenVersion = tokenVersion;
     }
 

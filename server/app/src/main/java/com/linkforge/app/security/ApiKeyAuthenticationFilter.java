@@ -54,11 +54,6 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain
     ) throws ServletException, IOException {
-        if (SecurityContextHolder.getContext().getAuthentication() != null) {
-            filterChain.doFilter(request, response);
-            return;
-        }
-
         String apiKey = request == null ? null : request.getHeader(HEADER_API_KEY);
         if (apiKey == null || apiKey.isBlank()) {
             errorResponseWriter.write(

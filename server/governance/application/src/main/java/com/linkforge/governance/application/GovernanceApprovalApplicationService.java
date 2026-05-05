@@ -25,9 +25,9 @@ public class GovernanceApprovalApplicationService implements ApprovalSubmissionP
             long tenantId,
             LinkDestinationChangeApprovalRequest request
     ) {
-        GovernanceService.ApprovalRequestDto dto = governanceService.submitRequest(
+        ApprovalRequestResult dto = governanceService.submitRequest(
                 tenantId,
-                new GovernanceService.SubmitApprovalRequest(
+                new SubmitApprovalRequest(
                         SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE,
                         request.targetApplicationId(),
                         linkDestinationSnapshot(request.linkId(), request.currentOriginalUrl()),
@@ -44,9 +44,9 @@ public class GovernanceApprovalApplicationService implements ApprovalSubmissionP
             long tenantId,
             AnalyticsDetailExportApprovalRequest request
     ) {
-        GovernanceService.ApprovalRequestDto dto = governanceService.submitRequest(
+        ApprovalRequestResult dto = governanceService.submitRequest(
                 tenantId,
-                new GovernanceService.SubmitApprovalRequest(
+                new SubmitApprovalRequest(
                         SensitiveOperationType.ANALYTICS_DETAIL_EXPORT,
                         request.targetApplicationId(),
                         null,
@@ -73,7 +73,7 @@ public class GovernanceApprovalApplicationService implements ApprovalSubmissionP
         return new UserActor(requester.tenantId(), requester.userId(), requester.email(), Set.of());
     }
 
-    private static ApprovalRequestView toResult(GovernanceService.ApprovalRequestDto dto) {
+    private static ApprovalRequestView toResult(ApprovalRequestResult dto) {
         return new ApprovalRequestView(
                 dto.id(),
                 dto.tenantId(),

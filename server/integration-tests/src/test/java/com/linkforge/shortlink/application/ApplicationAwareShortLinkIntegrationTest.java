@@ -4,6 +4,7 @@ import com.linkforge.LinkForgeApplication;
 import com.linkforge.TestTenantFixtures;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.foundation.context.UserActor;
+import com.linkforge.governance.application.ApprovalRequestResult;
 import com.linkforge.governance.application.GovernanceService;
 import com.linkforge.governance.domain.ApprovalStatus;
 import com.linkforge.platform.application.ApplicationProvisioningService;
@@ -232,7 +233,7 @@ class ApplicationAwareShortLinkIntegrationTest extends ApplicationAwareShortLink
                 .contains("\"linkId\":" + created.id())
                 .contains("\"originalUrl\":\"https://example.com/approved-change\"");
 
-        GovernanceService.ApprovalRequestDto approved = governanceService.approveRequest(
+        ApprovalRequestResult approved = governanceService.approveRequest(
                 TENANT_ID,
                 approvalId,
                 "approved",
@@ -437,12 +438,12 @@ class ApplicationAwareShortLinkIntegrationTest extends ApplicationAwareShortLink
     private static Future<ApprovalAttempt> submitApprovalAttempt(
             ExecutorService executor,
             CountDownLatch start,
-            Callable<GovernanceService.ApprovalRequestDto> task
+            Callable<ApprovalRequestResult> task
     ) {
         return executor.submit(() -> {
             assertThat(start.await(10, TimeUnit.SECONDS)).isTrue();
             try {
-                GovernanceService.ApprovalRequestDto dto = task.call();
+                ApprovalRequestResult dto = task.call();
                 return new ApprovalAttempt(true, dto.status(), null);
             } catch (BusinessException ex) {
                 return new ApprovalAttempt(false, null, ex.getMessage());

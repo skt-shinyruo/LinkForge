@@ -25,7 +25,7 @@ public class AuditController {
 
     @GetMapping
     @PreAuthorize("hasRole('TENANT_ADMIN') or hasRole('PLATFORM_ADMIN')")
-    public ApiResponse<List<GovernanceService.AuditLogDto>> list() {
+    public ApiResponse<List<AuditLogHttpResponse>> list() {
         AuthPrincipal principal = AuthContext.requirePrincipal();
         UserActor actor = new UserActor(
                 principal.getTenantId(),
@@ -33,6 +33,11 @@ public class AuditController {
                 principal.getEmail(),
                 principal.getRoles()
         );
-        return ApiResponse.ok(governanceService.listAuditLogs(principal.getTenantId(), actor), RequestId.get());
+        return ApiResponse.ok(
+                governanceService.listAuditLogs(principal.getTenantId(), actor).stream()
+                        .map(GovernanceHttpMapper::toAuditLogResponse)
+                        .toList(),
+                RequestId.get()
+        );
     }
 }

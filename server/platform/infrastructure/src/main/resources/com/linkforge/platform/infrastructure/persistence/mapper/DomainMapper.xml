@@ -79,6 +79,7 @@
         SELECT d.id, d.tenant_id, d.application_id, d.hostname, d.scope, d.status, d.trust_class, d.created_at, d.updated_at
         FROM domains d
         WHERE d.tenant_id = #{tenantId}
+          AND d.status = 'ACTIVE'
           AND (
             (d.scope = 'APPLICATION_DEDICATED' AND d.application_id = #{applicationId})
             OR (

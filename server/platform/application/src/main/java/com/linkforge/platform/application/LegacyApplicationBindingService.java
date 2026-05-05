@@ -12,6 +12,7 @@ import com.linkforge.platform.domain.ApplicationQuota;
 import com.linkforge.platform.domain.Domain;
 import com.linkforge.platform.domain.DomainScope;
 import com.linkforge.platform.domain.DomainStatus;
+import com.linkforge.platform.domain.PlatformDefaults;
 import com.linkforge.platform.domain.TargetTrustClass;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -63,7 +64,7 @@ class LegacyApplicationBindingService {
                 tenantId,
                 LEGACY_DEFAULT_APPLICATION_KEY,
                 LEGACY_DEFAULT_APPLICATION_NAME,
-                ApplicationProvisioningService.APPLICATION_STATUS_ACTIVE,
+                PlatformDefaults.APPLICATION_STATUS_ACTIVE,
                 null,
                 null
         );
@@ -71,15 +72,15 @@ class LegacyApplicationBindingService {
         applicationPolicyRepository.insert(new ApplicationPolicy(
                 applicationId,
                 DomainScope.APPLICATION_DEDICATED,
-                ApplicationProvisioningService.DEFAULT_REDIRECT_STATUS_CODE,
-                false,
+                PlatformDefaults.REDIRECT_STATUS_CODE,
+                PlatformDefaults.PREVIEW_ENABLED,
                 null,
                 null
         ));
         applicationQuotaRepository.insert(new ApplicationQuota(
                 applicationId,
-                ApplicationProvisioningService.DEFAULT_MONTHLY_LINK_LIMIT,
-                ApplicationProvisioningService.DEFAULT_MONTHLY_CLICK_LIMIT,
+                PlatformDefaults.MONTHLY_LINK_LIMIT,
+                PlatformDefaults.MONTHLY_CLICK_LIMIT,
                 null,
                 null
         ));

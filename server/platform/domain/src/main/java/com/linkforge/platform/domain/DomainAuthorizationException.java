@@ -14,6 +14,7 @@ public class DomainAuthorizationException extends RuntimeException {
     }
 
     public enum Reason {
+        DOMAIN_NOT_ACTIVE,
         DEDICATED_DOMAIN_MISMATCH,
         SHARED_DOMAIN_NOT_AUTHORIZED
     }

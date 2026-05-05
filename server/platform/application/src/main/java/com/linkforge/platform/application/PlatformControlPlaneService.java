@@ -79,6 +79,9 @@ public class PlatformControlPlaneService {
     }
 
     private static String domainAuthorizationMessage(DomainAuthorizationException e) {
+        if (e != null && e.reason() == DomainAuthorizationException.Reason.DOMAIN_NOT_ACTIVE) {
+            return "域名未启用";
+        }
         if (e != null && e.reason() == DomainAuthorizationException.Reason.DEDICATED_DOMAIN_MISMATCH) {
             return "应用未绑定该专属域名";
         }

@@ -7,6 +7,10 @@ public class DomainAuthorizationPolicy {
             Domain domain,
             boolean sharedDomainAuthorized
     ) {
+        if (domain.status() != DomainStatus.ACTIVE) {
+            throw new DomainAuthorizationException(DomainAuthorizationException.Reason.DOMAIN_NOT_ACTIVE);
+        }
+
         if (domain.scope() == DomainScope.APPLICATION_DEDICATED) {
             if (domain.applicationId() == null || domain.applicationId() != applicationId) {
                 throw new DomainAuthorizationException(

@@ -12,22 +12,16 @@ import com.linkforge.platform.domain.Application;
 import com.linkforge.platform.domain.ApplicationPolicy;
 import com.linkforge.platform.domain.ApplicationQuota;
 import com.linkforge.platform.domain.Domain;
+import com.linkforge.platform.domain.Hostname;
+import com.linkforge.platform.domain.PlatformDefaults;
 import com.linkforge.platform.domain.DomainScope;
 import com.linkforge.platform.domain.DomainStatus;
 import com.linkforge.platform.domain.TargetTrustClass;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.net.IDN;
-import java.util.Locale;
-
 @Service
 public class ApplicationProvisioningService {
-
-    static final String APPLICATION_STATUS_ACTIVE = "ACTIVE";
-    static final long DEFAULT_MONTHLY_LINK_LIMIT = 10_000L;
-    static final long DEFAULT_MONTHLY_CLICK_LIMIT = 1_000_000L;
-    static final int DEFAULT_REDIRECT_STATUS_CODE = 302;
 
     private final SnowflakeIdGenerator idGenerator;
     private final ApplicationRepository applicationRepository;
@@ -60,23 +54,23 @@ public class ApplicationProvisioningService {
                 tenantId,
                 request.applicationKey().trim(),
                 request.displayName().trim(),
-                APPLICATION_STATUS_ACTIVE,
+                PlatformDefaults.APPLICATION_STATUS_ACTIVE,
                 null,
                 null
         );
         applicationRepository.insert(application);
         applicationPolicyRepository.insert(new ApplicationPolicy(
                 applicationId,
-                DomainScope.TENANT_SHARED,
-                DEFAULT_REDIRECT_STATUS_CODE,
-                false,
+                PlatformDefaults.DEFAULT_DOMAIN_SCOPE,
+                PlatformDefaults.REDIRECT_STATUS_CODE,
+                PlatformDefaults.PREVIEW_ENABLED,
                 null,
                 null
         ));
         applicationQuotaRepository.insert(new ApplicationQuota(
                 applicationId,
-                DEFAULT_MONTHLY_LINK_LIMIT,
-                DEFAULT_MONTHLY_CLICK_LIMIT,
+                PlatformDefaults.MONTHLY_LINK_LIMIT,
+                PlatformDefaults.MONTHLY_CLICK_LIMIT,
                 null,
                 null
         ));
@@ -86,7 +80,12 @@ public class ApplicationProvisioningService {
     @Transactional
     public DomainResult createTenantSharedDomain(long tenantId, UserActor actor, String hostname) {
         requireActor(tenantId, actor);
-        String normalizedHostname = normalizeHostname(hostname);
+        String normalizedHostname;
+        try {
+            normalizedHostname = Hostname.parse(hostname).value();
+        } catch (IllegalArgumentException ex) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, ex.getMessage());
+        }
         long domainId = idGenerator.nextId();
         domainRepository.insert(new Domain(
                 domainId,
@@ -107,7 +106,12 @@ public class ApplicationProvisioningService {
         requireActor(tenantId, actor);
         Application application = applicationRepository.findByTenantIdAndId(tenantId, applicationId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "应用不存在"));
-        String normalizedHostname = normalizeHostname(hostname);
+        String normalizedHostname;
+        try {
+            normalizedHostname = Hostname.parse(hostname).value();
+        } catch (IllegalArgumentException ex) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, ex.getMessage());
+        }
         long domainId = idGenerator.nextId();
         domainRepository.insert(new Domain(
                 domainId,
@@ -146,76 +150,6 @@ public class ApplicationProvisioningService {
         if (request.displayName() == null || request.displayName().trim().isBlank()) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "displayName 不能为空");
         }
-    }
-
-    private static String normalizeHostname(String hostname) {
-        if (hostname == null) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "hostname 不能为空");
-        }
-        String value = hostname.trim().toLowerCase();
-        if (value.isBlank()) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "hostname 不能为空");
-        }
-        if (hasInvalidHostnameCharacters(value)) {
-            throw invalidHostname();
-        }
-        String ascii;
-        try {
-            ascii = IDN.toASCII(value, IDN.USE_STD3_ASCII_RULES).toLowerCase(Locale.ROOT);
-        } catch (IllegalArgumentException ex) {
-            throw invalidHostname();
-        }
-        if (ascii.length() > 253
-                || ascii.startsWith(".")
-                || ascii.endsWith(".")
-                || ascii.contains("..")
-                || "localhost".equals(ascii)
-                || ascii.endsWith(".localhost")
-                || looksLikeIpv4Address(ascii)) {
-            throw invalidHostname();
-        }
-        String[] labels = ascii.split("\\.");
-        if (labels.length < 2) {
-            throw invalidHostname();
-        }
-        for (String label : labels) {
-            if (!isValidHostnameLabel(label)) {
-                throw invalidHostname();
-            }
-        }
-        return ascii;
-    }
-
-    private static boolean hasInvalidHostnameCharacters(String value) {
-        for (int i = 0; i < value.length(); i++) {
-            char ch = value.charAt(i);
-            if (Character.isWhitespace(ch) || ch == ':' || ch == '/' || ch == '\\' || ch == '@' || ch == '*') {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static boolean looksLikeIpv4Address(String value) {
-        return value.matches("\\d{1,3}(\\.\\d{1,3}){3}");
-    }
-
-    private static boolean isValidHostnameLabel(String label) {
-        if (label.isBlank() || label.length() > 63 || label.startsWith("-") || label.endsWith("-")) {
-            return false;
-        }
-        for (int i = 0; i < label.length(); i++) {
-            char ch = label.charAt(i);
-            boolean ok = (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-';
-            if (!ok) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private static BusinessException invalidHostname() {
-        return new BusinessException(ErrorCode.BAD_REQUEST, "hostname 不合法");
     }
 
     private static UserActor requireActor(long tenantId, UserActor actor) {

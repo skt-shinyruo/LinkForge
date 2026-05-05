@@ -35,14 +35,28 @@ class DomainAuthorizationPolicyTest {
                 .isEqualTo(DomainAuthorizationException.Reason.SHARED_DOMAIN_NOT_AUTHORIZED);
     }
 
+    @Test
+    void inactiveDomain_shouldBeRejected() {
+        Domain domain = domain(DomainScope.TENANT_SHARED, null, DomainStatus.DISABLED);
+
+        assertThatThrownBy(() -> policy.requireApplicationCanUseDomain(2001L, domain, true))
+                .isInstanceOf(DomainAuthorizationException.class)
+                .extracting("reason")
+                .isEqualTo(DomainAuthorizationException.Reason.DOMAIN_NOT_ACTIVE);
+    }
+
     private static Domain domain(DomainScope scope, Long applicationId) {
+        return domain(scope, applicationId, DomainStatus.ACTIVE);
+    }
+
+    private static Domain domain(DomainScope scope, Long applicationId, DomainStatus status) {
         return new Domain(
                 3001L,
                 1L,
                 applicationId,
                 "go.example.com",
                 scope,
-                DomainStatus.ACTIVE,
+                status,
                 TargetTrustClass.FIRST_PARTY,
                 LocalDateTime.parse("2026-04-28T10:00:00"),
                 LocalDateTime.parse("2026-04-28T10:00:00")

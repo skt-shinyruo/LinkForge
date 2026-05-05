@@ -5,7 +5,6 @@ import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.runtime.security.AuthContext;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.web.RequestId;
-import com.linkforge.platform.application.ApplicationProvisioningService;
 import com.linkforge.platform.application.PlatformControlPlaneService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -32,23 +31,33 @@ public class TenantAdminDomainController {
 
     @GetMapping("/domains")
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<List<ApplicationProvisioningService.DomainDto>> list() {
+    public ApiResponse<List<DomainHttpResponse>> list() {
         long tenantId = AuthContext.requirePrincipal().getTenantId();
-        return ApiResponse.ok(platformControlPlaneService.listDomains(tenantId), RequestId.get());
+        return ApiResponse.ok(
+                platformControlPlaneService.listDomains(tenantId).stream()
+                        .map(PlatformHttpMapper::toDomainResponse)
+                        .toList(),
+                RequestId.get()
+        );
     }
 
     @GetMapping("/applications/{applicationId}/domains")
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<List<ApplicationProvisioningService.DomainDto>> listByApplication(
+    public ApiResponse<List<DomainHttpResponse>> listByApplication(
             @PathVariable("applicationId") long applicationId
     ) {
         long tenantId = AuthContext.requirePrincipal().getTenantId();
-        return ApiResponse.ok(platformControlPlaneService.listDomainsForApplication(tenantId, applicationId), RequestId.get());
+        return ApiResponse.ok(
+                platformControlPlaneService.listDomainsForApplication(tenantId, applicationId).stream()
+                        .map(PlatformHttpMapper::toDomainResponse)
+                        .toList(),
+                RequestId.get()
+        );
     }
 
     @PostMapping("/domains/tenant-shared")
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<ApplicationProvisioningService.DomainDto> createTenantSharedDomain(
+    public ApiResponse<DomainHttpResponse> createTenantSharedDomain(
             @Valid @RequestBody CreateDomainRequest req
     ) {
         AuthPrincipal principal = AuthContext.requirePrincipal();
@@ -58,12 +67,17 @@ public class TenantAdminDomainController {
                 principal.getEmail(),
                 principal.getRoles()
         );
-        return ApiResponse.ok(platformControlPlaneService.createTenantSharedDomain(principal.getTenantId(), actor, req.hostname()), RequestId.get());
+        return ApiResponse.ok(
+                PlatformHttpMapper.toDomainResponse(
+                        platformControlPlaneService.createTenantSharedDomain(principal.getTenantId(), actor, req.hostname())
+                ),
+                RequestId.get()
+        );
     }
 
     @PostMapping("/applications/{applicationId}/domains")
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<ApplicationProvisioningService.DomainDto> createApplicationDedicatedDomain(
+    public ApiResponse<DomainHttpResponse> createApplicationDedicatedDomain(
             @PathVariable("applicationId") long applicationId,
             @Valid @RequestBody CreateDomainRequest req
     ) {
@@ -75,7 +89,9 @@ public class TenantAdminDomainController {
                 principal.getRoles()
         );
         return ApiResponse.ok(
-                platformControlPlaneService.createApplicationDedicatedDomain(principal.getTenantId(), actor, applicationId, req.hostname()),
+                PlatformHttpMapper.toDomainResponse(
+                        platformControlPlaneService.createApplicationDedicatedDomain(principal.getTenantId(), actor, applicationId, req.hostname())
+                ),
                 RequestId.get()
         );
     }

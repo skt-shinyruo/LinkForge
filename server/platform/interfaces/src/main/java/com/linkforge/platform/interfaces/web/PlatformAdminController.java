@@ -2,7 +2,6 @@ package com.linkforge.platform.interfaces.web;
 
 import com.linkforge.contract.api.ApiResponse;
 import com.linkforge.foundation.web.RequestId;
-import com.linkforge.platform.application.ApplicationProvisioningService;
 import com.linkforge.platform.application.PlatformControlPlaneService;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,13 +22,23 @@ public class PlatformAdminController {
 
     @GetMapping("/applications")
     @PreAuthorize("hasRole('PLATFORM_ADMIN')")
-    public ApiResponse<List<ApplicationProvisioningService.ApplicationDto>> listApplications() {
-        return ApiResponse.ok(platformControlPlaneService.listAllApplications(), RequestId.get());
+    public ApiResponse<List<ApplicationHttpResponse>> listApplications() {
+        return ApiResponse.ok(
+                platformControlPlaneService.listAllApplications().stream()
+                        .map(PlatformHttpMapper::toApplicationResponse)
+                        .toList(),
+                RequestId.get()
+        );
     }
 
     @GetMapping("/domains")
     @PreAuthorize("hasRole('PLATFORM_ADMIN')")
-    public ApiResponse<List<ApplicationProvisioningService.DomainDto>> listDomains() {
-        return ApiResponse.ok(platformControlPlaneService.listAllDomains(), RequestId.get());
+    public ApiResponse<List<DomainHttpResponse>> listDomains() {
+        return ApiResponse.ok(
+                platformControlPlaneService.listAllDomains().stream()
+                        .map(PlatformHttpMapper::toDomainResponse)
+                        .toList(),
+                RequestId.get()
+        );
     }
 }

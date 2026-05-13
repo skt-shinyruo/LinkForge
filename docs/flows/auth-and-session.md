@@ -1,0 +1,164 @@
+# 认证与会话链路
+
+## 业务目标
+
+认证链路负责把控制台用户或 OpenAPI 客户端转换成后端可使用的身份对象。控制台请求最终得到 `AuthPrincipal`，OpenAPI 请求得到带 `ROLE_OPENAPI` 的 `AuthPrincipal` 和 `ApiKeyAuthenticationDetails`。后续控制器只处理已经认证过的主体，并用 `@PreAuthorize` 或应用层 actor 校验权限。
+
+## 入口与边界
+
+- 用户注册：`POST /api/v1/auth/register`
+- 用户登录：`POST /api/v1/auth/login`
+- Cookie CSRF token：`GET /api/v1/auth/csrf`
+- 用户注销：`POST /api/v1/auth/logout`
+- 当前用户：`GET /api/v1/me`
+- 普通 API 安全链：`/api/**`
+- OpenAPI 安全链：`/api/v1/open/**`
+- 跳转链路：`/r/**` 不进入 API 安全链，由 Redirect 自己处理。
+
+## 流程图
+
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="430" viewBox="0 0 980 430" role="img" aria-label="认证与会话链路">
+  <defs>
+    <marker id="arrow-auth" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#334155"/>
+    </marker>
+    <style>
+      .box{fill:#f8fafc;stroke:#64748b;stroke-width:1.4;rx:8}
+      .decision{fill:#fff7ed;stroke:#ea580c;stroke-width:1.4}
+      .ok{fill:#ecfdf5;stroke:#059669;stroke-width:1.4;rx:8}
+      .err{fill:#fef2f2;stroke:#dc2626;stroke-width:1.4;rx:8}
+      .text{font-family:Arial,"Microsoft YaHei",sans-serif;font-size:14px;fill:#0f172a}
+      .small{font-family:Arial,"Microsoft YaHei",sans-serif;font-size:12px;fill:#475569}
+      .line{stroke:#334155;stroke-width:1.5;fill:none;marker-end:url(#arrow-auth)}
+    </style>
+  </defs>
+  <rect class="box" x="30" y="50" width="150" height="64"/>
+  <text class="text" x="105" y="78" text-anchor="middle">控制台用户</text>
+  <text class="small" x="105" y="98" text-anchor="middle">注册 / 登录 / API</text>
+
+  <rect class="box" x="245" y="50" width="170" height="64"/>
+  <text class="text" x="330" y="77" text-anchor="middle">ApiSecurityConfig</text>
+  <text class="small" x="330" y="98" text-anchor="middle">匹配 /api/**</text>
+
+  <polygon class="decision" points="505,45 610,82 505,119 400,82"/>
+  <text class="text" x="505" y="78" text-anchor="middle">公开认证</text>
+  <text class="small" x="505" y="98" text-anchor="middle">register/login/csrf?</text>
+
+  <rect class="box" x="675" y="30" width="190" height="82"/>
+  <text class="text" x="770" y="60" text-anchor="middle">AuthController</text>
+  <text class="small" x="770" y="80" text-anchor="middle">调用 AuthService</text>
+  <text class="small" x="770" y="100" text-anchor="middle">签发 token / cookie</text>
+
+  <rect class="box" x="245" y="190" width="170" height="74"/>
+  <text class="text" x="330" y="218" text-anchor="middle">JwtAuthenticationFilter</text>
+  <text class="small" x="330" y="238" text-anchor="middle">Bearer 或 Cookie JWT</text>
+  <text class="small" x="330" y="256" text-anchor="middle">解析 AuthPrincipal</text>
+
+  <rect class="box" x="480" y="190" width="190" height="74"/>
+  <text class="text" x="575" y="218" text-anchor="middle">AccountStatusService</text>
+  <text class="small" x="575" y="238" text-anchor="middle">租户 / 用户 ACTIVE</text>
+  <text class="small" x="575" y="256" text-anchor="middle">校验 tokenVersion</text>
+
+  <rect class="ok" x="735" y="190" width="170" height="74"/>
+  <text class="text" x="820" y="218" text-anchor="middle">SecurityContext</text>
+  <text class="small" x="820" y="238" text-anchor="middle">后续 Controller</text>
+  <text class="small" x="820" y="256" text-anchor="middle">@PreAuthorize</text>
+
+  <rect class="box" x="30" y="325" width="150" height="64"/>
+  <text class="text" x="105" y="352" text-anchor="middle">OpenAPI 客户端</text>
+  <text class="small" x="105" y="372" text-anchor="middle">X-API-Key</text>
+
+  <rect class="box" x="245" y="315" width="170" height="84"/>
+  <text class="text" x="330" y="345" text-anchor="middle">OpenApiSecurityConfig</text>
+  <text class="small" x="330" y="365" text-anchor="middle">只匹配 /api/v1/open/**</text>
+  <text class="small" x="330" y="385" text-anchor="middle">禁用 CSRF</text>
+
+  <rect class="box" x="480" y="315" width="190" height="84"/>
+  <text class="text" x="575" y="345" text-anchor="middle">ApiKeyAuthenticationFilter</text>
+  <text class="small" x="575" y="365" text-anchor="middle">ApiKeyService.authenticate</text>
+  <text class="small" x="575" y="385" text-anchor="middle">租户状态校验</text>
+
+  <rect class="ok" x="735" y="325" width="170" height="64"/>
+  <text class="text" x="820" y="352" text-anchor="middle">OPENAPI 主体</text>
+  <text class="small" x="820" y="372" text-anchor="middle">details 含 applicationId</text>
+
+  <path class="line" d="M180 82 H245"/>
+  <path class="line" d="M415 82 H400"/>
+  <path class="line" d="M610 82 H675"/>
+  <path class="line" d="M330 114 V190"/>
+  <path class="line" d="M415 227 H480"/>
+  <path class="line" d="M670 227 H735"/>
+  <path class="line" d="M180 357 H245"/>
+  <path class="line" d="M415 357 H480"/>
+  <path class="line" d="M670 357 H735"/>
+</svg>
+
+## 关键业务规则
+
+- 自助注册受配置控制。`AuthController.register()` 会先检查 `securityProperties.registrationEnabled`，关闭时直接返回业务错误。
+- 注册会创建租户、首个用户和 `TENANT_ADMIN` 角色。`AuthService.register()` 先查邮箱唯一性，再生成 tenantId、userId，保存 active 租户和 active 用户。
+- 登录必须同时满足租户 active、用户 active、密码匹配。角色为空时降级为 `USER`。
+- JWT 中包含 `tenantId`、`email`、`roles`、`tokenVersion`。注销和重置密码都会递增 `tokenVersion`，让旧 JWT 失效。
+- Bearer token 无效时按认证失败处理；Cookie token 无效或超长时清 cookie 后继续，避免公开登录接口被错误 cookie 阻断。
+- Cookie 会话下写请求使用双提交 CSRF：前端先拿 `XSRF-TOKEN` cookie，再带 `X-XSRF-TOKEN` header。
+- `/api/v1/open/**` 只接受 API Key，不接受 JWT/Cookie；普通 `/api/v1/**` 不接受 `X-API-Key`。
+
+## 源码分析
+
+### 控制器入口
+
+- `server/accounts/interfaces/src/main/java/com/linkforge/accounts/interfaces/web/AuthController.java`
+  - `register()`：校验自助注册开关，调用 `AuthService.register()`，按配置写 JWT cookie。
+  - `login()`：调用 `AuthService.login()`，返回 token 或只写 HttpOnly cookie。
+  - `csrf()`：返回 Spring Security 生成的 CSRF header 名和 token。
+  - `logout()`：从当前 principal 找 userId，调用 `AuthService.logout()`，并清理 cookie。
+- `server/accounts/interfaces/src/main/java/com/linkforge/accounts/interfaces/web/MeController.java`
+  - `GET /api/v1/me`：从 `AuthContext.requirePrincipal()` 读取已认证主体，给前端初始化会话状态。
+- `server/accounts/interfaces/src/main/java/com/linkforge/accounts/interfaces/web/UserAdminController.java`
+  - 租户管理员用户管理入口。它不是登录链路的一部分，但会影响认证状态，因为禁用用户和重置密码会驱逐缓存并递增 `tokenVersion`。
+
+### 应用层逻辑
+
+- `server/accounts/application/src/main/java/com/linkforge/accounts/application/AuthService.java`
+  - `register()`：检查邮箱、创建租户、创建用户、写 `TENANT_ADMIN` 角色、签发 JWT。
+  - `login()`：按邮箱查用户和租户，校验状态和密码，读取角色，签发 JWT。
+  - `logout()`：递增用户 `tokenVersion`，驱逐账号状态缓存。
+- `server/accounts/application/src/main/java/com/linkforge/accounts/application/AccountStatusService.java`
+  - 实现 `AccountStatusVerifier`，给安全过滤器复用。
+  - `requireActiveTenant()`：只校验租户。
+  - `requireActiveUserAndTenant()`：校验租户、用户归属、用户状态和可选 tokenVersion。
+  - 使用短 TTL Redis 状态缓存；Redis 不可用时降级查 DB。
+- `server/accounts/application/src/main/java/com/linkforge/accounts/application/UserAdminService.java`
+  - 创建用户时角色只允许 `TENANT_ADMIN` 和 `USER`。
+  - 禁用用户时禁止禁用自己，并要求至少保留一个启用中的租户管理员。
+  - 重置密码会递增 `tokenVersion`。
+
+### 安全过滤链
+
+- `server/app/src/main/java/com/linkforge/app/security/ApiSecurityConfig.java`
+  - `securityMatcher("/api/**")`，但公开放行 `/api/v1/auth/register`、`/login`、`/logout` 和 `GET /csrf`。
+  - 添加 `JwtAuthenticationFilter`。
+- `server/app/src/main/java/com/linkforge/app/security/JwtAuthenticationFilter.java`
+  - 解析 Bearer 或 Cookie JWT。
+  - 调用 `JwtPrincipalVerifier` 解析 token，再调用 `AccountStatusVerifier.requireActiveUserAndTenant()`。
+  - 认证成功后把 `AuthPrincipal` 放进 Spring Security 上下文。
+- `server/app/src/main/java/com/linkforge/app/security/OpenApiSecurityConfig.java`
+  - `securityMatcher("/api/v1/open/**")`，只挂 `ApiKeyAuthenticationFilter`，禁用 CSRF。
+- `server/app/src/main/java/com/linkforge/app/security/ApiKeyAuthenticationFilter.java`
+  - 读取 `X-API-Key`，调用 `ApiKeyAuthenticator`，然后只校验租户状态。
+  - 认证成功时创建 `ROLE_OPENAPI` principal，并把 API Key 绑定的应用信息放到 authentication details。
+
+### JWT 实现
+
+- `server/accounts/infrastructure/src/main/java/com/linkforge/accounts/infrastructure/security/JwtService.java`
+  - `issueToken()` 使用 HMAC secret 签发 JWT，secret 要求至少 32 bytes。
+  - `parseToken()` 校验 issuer 和签名，读取 subject、tenantId、email、roles、tokenVersion。
+- `server/accounts/infrastructure/src/main/java/com/linkforge/accounts/infrastructure/security/AccountsJwtTokenIssuer.java`
+  - 适配 Accounts 应用层的 token 签发端口。
+
+## 异常与一致性
+
+- 认证失败由 `RestAuthenticationEntryPoint` 和 `RestAccessDeniedHandler` 返回统一 API 错误形状。
+- 业务错误进入 `GlobalExceptionHandler`，响应体包含 `ApiResponse.requestId`。
+- `RequestIdFilter` 会把请求 ID 放到 MDC、响应头和 API 响应中，便于串联认证失败和后续业务日志。
+- 注销、禁用、重置密码通过 `tokenVersion` 和状态缓存驱逐实现会话失效，避免仅依赖 JWT 自身过期时间。

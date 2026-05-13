@@ -1,112 +1,98 @@
-# LinkForge Architecture
+# LinkForge 架构
 
-LinkForge is a modular monolith built as a Maven reactor plus a separate Vue frontend. The current design favors clear module boundaries inside one deployable runtime over independently deployed services.
+LinkForge 是一个模块化单体：后端由 Maven Reactor 组织，前端是独立的 Vue 应用。当前架构优先保证单一部署运行时内部的模块边界清晰，而不是把系统拆成独立部署的服务。
 
-## Backend
+## 后端
 
-- `server/foundation`: split between pure shared-library packages and explicit runtime support. `foundation.config`, `foundation.id`, `foundation.tx`, and `foundation.util` stay framework-light library code; runtime beans such as `RequestIdFilter`, startup checks, and integration-event MyBatis wiring live under `foundation.runtime..`.
-- `server/contracts/*`: shared vocabulary that still earns its maintenance cost inside the monolith. `contract-api` holds common API contracts, `contract-shortlink` carries shortlink integration-event payloads, `contract-redirect` carries redirect read/cache contracts, `contract-analytics` carries analytics contracts, `contract-platform` carries application/domain authorization vocabulary, and `contract-governance` carries stable approval orchestration language.
-- `server/accounts`: account, tenant, auth, and API-key management split into `domain`, `application`, `infrastructure`, `interfaces`, and `runtime` Maven modules. Its application layer now depends on ports/shared contracts instead of infrastructure classes or runtime-security helpers.
-- `server/platform`: control-plane ownership for tenant applications, domains, quotas, and policies. It models `tenant -> application -> domain` relationships and exposes the tenant/platform admin HTTP surfaces used by the self-service console.
-- `server/governance`: approval and audit management. It persists sensitive-operation requests, approval decisions, and audit logs, and exposes narrow application APIs for link destination changes and analytics export approvals.
-- `server/shortlink`: write-side shortlink management split into `domain`, `application`, `infrastructure`, `interfaces`, and `runtime`. It owns durable shortlink state and emits integration events for downstream projections. Its public application entry points are focused use-case interfaces rather than one aggregate service interface.
-- `server/redirect`: cache-backed redirect serving split into `domain`, `application`, `infrastructure`, `interfaces`, and `runtime`. Redirect correctness uses Redis plus the authoritative shortlink read API on cache miss; it no longer maintains an independent redirect projection model.
-- `server/analytics`: visit recording and read models split into `domain`, `application`, `infrastructure`, `interfaces`, and `runtime`.
-- `server/app`: Spring Boot executable composition root. `LinkForgeApplication` explicitly imports context-owned runtime modules (`FoundationRuntimeModule`, `AccountsRuntimeModule`, `ShortlinkRuntimeModule`, `RedirectRuntimeModule`, `AnalyticsRuntimeModule`, `PlatformRuntimeModule`, and `GovernanceRuntimeModule`) instead of package scans or app-owned wrappers; bounded-context runtime modules now live in each context's `runtime` Maven module. Security wiring is split by request family instead of one monolithic security class.
-- `server/integration-tests`: Testcontainers-based integration verification for cross-module behavior.
+- `server/foundation`：拆分为纯共享库代码和显式运行时支持两类。`foundation.config`、`foundation.id`、`foundation.tx`、`foundation.util` 保持轻框架依赖的库代码定位；`RequestIdFilter`、启动检查、集成事件 MyBatis 装配等运行时 Bean 放在 `foundation.runtime..` 下。
+- `server/contracts/*`：沉淀单体内部仍值得维护的共享语言。`contract-api` 保存通用 API 契约，`contract-shortlink` 承载短链集成事件载荷，`contract-redirect` 承载跳转读取和缓存契约，`contract-analytics` 承载统计契约，`contract-platform` 承载应用、域名、授权相关词汇，`contract-governance` 承载稳定的审批编排语言。
+- `server/accounts`：负责账号、租户、认证和 API Key 管理，并拆成 `domain`、`application`、`infrastructure`、`interfaces`、`runtime` Maven 模块。它的应用层依赖端口和共享契约，不依赖基础设施类或运行时安全上下文辅助类。
+- `server/platform`：负责租户应用、域名、配额和策略等控制平面能力。它建模 `tenant -> application -> domain` 关系，并暴露自助控制台使用的租户和平台管理 HTTP 接口。
+- `server/governance`：负责审批和审计管理。它持久化敏感操作请求、审批决策和审计日志，并为链接目标变更、统计导出审批等场景暴露窄口径应用 API。
+- `server/shortlink`：短链管理写侧，拆成 `domain`、`application`、`infrastructure`、`interfaces`、`runtime`。它拥有持久化短链状态，并向下游投递集成事件。公开应用入口聚焦具体用例接口，而不是一个大而全的聚合服务接口。
+- `server/redirect`：基于缓存的跳转服务，拆成 `domain`、`application`、`infrastructure`、`interfaces`、`runtime`。跳转正确性由 Redis 和缓存未命中时的权威短链读取 API 共同保证；它不再维护独立的 redirect 投影模型。
+- `server/analytics`：负责访问记录和读模型，拆成 `domain`、`application`、`infrastructure`、`interfaces`、`runtime`。
+- `server/app`：Spring Boot 可执行组合根。`LinkForgeApplication` 显式导入各上下文拥有的运行时模块，包括 `FoundationRuntimeModule`、`AccountsRuntimeModule`、`ShortlinkRuntimeModule`、`RedirectRuntimeModule`、`AnalyticsRuntimeModule`、`PlatformRuntimeModule`、`GovernanceRuntimeModule`，而不是依赖包扫描或 app 自有包装层；各限界上下文的运行时模块放在各自上下文的 `runtime` Maven 模块中。安全装配按请求族拆分，不再集中在一个巨型安全配置类里。
+- `server/integration-tests`：基于 Testcontainers 验证跨模块行为。
 
-## DDD Context Map
+## DDD 上下文映射
 
-The backend bounded contexts are code-ownership boundaries inside one deployed monolith.
-They are not independently deployed services.
+后端限界上下文是单一部署单体内部的代码所有权边界，不是独立部署的服务。
 
 ### Accounts
 
-Owns tenants, users, roles, API keys, authentication state, and account-status checks.
-Accounts may publish authentication and account-status capabilities, but persistence details,
-token parsing internals, and role storage remain private to the context.
+拥有租户、用户、角色、API Key、认证状态和账号状态检查。Accounts 可以发布认证和账号状态能力，但持久化细节、Token 解析内部实现、角色存储都保持为上下文私有。
 
 ### Platform
 
-Owns tenant applications, domains, quotas, and application policies.
-Platform publishes application scope, domain hostname lookup, and quota views through
-`contract-platform`.
+拥有租户应用、域名、配额和应用策略。Platform 通过 `contract-platform` 发布应用范围、域名主机名查询和配额视图。
 
 ### Shortlink
 
-Owns durable link state, link lifecycle, destination rules, tags, revisions, and shortlink
-mutation events. `ShortLink` is the first aggregate root for tactical DDD hardening.
-Other contexts may read redirect metadata, ownership, and summaries only through
-`contract-shortlink`.
+拥有持久化链接状态、链接生命周期、目标规则、标签、修订记录和短链变更事件。`ShortLink` 是战术 DDD 加固中的第一个聚合根。其他上下文只能通过 `contract-shortlink` 读取跳转元数据、所有权和摘要信息。
 
 ### Redirect
 
-Owns traffic-plane redirect resolution, Redis cache behavior, preview/not-found responses,
-and lightweight visit-event append. Redirect does not own link truth; cache misses use the
-shortlink published read contract.
+拥有流量平面的跳转解析、Redis 缓存行为、预览和未找到响应，以及轻量访问事件追加。Redirect 不拥有链接事实；缓存未命中时使用 shortlink 发布的读取契约。
 
 ### Analytics
 
-Owns visit ingestion, aggregates, detail storage, statistics reads, and export integration.
-Analytics read models remain private. Cross-context link enrichment uses published
-shortlink contracts.
+拥有访问摄取、聚合、明细存储、统计读取和导出集成。Analytics 读模型保持私有；跨上下文链接补全使用 shortlink 发布的契约。
 
 ### Governance
 
-Owns approval request lifecycle, approval decisions, sensitive-operation records, and audit
-logs. Governance exposes published approval contracts where cross-context callers still need
-approval orchestration.
+拥有审批请求生命周期、审批决策、敏感操作记录和审计日志。需要跨上下文审批编排时，Governance 通过发布契约暴露相关能力。
 
-## Tactical DDD Rules
+## 战术 DDD 规则
 
-- `domain` owns aggregate behavior, invariants, value objects, domain services, and internal domain events.
-- `application` owns use-case orchestration, transactions, repository ports, authorization input handling, and integration-event publication. Application services may accept explicit actor/input objects, but they must not read hidden runtime security context. Public request/result models in application code should be top-level types, not nested DTO/result/request containers inside service classes.
-- `interfaces` owns HTTP mapping, request validation, principal extraction, and transport response shaping. Controllers map application DTOs to transport DTOs instead of exposing application records as HTTP contracts.
-- `infrastructure` owns MyBatis, Redis, schedulers, and persistence mapping. Infrastructure adapters must not depend on runtime-security helpers such as `AuthContext` or `TenantGuard`; tenant scope is passed explicitly through application ports.
-- `runtime` owns context-local Spring composition by importing the context's application, infrastructure, and interfaces configs.
-- `contracts/*` owns published language shared across bounded contexts. Contract modules express stable business semantics and must not reuse foundation security/context actor objects as published API language.
-- Bounded contexts must not import another context's `domain`, `application`, `infrastructure`, `interfaces`, or `runtime` packages.
+- `domain` 拥有聚合行为、不变量、值对象、领域服务和内部领域事件。
+- `application` 拥有用例编排、事务、仓储端口、授权输入处理和集成事件发布。应用服务可以接收显式的参与者和输入对象，但不能读取隐藏的运行时安全上下文。应用代码中的公开请求和结果模型应当是顶层类型，不应把 DTO、Result、Request 容器嵌套在服务类内部。
+- `interfaces` 拥有 HTTP 映射、请求校验、身份主体提取和传输响应塑形。控制器把应用 DTO 映射为传输 DTO，而不是直接把应用 record 暴露为 HTTP 契约。
+- `infrastructure` 拥有 MyBatis、Redis、调度器和持久化映射。基础设施适配器不能依赖 `AuthContext`、`TenantGuard` 等运行时安全辅助类；租户范围必须通过应用端口显式传入。
+- `runtime` 拥有上下文本地的 Spring 组合装配，负责导入该上下文的 application、infrastructure、interfaces 配置。
+- `contracts/*` 拥有限界上下文之间共享的发布语言。契约模块表达稳定业务语义，不能复用 foundation 的安全或上下文参与者对象作为发布 API 语言。
+- 限界上下文不能导入其他上下文的 `domain`、`application`、`infrastructure`、`interfaces` 或 `runtime` 包。
 
-## Redirect Correctness Path
+## 跳转正确性路径
 
-Redirect reads follow this order:
+跳转读取按以下顺序执行：
 
-1. Redis redirect cache (`LinkCachePort`) using `host + code`
-2. Authoritative shortlink read API using `host + code`
-3. Negative-cache write for true misses
+1. 使用 `host + code` 查询 Redis 跳转缓存（`LinkCachePort`）
+2. 使用 `host + code` 查询权威短链读取 API
+3. 对真实未命中写入负缓存
 
-Shortlink mutations evict redirect cache entries only after transaction commit via `AfterCommit`, so Redis cannot diverge from durable state on rollback. There is no second redirect projection correctness channel.
+短链变更只会在事务提交后通过 `AfterCommit` 驱逐跳转缓存条目，因此事务回滚不会导致 Redis 与持久化状态发生偏离。系统没有第二条 redirect 投影正确性通道。
 
-## Frontend
+## 前端
 
-The frontend is a Vue 3 + Vite SPA under `web/`.
+前端是位于 `web/` 下的 Vue 3 + Vite SPA。
 
-- `views/`: route-level orchestration
-- `components/`: presentational UI, including the shared `AppPageShell` and links-specific subcomponents
-- `composables/`: page/session behavior extracted from views
-- `services/`: HTTP-facing transport helpers and shared types
-- `stores/`: application state such as auth
+- `views/`：路由级编排
+- `components/`：展示型 UI，包括共享的 `AppPageShell` 和 links 相关子组件
+- `composables/`：从视图中抽取出的页面和会话行为
+- `services/`：面向 HTTP 传输的辅助函数和共享类型
+- `stores/`：认证等应用状态
 
-The SPA now exposes both the original shortlink pages and the self-service control-plane console:
+SPA 同时暴露原有短链页面和自助控制平面控制台：
 
-- tenant overview
-- applications and application detail
-- domains
-- API keys
-- approvals
-- audit
-- links, stats, and tags
+- 租户概览
+- 应用和应用详情
+- 域名
+- API Key
+- 审批
+- 审计
+- 链接、统计和标签
 
-The control-plane pages stay thin by routing all HTTP work through `services/*` modules and driving view state from dedicated composables such as `useApplicationsPage`, `useApplicationDetailPage`, `useDomainsPage`, `useApprovalsPage`, and `useAuditPage`. `LinksView.vue` and `StatsView.vue` have also been upgraded to understand application scope without duplicating transport logic.
+控制平面页面保持轻量：所有 HTTP 工作都经由 `services/*` 模块完成，视图状态由专门的 composable 驱动，例如 `useApplicationsPage`、`useApplicationDetailPage`、`useDomainsPage`、`useApprovalsPage`、`useAuditPage`。`LinksView.vue` 和 `StatsView.vue` 也已经升级为理解应用范围，同时不重复实现传输逻辑。
 
-## Deployment Shape
+## 部署形态
 
-The repository currently ships as:
+仓库当前交付形态包括：
 
-- one backend runtime (`server/app`)
-- one frontend app (`web`)
-- supporting infrastructure such as MySQL primary/replica and Redis
+- 一个后端运行时（`server/app`）
+- 一个前端应用（`web`）
+- MySQL 主库/从库、Redis 等支撑基础设施
 
-The backend uses Apache ShardingSphere-JDBC as the logical application datasource. `readwrite_ds` routes writes to `write_ds` and eligible non-transactional reads to `read_ds_0`; transactional reads stay on the primary through `transactionalReadQueryStrategy: PRIMARY`. Flyway is explicitly bound to the primary MySQL connection and does not migrate through the logical read/write splitting datasource.
+后端使用 Apache ShardingSphere-JDBC 作为逻辑应用数据源。`readwrite_ds` 把写入路由到 `write_ds`，把符合条件的非事务读取路由到 `read_ds_0`；事务内读取通过 `transactionalReadQueryStrategy: PRIMARY` 保持走主库。Flyway 显式绑定主库 MySQL 连接，不通过逻辑读写分离数据源执行迁移。
 
-This is not a microservice deployment. Module boundaries remain for ownership and tests, but day-to-day correctness is designed for a single deployed monolith rather than future service extraction.
+这不是微服务部署。模块边界用于明确所有权和测试边界，但日常正确性是围绕单一部署单体设计的，而不是围绕未来服务拆分设计的。

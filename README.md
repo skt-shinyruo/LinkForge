@@ -75,4 +75,5 @@ npm run dev
 ## 3. 方案与文档（SSOT）
 
 - `docs/architecture.md`：当前模块化单体架构总览（推荐先读）
-- `docs/plans/`：方案与实现计划（SSOT）
+- `docs/core-logic.md`：当前代码核心业务逻辑、跨上下文链路和前端页面逻辑
+- `docs/superpowers/plans/`：方案与实现计划（SSOT）

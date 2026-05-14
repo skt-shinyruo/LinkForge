@@ -122,7 +122,7 @@ class DeployReadwriteTopologyTest {
     @Test
     void docs_should_describe_shardingsphere_and_primary_replica_deployment() throws Exception {
         String readme = Files.readString(Path.of("../../README.md"));
-        String architecture = Files.readString(Path.of("../../docs/architecture.md"));
+        String architecture = Files.readString(Path.of("../../docs/reference/architecture.md"));
 
         assertThat(readme)
                 .contains("ShardingSphere-JDBC")

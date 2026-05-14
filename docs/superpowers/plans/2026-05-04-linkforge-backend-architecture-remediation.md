@@ -1833,7 +1833,7 @@ git commit -m "refactor: split app security chains by request space"
 ### Task 11: Final Architecture Verification And Documentation Sync
 
 **Files:**
-- Modify: `docs/architecture.md` if wording needs to reflect new DTO/model rules
+- Modify: `docs/reference/architecture.md` if wording needs to reflect new DTO/model rules
 - Modify: `docs/superpowers/specs/2026-05-04-linkforge-backend-architecture-remediation-design.md` only if implementation forced a deliberate scope change
 
 - [ ] **Step 1: Run architecture tests**
@@ -1878,7 +1878,7 @@ Expected: no matches for public controller return types or nested application DT
 
 - [ ] **Step 5: Update docs if needed**
 
-If the implementation introduced new conventions such as `*HttpResponse` and `*Result`, add a short note to `docs/architecture.md` under Tactical DDD Rules:
+If the implementation introduced new conventions such as `*HttpResponse` and `*Result`, add a short note to `docs/reference/architecture.md` under Tactical DDD Rules:
 
 ```markdown
 - Application-facing request/result records are top-level application types. HTTP-only records live in `interfaces` and use transport-oriented names such as `*HttpResponse`.

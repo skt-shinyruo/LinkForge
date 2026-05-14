@@ -93,20 +93,21 @@ class ApiKeyServiceTest {
         AccountsApiKeyStore.ApiKey apiKey = new AccountsApiKeyStore.ApiKey(
                 123L,
                 1L,
-                null,
+                2001L,
                 "test-key",
                 "hash",
                 AccountsConstants.STATUS_ACTIVE,
                 null,
                 null
         );
-        when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, null, AccountsConstants.STATUS_ACTIVE, digest));
+        when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, 2001L, AccountsConstants.STATUS_ACTIVE, digest));
         when(store.findById(123L)).thenReturn(apiKey);
         when(passwordHasher.matches("secret", "hash")).thenReturn(true);
 
         ApiKeyAuthResult r = service.authenticate("lfk_123_secret");
         assertThat(r.tenantId()).isEqualTo(1L);
         assertThat(r.apiKeyId()).isEqualTo(123L);
+        assertThat(r.applicationId()).isEqualTo(2001L);
 
         verify(store).findById(123L);
         verify(passwordHasher).matches("secret", "hash");
@@ -193,14 +194,14 @@ class ApiKeyServiceTest {
         AccountsApiKeyStore.ApiKey apiKey = new AccountsApiKeyStore.ApiKey(
                 123L,
                 1L,
-                null,
+                2001L,
                 "test-key",
                 "hash",
                 AccountsConstants.STATUS_ACTIVE,
                 null,
                 null
         );
-        when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, null, AccountsConstants.STATUS_ACTIVE, wrongDigest));
+        when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, 2001L, AccountsConstants.STATUS_ACTIVE, wrongDigest));
         when(store.findById(123L)).thenReturn(apiKey);
         when(passwordHasher.matches("secret", "hash")).thenReturn(false);
 
@@ -251,7 +252,7 @@ class ApiKeyServiceTest {
         AccountsApiKeyStore.ApiKey apiKey = new AccountsApiKeyStore.ApiKey(
                 123L,
                 1L,
-                null,
+                2001L,
                 "test-key",
                 "hash",
                 AccountsConstants.STATUS_ACTIVE,
@@ -266,8 +267,39 @@ class ApiKeyServiceTest {
         ApiKeyAuthResult r = service.authenticate("lfk_123_secret");
         assertThat(r.tenantId()).isEqualTo(1L);
         assertThat(r.apiKeyId()).isEqualTo(123L);
+        assertThat(r.applicationId()).isEqualTo(2001L);
 
         verify(authCache).read(123L);
+    }
+
+    @Test
+    void authenticate_shouldRejectLegacyTenantWideApiKeyWithoutApplicationScope() {
+        AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
+        AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
+        ApiKeyAuthCache authCache = mock(ApiKeyAuthCache.class);
+
+        SecurityProperties props = new SecurityProperties();
+        props.getApiKey().setAuthCacheTtlSeconds(60);
+        props.getApiKey().setLastUsedUpdateIntervalSeconds(0);
+
+        ApiKeyService service = newService(store, passwordHasher, props, authCache);
+        AccountsApiKeyStore.ApiKey apiKey = new AccountsApiKeyStore.ApiKey(
+                123L,
+                1L,
+                null,
+                "legacy-key",
+                "hash",
+                AccountsConstants.STATUS_ACTIVE,
+                null,
+                null
+        );
+        when(store.findById(123L)).thenReturn(apiKey);
+        when(passwordHasher.matches("secret", "hash")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.authenticate("lfk_123_secret"))
+                .isInstanceOf(ApiKeyService.ApiKeyAuthException.class)
+                .extracting(ex -> ((ApiKeyService.ApiKeyAuthException) ex).errorCode())
+                .isEqualTo(OpenApiErrorCode.API_KEY_INVALID);
     }
 
     @Test
@@ -332,7 +364,7 @@ class ApiKeyServiceTest {
         AccountsApiKeyStore.ApiKey apiKey = new AccountsApiKeyStore.ApiKey(
                 123L,
                 1L,
-                null,
+                2001L,
                 "test-key",
                 "hash",
                 AccountsConstants.STATUS_ACTIVE,
@@ -347,6 +379,7 @@ class ApiKeyServiceTest {
 
         assertThat(result.tenantId()).isEqualTo(1L);
         assertThat(result.apiKeyId()).isEqualTo(123L);
+        assertThat(result.applicationId()).isEqualTo(2001L);
         verifyNoInteractions(authCache);
     }
 
@@ -366,14 +399,14 @@ class ApiKeyServiceTest {
         AccountsApiKeyStore.ApiKey apiKey = new AccountsApiKeyStore.ApiKey(
                 123L,
                 1L,
-                null,
+                2001L,
                 "test-key",
                 "hash",
                 AccountsConstants.STATUS_ACTIVE,
                 null,
                 null
         );
-        when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, null, AccountsConstants.STATUS_ACTIVE, digest));
+        when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, 2001L, AccountsConstants.STATUS_ACTIVE, digest));
         when(store.findById(123L)).thenReturn(apiKey);
         when(passwordHasher.matches("secret", "hash")).thenReturn(true);
         when(authCache.tryAcquireLastUsedToken(123L, 300L)).thenReturn(ApiKeyAuthCache.LastUsedTokenResult.ACQUIRED);
@@ -402,14 +435,14 @@ class ApiKeyServiceTest {
         AccountsApiKeyStore.ApiKey apiKey = new AccountsApiKeyStore.ApiKey(
                 123L,
                 1L,
-                null,
+                2001L,
                 "test-key",
                 "hash",
                 AccountsConstants.STATUS_ACTIVE,
                 null,
                 null
         );
-        when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, null, AccountsConstants.STATUS_ACTIVE, digest));
+        when(authCache.read(123L)).thenReturn(new ApiKeyAuthCache.Entry(1L, 2001L, AccountsConstants.STATUS_ACTIVE, digest));
         when(store.findById(123L)).thenReturn(apiKey);
         when(passwordHasher.matches("secret", "hash")).thenReturn(true);
         when(authCache.tryAcquireLastUsedToken(123L, 300L)).thenReturn(ApiKeyAuthCache.LastUsedTokenResult.ACQUIRED);

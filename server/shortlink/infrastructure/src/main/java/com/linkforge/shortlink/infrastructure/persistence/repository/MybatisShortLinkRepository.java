@@ -116,6 +116,9 @@ public class MybatisShortLinkRepository implements ShortLinkRepository {
                 normalizeNullable(q.keyword()),
                 normalizeNullable(q.tag()),
                 q.applicationId(),
+                q.createdBy(),
+                q.createdByType() == null ? null : q.createdByType().name(),
+                q.unscopedOnly(),
                 offset,
                 limit
         );

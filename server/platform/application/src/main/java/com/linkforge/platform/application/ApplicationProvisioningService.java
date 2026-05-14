@@ -17,6 +17,7 @@ import com.linkforge.platform.domain.PlatformDefaults;
 import com.linkforge.platform.domain.DomainScope;
 import com.linkforge.platform.domain.DomainStatus;
 import com.linkforge.platform.domain.TargetTrustClass;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -58,7 +59,11 @@ public class ApplicationProvisioningService {
                 null,
                 null
         );
-        applicationRepository.insert(application);
+        try {
+            applicationRepository.insert(application);
+        } catch (DataIntegrityViolationException ex) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "applicationKey 已存在");
+        }
         applicationPolicyRepository.insert(new ApplicationPolicy(
                 applicationId,
                 PlatformDefaults.DEFAULT_DOMAIN_SCOPE,
@@ -87,25 +92,28 @@ public class ApplicationProvisioningService {
             throw new BusinessException(ErrorCode.BAD_REQUEST, ex.getMessage());
         }
         long domainId = idGenerator.nextId();
-        domainRepository.insert(new Domain(
-                domainId,
-                tenantId,
-                null,
-                normalizedHostname,
-                DomainScope.TENANT_SHARED,
-                DomainStatus.ACTIVE,
-                TargetTrustClass.FIRST_PARTY,
-                null,
-                null
-        ));
+        try {
+            domainRepository.insert(new Domain(
+                    domainId,
+                    tenantId,
+                    null,
+                    normalizedHostname,
+                    DomainScope.TENANT_SHARED,
+                    DomainStatus.ACTIVE,
+                    TargetTrustClass.FIRST_PARTY,
+                    null,
+                    null
+            ));
+        } catch (DataIntegrityViolationException ex) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "域名已存在");
+        }
         return new DomainResult(domainId, tenantId, null, normalizedHostname, DomainScope.TENANT_SHARED);
     }
 
     @Transactional
     public DomainResult createApplicationDedicatedDomain(long tenantId, UserActor actor, long applicationId, String hostname) {
         requireActor(tenantId, actor);
-        Application application = applicationRepository.findByTenantIdAndId(tenantId, applicationId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "应用不存在"));
+        Application application = requireActiveApplication(tenantId, applicationId);
         String normalizedHostname;
         try {
             normalizedHostname = Hostname.parse(hostname).value();
@@ -113,25 +121,28 @@ public class ApplicationProvisioningService {
             throw new BusinessException(ErrorCode.BAD_REQUEST, ex.getMessage());
         }
         long domainId = idGenerator.nextId();
-        domainRepository.insert(new Domain(
-                domainId,
-                tenantId,
-                application.id(),
-                normalizedHostname,
-                DomainScope.APPLICATION_DEDICATED,
-                DomainStatus.ACTIVE,
-                TargetTrustClass.FIRST_PARTY,
-                null,
-                null
-        ));
+        try {
+            domainRepository.insert(new Domain(
+                    domainId,
+                    tenantId,
+                    application.id(),
+                    normalizedHostname,
+                    DomainScope.APPLICATION_DEDICATED,
+                    DomainStatus.ACTIVE,
+                    TargetTrustClass.FIRST_PARTY,
+                    null,
+                    null
+            ));
+        } catch (DataIntegrityViolationException ex) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "域名已存在");
+        }
         return new DomainResult(domainId, tenantId, application.id(), normalizedHostname, DomainScope.APPLICATION_DEDICATED);
     }
 
     @Transactional
     public void authorizeDomain(long tenantId, UserActor actor, long applicationId, long domainId) {
         requireActor(tenantId, actor);
-        applicationRepository.findByTenantIdAndId(tenantId, applicationId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "应用不存在"));
+        requireActiveApplication(tenantId, applicationId);
         Domain domain = domainRepository.findByTenantIdAndId(tenantId, domainId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "域名不存在"));
         if (domain.status() != DomainStatus.ACTIVE) {
@@ -163,6 +174,15 @@ public class ApplicationProvisioningService {
             throw new BusinessException(ErrorCode.FORBIDDEN, "actor 租户不匹配");
         }
         return actor;
+    }
+
+    private Application requireActiveApplication(long tenantId, long applicationId) {
+        Application application = applicationRepository.findByTenantIdAndId(tenantId, applicationId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "应用不存在"));
+        if (!PlatformDefaults.APPLICATION_STATUS_ACTIVE.equals(application.status())) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "应用未启用");
+        }
+        return application;
     }
 
 }

@@ -109,6 +109,28 @@ class UpdateShortLinkCommandHandlerTest {
         );
         when(shortLinkRepository.findByTenantIdAndId(1L, 101L)).thenReturn(java.util.Optional.of(link));
         when(linkTagRepository.findTagNamesByLinkId(101L)).thenReturn(List.of("alpha"));
+        when(governanceApprovalRequestService.requestLinkDestinationChangeApproval(
+                eq(1L),
+                eq(new ApprovalSubmissionPort.LinkDestinationChangeApprovalRequest(
+                        101L,
+                        2001L,
+                        "https://example.com/old",
+                        "https://example.com/new",
+                        new ApprovalRequester(1L, 7L, "reviewer@example.com"),
+                        LocalDateTime.parse("2026-04-01T00:00:00")
+                ))
+        )).thenReturn(new com.linkforge.contract.governance.ApprovalRequestView(
+                7001L,
+                1L,
+                "PUBLIC_LINK_DESTINATION_CHANGE",
+                2001L,
+                7L,
+                "reviewer@example.com",
+                "PENDING_APPROVAL",
+                null,
+                null,
+                null
+        ));
 
         LinkDto expected = new LinkDto(
                 101L,
@@ -155,7 +177,7 @@ class UpdateShortLinkCommandHandlerTest {
                 LocalDateTime.parse("2026-04-01T00:00:00")
         );
 
-        assertThat(actual).isSameAs(expected);
+        assertThat(actual).isEqualTo(expected.withPendingApproval(7001L, "https://example.com/new"));
         verify(governanceApprovalRequestService).requestLinkDestinationChangeApproval(
                 1L,
                 new ApprovalSubmissionPort.LinkDestinationChangeApprovalRequest(
@@ -217,6 +239,28 @@ class UpdateShortLinkCommandHandlerTest {
         );
         when(shortLinkRepository.findByTenantIdAndId(1L, 105L)).thenReturn(java.util.Optional.of(link));
         when(linkTagRepository.findTagNamesByLinkId(105L)).thenReturn(List.of());
+        when(approvalSubmissionPort.requestLinkDestinationChangeApproval(
+                eq(1L),
+                eq(new ApprovalSubmissionPort.LinkDestinationChangeApprovalRequest(
+                        105L,
+                        2001L,
+                        "https://example.com/old",
+                        "https://example.com/new",
+                        new ApprovalRequester(1L, 7L, "reviewer@example.com"),
+                        LocalDateTime.parse("2026-04-01T00:00:00")
+                ))
+        )).thenReturn(new com.linkforge.contract.governance.ApprovalRequestView(
+                7005L,
+                1L,
+                "PUBLIC_LINK_DESTINATION_CHANGE",
+                2001L,
+                7L,
+                "reviewer@example.com",
+                "PENDING_APPROVAL",
+                null,
+                null,
+                null
+        ));
         LinkDto expected = new LinkDto(
                 105L,
                 1L,
@@ -263,7 +307,7 @@ class UpdateShortLinkCommandHandlerTest {
                 LocalDateTime.parse("2026-04-01T00:00:00")
         );
 
-        assertThat(actual).isSameAs(expected);
+        assertThat(actual).isEqualTo(expected.withPendingApproval(7005L, "https://example.com/new"));
         verify(approvalSubmissionPort).requestLinkDestinationChangeApproval(
                 1L,
                 new ApprovalSubmissionPort.LinkDestinationChangeApprovalRequest(

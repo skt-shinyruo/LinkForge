@@ -8,6 +8,7 @@ import com.linkforge.contract.shortlink.ShortLinkErrorCode;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.tx.PostCommitHookPort;
 import com.linkforge.shortlink.application.LinkDto;
+import com.linkforge.shortlink.application.ShortLinkUserAccess;
 import com.linkforge.shortlink.application.UpdateLinkRequest;
 import com.linkforge.shortlink.application.eventing.ShortLinkDomainEventDispatcher;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
@@ -73,6 +74,7 @@ public class UpdateShortLinkCommandHandler {
         }
         ShortLink link = shortLinkRepository.findByTenantIdAndId(tenantId, linkId)
                 .orElseThrow(() -> new BusinessException(ShortLinkErrorCode.LINK_NOT_FOUND));
+        ShortLinkUserAccess.requireCanAccess(actor, link);
 
         try {
             link.requireNotArchivedForUpdate();
@@ -98,7 +100,7 @@ public class UpdateShortLinkCommandHandler {
             if (hasOtherEffectiveChangesForApproval(link, req, existingTags)) {
                 throw new BusinessException(ErrorCode.BAD_REQUEST, "请先单独提交目标地址变更，再保存其他修改");
             }
-            approvalSubmissionPort.requestLinkDestinationChangeApproval(
+            var approval = approvalSubmissionPort.requestLinkDestinationChangeApproval(
                     tenantId,
                     new ApprovalSubmissionPort.LinkDestinationChangeApprovalRequest(
                             linkId,
@@ -109,7 +111,8 @@ public class UpdateShortLinkCommandHandler {
                             requestedAt
                     )
             );
-            return dtoMapper.toDto(link, existingTags);
+            return dtoMapper.toDto(link, existingTags)
+                    .withPendingApproval(approval == null ? null : approval.id(), requestedOriginalUrl);
         }
 
         if (req.lifecycleState() != null) {

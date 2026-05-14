@@ -88,7 +88,7 @@ public class ShortLinkApplicationService implements
     public PageResult<LinkDto> browseForUser(UserActor actor, BrowseLinksRequest request) {
         return search(
                 actor.tenantId(),
-                actorScopeResolver.resolveBrowseForUser(actor, request),
+                ShortLinkUserAccess.scopeBrowse(actor, actorScopeResolver.resolveBrowseForUser(actor, request)),
                 actorScopeResolver.pageQuery(request)
         );
     }
@@ -144,6 +144,11 @@ public class ShortLinkApplicationService implements
     @Override
     public LinkDto detail(long tenantId, long linkId) {
         return detailHandler.handle(tenantId, linkId);
+    }
+
+    @Override
+    public LinkDto detailForUser(UserActor actor, long linkId) {
+        return detailHandler.handle(actor, linkId);
     }
 
     @Override

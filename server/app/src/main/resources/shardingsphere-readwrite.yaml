@@ -28,6 +28,10 @@ rules:
     loadBalancers:
       random:
         type: RANDOM
+  - !SINGLE
+    tables:
+      - "*.*"
+    defaultDataSource: readwrite_ds
 
 props:
   sql-show: $${SHARDINGSPHERE_SQL_SHOW::false}

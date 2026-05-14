@@ -19,6 +19,7 @@ import com.linkforge.shortlink.application.query.GetShortLinkDetailQueryHandler;
 import com.linkforge.shortlink.application.query.ListTagsQueryHandler;
 import com.linkforge.shortlink.application.query.SearchShortLinksQueryHandler;
 import com.linkforge.shortlink.application.query.ShortLinkSearchQuery;
+import com.linkforge.shortlink.domain.CreatedByType;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -95,6 +96,37 @@ class ShortLinkApplicationServiceTest {
         ArgumentCaptor<ShortLinkSearchQuery> queryCaptor = ArgumentCaptor.forClass(ShortLinkSearchQuery.class);
         verify(searchHandler).handle(eq(1L), queryCaptor.capture(), any());
         assertThat(queryCaptor.getValue()).isEqualTo(new ShortLinkSearchQuery(false, true, "launch", "marketing", 2001L));
+    }
+
+    @Test
+    void browseForUser_shouldScopeRegularUserToOwnUnscopedLinks() {
+        SearchShortLinksQueryHandler searchHandler = mock(SearchShortLinksQueryHandler.class);
+        ShortLinkApplicationService service = newService(
+                mock(ApplicationScopePort.class),
+                searchHandler,
+                mock(CreateShortLinkCommandHandler.class)
+        );
+        PageResult<LinkDto> expected = new PageResult<>(List.of(), 0L, 0, 20);
+        when(searchHandler.handle(eq(1L), any(), any())).thenReturn(expected);
+
+        PageResult<LinkDto> result = service.browseForUser(
+                new UserActor(1L, 99L, "user@example.com", Set.of("USER")),
+                new BrowseLinksRequest(false, true, "launch", null, null, null, 0, 20, 100)
+        );
+
+        assertThat(result).isSameAs(expected);
+        ArgumentCaptor<ShortLinkSearchQuery> queryCaptor = ArgumentCaptor.forClass(ShortLinkSearchQuery.class);
+        verify(searchHandler).handle(eq(1L), queryCaptor.capture(), any());
+        assertThat(queryCaptor.getValue()).isEqualTo(new ShortLinkSearchQuery(
+                false,
+                true,
+                "launch",
+                null,
+                null,
+                99L,
+                CreatedByType.USER,
+                true
+        ));
     }
 
     @Test

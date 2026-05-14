@@ -104,9 +104,13 @@ export function useLinkMutations(args: {
         throw new Error("原始链接不能为空");
       }
 
-      await updateLink(editingId.value, buildEditPayload(editForm));
+      const updated = await updateLink(editingId.value, buildEditPayload(editForm));
       cancelEdit();
       await load();
+      if (updated.pendingApproval) {
+        const approvalId = updated.approvalRequestId == null ? "" : `（#${updated.approvalRequestId}）`;
+        setError(`目标地址变更已提交审批${approvalId}，审批通过后生效`);
+      }
     } catch (caught) {
       setError(getErrorMessage(caught, "更新失败"));
     }

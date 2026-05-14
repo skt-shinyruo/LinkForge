@@ -58,6 +58,10 @@ class ShardingSphereDatasourceConfigTest {
                 .contains("readDataSourceNames:")
                 .contains("- read_ds_0")
                 .contains("transactionalReadQueryStrategy: PRIMARY")
+                .contains("!SINGLE")
+                .contains("tables:")
+                .contains("- \"*.*\"")
+                .contains("defaultDataSource: readwrite_ds")
                 .contains("type: RANDOM")
                 .contains("sql-show: $${SHARDINGSPHERE_SQL_SHOW::false}");
     }
@@ -75,6 +79,7 @@ class ShardingSphereDatasourceConfigTest {
                 .contains("<artifactId>shardingsphere-standalone-mode-repository-memory</artifactId>")
                 .contains("<artifactId>shardingsphere-authority-simple</artifactId>")
                 .contains("<artifactId>shardingsphere-readwrite-splitting-core</artifactId>")
+                .contains("<artifactId>shardingsphere-single-core</artifactId>")
                 .contains("<artifactId>commons-lang3</artifactId>")
                 .contains("<version>${commons-lang3.version}</version>");
     }

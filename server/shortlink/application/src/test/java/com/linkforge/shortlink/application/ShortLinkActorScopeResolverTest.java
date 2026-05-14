@@ -78,7 +78,7 @@ class ShortLinkActorScopeResolverTest {
     }
 
     @Test
-    void resolveCreateForApiKey_shouldRequireApplicationWhenActorIsUnscoped() {
+    void resolveCreateForApiKey_shouldRejectUnscopedApiKeyActor() {
         ShortLinkActorScopeResolver resolver = new ShortLinkActorScopeResolver(mock(ApplicationScopePort.class));
         ApiKeyActor actor = new ApiKeyActor(1L, 55L, null);
 
@@ -87,7 +87,7 @@ class ShortLinkActorScopeResolverTest {
                 new ScopedCreateLinkRequest(createRequest(null), null)
         ))
                 .isInstanceOf(BusinessException.class)
-                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.BAD_REQUEST));
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN));
     }
 
     @Test
@@ -103,6 +103,19 @@ class ShortLinkActorScopeResolverTest {
 
         assertThat(query.applicationId()).isEqualTo(2001L);
         verifyNoInteractions(applicationScopePort);
+    }
+
+    @Test
+    void resolveBrowseForApiKey_shouldRejectUnscopedApiKeyActor() {
+        ShortLinkActorScopeResolver resolver = new ShortLinkActorScopeResolver(mock(ApplicationScopePort.class));
+        ApiKeyActor actor = new ApiKeyActor(1L, 55L, null);
+
+        assertThatThrownBy(() -> resolver.resolveBrowseForApiKey(
+                actor,
+                new BrowseLinksRequest(false, true, null, null, null, null, 0, 20, 100)
+        ))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN));
     }
 
     @Test

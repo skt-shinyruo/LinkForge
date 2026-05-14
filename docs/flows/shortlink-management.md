@@ -134,7 +134,7 @@ OpenAPI 入口见 [OpenAPI 与 API Key 链路](openapi-api-key.md)。
 - actor 租户必须匹配短链租户。
 - 只允许单独提交目标地址变更，不能夹带标签、启用状态、过期时间等其他有效修改。
 - 通过 `ApprovalSubmissionPort.requestLinkDestinationChangeApproval()` 提交 `PUBLIC_LINK_DESTINATION_CHANGE`。
-- 当前短链不会立即修改，接口返回旧 LinkDto。
+- 当前短链不会立即修改，接口返回当前生效的 LinkDto，并附带 `pendingApproval`、`approvalRequestId` 和 `requestedOriginalUrl`。
 
 审批执行见 [审批与审计链路](governance-approval-audit.md)。
 
@@ -174,7 +174,7 @@ OpenAPI 入口见 [OpenAPI 与 API Key 链路](openapi-api-key.md)。
   - 用户普通路径不自动进入应用范围；如 body 带应用信息，需要管理员权限。
   - 用户应用路径要求 path applicationId 和 body applicationId 一致。
   - API Key 绑定应用时只能访问绑定应用。
-  - API Key 未绑定应用时，应用级操作必须显式提供 applicationId。
+  - API Key 未绑定应用时会被拒绝，不再允许通过路径或 body 临时指定应用范围。
 - `server/shortlink/application/src/main/java/com/linkforge/shortlink/application/command/CreateShortLinkCommandHandler.java`
   - 校验应用/域名成对出现。
   - 调 `ApplicationScopePort.requireApplicationAndDomainAuthorized()`。

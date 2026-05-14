@@ -2,7 +2,9 @@ package com.linkforge.shortlink.application.query;
 
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.shortlink.ShortLinkErrorCode;
+import com.linkforge.foundation.context.UserActor;
 import com.linkforge.shortlink.application.LinkDto;
+import com.linkforge.shortlink.application.ShortLinkUserAccess;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
 import com.linkforge.shortlink.application.port.ShortLinkRepository;
@@ -31,6 +33,14 @@ public class GetShortLinkDetailQueryHandler {
     public LinkDto handle(long tenantId, long linkId) {
         ShortLink link = shortLinkRepository.findByTenantIdAndId(tenantId, linkId)
                 .orElseThrow(() -> new BusinessException(ShortLinkErrorCode.LINK_NOT_FOUND));
+        List<String> tags = linkTagRepository.findTagNamesByLinkId(linkId);
+        return dtoMapper.toDto(link, tags);
+    }
+
+    public LinkDto handle(UserActor actor, long linkId) {
+        ShortLink link = shortLinkRepository.findByTenantIdAndId(actor.tenantId(), linkId)
+                .orElseThrow(() -> new BusinessException(ShortLinkErrorCode.LINK_NOT_FOUND));
+        ShortLinkUserAccess.requireCanAccess(actor, link);
         List<String> tags = linkTagRepository.findTagNamesByLinkId(linkId);
         return dtoMapper.toDto(link, tags);
     }

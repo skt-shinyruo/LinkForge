@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.util.Optional;
 import java.util.Set;
@@ -25,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
 class ApplicationProvisioningServiceTest {
@@ -64,6 +66,36 @@ class ApplicationProvisioningServiceTest {
     }
 
     @Test
+    void createApplication_shouldTranslateDuplicateApplicationKey() {
+        ApplicationRepository applicationRepository = mock(ApplicationRepository.class);
+        ApplicationProvisioningService service = newService(applicationRepository, mock(DomainRepository.class));
+        doThrow(new DataIntegrityViolationException("uk_applications_tenant_key"))
+                .when(applicationRepository)
+                .insert(org.mockito.ArgumentMatchers.any(Application.class));
+
+        assertThatThrownBy(() -> service.createApplication(
+                1L,
+                actor(),
+                new CreateApplicationCommand("api", "API")
+        ))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("applicationKey 已存在");
+    }
+
+    @Test
+    void createTenantSharedDomain_shouldTranslateDuplicateHostname() {
+        DomainRepository domainRepository = mock(DomainRepository.class);
+        ApplicationProvisioningService service = newService(domainRepository);
+        doThrow(new DataIntegrityViolationException("uk_domains_hostname"))
+                .when(domainRepository)
+                .insert(org.mockito.ArgumentMatchers.any(Domain.class));
+
+        assertThatThrownBy(() -> service.createTenantSharedDomain(1L, actor(), "go.example.com"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("域名已存在");
+    }
+
+    @Test
     void authorizeDomain_shouldRejectInactiveTenantSharedDomain() {
         ApplicationRepository applicationRepository = mock(ApplicationRepository.class);
         DomainRepository domainRepository = mock(DomainRepository.class);
@@ -86,6 +118,20 @@ class ApplicationProvisioningServiceTest {
         assertThatThrownBy(() -> service.authorizeDomain(1L, actor(), 2001L, 3001L))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("域名未启用");
+        verify(domainRepository, never()).authorizeApplicationUse(2001L, 3001L);
+    }
+
+    @Test
+    void authorizeDomain_shouldRejectDisabledApplication() {
+        ApplicationRepository applicationRepository = mock(ApplicationRepository.class);
+        DomainRepository domainRepository = mock(DomainRepository.class);
+        ApplicationProvisioningService service = newService(applicationRepository, domainRepository);
+        when(applicationRepository.findByTenantIdAndId(1L, 2001L))
+                .thenReturn(Optional.of(new Application(2001L, 1L, "api", "API", "DISABLED", null, null)));
+
+        assertThatThrownBy(() -> service.authorizeDomain(1L, actor(), 2001L, 3001L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("应用未启用");
         verify(domainRepository, never()).authorizeApplicationUse(2001L, 3001L);
     }
 

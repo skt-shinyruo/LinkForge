@@ -89,8 +89,8 @@ OpenAPI 链路让内部系统通过 API Key 创建和查询短链。它和控制
 - API Key 认证成功后只验证租户状态；用户状态不参与，因为 API Key 表自身管理启用/禁用。
 - API Key 的 `applicationId` 不放入 `AuthPrincipal`，而是放入 `Authentication.details`。
 - 控制器用 `PrincipalActorMapper.requireApiKey()` 把 principal + details 转成 `ApiKeyActor`。
-- 绑定应用的 API Key 只能访问该应用。
-- 未绑定应用的 API Key 创建应用级短链时，必须通过路径或 body 明确 applicationId。
+- API Key 必须绑定应用，且只能访问该应用。
+- 历史遗留的未绑定 API Key 在认证阶段视为无效，不再允许通过路径或 body 临时指定应用范围。
 - 禁用的 API Key 会写短 TTL 认证缓存，重新启用或轮换后在事务提交后驱逐缓存。
 - `lastUsedAt` 更新带节流，优先用 Redis token 控制写库频率，避免每次 OpenAPI 请求都更新数据库。
 

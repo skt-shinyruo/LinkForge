@@ -39,6 +39,9 @@ export type LinkDto = {
   queryForwardAllowlist?: string[];
   tags?: string[];
   createdAt?: string | null;
+  pendingApproval?: boolean;
+  approvalRequestId?: number | null;
+  requestedOriginalUrl?: string | null;
 };
 
 export type PageResponse<T> = {

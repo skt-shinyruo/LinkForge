@@ -91,7 +91,7 @@ SPA 同时暴露原有短链页面和自助控制平面控制台：
 
 - 一个后端运行时（`server/app`）
 - 一个前端应用（`web`）
-- MySQL 主库/从库、Redis 等支撑基础设施
+- MySQL primary/replica（`mysql-primary`/`mysql-replica`）、Redis 等支撑基础设施
 
 后端使用 Apache ShardingSphere-JDBC 作为逻辑应用数据源。`readwrite_ds` 把写入路由到 `write_ds`，把符合条件的非事务读取路由到 `read_ds_0`；事务内读取通过 `transactionalReadQueryStrategy: PRIMARY` 保持走主库。Flyway 显式绑定主库 MySQL 连接，不通过逻辑读写分离数据源执行迁移。
 

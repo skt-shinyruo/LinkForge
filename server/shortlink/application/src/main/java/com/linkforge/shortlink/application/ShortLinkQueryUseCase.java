@@ -15,4 +15,6 @@ public interface ShortLinkQueryUseCase {
     PageResult<LinkDto> search(long tenantId, ShortLinkSearchQuery query, PageQuery pageQuery);
 
     LinkDto detail(long tenantId, long linkId);
+
+    LinkDto detailForUser(UserActor actor, long linkId);
 }

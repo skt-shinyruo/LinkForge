@@ -2,7 +2,10 @@
 # - build stage: Maven + JDK17
 # - runtime stage: JRE17
 
-FROM maven:3.9.9-eclipse-temurin-17 AS build
+ARG MAVEN_IMAGE=maven:3.9.9-eclipse-temurin-17
+ARG RUNTIME_IMAGE=eclipse-temurin:17-jre
+
+FROM ${MAVEN_IMAGE} AS build
 WORKDIR /app
 
 # Copy Maven reactor modules (keep it explicit for better layer caching)
@@ -16,12 +19,13 @@ COPY analytics /app/analytics
 COPY platform /app/platform
 COPY governance /app/governance
 COPY app /app/app
+COPY integration-tests /app/integration-tests
 
 # Build executable jar from the Spring Boot module only
 RUN mvn -q -DskipTests -pl app -am package \
  && cp app/target/linkforge-server-*.jar /app/app.jar
 
-FROM eclipse-temurin:17-jre
+FROM ${RUNTIME_IMAGE}
 WORKDIR /app
 
 RUN apt-get update \

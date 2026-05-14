@@ -135,9 +135,9 @@ public class ShortLinkController {
 
     @GetMapping("/links/{id}")
     public ApiResponse<ShortLinkHttpResponse> detail(@PathVariable("id") long id) {
-        AuthPrincipal p = AuthContext.requirePrincipal();
+        UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
         return ApiResponse.ok(
-                ShortLinkHttpMapper.toLinkResponse(shortLinkQueryUseCase.detail(p.getTenantId(), id)),
+                ShortLinkHttpMapper.toLinkResponse(shortLinkQueryUseCase.detailForUser(actor, id)),
                 RequestId.get()
         );
     }

@@ -27,6 +27,8 @@ class DeployReadwriteTopologyTest {
                 .contains("DB_READ_URL: jdbc:mysql://mysql-replica:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true")
                 .contains("DB_WRITE_USERNAME: ${MYSQL_API_USER:-linkforge_api}")
                 .contains("DB_READ_USERNAME: ${MYSQL_READ_USER:-linkforge_read}")
+                .contains("ID_WORKER_ID: ${ID_WORKER_ID:-2}")
+                .contains("ID_DATACENTER_ID: ${ID_DATACENTER_ID:-3}")
                 .contains("mysql-primary:")
                 .contains("condition: service_healthy")
                 .contains("mysql-replica:")
@@ -54,6 +56,8 @@ class DeployReadwriteTopologyTest {
                 .contains("MYSQL_READ_PASSWORD=linkforge_read")
                 .contains("MYSQL_REPLICATION_USER=linkforge_repl")
                 .contains("MYSQL_REPLICATION_PASSWORD=linkforge_repl")
+                .contains("ID_WORKER_ID=2")
+                .contains("ID_DATACENTER_ID=3")
                 .contains("LINKFORGE_HTTP_BIND=127.0.0.1")
                 .contains("LINKFORGE_HTTP_PORT=18080")
                 .contains("APP_BASE_URL=http://localhost:18080");
@@ -93,6 +97,7 @@ class DeployReadwriteTopologyTest {
                 .contains("COPY analytics /app/analytics")
                 .contains("COPY platform /app/platform")
                 .contains("COPY governance /app/governance")
+                .contains("COPY integration-tests /app/integration-tests")
                 .contains("COPY app /app/app");
     }
 

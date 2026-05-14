@@ -147,10 +147,7 @@ public class ShortLinkActorScopeResolver {
             }
             return principalApplicationId;
         }
-        if (requestedApplicationId == null && applicationRequired) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "applicationId 不能为空");
-        }
-        return requestedApplicationId;
+        throw new BusinessException(ErrorCode.FORBIDDEN, "API Key 未绑定应用");
     }
 
     private static CreateLinkRequest requireCreateRequest(

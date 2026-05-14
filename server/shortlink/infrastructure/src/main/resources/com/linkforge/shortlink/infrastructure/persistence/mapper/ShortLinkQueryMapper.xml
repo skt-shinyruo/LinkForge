@@ -227,6 +227,18 @@
             <if test="applicationId != null">
                 AND application_id = #{applicationId}
             </if>
+
+            <if test="unscopedOnly">
+                AND application_id IS NULL
+            </if>
+
+            <if test="createdBy != null">
+                AND created_by = #{createdBy}
+            </if>
+
+            <if test="createdByType != null and createdByType != ''">
+                AND created_by_type = #{createdByType}
+            </if>
         </where>
     </sql>
 

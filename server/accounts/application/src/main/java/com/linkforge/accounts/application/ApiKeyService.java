@@ -124,6 +124,9 @@ public class ApiKeyService implements ApiKeyAuthenticator {
         if (!passwordHasher.matches(parsed.secret, apiKeyRecord.keyHash())) {
             throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_INVALID);
         }
+        if (apiKeyRecord.applicationId() == null) {
+            throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_INVALID);
+        }
 
         tryUpdateLastUsedAtThrottled(parsed.id, apiKeyRecord.lastUsedAt(), true);
 

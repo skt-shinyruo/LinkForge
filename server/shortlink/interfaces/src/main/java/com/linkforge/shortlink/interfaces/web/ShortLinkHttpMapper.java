@@ -76,7 +76,10 @@ public final class ShortLinkHttpMapper {
                 dto.queryForwardMode(),
                 dto.queryForwardAllowlist(),
                 dto.tags(),
-                dto.createdAt()
+                dto.createdAt(),
+                dto.pendingApproval(),
+                dto.approvalRequestId(),
+                dto.requestedOriginalUrl()
         );
     }
 

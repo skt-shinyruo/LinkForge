@@ -49,4 +49,38 @@ class PlatformControlPlaneServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("域名未启用");
     }
+
+    @Test
+    void requireApplicationAndDomainAuthorized_shouldRejectDisabledApplication() {
+        ApplicationRepository applicationRepository = mock(ApplicationRepository.class);
+        PlatformControlPlaneService service = new PlatformControlPlaneService(
+                mock(ApplicationProvisioningService.class),
+                applicationRepository,
+                mock(ApplicationQuotaRepository.class),
+                mock(DomainRepository.class)
+        );
+        when(applicationRepository.findByTenantIdAndId(1L, 2001L))
+                .thenReturn(Optional.of(new Application(2001L, 1L, "api", "API", "DISABLED", null, null)));
+
+        assertThatThrownBy(() -> service.requireApplicationAndDomainAuthorized(1L, 2001L, 3001L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("应用未启用");
+    }
+
+    @Test
+    void requireApplicationExists_shouldRejectDisabledApplication() {
+        ApplicationRepository applicationRepository = mock(ApplicationRepository.class);
+        PlatformControlPlaneService service = new PlatformControlPlaneService(
+                mock(ApplicationProvisioningService.class),
+                applicationRepository,
+                mock(ApplicationQuotaRepository.class),
+                mock(DomainRepository.class)
+        );
+        when(applicationRepository.findByTenantIdAndId(1L, 2001L))
+                .thenReturn(Optional.of(new Application(2001L, 1L, "api", "API", "DISABLED", null, null)));
+
+        assertThatThrownBy(() -> service.requireApplicationExists(1L, 2001L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("应用未启用");
+    }
 }

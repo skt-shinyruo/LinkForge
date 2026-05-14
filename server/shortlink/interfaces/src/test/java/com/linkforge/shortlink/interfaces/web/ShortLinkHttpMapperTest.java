@@ -130,7 +130,10 @@ class ShortLinkHttpMapperTest {
                 "ALLOWLIST",
                 List.of("utm_*"),
                 List.of("marketing"),
-                Instant.parse("2026-03-18T09:10:11Z")
+                Instant.parse("2026-03-18T09:10:11Z"),
+                true,
+                7001L,
+                "https://example.com/pending"
         );
 
         assertThat(ShortLinkHttpMapper.toLinkResponse(link)).isEqualTo(new ShortLinkHttpResponse(
@@ -152,7 +155,10 @@ class ShortLinkHttpMapperTest {
                 "ALLOWLIST",
                 List.of("utm_*"),
                 List.of("marketing"),
-                Instant.parse("2026-03-18T09:10:11Z")
+                Instant.parse("2026-03-18T09:10:11Z"),
+                true,
+                7001L,
+                "https://example.com/pending"
         ));
     }
 

@@ -239,8 +239,8 @@ HTTP 入口：
 
 - 普通用户不带路径 applicationId 时，只能创建非应用级短链；如果请求体带 `applicationId` 或 `domainId`，必须是租户管理员。
 - 用户路径带 applicationId 时，必须是租户管理员，并要求 body 中 applicationId 与路径一致。
-- API Key 如果自身绑定 `applicationId`，只能访问该应用。
-- API Key 未绑定应用时，创建应用级短链必须在路径或 body 中提供 applicationId。
+- API Key 必须绑定 `applicationId`，认证成功后只能访问该应用。
+- 历史遗留的未绑定 API Key 在认证阶段视为无效，不再允许通过路径或 body 临时指定应用范围。
 
 `CreateShortLinkCommandHandler.handle()` 流程：
 
@@ -267,6 +267,7 @@ HTTP 入口：
 - 归档短链禁止更新。
 - 应用级短链修改 `originalUrl` 时，需要提交 Governance 审批；此时必须由有效 `UserActor` 发起。
 - 如果目标地址变更需要审批，则本次请求不能夹带其他有效变更；否则返回“请先单独提交目标地址变更”。
+- 目标地址审批请求提交成功后，返回的短链仍是当前生效地址，同时带 `pendingApproval`、`approvalRequestId` 和 `requestedOriginalUrl` 供调用方提示“审批通过后生效”。
 - 不需要审批时，按字段执行局部更新：生命周期、目标地址、备注、启用状态、过期时间、跳转状态码、预览、不可用落地页、query 转发模式、allowlist、标签。
 - `clearExpiresAt`、`clearRedirectStatusCode`、`clearQueryForwardMode` 是显式清空语义，且不能与对应新值同时传。
 - 更新使用乐观锁，失败返回 `LINK_STALE_WRITE`。
@@ -721,7 +722,7 @@ CSV 导入导出：
 2. `ApiKeyAuthenticationFilter` 调 Accounts 校验 key 格式、secret、状态。
 3. 认证成功后建立 `OPENAPI` principal 和 `ApiKeyAuthenticationDetails`。
 4. `OpenApiShortLinkController` 用 `PrincipalActorMapper.requireApiKey()` 生成 `ApiKeyActor`。
-5. `ShortLinkActorScopeResolver` 限制 API Key 只能访问其绑定应用，或要求显式应用上下文。
+5. `ShortLinkActorScopeResolver` 限制 API Key 只能访问其绑定应用；未绑定应用的历史 key 会被拒绝。
 6. 后续创建/查询复用 Shortlink application 用例。
 
 ### 跳转与统计

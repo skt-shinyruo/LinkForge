@@ -6,11 +6,13 @@ import com.linkforge.foundation.context.UserActor;
 import com.linkforge.platform.application.port.ApplicationRepository;
 import com.linkforge.platform.application.port.ApplicationQuotaRepository;
 import com.linkforge.platform.application.port.DomainRepository;
+import com.linkforge.platform.domain.Application;
 import com.linkforge.platform.domain.Domain;
 import com.linkforge.platform.domain.DomainAuthorizationException;
 import com.linkforge.platform.domain.DomainAuthorizationPolicy;
 import com.linkforge.platform.domain.DomainScope;
 import com.linkforge.platform.domain.ApplicationQuota;
+import com.linkforge.platform.domain.PlatformDefaults;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -64,8 +66,7 @@ public class PlatformControlPlaneService {
     }
 
     public void requireApplicationAndDomainAuthorized(long tenantId, long applicationId, long domainId) {
-        applicationRepository.findByTenantIdAndId(tenantId, applicationId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "应用不存在"));
+        requireActiveApplication(tenantId, applicationId);
         Domain domain = domainRepository.findByTenantIdAndId(tenantId, domainId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "域名不存在"));
 
@@ -89,8 +90,7 @@ public class PlatformControlPlaneService {
     }
 
     public void requireApplicationExists(long tenantId, long applicationId) {
-        applicationRepository.findByTenantIdAndId(tenantId, applicationId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "应用不存在"));
+        requireActiveApplication(tenantId, applicationId);
     }
 
     public List<ApplicationResult> listApplications(long tenantId) {
@@ -137,6 +137,15 @@ public class PlatformControlPlaneService {
     public Optional<ApplicationQuota> findApplicationQuota(long tenantId, long applicationId) {
         requireApplicationExists(tenantId, applicationId);
         return applicationQuotaRepository.findByApplicationId(applicationId);
+    }
+
+    private Application requireActiveApplication(long tenantId, long applicationId) {
+        Application application = applicationRepository.findByTenantIdAndId(tenantId, applicationId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "应用不存在"));
+        if (!PlatformDefaults.APPLICATION_STATUS_ACTIVE.equals(application.status())) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "应用未启用");
+        }
+        return application;
     }
 
     private static DomainResult toDomainResult(Domain domain) {

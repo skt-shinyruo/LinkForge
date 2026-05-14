@@ -194,6 +194,44 @@ class AnalyticsRedirectEventProjectorJobTest {
         verify(streamOps).acknowledge(eq(AnalyticsKeys.visitEventStreamKey()), eq("lf-visit-projector"), any(RecordId[].class));
     }
 
+    @Test
+    void project_shouldTreatWrappedBusyGroupExceptionAsExistingGroup() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        AnalyticsProperties properties = new AnalyticsProperties();
+        AnalyticsRedisAggregateWriter aggregateWriter = mock(AnalyticsRedisAggregateWriter.class);
+
+        @SuppressWarnings("unchecked")
+        StreamOperations<String, Object, Object> streamOps = mock(StreamOperations.class);
+        when(redis.opsForStream()).thenReturn(streamOps);
+        when(redis.hasKey(AnalyticsKeys.visitEventStreamKey())).thenReturn(true);
+        when(streamOps.createGroup(anyString(), any(ReadOffset.class), anyString()))
+                .thenThrow(new RuntimeException("Redis command failed", new RuntimeException("BUSYGROUP Consumer Group name already exists")));
+
+        MapRecord<String, Object, Object> record = visitRecord("1-0", Map.of(
+                "tenantId", "1",
+                "linkId", "10",
+                "visitorKey", "visitor-1"
+        ));
+        when(streamOps.read(any(org.springframework.data.redis.connection.stream.Consumer.class), any(StreamReadOptions.class), any(StreamOffset.class)))
+                .thenReturn((List) List.of(record), List.of());
+        when(streamOps.acknowledge(anyString(), anyString(), any(RecordId[].class))).thenReturn(1L);
+
+        AnalyticsRedirectEventProjectorJob job = new AnalyticsRedirectEventProjectorJob(
+                redis,
+                properties,
+                aggregateWriter
+        );
+
+        job.project();
+
+        verify(aggregateWriter).write(Map.of(
+                "tenantId", "1",
+                "linkId", "10",
+                "visitorKey", "visitor-1"
+        ));
+        verify(streamOps).acknowledge(eq(AnalyticsKeys.visitEventStreamKey()), eq("lf-visit-projector"), any(RecordId[].class));
+    }
+
     @SuppressWarnings({"rawtypes", "unchecked"})
     private static MapRecord<String, Object, Object> visitRecord(String id, Map<String, String> values) {
         MapRecord<String, Object, Object> record = mock(MapRecord.class);

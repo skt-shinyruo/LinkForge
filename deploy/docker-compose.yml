@@ -90,7 +90,7 @@ services:
       ANALYTICS_EVENTS_ENABLED: ${ANALYTICS_EVENTS_ENABLED:-false}
       ANALYTICS_EVENTS_SAMPLE_RATE: ${ANALYTICS_EVENTS_SAMPLE_RATE:-0.1}
       ANALYTICS_EVENTS_STREAM_MAX_LEN: ${ANALYTICS_EVENTS_STREAM_MAX_LEN:-200000}
-      APP_BASE_URL: ${APP_BASE_URL}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:18080}
       # 可信代理链（开箱即用）：docker compose + nginx 反代场景下，服务看到的 remoteAddr 通常是 web(Nginx) 容器 IP
       # 因此需要显式信任“内网代理网段”，才能采信 X-Real-IP / X-Forwarded-For，避免 UV/IP 统计失真
       EDGE_TRUSTED_PROXIES: ${EDGE_TRUSTED_PROXIES:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}

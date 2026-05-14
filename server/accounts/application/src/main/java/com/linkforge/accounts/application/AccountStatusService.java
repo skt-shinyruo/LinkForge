@@ -9,6 +9,7 @@ import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.security.AccountStatusVerifier;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 
@@ -37,6 +38,7 @@ public class AccountStatusService implements AccountStatusVerifier {
         this.statusCache = statusCache;
     }
 
+    @Transactional(readOnly = true)
     public void requireActiveTenant(long tenantId) {
         if (tenantId <= 0) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED);
@@ -64,10 +66,12 @@ public class AccountStatusService implements AccountStatusVerifier {
         statusCache.writeTenantStatus(tenantId, AccountsConstants.STATUS_ACTIVE, CACHE_TTL);
     }
 
+    @Transactional(readOnly = true)
     public void requireActiveUserAndTenant(long userId, long tenantId) {
         requireActiveUserAndTenant(userId, tenantId, SKIP_TOKEN_VERSION_CHECK);
     }
 
+    @Transactional(readOnly = true)
     public void requireActiveUserAndTenant(long userId, long tenantId, int tokenVersion) {
         if (userId <= 0 || tenantId <= 0) {
             throw unauthorized();

@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # LinkForge backend modular-monolith image
 # - build stage: Maven + JDK17
 # - runtime stage: JRE17
@@ -21,8 +22,10 @@ COPY governance /app/governance
 COPY app /app/app
 COPY integration-tests /app/integration-tests
 
-# Build executable jar from the Spring Boot module only
-RUN mvn -q -DskipTests -pl app -am package \
+# Build executable jar from the Spring Boot module only.
+# BuildKit cache keeps Maven artifacts across image rebuilds and reduces first-run network flakiness.
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn -q -DskipTests -pl app -am package \
  && cp app/target/linkforge-server-*.jar /app/app.jar
 
 FROM ${RUNTIME_IMAGE}

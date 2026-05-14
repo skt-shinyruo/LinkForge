@@ -12,6 +12,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -48,6 +49,16 @@ public class GlobalExceptionHandler {
         String msg = ex.getConstraintViolations().isEmpty()
                 ? ErrorCode.BAD_REQUEST.getDefaultMessage()
                 : ex.getConstraintViolations().iterator().next().getMessage();
+        ApiResponse<Void> body = ApiResponse.error(ErrorCode.BAD_REQUEST.getCode(), msg, RequestId.get());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMissingRequestParameter(MissingServletRequestParameterException ex) {
+        String parameterName = ex == null ? null : ex.getParameterName();
+        String msg = parameterName == null || parameterName.isBlank()
+                ? ErrorCode.BAD_REQUEST.getDefaultMessage()
+                : "缺少必填参数: " + parameterName;
         ApiResponse<Void> body = ApiResponse.error(ErrorCode.BAD_REQUEST.getCode(), msg, RequestId.get());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }

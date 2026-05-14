@@ -7,8 +7,10 @@ import com.linkforge.accounts.domain.AccountsConstants;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import org.junit.jupiter.api.Test;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
+import java.lang.reflect.Method;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -20,6 +22,22 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class AccountStatusServiceTest {
+
+    @Test
+    void accountStatusVerifierEntryPoints_shouldRunInTransactionSoReadwriteSplittingReadsPrimary() throws Exception {
+        Method tenantOnly = AccountStatusService.class.getMethod("requireActiveTenant", long.class);
+        Method userAndTenant = AccountStatusService.class.getMethod("requireActiveUserAndTenant", long.class, long.class);
+        Method userTenantAndTokenVersion = AccountStatusService.class.getMethod(
+                "requireActiveUserAndTenant",
+                long.class,
+                long.class,
+                int.class
+        );
+
+        assertThat(tenantOnly.getAnnotation(Transactional.class)).isNotNull();
+        assertThat(userAndTenant.getAnnotation(Transactional.class)).isNotNull();
+        assertThat(userTenantAndTokenVersion.getAnnotation(Transactional.class)).isNotNull();
+    }
 
     @Test
     void requireActiveUserAndTenant_shouldAcceptMatchingCachedAuthState_withoutFallingBackToStore() {

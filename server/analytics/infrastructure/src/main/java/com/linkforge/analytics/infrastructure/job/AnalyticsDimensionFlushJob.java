@@ -315,10 +315,10 @@ public class AnalyticsDimensionFlushJob {
             redis.opsForStream().createGroup(streamKey, ReadOffset.from("0-0"), GROUP);
             return true;
         } catch (Exception e) {
-            String msg = e.getMessage();
-            if (msg != null && msg.toLowerCase().contains("busygroup")) {
+            if (RedisStreamGroupErrors.isBusyGroup(e)) {
                 return true;
             }
+            String msg = e.getMessage();
             log.debug("create dim dirty stream group failed: streamKey={}, err={}", streamKey, msg);
             return false;
         }

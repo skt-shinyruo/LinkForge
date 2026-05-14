@@ -134,6 +134,7 @@ public class ApiKeyService implements ApiKeyAuthenticator {
     }
 
     @Override
+    @Transactional
     public ApiKeyAuthenticationResult authenticateApiKey(String apiKey) {
         try {
             ApiKeyAuthResult result = authenticate(apiKey);

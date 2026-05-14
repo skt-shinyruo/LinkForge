@@ -64,6 +64,14 @@ class DeployReadwriteTopologyTest {
     }
 
     @Test
+    void dockerCompose_shouldDefaultAppBaseUrlToPublishedGatewayPort() throws Exception {
+        String compose = Files.readString(Path.of("../../deploy/docker-compose.yml"));
+
+        assertThat(compose)
+                .contains("APP_BASE_URL: ${APP_BASE_URL:-http://localhost:18080}");
+    }
+
+    @Test
     void mysql_init_scripts_should_create_accounts_and_start_replication() throws Exception {
         String primary = Files.readString(Path.of("../../deploy/mysql/primary/init/01-create-users.sh"));
         String replica = Files.readString(Path.of("../../deploy/mysql/replica/init/01-start-replication.sh"));
@@ -99,6 +107,16 @@ class DeployReadwriteTopologyTest {
                 .contains("COPY governance /app/governance")
                 .contains("COPY integration-tests /app/integration-tests")
                 .contains("COPY app /app/app");
+    }
+
+    @Test
+    void serverDockerfile_shouldUseBuildKitMavenCacheForDependencyDownloads() throws Exception {
+        String dockerfile = Files.readString(Path.of("../Dockerfile"));
+
+        assertThat(dockerfile)
+                .contains("# syntax=docker/dockerfile:1.7")
+                .contains("RUN --mount=type=cache,target=/root/.m2")
+                .contains("mvn -q -DskipTests -pl app -am package");
     }
 
     @Test

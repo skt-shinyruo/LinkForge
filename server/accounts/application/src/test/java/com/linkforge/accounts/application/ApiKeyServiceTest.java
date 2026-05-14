@@ -14,6 +14,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.lang.reflect.Constructor;
 import java.time.Clock;
@@ -270,6 +271,17 @@ class ApiKeyServiceTest {
         assertThat(r.applicationId()).isEqualTo(2001L);
 
         verify(authCache).read(123L);
+    }
+
+    @Test
+    void authenticateApiKey_shouldRunInTransactionSoReadwriteSplittingReadsPrimary() throws Exception {
+        Transactional transactional = ApiKeyService.class
+                .getMethod("authenticateApiKey", String.class)
+                .getAnnotation(Transactional.class);
+
+        assertThat(transactional)
+                .as("OpenAPI API-key authentication must be transactional so ShardingSphere routes the credential read to primary")
+                .isNotNull();
     }
 
     @Test

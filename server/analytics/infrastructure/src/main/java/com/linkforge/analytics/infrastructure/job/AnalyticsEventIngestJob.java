@@ -295,10 +295,10 @@ public class AnalyticsEventIngestJob {
             redis.opsForStream().createGroup(streamKey, ReadOffset.from("0-0"), GROUP);
             return true;
         } catch (Exception e) {
-            String msg = e.getMessage();
-            if (msg != null && msg.toLowerCase().contains("busygroup")) {
+            if (RedisStreamGroupErrors.isBusyGroup(e)) {
                 return true;
             }
+            String msg = e.getMessage();
             // key 不存在或 Redis 不支持 stream 等场景：跳过本轮
             log.debug("create group failed: streamKey={}, group={}, err={}", streamKey, GROUP, msg);
             return false;

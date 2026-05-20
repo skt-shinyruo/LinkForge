@@ -1,6 +1,12 @@
+import {
+  API_ENDPOINTS,
+  ensureApiSuccess,
+  parseApiResponse,
+  requireApiData,
+  withQuery,
+} from "./apiContract";
 import { apiFetch, authFetch } from "./http";
 import type {
-  ApiResponse,
   CreateLinkRequest,
   LinkDto,
   LinkExportQuery,
@@ -11,59 +17,23 @@ import type {
   UpdateLinkRequest,
 } from "./types";
 
-function ensureApiSuccess<T>(response: ApiResponse<T>, fallbackMessage: string): T | undefined {
-  if (response.code !== 0) {
-    throw new Error(response.message || fallbackMessage);
-  }
-  return response.data;
-}
-
-function requireApiData<T>(response: ApiResponse<T>, fallbackMessage: string): T {
-  const data = ensureApiSuccess(response, fallbackMessage);
-  if (data === undefined) {
-    throw new Error(fallbackMessage);
-  }
-  return data;
-}
-
-function buildQueryString(
-  values: Record<string, string | number | boolean | undefined>,
-): string {
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(values)) {
-    if (value !== undefined && value !== "") {
-      params.set(key, String(value));
-    }
-  }
-  return params.toString();
-}
-
-async function parseApiResponse<T>(response: Response): Promise<ApiResponse<T>> {
-  const text = await response.text();
-  if (!text) {
-    return {} as ApiResponse<T>;
-  }
-  return JSON.parse(text) as ApiResponse<T>;
-}
-
 export async function listLinks(
   query: LinkListQuery = {},
 ): Promise<PageResponse<LinkDto>> {
   const page = query.page ?? 0;
   const size = query.size ?? 50;
-  const queryString = buildQueryString({
-    page,
-    size,
-    archived: query.archived,
-    enabled: query.enabled,
-    keyword: query.keyword,
-    tag: query.tag,
-  });
   const basePath = query.applicationId
-    ? `/api/v1/applications/${query.applicationId}/links`
-    : "/api/v1/links";
+    ? API_ENDPOINTS.links.collection(query.applicationId)
+    : API_ENDPOINTS.links.collection();
   const response = await apiFetch<PageResponse<LinkDto>>(
-    `${basePath}${queryString ? `?${queryString}` : ""}`,
+    withQuery(basePath, {
+      page,
+      size,
+      archived: query.archived,
+      enabled: query.enabled,
+      keyword: query.keyword,
+      tag: query.tag,
+    }),
   );
   return (
     ensureApiSuccess(response, "加载短链失败") ?? {
@@ -77,8 +47,8 @@ export async function listLinks(
 
 export async function createLink(request: CreateLinkRequest): Promise<LinkDto> {
   const path = request.applicationId
-    ? `/api/v1/applications/${request.applicationId}/links`
-    : "/api/v1/links";
+    ? API_ENDPOINTS.links.collection(request.applicationId)
+    : API_ENDPOINTS.links.collection();
   const response = await apiFetch<LinkDto>(path, {
     method: "POST",
     body: JSON.stringify(request),
@@ -90,7 +60,7 @@ export async function updateLink(
   linkId: number,
   request: UpdateLinkRequest,
 ): Promise<LinkDto> {
-  const response = await apiFetch<LinkDto>(`/api/v1/links/${linkId}`, {
+  const response = await apiFetch<LinkDto>(API_ENDPOINTS.links.item(linkId), {
     method: "PUT",
     body: JSON.stringify(request),
   });
@@ -98,21 +68,21 @@ export async function updateLink(
 }
 
 export async function archiveLink(linkId: number): Promise<LinkDto> {
-  const response = await apiFetch<LinkDto>(`/api/v1/links/${linkId}/archive`, {
+  const response = await apiFetch<LinkDto>(API_ENDPOINTS.links.archive(linkId), {
     method: "POST",
   });
   return requireApiData(response, "归档失败");
 }
 
 export async function restoreLink(linkId: number): Promise<LinkDto> {
-  const response = await apiFetch<LinkDto>(`/api/v1/links/${linkId}/restore`, {
+  const response = await apiFetch<LinkDto>(API_ENDPOINTS.links.restore(linkId), {
     method: "POST",
   });
   return requireApiData(response, "恢复失败");
 }
 
 export async function deleteLink(linkId: number): Promise<void> {
-  const response = await apiFetch<void>(`/api/v1/links/${linkId}`, {
+  const response = await apiFetch<void>(API_ENDPOINTS.links.item(linkId), {
     method: "DELETE",
   });
   ensureApiSuccess(response, "删除失败");
@@ -122,19 +92,19 @@ export async function importLinksCsv(
   file: File,
   query: LinkImportQuery = {},
 ): Promise<LinkImportResult> {
-  const scoped = query.applicationId != null;
-  if (scoped && query.domainId == null) {
+  const applicationId = query.applicationId;
+  if (applicationId != null && query.domainId == null) {
     throw new Error("请选择应用域名");
   }
 
   const formData = new FormData();
   formData.append("file", file);
 
-  const path = scoped
-    ? `/api/v1/applications/${query.applicationId}/links/import?${buildQueryString({
+  const path = applicationId != null
+    ? withQuery(API_ENDPOINTS.links.importCsv(applicationId), {
         domainId: query.domainId,
-      })}`
-    : "/api/v1/links/import";
+      })
+    : API_ENDPOINTS.links.importCsv();
 
   const response = await authFetch(path, {
     method: "POST",
@@ -152,18 +122,19 @@ export async function importLinksCsv(
 export async function exportLinksCsv(query: LinkExportQuery = {}): Promise<Blob> {
   const page = query.page ?? 0;
   const size = query.size ?? 1000;
-  const queryString = buildQueryString({
-    page,
-    size,
-    archived: query.archived,
-    enabled: query.enabled,
-    keyword: query.keyword,
-    tag: query.tag,
-  });
   const basePath = query.applicationId
-    ? `/api/v1/applications/${query.applicationId}/links/export`
-    : "/api/v1/links/export";
-  const response = await authFetch(`${basePath}${queryString ? `?${queryString}` : ""}`);
+    ? API_ENDPOINTS.links.exportCsv(query.applicationId)
+    : API_ENDPOINTS.links.exportCsv();
+  const response = await authFetch(
+    withQuery(basePath, {
+      page,
+      size,
+      archived: query.archived,
+      enabled: query.enabled,
+      keyword: query.keyword,
+      tag: query.tag,
+    }),
+  );
 
   if (!response.ok) {
     throw new Error(`导出失败（HTTP ${response.status}）`);

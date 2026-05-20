@@ -6,6 +6,7 @@ import com.linkforge.contract.governance.ApprovalPayloadCodec;
 import com.linkforge.contract.governance.LinkDestinationChangeApprovalPayload;
 import com.linkforge.contract.governance.SensitiveOperation;
 import com.linkforge.shortlink.application.eventing.ShortLinkDomainEventDispatcher;
+import com.linkforge.shortlink.application.port.RedirectCacheInvalidationOutboxPort;
 import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
 import com.linkforge.shortlink.application.port.ShortLinkEventPublisher;
 import com.linkforge.shortlink.application.port.ShortLinkRepository;
@@ -51,6 +52,7 @@ class LinkDestinationChangeApprovalExecutorTest {
                 shortLinkRepository,
                 domainEventDispatcher,
                 redirectCacheSync,
+                mock(RedirectCacheInvalidationOutboxPort.class),
                 postCommitHookPort
         );
         ShortLink link = ShortLink.create(
@@ -101,6 +103,7 @@ class LinkDestinationChangeApprovalExecutorTest {
                 shortLinkRepository,
                 domainEventDispatcher,
                 redirectCacheSync,
+                mock(RedirectCacheInvalidationOutboxPort.class),
                 postCommitHookPort
         );
         ShortLink link = ShortLink.create(

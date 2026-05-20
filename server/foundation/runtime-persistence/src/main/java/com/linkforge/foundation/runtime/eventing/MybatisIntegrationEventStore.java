@@ -28,6 +28,11 @@ public class MybatisIntegrationEventStore implements IntegrationEventStore {
     }
 
     @Override
+    public List<IntegrationEventRow> listAfterSeqByProducer(String producer, long lastSeqExclusive, int limit) {
+        return mapper.listAfterSeqByProducer(producer, lastSeqExclusive, limit);
+    }
+
+    @Override
     public void append(
             String eventId,
             String producer,

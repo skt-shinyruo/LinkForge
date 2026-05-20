@@ -79,7 +79,7 @@ public class ShortLinkCatalogProjectorJob {
 
     int projectOnce() {
         long lastSeq = checkpoints.loadOrInit(CONSUMER);
-        List<IntegrationEventRow> events = store.listAfterSeq(lastSeq, BATCH_LIMIT);
+        List<IntegrationEventRow> events = store.listAfterSeqByProducer(PRODUCER, lastSeq, BATCH_LIMIT);
         if (events == null || events.isEmpty()) {
             return 0;
         }

@@ -1,45 +1,43 @@
+import { API_ENDPOINTS, ensureApiSuccess, withQuery } from "./apiContract";
 import { apiFetch } from "./http";
 import type {
-  ApiResponse,
   DailyStat,
   StatsRangeQuery,
   TopLinkStat,
   TopLinksQuery,
 } from "./types";
 
-function ensureApiSuccess<T>(response: ApiResponse<T>, fallbackMessage: string): T | undefined {
-  if (response.code !== 0) {
-    throw new Error(response.message || fallbackMessage);
-  }
-  return response.data;
-}
-
-function buildRangeParams(range: StatsRangeQuery): URLSearchParams {
-  const params = new URLSearchParams();
-  params.set("from", range.from);
-  params.set("to", range.to);
-  return params;
+function buildRangeQuery(range: StatsRangeQuery): Record<string, string> {
+  return {
+    from: range.from,
+    to: range.to,
+  };
 }
 
 export async function fetchOverviewStats(range: StatsRangeQuery): Promise<DailyStat[]> {
-  const params = buildRangeParams(range);
   const path = range.applicationId
-    ? `/api/v1/applications/${range.applicationId}/stats/overview`
-    : "/api/v1/stats/overview";
-  const response = await apiFetch<DailyStat[]>(`${path}?${params.toString()}`);
+    ? API_ENDPOINTS.stats.overview(range.applicationId)
+    : API_ENDPOINTS.stats.overview();
+  const response = await apiFetch<DailyStat[]>(
+    withQuery(path, buildRangeQuery(range), { skipEmptyString: false }),
+  );
   return ensureApiSuccess(response, "加载概览失败") ?? [];
 }
 
 export async function fetchTopLinksStats(query: TopLinksQuery): Promise<TopLinkStat[]> {
-  const params = buildRangeParams(query);
-  params.set("limit", String(query.limit ?? 10));
-  params.set("sortBy", query.sortBy ?? "pv");
-
   const path = query.applicationId
-    ? `/api/v1/applications/${query.applicationId}/stats/top-links`
-    : "/api/v1/stats/top-links";
+    ? API_ENDPOINTS.stats.topLinks(query.applicationId)
+    : API_ENDPOINTS.stats.topLinks();
   const response = await apiFetch<TopLinkStat[]>(
-    `${path}?${params.toString()}`,
+    withQuery(
+      path,
+      {
+        ...buildRangeQuery(query),
+        limit: query.limit ?? 10,
+        sortBy: query.sortBy ?? "pv",
+      },
+      { skipEmptyString: false },
+    ),
   );
   return ensureApiSuccess(response, "加载 Top 报表失败") ?? [];
 }
@@ -48,9 +46,10 @@ export async function fetchLinkDailyStats(
   linkId: number,
   range: StatsRangeQuery,
 ): Promise<DailyStat[]> {
-  const params = buildRangeParams(range);
   const response = await apiFetch<DailyStat[]>(
-    `/api/v1/stats/links/${linkId}/daily?${params.toString()}`,
+    withQuery(API_ENDPOINTS.stats.linkDaily(linkId), buildRangeQuery(range), {
+      skipEmptyString: false,
+    }),
   );
   return ensureApiSuccess(response, "加载短链统计失败") ?? [];
 }

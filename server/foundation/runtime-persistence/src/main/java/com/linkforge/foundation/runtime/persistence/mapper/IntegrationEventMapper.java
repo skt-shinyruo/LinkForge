@@ -17,6 +17,12 @@ public interface IntegrationEventMapper {
             @Param("limit") int limit
     );
 
+    List<IntegrationEventRow> listAfterSeqByProducer(
+            @Param("producer") String producer,
+            @Param("lastSeqExclusive") long lastSeqExclusive,
+            @Param("limit") int limit
+    );
+
     int insert(
             @Param("eventId") String eventId,
             @Param("producer") String producer,
@@ -28,4 +34,3 @@ public interface IntegrationEventMapper {
             @Param("payloadJson") String payloadJson
     );
 }
-

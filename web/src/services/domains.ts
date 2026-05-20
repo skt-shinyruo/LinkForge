@@ -1,50 +1,41 @@
+import { API_ENDPOINTS, ensureApiSuccess, requireApiData } from "./apiContract";
 import { apiFetch } from "./http";
-import type { ApiResponse, CreateDomainRequest, DomainDto } from "./types";
-
-function ensureApiSuccess<T>(response: ApiResponse<T>, fallbackMessage: string): T | undefined {
-  if (response.code !== 0) {
-    throw new Error(response.message || fallbackMessage);
-  }
-  return response.data;
-}
+import type { CreateDomainRequest, DomainDto } from "./types";
 
 export async function listDomains(): Promise<DomainDto[]> {
-  const response = await apiFetch<DomainDto[]>("/api/v1/domains");
+  const response = await apiFetch<DomainDto[]>(API_ENDPOINTS.domains.collection);
   return ensureApiSuccess(response, "加载域名失败") ?? [];
 }
 
 export async function listDomainsForApplication(applicationId: number): Promise<DomainDto[]> {
-  const response = await apiFetch<DomainDto[]>(`/api/v1/applications/${applicationId}/domains`);
+  const response = await apiFetch<DomainDto[]>(
+    API_ENDPOINTS.applications.domains(applicationId),
+  );
   return ensureApiSuccess(response, "加载应用域名失败") ?? [];
 }
 
 export async function createTenantSharedDomain(
   request: CreateDomainRequest,
 ): Promise<DomainDto> {
-  const response = await apiFetch<DomainDto>("/api/v1/domains/tenant-shared", {
+  const response = await apiFetch<DomainDto>(API_ENDPOINTS.domains.tenantShared, {
     method: "POST",
     body: JSON.stringify(request),
   });
-  const data = ensureApiSuccess(response, "创建共享域名失败");
-  if (!data) {
-    throw new Error("创建共享域名失败");
-  }
-  return data;
+  return requireApiData(response, "创建共享域名失败");
 }
 
 export async function createApplicationDomain(
   applicationId: number,
   request: CreateDomainRequest,
 ): Promise<DomainDto> {
-  const response = await apiFetch<DomainDto>(`/api/v1/applications/${applicationId}/domains`, {
-    method: "POST",
-    body: JSON.stringify(request),
-  });
-  const data = ensureApiSuccess(response, "创建专属域名失败");
-  if (!data) {
-    throw new Error("创建专属域名失败");
-  }
-  return data;
+  const response = await apiFetch<DomainDto>(
+    API_ENDPOINTS.applications.domains(applicationId),
+    {
+      method: "POST",
+      body: JSON.stringify(request),
+    },
+  );
+  return requireApiData(response, "创建专属域名失败");
 }
 
 export async function authorizeDomain(
@@ -52,7 +43,7 @@ export async function authorizeDomain(
   domainId: number,
 ): Promise<void> {
   const response = await apiFetch<void>(
-    `/api/v1/applications/${applicationId}/domain-authorizations/${domainId}`,
+    API_ENDPOINTS.applications.domainAuthorization(applicationId, domainId),
     {
       method: "POST",
     },

@@ -10,6 +10,7 @@ import com.linkforge.shortlink.application.*;
 import com.linkforge.shortlink.application.eventing.ShortLinkDomainEventDispatcher;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
+import com.linkforge.shortlink.application.port.RedirectCacheInvalidationOutboxPort;
 import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
 import com.linkforge.shortlink.application.port.ShortLinkEventPublisher;
 import com.linkforge.shortlink.domain.CreatedByType;
@@ -82,6 +83,7 @@ class UpdateShortLinkCommandHandlerTest {
                 domainEventDispatcher,
                 linkTagRepository,
                 redirectCacheSync,
+                mock(RedirectCacheInvalidationOutboxPort.class),
                 dtoMapper,
                 postCommitHookPort,
                 clock,
@@ -212,6 +214,7 @@ class UpdateShortLinkCommandHandlerTest {
                 domainEventDispatcher,
                 linkTagRepository,
                 redirectCacheSync,
+                mock(RedirectCacheInvalidationOutboxPort.class),
                 dtoMapper,
                 postCommitHookPort,
                 clock,
@@ -340,6 +343,7 @@ class UpdateShortLinkCommandHandlerTest {
                 domainEventDispatcher,
                 linkTagRepository,
                 redirectCacheSync,
+                mock(RedirectCacheInvalidationOutboxPort.class),
                 dtoMapper,
                 postCommitHookPort,
                 clock,
@@ -416,6 +420,7 @@ class UpdateShortLinkCommandHandlerTest {
                 domainEventDispatcher,
                 linkTagRepository,
                 redirectCacheSync,
+                mock(RedirectCacheInvalidationOutboxPort.class),
                 dtoMapper,
                 postCommitHookPort,
                 clock,
@@ -499,6 +504,7 @@ class UpdateShortLinkCommandHandlerTest {
                 domainEventDispatcher,
                 linkTagRepository,
                 redirectCacheSync,
+                mock(RedirectCacheInvalidationOutboxPort.class),
                 dtoMapper,
                 postCommitHookPort,
                 clock,

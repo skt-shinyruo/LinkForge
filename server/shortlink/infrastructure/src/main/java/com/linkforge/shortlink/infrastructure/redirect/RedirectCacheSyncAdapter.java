@@ -31,6 +31,7 @@ public class RedirectCacheSyncAdapter implements RedirectCacheSyncPort {
             // keep going for host-aware keys
         } else {
             log.debug("redirect cache evict failed: code={}", code);
+            throw new IllegalStateException("redirect cache evict failed: code=" + code);
         }
         if (tenantId <= 0 || code == null || code.isBlank()) {
             return;
@@ -56,6 +57,7 @@ public class RedirectCacheSyncAdapter implements RedirectCacheSyncPort {
             return;
         }
         log.debug("redirect cache evict failed: host={}, code={}", host, code);
+        throw new IllegalStateException("redirect cache evict failed: host=" + host + ", code=" + code);
     }
 
     private String legacyCompatibilityHost(long tenantId) {

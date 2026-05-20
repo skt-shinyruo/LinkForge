@@ -11,8 +11,10 @@ import com.linkforge.contract.governance.SensitiveOperation;
 import com.linkforge.contract.shortlink.ShortLinkErrorCode;
 import com.linkforge.foundation.tx.PostCommitHookPort;
 import com.linkforge.shortlink.application.eventing.ShortLinkDomainEventDispatcher;
+import com.linkforge.shortlink.application.port.RedirectCacheInvalidationOutboxPort;
 import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
 import com.linkforge.shortlink.application.port.ShortLinkRepository;
+import com.linkforge.shortlink.application.support.RedirectCacheInvalidations;
 import com.linkforge.shortlink.application.support.ShortLinkDomainExceptions;
 import com.linkforge.shortlink.domain.HttpUrl;
 import com.linkforge.shortlink.domain.ShortLink;
@@ -30,17 +32,20 @@ public class LinkDestinationChangeApprovalExecutor implements ApprovalExecutionP
     private final ShortLinkRepository shortLinkRepository;
     private final ShortLinkDomainEventDispatcher domainEventDispatcher;
     private final RedirectCacheSyncPort redirectCacheSync;
+    private final RedirectCacheInvalidationOutboxPort redirectCacheInvalidationOutbox;
     private final PostCommitHookPort postCommitHookPort;
 
     public LinkDestinationChangeApprovalExecutor(
             ShortLinkRepository shortLinkRepository,
             ShortLinkDomainEventDispatcher domainEventDispatcher,
             RedirectCacheSyncPort redirectCacheSync,
+            RedirectCacheInvalidationOutboxPort redirectCacheInvalidationOutbox,
             PostCommitHookPort postCommitHookPort
     ) {
         this.shortLinkRepository = shortLinkRepository;
         this.domainEventDispatcher = domainEventDispatcher;
         this.redirectCacheSync = redirectCacheSync;
+        this.redirectCacheInvalidationOutbox = redirectCacheInvalidationOutbox;
         this.postCommitHookPort = postCommitHookPort;
     }
 
@@ -73,7 +78,14 @@ public class LinkDestinationChangeApprovalExecutor implements ApprovalExecutionP
 
         link.markUpdated(executedAt);
         domainEventDispatcher.publish(link, executedAt.toInstant(ZoneOffset.UTC));
-        postCommitHookPort.run(() -> redirectCacheSync.evict(link.tenantId(), link.domainId(), link.code().value()));
+        RedirectCacheInvalidations.enqueueAndRunAfterCommit(
+                redirectCacheInvalidationOutbox,
+                postCommitHookPort,
+                redirectCacheSync,
+                link.tenantId(),
+                link.domainId(),
+                link.code().value()
+        );
     }
 
     private static void validateApprovalStillMatchesLink(

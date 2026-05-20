@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.linkforge.shortlink.infrastructure.persistence.mapper.RedirectCacheInvalidationOutboxMapper">
+
+    <resultMap id="RedirectCacheInvalidationOutboxRowResultMap"
+               type="com.linkforge.shortlink.infrastructure.redirect.RedirectCacheInvalidationOutboxRow">
+        <constructor>
+            <idArg column="id" javaType="_long"/>
+            <arg column="tenant_id" javaType="_long"/>
+            <arg column="domain_id" javaType="java.lang.Long"/>
+            <arg column="code" javaType="java.lang.String"/>
+            <arg column="attempts" javaType="_int"/>
+        </constructor>
+    </resultMap>
+
+    <insert id="enqueue">
+        INSERT INTO redirect_cache_invalidation_outbox (
+            tenant_id,
+            domain_id,
+            domain_scope,
+            code,
+            status,
+            attempts,
+            last_error,
+            next_attempt_at,
+            processed_at
+        ) VALUES (
+            #{tenantId},
+            #{domainId},
+            #{domainScope},
+            #{code},
+            'PENDING',
+            0,
+            NULL,
+            #{nextAttemptAtUtc},
+            NULL
+        )
+        ON DUPLICATE KEY UPDATE
+            status = 'PENDING',
+            attempts = 0,
+            last_error = NULL,
+            next_attempt_at = VALUES(next_attempt_at),
+            processed_at = NULL,
+            updated_at = CURRENT_TIMESTAMP
+    </insert>
+
+    <select id="listDue" resultMap="RedirectCacheInvalidationOutboxRowResultMap">
+        SELECT
+            id,
+            tenant_id,
+            domain_id,
+            code,
+            attempts
+        FROM redirect_cache_invalidation_outbox
+        WHERE status = 'PENDING'
+          AND next_attempt_at &lt;= #{nowUtc}
+        ORDER BY next_attempt_at ASC, id ASC
+        LIMIT #{limit}
+    </select>
+
+    <update id="markProcessed">
+        UPDATE redirect_cache_invalidation_outbox
+        SET status = 'PROCESSED',
+            processed_at = #{processedAtUtc},
+            last_error = NULL,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+          AND status = 'PENDING'
+    </update>
+
+    <update id="markFailed">
+        UPDATE redirect_cache_invalidation_outbox
+        SET attempts = #{attempts},
+            last_error = #{lastError},
+            next_attempt_at = #{nextAttemptAtUtc},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+          AND status = 'PENDING'
+    </update>
+</mapper>

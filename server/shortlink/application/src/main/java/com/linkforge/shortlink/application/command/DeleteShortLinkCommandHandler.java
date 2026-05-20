@@ -5,8 +5,10 @@ import com.linkforge.contract.shortlink.ShortLinkErrorCode;
 import com.linkforge.foundation.tx.PostCommitHookPort;
 import com.linkforge.shortlink.application.eventing.ShortLinkDomainEventDispatcher;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
+import com.linkforge.shortlink.application.port.RedirectCacheInvalidationOutboxPort;
 import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
 import com.linkforge.shortlink.application.port.ShortLinkRepository;
+import com.linkforge.shortlink.application.support.RedirectCacheInvalidations;
 import com.linkforge.shortlink.application.support.ShortLinkDomainExceptions;
 import com.linkforge.shortlink.domain.ShortLink;
 import com.linkforge.shortlink.domain.ShortLinkDomainException;
@@ -25,6 +27,7 @@ public class DeleteShortLinkCommandHandler {
     private final LinkTagRepository linkTagRepository;
     private final ShortLinkDomainEventDispatcher domainEventDispatcher;
     private final RedirectCacheSyncPort redirectCacheSync;
+    private final RedirectCacheInvalidationOutboxPort redirectCacheInvalidationOutbox;
     private final PostCommitHookPort postCommitHookPort;
     private final Clock clock;
 
@@ -33,6 +36,7 @@ public class DeleteShortLinkCommandHandler {
             LinkTagRepository linkTagRepository,
             ShortLinkDomainEventDispatcher domainEventDispatcher,
             RedirectCacheSyncPort redirectCacheSync,
+            RedirectCacheInvalidationOutboxPort redirectCacheInvalidationOutbox,
             PostCommitHookPort postCommitHookPort,
             Clock clock
     ) {
@@ -40,6 +44,7 @@ public class DeleteShortLinkCommandHandler {
         this.linkTagRepository = linkTagRepository;
         this.domainEventDispatcher = domainEventDispatcher;
         this.redirectCacheSync = redirectCacheSync;
+        this.redirectCacheInvalidationOutbox = redirectCacheInvalidationOutbox;
         this.postCommitHookPort = postCommitHookPort;
         this.clock = clock;
     }
@@ -62,6 +67,13 @@ public class DeleteShortLinkCommandHandler {
             throw new BusinessException(ShortLinkErrorCode.LINK_STALE_WRITE);
         }
         domainEventDispatcher.publish(link, occurredAtUtc);
-        postCommitHookPort.run(() -> redirectCacheSync.evict(link.tenantId(), link.domainId(), link.code().value()));
+        RedirectCacheInvalidations.enqueueAndRunAfterCommit(
+                redirectCacheInvalidationOutbox,
+                postCommitHookPort,
+                redirectCacheSync,
+                link.tenantId(),
+                link.domainId(),
+                link.code().value()
+        );
     }
 }

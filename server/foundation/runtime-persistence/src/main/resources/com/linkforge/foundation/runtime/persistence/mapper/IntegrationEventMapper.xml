@@ -42,6 +42,24 @@
         LIMIT #{limit}
     </select>
 
+    <select id="listAfterSeqByProducer" resultMap="IntegrationEventRowResultMap">
+        SELECT
+            seq,
+            event_id,
+            producer,
+            event_type,
+            tenant_id,
+            aggregate_type,
+            aggregate_id,
+            occurred_at,
+            payload_json
+        FROM integration_events
+        WHERE producer = #{producer}
+          AND seq &gt; #{lastSeqExclusive}
+        ORDER BY seq ASC
+        LIMIT #{limit}
+    </select>
+
     <insert id="insert">
         INSERT INTO integration_events (
             event_id,

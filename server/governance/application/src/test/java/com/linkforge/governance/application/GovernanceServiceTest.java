@@ -22,9 +22,12 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -43,6 +46,20 @@ import static org.mockito.Mockito.when;
 class GovernanceServiceTest {
 
     private static final LocalDateTime NOW = LocalDateTime.parse("2026-04-01T12:00:00");
+
+    @Test
+    void sensitiveOperationMapper_shouldMapEveryInternalOperationTypeExplicitly() {
+        Map<SensitiveOperationType, SensitiveOperation> actual = Arrays.stream(SensitiveOperationType.values())
+                .collect(Collectors.toMap(type -> type, SensitiveOperationMapper::toContractOperation));
+
+        assertThat(actual).containsExactlyInAnyOrderEntriesOf(Map.of(
+                SensitiveOperationType.APPLICATION_QUOTA_INCREASE, SensitiveOperation.APPLICATION_QUOTA_INCREASE,
+                SensitiveOperationType.EXTERNAL_DOMAIN_BINDING, SensitiveOperation.EXTERNAL_DOMAIN_BINDING,
+                SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE, SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE,
+                SensitiveOperationType.ANALYTICS_DETAIL_EXPORT, SensitiveOperation.ANALYTICS_DETAIL_EXPORT
+        ));
+        assertThat(actual.values()).containsExactlyInAnyOrder(SensitiveOperation.values());
+    }
 
     @Test
     void approveRequest_shouldRejectNonPendingRequestBeforeExecutionAndAudit() {
@@ -144,6 +161,36 @@ class GovernanceServiceTest {
         verify(approvalRepository).markApprovedIfPending(1L, 502L, 8L, "approver@example.com", "ok", NOW);
         verify(approvalRepository, never()).markExecutedIfApproved(anyLong(), anyLong(), any());
         verify(auditLogRepository).insert(any(AuditLog.class));
+    }
+
+    @Test
+    void approveRequest_shouldFailBeforeClaimWhenMultipleExecutorsSupportSameOperation() {
+        SnowflakeIdGenerator idGenerator = mock(SnowflakeIdGenerator.class);
+        ApprovalRepository approvalRepository = mock(ApprovalRepository.class);
+        AuditLogRepository auditLogRepository = mock(AuditLogRepository.class);
+        ApprovalExecutionPort firstExecutionPort = mock(ApprovalExecutionPort.class);
+        ApprovalExecutionPort secondExecutionPort = mock(ApprovalExecutionPort.class);
+        GovernanceService service = service(
+                idGenerator,
+                approvalRepository,
+                auditLogRepository,
+                List.of(firstExecutionPort, secondExecutionPort)
+        );
+        ApprovalRequest pending = request(ApprovalStatus.PENDING_APPROVAL);
+        when(approvalRepository.findByTenantIdAndId(1L, 501L)).thenReturn(Optional.of(pending));
+        when(firstExecutionPort.supports(SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE)).thenReturn(true);
+        when(secondExecutionPort.supports(SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.approveRequest(1L, 501L, "ok", approver(), NOW))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("多个审批执行器");
+
+        verify(firstExecutionPort).supports(SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE);
+        verify(secondExecutionPort).supports(SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE);
+        verify(firstExecutionPort, never()).execute(any(), any());
+        verify(secondExecutionPort, never()).execute(any(), any());
+        verify(approvalRepository, never()).markApprovedIfPending(anyLong(), anyLong(), anyLong(), any(), any(), any());
+        verifyNoInteractions(auditLogRepository);
     }
 
     @Test

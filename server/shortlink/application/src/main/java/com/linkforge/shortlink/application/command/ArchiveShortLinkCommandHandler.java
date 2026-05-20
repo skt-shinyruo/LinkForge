@@ -7,8 +7,10 @@ import com.linkforge.shortlink.application.LinkDto;
 import com.linkforge.shortlink.application.eventing.ShortLinkDomainEventDispatcher;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
+import com.linkforge.shortlink.application.port.RedirectCacheInvalidationOutboxPort;
 import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
 import com.linkforge.shortlink.application.port.ShortLinkRepository;
+import com.linkforge.shortlink.application.support.RedirectCacheInvalidations;
 import com.linkforge.shortlink.application.support.ShortLinkDomainExceptions;
 import com.linkforge.shortlink.domain.ShortLink;
 import com.linkforge.shortlink.domain.ShortLinkDomainException;
@@ -27,6 +29,7 @@ public class ArchiveShortLinkCommandHandler {
     private final ShortLinkDomainEventDispatcher domainEventDispatcher;
     private final LinkTagRepository linkTagRepository;
     private final RedirectCacheSyncPort redirectCacheSync;
+    private final RedirectCacheInvalidationOutboxPort redirectCacheInvalidationOutbox;
     private final ShortLinkDtoMapper dtoMapper;
     private final PostCommitHookPort postCommitHookPort;
     private final Clock clock;
@@ -36,6 +39,7 @@ public class ArchiveShortLinkCommandHandler {
             ShortLinkDomainEventDispatcher domainEventDispatcher,
             LinkTagRepository linkTagRepository,
             RedirectCacheSyncPort redirectCacheSync,
+            RedirectCacheInvalidationOutboxPort redirectCacheInvalidationOutbox,
             ShortLinkDtoMapper dtoMapper,
             PostCommitHookPort postCommitHookPort,
             Clock clock
@@ -44,6 +48,7 @@ public class ArchiveShortLinkCommandHandler {
         this.domainEventDispatcher = domainEventDispatcher;
         this.linkTagRepository = linkTagRepository;
         this.redirectCacheSync = redirectCacheSync;
+        this.redirectCacheInvalidationOutbox = redirectCacheInvalidationOutbox;
         this.dtoMapper = dtoMapper;
         this.postCommitHookPort = postCommitHookPort;
         this.clock = clock;
@@ -67,7 +72,14 @@ public class ArchiveShortLinkCommandHandler {
             }
             link.incrementVersion();
             domainEventDispatcher.publish(link, nowUtc.toInstant(ZoneOffset.UTC));
-            postCommitHookPort.run(() -> redirectCacheSync.evict(link.tenantId(), link.domainId(), link.code().value()));
+            RedirectCacheInvalidations.enqueueAndRunAfterCommit(
+                    redirectCacheInvalidationOutbox,
+                    postCommitHookPort,
+                    redirectCacheSync,
+                    link.tenantId(),
+                    link.domainId(),
+                    link.code().value()
+            );
         }
 
         List<String> tags = linkTagRepository.findTagNamesByLinkId(linkId);

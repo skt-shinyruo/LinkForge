@@ -87,7 +87,7 @@ public class GovernanceService {
         LocalDateTime now = requestedAt == null ? LocalDateTime.now(clock) : requestedAt;
         ApprovalRequest approved = approve(request, effectiveActor, reason, now);
         enforceApprovalMatrix(effectiveActor, request);
-        SensitiveOperation operation = toContractOperation(request.operationType());
+        SensitiveOperation operation = SensitiveOperationMapper.toContractOperation(request.operationType());
         Optional<ApprovalExecutionPort> executor = findExecutor(operation);
 
         boolean claimed = approvalRepository.markApprovedIfPending(
@@ -155,9 +155,13 @@ public class GovernanceService {
     }
 
     private Optional<ApprovalExecutionPort> findExecutor(SensitiveOperation operation) {
-        return approvalExecutionPorts.stream()
+        List<ApprovalExecutionPort> matchingPorts = approvalExecutionPorts.stream()
                 .filter(port -> port.supports(operation))
-                .findFirst();
+                .toList();
+        if (matchingPorts.size() > 1) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "多个审批执行器支持同一操作: " + operation);
+        }
+        return matchingPorts.stream().findFirst();
     }
 
     private static BusinessException approvalStateChanged() {
@@ -169,10 +173,6 @@ public class GovernanceService {
             return new BusinessException(ErrorCode.BAD_REQUEST, "申请人与审批人不能是同一人");
         }
         return approvalStateChanged();
-    }
-
-    private static SensitiveOperation toContractOperation(SensitiveOperationType operationType) {
-        return SensitiveOperation.valueOf(operationType.name());
     }
 
     public List<ApprovalRequestResult> listRequests(long tenantId, UserActor actor) {

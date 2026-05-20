@@ -12,6 +12,7 @@ import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
 import com.linkforge.shortlink.application.port.ApplicationLinkQuotaReservationPort;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
 import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
+import com.linkforge.shortlink.application.port.RedirectCacheInvalidationOutboxPort;
 import com.linkforge.shortlink.application.port.ShortLinkEventPublisher;
 import com.linkforge.shortlink.application.port.ShortLinkRepository;
 import com.linkforge.shortlink.domain.ShortLink;
@@ -41,6 +42,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -79,6 +81,7 @@ class CreateShortLinkCommandHandlerTest {
         LinkTagRepository linkTagRepository = mock(LinkTagRepository.class);
         ShortLinkDomainEventDispatcher domainEventDispatcher = mock(ShortLinkDomainEventDispatcher.class);
         RedirectCacheSyncPort redirectCacheSync = mock(RedirectCacheSyncPort.class);
+        RedirectCacheInvalidationOutboxPort redirectCacheInvalidationOutbox = mock(RedirectCacheInvalidationOutboxPort.class);
         ShortLinkDtoMapper dtoMapper = mock(ShortLinkDtoMapper.class);
         PostCommitHookPort postCommitHookPort = mock(PostCommitHookPort.class);
         Clock clock = Clock.fixed(Instant.parse("2026-04-01T00:00:00Z"), ZoneOffset.UTC);
@@ -93,6 +96,7 @@ class CreateShortLinkCommandHandlerTest {
                 linkTagRepository,
                 domainEventDispatcher,
                 redirectCacheSync,
+                redirectCacheInvalidationOutbox,
                 dtoMapper,
                 postCommitHookPort,
                 clock,
@@ -115,6 +119,12 @@ class CreateShortLinkCommandHandlerTest {
             return null;
         }).when(shortLinkRepository).insert(any(ShortLink.class));
         when(linkTagRepository.findTagNamesByLinkId(101L)).thenReturn(List.of("alpha"));
+        doAnswer(invocation -> {
+            invocation.<Runnable>getArgument(0).run();
+            return null;
+        }).when(postCommitHookPort).run(any(Runnable.class));
+        doThrow(new IllegalStateException("redis unavailable"))
+                .when(redirectCacheSync).evict(1L, 3001L, "abc123");
 
         LinkDto expected = new LinkDto(
                 101L,
@@ -172,6 +182,8 @@ class CreateShortLinkCommandHandlerTest {
                 10L
         );
         verify(domainEventDispatcher).publish(any(ShortLink.class), eq(clock.instant()));
+        verify(redirectCacheInvalidationOutbox).enqueue(1L, 3001L, "abc123");
+        verify(postCommitHookPort).run(any(Runnable.class));
     }
 
     @Test
@@ -189,6 +201,7 @@ class CreateShortLinkCommandHandlerTest {
                 mock(LinkTagRepository.class),
                 mock(ShortLinkDomainEventDispatcher.class),
                 mock(RedirectCacheSyncPort.class),
+                mock(RedirectCacheInvalidationOutboxPort.class),
                 mock(ShortLinkDtoMapper.class),
                 mock(PostCommitHookPort.class),
                 clock,
@@ -278,6 +291,7 @@ class CreateShortLinkCommandHandlerTest {
                 linkTagRepository,
                 mock(ShortLinkDomainEventDispatcher.class),
                 mock(RedirectCacheSyncPort.class),
+                mock(RedirectCacheInvalidationOutboxPort.class),
                 dtoMapper,
                 mock(PostCommitHookPort.class),
                 clock,
@@ -315,6 +329,7 @@ class CreateShortLinkCommandHandlerTest {
                 mock(LinkTagRepository.class),
                 mock(ShortLinkDomainEventDispatcher.class),
                 mock(RedirectCacheSyncPort.class),
+                mock(RedirectCacheInvalidationOutboxPort.class),
                 mock(ShortLinkDtoMapper.class),
                 mock(PostCommitHookPort.class),
                 Clock.fixed(Instant.parse("2026-04-01T00:00:00Z"), ZoneOffset.UTC),

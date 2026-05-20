@@ -8,6 +8,8 @@ public interface IntegrationEventStore {
 
     List<IntegrationEventRow> listAfterSeq(long lastSeqExclusive, int limit);
 
+    List<IntegrationEventRow> listAfterSeqByProducer(String producer, long lastSeqExclusive, int limit);
+
     void append(
             String eventId,
             String producer,
@@ -19,4 +21,3 @@ public interface IntegrationEventStore {
             String payloadJson
     );
 }
-

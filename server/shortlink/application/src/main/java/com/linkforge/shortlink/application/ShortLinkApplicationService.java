@@ -23,6 +23,18 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.List;
 
+/**
+ * 短链应用层门面，统一编排创建、查询、生命周期、标签和 CSV 用例。
+ *
+ * <p>带 {@link UserActor} 或 {@link ApiKeyActor} 的入口先通过
+ * {@link ShortLinkActorScopeResolver} 将外部请求中的应用作用域收敛到已认证主体允许的范围；
+ * API Key 必须绑定应用，普通用户只能浏览和读取自己创建且未绑定应用的短链；用户侧应用级操作仅向租户管理员开放。
+ * 对无权读取的短链统一返回 {@code LINK_NOT_FOUND}，避免通过错误差异枚举其他用户或应用的数据。</p>
+ *
+ * <p>本类不声明事务，也不直接访问仓储。写操作的事务、乐观锁、事件、outbox 和提交后缓存同步均由对应
+ * command handler 负责；查询和导出由 query handler 负责。接受原始 {@code tenantId} 的重载是可信内部入口，
+ * 调用方必须先完成认证与授权，不能直接暴露为绕过主体作用域检查的 HTTP 接口。</p>
+ */
 @Service
 public class ShortLinkApplicationService implements
         ShortLinkCreationUseCase,

@@ -13,6 +13,12 @@ import org.springframework.stereotype.Component;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
 
+/**
+ * 渲染 Redirect 的预览、未找到和不可用 HTML 页面。
+ *
+ * <p>所有动态文本都经 HTML 转义，页面统一使用 {@code Cache-Control: no-store}，避免浏览器或代理缓存
+ * 带有 requestId、短码或临时可用状态的结果。landing URL 仅在启动期和运行时均满足 http(s) 时使用。</p>
+ */
 @Component
 public class RedirectHtmlPageRenderer {
 
@@ -24,6 +30,12 @@ public class RedirectHtmlPageRenderer {
         this.confirmHrefBuilder = confirmHrefBuilder;
     }
 
+    /**
+     * 渲染尚未确认的预览页。
+     *
+     * <p>确认链接保留原请求中有限数量、有限长度的参数并附加 {@code __lf_confirm=1}；该页本身不会触发
+     * 跳转或访问记录。</p>
+     */
     public ResponseEntity<String> renderPreview(LinkMeta meta, HttpServletRequest request) {
         String host = null;
         try {
@@ -80,6 +92,9 @@ public class RedirectHtmlPageRenderer {
                 ));
     }
 
+    /**
+     * 渲染 404 页面，或跳转至全局 not-found landing URL。
+     */
     public ResponseEntity<?> renderNotFound(String code) {
         String landing = trimToNull(redirectProperties.getNotFoundLandingUrl());
         if (isHttpUrl(landing)) {
@@ -94,6 +109,12 @@ public class RedirectHtmlPageRenderer {
                 .body(renderUnavailableHtml("短链不存在", "你访问的短链不存在或已被删除。", code));
     }
 
+    /**
+     * 渲染已解析但不能跳转的结果。
+     *
+     * <p>额度耗尽固定返回 429 HTML，不能被短链或全局 gone landing 覆盖；禁用/过期可优先使用短链级
+     * unavailable landing，再回退全局 landing 或 410 页面。</p>
+     */
     public ResponseEntity<?> renderUnavailable(String code, LinkMeta meta, RedirectResolution.UnavailableReason reason) {
         if (reason == RedirectResolution.UnavailableReason.QUOTA_EXCEEDED) {
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)

@@ -12,8 +12,9 @@ import java.util.List;
 /**
  * Redirect Edge 客户端 IP 解析器（带可信代理链约束）。
  *
- * <p>原则：只有当 remoteAddr 命中 trustedProxies 时，才采信 forwarded headers；
- * 否则忽略所有 forwarded headers，直接使用 remoteAddr。</p>
+ * <p>原则：只有当 remoteAddr 命中 trustedProxies 时，才采信 forwarded headers；否则忽略所有
+ * forwarded headers，直接使用 remoteAddr。受信任时优先使用网关清洗后的 {@code X-Real-IP}；其缺失或
+ * 非法时才从 {@code X-Forwarded-For} 右向左剥离可信代理。</p>
  */
 @Component
 public class RedirectClientIpResolver {
@@ -37,6 +38,12 @@ public class RedirectClientIpResolver {
         this.trustedProxies = CidrBlocks.parseList(raw, "app.edge.trusted-proxies");
     }
 
+    /**
+     * 按可信代理链规则解析客户端 IP。
+     *
+     * <p>返回值可能为 {@code null} 或无法识别的 remote 地址；调用方必须把它视作风控维度中的未知值，
+     * 而不是回退信任任意请求头。超长 XFF 与非法 token 均回退到 remoteAddr。</p>
+     */
     public String resolveClientIp(HttpServletRequest request) {
         if (request == null) {
             return null;
@@ -47,12 +54,12 @@ public class RedirectClientIpResolver {
             return remote;
         }
 
-        // 安全默认值：未配置 trustedProxies 时，永远不信任 forwarded headers
+        // 安全默认：未配置 trustedProxies 时，永远不信任 forwarded headers。
         if (trustedProxies.isEmpty() || !CidrBlocks.containsAny(trustedProxies, remote)) {
             return remote;
         }
 
-        // 优先信任受控网关覆盖后的 X-Real-IP（通常是“清洗后的真实客户端 IP”）
+        // 优先信任受控网关覆盖后的 X-Real-IP（通常是清洗后的真实客户端 IP）。
         String xReal = IpStrings.cleanIpToken(request.getHeader("X-Real-IP"));
         if (IpStrings.isValidIp(xReal)) {
             return xReal;

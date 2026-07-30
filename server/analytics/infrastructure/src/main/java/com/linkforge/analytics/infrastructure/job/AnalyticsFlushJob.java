@@ -30,6 +30,17 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 将 Redis 中的链接和范围日聚合快照持久化到 MySQL。
+ *
+ * <p>dirty stream 的链接成员格式为 {@code tenantId:linkId}，消息只表示“该聚合可能变更”；作业读取
+ * Redis 当前 PV 与 HyperLogLog 估算的 UV 后批量写库。SQL 使用 {@code GREATEST} 保持日表单调递增，
+ * 因此重复 dirty 消息与重放不会回退已落库数据。</p>
+ *
+ * <p>数据库或 Redis 读取失败时不 ACK 当前批次，使 consumer group pending 负责重试。ACK 失败仍可能
+ * 造成后续重放，故这里不宣称 exactly-once。统计日和回填窗口均按 UTC 计算，且窗口被 Redis key TTL
+ * 上限截断，过期 key 无法被该作业补算。</p>
+ */
 @Component
 public class AnalyticsFlushJob {
 
@@ -60,6 +71,11 @@ public class AnalyticsFlushJob {
         this.analyticsProperties = analyticsProperties;
     }
 
+    /**
+     * 依次处理 UTC 当日及有限回填窗口内的链接、范围 dirty streams。
+     *
+     * <p>ShedLock 只降低多实例重复调度概率；幂等性仍依赖 Redis 快照和 MySQL 的单调 upsert。</p>
+     */
     @Scheduled(fixedDelayString = "${APP_ANALYTICS_FLUSH_DELAY_MS:60000}")
     @SchedulerLock(name = "lf:job:analytics:flush", lockAtMostFor = "PT10M")
     public void flush() {
@@ -86,13 +102,18 @@ public class AnalyticsFlushJob {
             List<MapRecord<String, Object, Object>> records = readSafe(
                     consumer,
                     StreamReadOptions.empty().count(BATCH_SIZE),
-                    StreamOffset.create(streamKey, ReadOffset.from("0-0"))
+                    StreamOffset.create(streamKey, ReadOffset.lastConsumed())  // 改为 lastConsumed，推荐方式
             );
             if (records == null || records.isEmpty()) {
+                // 显式判断本日是否还有更多消息（防止多实例漏读）
+                Long pendingCount = redis.opsForList().size(streamKey + ".pending");
+                if (pendingCount == null || pendingCount == 0) {
+                    return;
+                }
                 records = readSafe(
                         consumer,
                         StreamReadOptions.empty().count(BATCH_SIZE),
-                        StreamOffset.create(streamKey, ReadOffset.lastConsumed())
+                        StreamOffset.create(streamKey, ReadOffset.from("0-0"))
                 );
             }
             if (records == null || records.isEmpty()) {
@@ -104,7 +125,7 @@ public class AnalyticsFlushJob {
                 acknowledge(streamKey, records.stream().map(MapRecord::getId).toList());
                 continue;
             }
-            if (!flushActiveMembers(day, members)) {
+            if (!flushDirtyMembers(day, members)) {
                 return;
             }
             acknowledge(streamKey, records.stream().map(MapRecord::getId).toList());
@@ -125,13 +146,18 @@ public class AnalyticsFlushJob {
             List<MapRecord<String, Object, Object>> records = readSafe(
                     consumer,
                     StreamReadOptions.empty().count(BATCH_SIZE),
-                    StreamOffset.create(streamKey, ReadOffset.from("0-0"))
+                    StreamOffset.create(streamKey, ReadOffset.lastConsumed())
             );
             if (records == null || records.isEmpty()) {
+                // 显式判断本日是否还有更多消息
+                Long pendingCount = redis.opsForList().size(streamKey + ".pending");
+                if (pendingCount == null || pendingCount == 0) {
+                    return;
+                }
                 records = readSafe(
                         consumer,
                         StreamReadOptions.empty().count(BATCH_SIZE),
-                        StreamOffset.create(streamKey, ReadOffset.lastConsumed())
+                        StreamOffset.create(streamKey, ReadOffset.from("0-0"))
                 );
             }
             if (records == null || records.isEmpty()) {
@@ -143,7 +169,7 @@ public class AnalyticsFlushJob {
                 acknowledge(streamKey, records.stream().map(MapRecord::getId).toList());
                 continue;
             }
-            if (!flushActiveScopeMembers(day, members)) {
+            if (!flushDirtyScopeMembers(day, members)) {
                 return;
             }
             acknowledge(streamKey, records.stream().map(MapRecord::getId).toList());
@@ -172,11 +198,17 @@ public class AnalyticsFlushJob {
         }
     }
 
-    boolean flushActiveMembers(LocalDate day, List<String> members) {
+    /**
+     * 将 dirty stream 交付的“链接-日期”成员当前累计值写入 MySQL。
+     *
+     * @return {@code true} 表示本批消息可以 ACK；数据库写入失败时返回 {@code false}，保留 pending
+     *         消息供后续调度重试
+     */
+    boolean flushDirtyMembers(LocalDate day, List<String> members) {
         long startNs = System.nanoTime();
         List<MemberParts> parts = new ArrayList<>(members.size());
         for (String m : members) {
-            MemberParts p = parseActiveMember(m);
+            MemberParts p = parseDirtyLinkMember(m);
             if (p != null) {
                 parts.add(p);
             }
@@ -246,7 +278,16 @@ public class AnalyticsFlushJob {
         }
     }
 
-    boolean flushActiveScopeMembers(LocalDate day, List<String> members) {
+    /**
+     * 将范围 dirty stream 中的租户、应用和域成员写入范围 UV 日表。
+     *
+     * <p>范围成员格式分别为 {@code tenant:tenantId:0}、
+     * {@code application:tenantId:applicationId} 和 {@code domain:tenantId:domainId}。同一批重复成员
+     * 会去重；UV 同样来自 HLL，故为近似去重值。</p>
+     *
+     * @return {@code false} 时调用方不得 ACK，避免数据库失败丢失待刷新的成员
+     */
+    boolean flushDirtyScopeMembers(LocalDate day, List<String> members) {
         if (scopeStatsDailyMapper == null) {
             return true;
         }
@@ -409,7 +450,7 @@ public class AnalyticsFlushJob {
         return raw == null ? defaultValue : raw;
     }
 
-    private static MemberParts parseActiveMember(String member) {
+    private static MemberParts parseDirtyLinkMember(String member) {
         if (member == null || member.isBlank()) {
             return null;
         }

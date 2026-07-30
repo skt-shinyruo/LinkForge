@@ -10,7 +10,10 @@ import org.springframework.stereotype.Component;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 
 /**
- * 访问明细留存清理作业：按 retentionDays 清理历史数据，避免明细表无限增长。
+ * 访问明细留存清理作业：按 {@code retentionDays} 清理历史数据，避免明细表无限增长。
+ *
+ * <p>只清理明细表，不影响 Redis 聚合或日统计表。每轮最多执行二十个 5,000 行删除批次，以降低长事务
+ * 和锁竞争；数据库故障会终止本轮并在下次调度重试。</p>
  */
 @Component
 public class AnalyticsEventRetentionJob {
@@ -25,6 +28,7 @@ public class AnalyticsEventRetentionJob {
         this.analyticsProperties = analyticsProperties;
     }
 
+    /** 按小时检查一次，具体留存天数由明细配置决定。 */
     @Scheduled(fixedDelayString = "${APP_ANALYTICS_EVENT_RETENTION_DELAY_MS:3600000}") // 1h
     @SchedulerLock(name = "lf:job:analytics:event-retention", lockAtMostFor = "PT30M")
     public void cleanup() {

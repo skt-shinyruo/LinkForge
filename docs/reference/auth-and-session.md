@@ -99,6 +99,7 @@
 - 注册会创建租户、首个用户和 `TENANT_ADMIN` 角色。`AuthService.register()` 先查邮箱唯一性，再生成 tenantId、userId，保存 active 租户和 active 用户。
 - 登录必须同时满足租户 active、用户 active、密码匹配。角色为空时降级为 `USER`。
 - JWT 中包含 `tenantId`、`email`、`roles`、`tokenVersion`。注销和重置密码都会递增 `tokenVersion`，让旧 JWT 失效。
+- 禁用用户会把状态变为非 ACTIVE 并驱逐状态缓存，因此后续请求立即被认证链拒绝；它**不**递增 `tokenVersion`。重新启用后，禁用前未过期的 JWT 可能再次可用，这是当前兼容语义。
 - Bearer token 无效时按认证失败处理；Cookie token 无效或超长时清 cookie 后继续，避免公开登录接口被错误 cookie 阻断。
 - Cookie 会话下写请求使用双提交 CSRF：前端先拿 `XSRF-TOKEN` cookie，再带 `X-XSRF-TOKEN` header。
 - `/api/v1/open/**` 只接受 API Key，不接受 JWT/Cookie；普通 `/api/v1/**` 不接受 `X-API-Key`。
@@ -115,7 +116,7 @@
 - `server/accounts/interfaces/src/main/java/com/linkforge/accounts/interfaces/web/MeController.java`
   - `GET /api/v1/me`：从 `AuthContext.requirePrincipal()` 读取已认证主体，给前端初始化会话状态。
 - `server/accounts/interfaces/src/main/java/com/linkforge/accounts/interfaces/web/UserAdminController.java`
-  - 租户管理员用户管理入口。它不是登录链路的一部分，但会影响认证状态，因为禁用用户和重置密码会驱逐缓存并递增 `tokenVersion`。
+  - 租户管理员用户管理入口。它不是登录链路的一部分，但会影响认证状态：禁用会驱逐缓存并由 ACTIVE 状态拒绝请求；重置密码会额外递增 `tokenVersion`。
 
 ### 应用层逻辑
 
@@ -132,6 +133,20 @@
   - 创建用户时角色只允许 `TENANT_ADMIN` 和 `USER`。
   - 禁用用户时禁止禁用自己，并要求至少保留一个启用中的租户管理员。
   - 重置密码会递增 `tokenVersion`。
+
+### 用户管理 HTTP 契约
+
+用户管理都要求当前主体是同租户 `TENANT_ADMIN`：
+
+| 方法与路径 | 作用 | 关键边界 |
+| --- | --- | --- |
+| `GET /api/v1/users` | 列出租户用户 | 跨租户资源不会泄漏 |
+| `POST /api/v1/users` | 创建用户 | email 全局唯一；空角色默认 `USER`，角色仅允许 `USER`/`TENANT_ADMIN` |
+| `PUT /api/v1/users/{id}/disable` | 禁用用户 | 不能禁用自己，必须保留至少一个 ACTIVE 租户管理员 |
+| `PUT /api/v1/users/{id}/enable` | 启用用户 | 不增加 tokenVersion，历史未过期 JWT 可能恢复可用 |
+| `PUT /api/v1/users/{id}/password` | 重置密码 | 更新 hash、增加 tokenVersion、驱逐状态缓存 |
+
+跨租户或不存在用户统一按 not found 处理，避免把用户枚举面暴露给当前租户。
 
 ### 安全过滤链
 
@@ -161,4 +176,4 @@
 - 认证失败由 `RestAuthenticationEntryPoint` 和 `RestAccessDeniedHandler` 返回统一 API 错误形状。
 - 业务错误进入 `GlobalExceptionHandler`，响应体包含 `ApiResponse.requestId`。
 - `RequestIdFilter` 会把请求 ID 放到 MDC、响应头和 API 响应中，便于串联认证失败和后续业务日志。
-- 注销、禁用、重置密码通过 `tokenVersion` 和状态缓存驱逐实现会话失效，避免仅依赖 JWT 自身过期时间。
+- 注销和重置密码通过 `tokenVersion` 加状态缓存驱逐实现会话失效；禁用依赖 ACTIVE 状态拒绝和缓存驱逐。启用不会撤销或新建 tokenVersion，这是需要在管理员操作中知晓的当前限制。

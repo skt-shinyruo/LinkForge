@@ -5,6 +5,7 @@
 <mapper namespace="com.linkforge.analytics.infrastructure.persistence.mapper.LinkStatsDimDailyMapper">
 
     <insert id="batchUpsert">
+        <!-- 维度行也是 Redis Hash/HLL 的当前快照，不是事件增量。 -->
         INSERT INTO link_stats_dim_daily (tenant_id, link_id, day, dim_type, dim_value, pv, uv, updated_at)
         VALUES
         <foreach collection="list" item="r" separator=",">

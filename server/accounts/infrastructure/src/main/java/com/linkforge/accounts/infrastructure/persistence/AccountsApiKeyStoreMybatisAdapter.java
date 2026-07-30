@@ -8,6 +8,16 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;
 import java.util.List;
 
+/**
+ * API Key 存储端口的 MyBatis 适配器。
+ *
+ * <p>本类不自行开启事务，所有写入参与调用方应用服务的 Spring 事务。单条查询未命中返回
+ * {@code null}，列表查询无结果返回不可变空列表；传入 {@code null} 的聚合写入被视为无操作。
+ * Mapper 的影响行数不会向端口暴露，因此更新方法本身不能用于判断记录是否存在或实现 CAS。</p>
+ *
+ * <p>{@code applicationId == null} 会按原值保留，用于识别历史未绑定记录；适配器不会猜测绑定关系。
+ * {@code lastUsedAt} 沿用应用层约定的 UTC {@link LocalDateTime}，数据库列不携带时区。</p>
+ */
 @Component
 public class AccountsApiKeyStoreMybatisAdapter implements AccountsApiKeyStore {
 

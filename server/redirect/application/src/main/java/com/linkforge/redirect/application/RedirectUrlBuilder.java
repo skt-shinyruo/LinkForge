@@ -15,9 +15,14 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Redirect target URL builder.
+ * 构造最终跳转地址并执行 query 转发策略。
  *
- * <p>Encapsulates query-forward policy (mode/allowlist/reserved params) so controllers stay thin.</p>
+ * <p>模式优先级为短链级配置、全局配置、默认 {@code OFF}。{@code ALLOWLIST} 合并全局和短链 allowlist；
+ * 目标地址已有的参数优先，不能被请求参数覆盖。{@code __lf_confirm} 与 {@code __lf_preview} 无论配置
+ * 如何都不会向目标站转发。</p>
+ *
+ * <p>本类采用 best-effort：会使追加部分超过上限的参数及后续参数被丢弃；解析、合并或最终长度检查失败时
+ * 返回原始目标 URL。它不验证目标 URL 的业务合法性，因为该不变量由短链写侧负责。</p>
  */
 @Component
 public class RedirectUrlBuilder {
@@ -26,10 +31,26 @@ public class RedirectUrlBuilder {
     private static final int MAX_APPENDED_QUERY_LEN = 2048;
     private static final int MAX_FINAL_URL_LEN = 4096;
 
+    /**
+     * 创建 URL builder。
+     *
+     * @param redirectProperties 全局 query 转发默认配置；可为 {@code null}，此时只使用短链配置与安全默认值
+     */
     public RedirectUrlBuilder(RedirectProperties redirectProperties) {
         this.redirectProperties = redirectProperties;
     }
 
+    /**
+     * 合并允许转发的请求参数，返回可放入 {@code Location} 的 URL。
+     *
+     * <p>追加部分最多 2048 字符，触及该上限时保留已接受参数、丢弃当前及后续参数；最终 URL 最多 4096
+     * 字符，超限时整体回退原始 URL。原始 query 以原始字符串形式保留，防止已编码的 {@code %} 被二次
+     * 编码。</p>
+     *
+     * @param meta 已验证的短链元数据；为空返回 {@code null}
+     * @param requestParams Servlet 参数表；为空或无可转发参数时返回原始地址
+     * @return 最终 URL，构造异常或最终长度超限时回退原始地址
+     */
     public String buildFinalRedirectUrl(LinkMeta meta, Map<String, String[]> requestParams) {
         if (meta == null) {
             return null;
@@ -55,7 +76,7 @@ public class RedirectUrlBuilder {
         try {
             existingKeys.addAll(parseQueryParamKeys(originalUrl));
         } catch (Exception ignored) {
-            // Keep a best-effort behavior: try to append without breaking existing URL.
+            // 解析失败仍可继续追加，避免损坏原始地址。
         }
 
         StringBuilder appendRaw = new StringBuilder();
@@ -71,7 +92,7 @@ public class RedirectUrlBuilder {
             if ("ALLOWLIST".equals(mode) && !matchesAny(name, allowlist)) {
                 continue;
             }
-            // Conflict policy: target URL wins (do not overwrite existing params)
+            // 冲突策略：目标 URL 优先，不允许请求参数覆盖既有 key。
             if (existingKeys.contains(name)) {
                 continue;
             }
@@ -166,11 +187,8 @@ public class RedirectUrlBuilder {
             return originalUrl;
         }
 
-        // IMPORTANT: avoid rebuilding URI from raw components here.
-        // `new URI(..., query, ...)` will treat `%` as illegal and escape it to `%25`,
-        // causing existing raw-encoded sequences (e.g. `%2B`) to be double-encoded.
-        //
-        // We keep the original URL string and insert merged query before the fragment part.
+        // 不从 raw components 重建 URI：那会把现有 %2B 的 % 转成 %25，造成二次编码。
+        // 保留原始 URL，仅在 fragment 前插入已安全编码的追加 query。
         String url = originalUrl.trim();
 
         int hashIdx = url.indexOf('#');
@@ -227,7 +245,7 @@ public class RedirectUrlBuilder {
     }
 
     private List<String> resolveQueryForwardAllowlist(LinkMeta meta) {
-        // allowlist: global + per-link merged (de-duplicated)
+        // allowlist：合并全局与短链配置并去重，顺序不是对外契约。
         Set<String> set = new HashSet<>();
 
         var global = redirectProperties == null ? null : redirectProperties.getQueryForwardAllowlist();
@@ -266,7 +284,7 @@ public class RedirectUrlBuilder {
                 }
             }
         }
-        // Safety default: internal params must never be forwarded
+        // 安全默认：内部确认/预览参数永远不能透传到目标站。
         set.add("__lf_confirm");
         set.add("__lf_preview");
         return new ArrayList<>(set);

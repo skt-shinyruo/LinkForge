@@ -29,7 +29,14 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 维度按天聚合落库作业：将 Redis 维度 PV（Hash）聚合写入 MySQL。
+ * 将 Redis 维度 PV Hash 和 UV HyperLogLog 快照写入 MySQL 日表。
+ *
+ * <p>每个 dirty 成员固定为 {@code tenantId:linkId}，每个维度 PV Hash 的 field 是维度值，UV 是
+ * 维度值对应的独立 HLL key。HLL 的 {@code PFCOUNT} 是近似 UV；维度值在 key 中以 SHA-256 后缀编码，
+ * 以避免不受控文本膨胀 Redis key。</p>
+ *
+ * <p>扫描 Redis 或写数据库失败会保留消息 pending。落库使用单调 {@code GREATEST} upsert，所以重放
+ * dirty 消息不会降低快照，但 Stream/Redis/数据库并不组成 exactly-once 事务。</p>
  */
 @Component
 public class AnalyticsDimensionFlushJob {
@@ -64,6 +71,12 @@ public class AnalyticsDimensionFlushJob {
         this.analyticsProperties = analyticsProperties;
     }
 
+    /**
+     * 扫描 UTC 当日及可回填日期的维度 dirty stream。
+     *
+     * <p>禁用 {@code analytics.dimensions.enabled} 时整条维度链路停止；链接级 PV/UV 与明细链路不受
+     * 此开关影响。</p>
+     */
     @Scheduled(fixedDelayString = "${APP_ANALYTICS_DIM_FLUSH_DELAY_MS:60000}")
     @SchedulerLock(name = "lf:job:analytics:dim-flush", lockAtMostFor = "PT15M")
     public void flush() {
@@ -108,7 +121,7 @@ public class AnalyticsDimensionFlushJob {
                 acknowledge(streamKey, records.stream().map(MapRecord::getId).toList());
                 continue;
             }
-            if (!flushActiveMembers(day, cfg, members)) {
+            if (!flushDirtyMembers(day, cfg, members)) {
                 return;
             }
             acknowledge(streamKey, records.stream().map(MapRecord::getId).toList());
@@ -137,11 +150,17 @@ public class AnalyticsDimensionFlushJob {
         }
     }
 
-    boolean flushActiveMembers(LocalDate day, AnalyticsProperties.Dimensions cfg, List<String> members) {
+    /**
+     * 扫描 dirty stream 指定链接的维度 Hash，并把当前累计值写入 MySQL。
+     *
+     * @return {@code true} 表示本批消息可以 ACK；Redis 扫描或数据库写入失败时返回 {@code false}，
+     *         由 consumer group pending 消息承担重试
+     */
+    boolean flushDirtyMembers(LocalDate day, AnalyticsProperties.Dimensions cfg, List<String> members) {
         long startNs = System.nanoTime();
         List<MemberParts> parts = new ArrayList<>(members.size());
         for (String m : members) {
-            MemberParts p = parseActiveMember(m);
+            MemberParts p = parseDirtyLinkMember(m);
             if (p != null) {
                 parts.add(p);
             }
@@ -387,7 +406,7 @@ public class AnalyticsDimensionFlushJob {
         }
     }
 
-    private static MemberParts parseActiveMember(String member) {
+    private static MemberParts parseDirtyLinkMember(String member) {
         if (member == null || member.isBlank()) {
             return null;
         }

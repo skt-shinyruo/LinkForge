@@ -9,9 +9,20 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
 
+/**
+ * 管理 API 的 CORS 运行时装配。
+ *
+ * <p>未设置来源白名单时保留本地开发兼容行为：允许任意 origin pattern 但不允许凭据。启用凭据时必须使用
+ * 明确来源，{@code *} 会在启动配置阶段抛出异常，避免浏览器拒绝该组合或误放大 Cookie 暴露面。</p>
+ */
 @Configuration
 public class CorsConfig {
 
+    /**
+     * 构造供 Spring MVC 和安全过滤链共用的 CORS 规则。
+     *
+     * <p>响应只暴露 {@code X-Request-Id}，使浏览器客户端能够将失败响应与服务端日志关联。</p>
+     */
     @Bean
     public CorsConfigurationSource corsConfigurationSource(CorsProperties properties) {
         CorsConfiguration cfg = new CorsConfiguration();

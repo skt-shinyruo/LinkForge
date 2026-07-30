@@ -7,6 +7,15 @@ import org.apache.ibatis.annotations.Param;
 import java.time.LocalDateTime;
 import java.util.List;
 
+/**
+ * 短链读侧与搜索统计 SQL 映射。
+ *
+ * <p>租户控制面查询必须显式携带 {@code tenantId}；按域名或未分域 code 的方法只供仓储按既定 scope
+ * 规则组合。方法名中的 {@code Active} 仅表示排除已归档短链（域名查询还要求域名状态为 ACTIVE），
+ * 不检查 enabled、expiresAt 或短链 lifecycle，最终可跳转性由 Redirect 上下文判断。</p>
+ *
+ * <p>搜索总数和列表复用同一个动态过滤片段；创建时间统计采用 UTC 半开区间，防止相邻窗口重复计数。</p>
+ */
 @Mapper
 public interface ShortLinkQueryMapper {
 

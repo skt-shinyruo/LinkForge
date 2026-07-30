@@ -4,6 +4,7 @@
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.linkforge.foundation.runtime.persistence.mapper.IntegrationDeadLetterMapper">
 
+    <!-- 重复失败仅更新次数和最近错误，保留首条事件快照用于诊断。 -->
     <insert id="upsertFailure">
         INSERT INTO integration_consumer_dead_letter (
             consumer,
@@ -31,4 +32,3 @@
             last_error = #{lastError}
     </insert>
 </mapper>
-

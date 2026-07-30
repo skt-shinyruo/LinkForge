@@ -2,7 +2,7 @@
 
 ## 业务目标
 
-Analytics 接收 Redirect 的访问事件，异步构建 PV、UV、维度统计、访问明细和报表。跳转链路优先保证可用性，因此访问事件写入默认 fail-open：统计失败不应阻断用户跳转。
+Analytics 接收 Redirect 的访问事件，异步构建 PV、UV、维度统计、访问明细和报表。基础访问流始终存在；`events.enabled` 只控制访问明细消费和落库，不关闭 PV/UV、scope 统计或点击额度。访问 appender 是否向 Redirect 外抛由 `events.fail-open` 决定，默认放行跳转。
 
 ## 流程图
 
@@ -79,20 +79,24 @@ Analytics 接收 Redirect 的访问事件，异步构建 PV、UV、维度统计�
 
 ## 访问事件写入
 
-Redirect 在真实跳转前调用 `VisitRecorderPort.recordVisit()`。Analytics 的实现是 `AnalyticsVisitEventService`：
+Redirect 只在真实跳转前调用 `VisitRecorderPort.recordVisit()`。preview、not found、disabled、expired 和 quota 拒绝都不记录。Analytics 的实现是 `AnalyticsVisitEventService`：
 
 - 从 `RedirectVisitRecord` 读取 tenantId、linkId、applicationId、domainId、code、originalUrl 和访问上下文。
 - 转为 `RedirectVisitEvent`。
 - 调用 `AnalyticsVisitEventAppender.append()`。
-- 如果配置为 fail-open，写入失败只记录 debug，不影响跳转。
+- `events.fail-open=true` 时写入失败只记录 debug，不影响跳转；`false` 时异常继续外抛。
+
+`events.enabled` 和 `sampleRate` 不参与这一步。先写完整基础 stream，再由独立明细 consumer 决定是否采样落库。
 
 `RedisAnalyticsVisitEventAppender` 写 Redis Stream 前会：
 
 - 按 occurredAtMillis 计算 UTC day。
 - 规范化 Referer、语言、User-Agent、设备、UTM。
-- 计算 `visitorKey = sha256(day|ip|ua|salt)`，用于日 UV。
+- 计算 `visitorKey = sha256(day|ip|ua|salt)`，用于日 UV；同一访客跨 UTC 日会产生不同 key。
 - 计算 `ipHash = sha256(ip|salt)`，用于明细排障关联，不落明文 IP。
 - 对 stream 做近似 trim，限制长度。
+
+`ipHash` 不包含日期，能跨日关联相同 IP，因此属于假名化标识而不是匿名数据。salt 必须在生产覆盖并限制访问；更换 salt 会切断新旧指纹连续性。User-Agent、tracking value 和维度值会截断，但仍可能包含隐私信息。
 
 ## 聚合投影
 
@@ -101,31 +105,36 @@ Redirect 在真实跳转前调用 `VisitRecorderPort.recordVisit()`。Analytics 
 - 只投影带 visitorKey 的记录。
 - 调用 `AnalyticsRedisAggregateWriter.write()` 写 Redis 聚合。
 - 成功后 ack。
-- 如果某条失败，会先 ack 已处理记录并停止本轮，让失败记录留待后续重试。
+- 如果某条失败，会先 ack 已处理记录并停止本轮，让失败记录留在 pending，等待后续重试。
+- 缺少 `visitorKey` 的不可投影记录会 ACK 丢弃，不增加 PV/UV。
+
+该 projector 是增量写：处理同一访问消息两次会重复 `INCR` PV；相同 visitorKey 再次写 HLL 通常不增加 UV。因此基础统计不是 exactly-once。
 
 `AnalyticsRedisAggregateWriter` 维护：
 
 - link 日 PV：Redis string `INCR`。
 - link 日 UV：Redis HyperLogLog。
 - tenant/application/domain scope UV。
-- active link set。
-- dirty stream，供 flush job 找到需要落库的统计键。
+- link、scope 和可选维度 dirty stream，供 flush job 找到需要落库的统计键。
 - 可选维度统计：维度 PV hash 和维度 UV HLL。
+
+不存在 active set。dirty link member 固定为 `{tenantId}:{linkId}`，只表达“该累计值需要刷新”；删除这条消息不会删除 Redis PV/HLL。
 
 ## 落库与明细
 
 `AnalyticsFlushJob`：
 
 - 定时回刷最近 N 天。
-- 消费 link stats dirty stream，把 Redis PV 和 HLL UV upsert 到 `link_stats_daily`。
+- 通过 consumer group 消费 link stats dirty stream，把 Redis 当前 PV 和 HLL UV upsert 到 `link_stats_daily`。
 - 消费 scope dirty stream，把租户、应用、域名统计 upsert 到 scope stats 表。
 - 使用 ShedLock 防止多实例重复执行。
+- MySQL 写入成功后才 ACK；失败记录留在 pending。重复 dirty 消息只会重复读取当前累计值和 upsert，不会由 flush 自身增加 PV。
 
 `AnalyticsDimensionFlushJob`：
 
 - 仅在 dimensions enabled 时运行。
 - 消费维度 dirty stream。
-- 扫描 active link 和维度类型，把 Redis hash/HLL 写入 `link_stats_dim_daily`。
+- 按维度 dirty stream 指定的 link member 扫描配置维度 Hash/HLL，写入 `link_stats_dim_daily`，不扫描 active set。
 
 `AnalyticsEventIngestJob`：
 
@@ -134,8 +143,10 @@ Redirect 在真实跳转前调用 `VisitRecorderPort.recordVisit()`。Analytics 
 - 优先处理本 consumer pending，再接管闲置 pending，最后读取新消息。
 - 按 sampleRate 决定是否保存访问明细。
 - insert ignore 成功后 ack。
-- 数据完整性异常时逐条隔离 poison record，写 dead letter 后 ack poison。
+- 数据完整性异常时逐条隔离 poison record，best-effort 写 dead letter 后 ack poison。
 - 普通 DB 异常保留 pending，等待重试。
+
+DLQ writer 自己吞 Redis 异常。极端情况下 poison 已被判定并 ACK，但 `:dlq` 写入失败，因此 DLQ 不是无损审计日志。采样未命中的消息直接 ACK，不会进入明细表或 DLQ。
 
 ## 报表查询
 
@@ -156,6 +167,13 @@ Redirect 在真实跳转前调用 `VisitRecorderPort.recordVisit()`。Analytics 
 - `POST /api/v1/applications/{applicationId}/links/{id}/events/export-requests`
 
 `AnalyticsReportingApplicationService` 会通过 `AnalyticsLinkSummaryEnricher` 调 Shortlink 读端口补齐 Top 链接的 code、shortUrl、originalUrl。如果短链已删除，返回 `deleted=true`。
+
+统计口径限制：
+
+- 日 UV 是 HLL 近似值。
+- Top links 和维度查询当前对多日 `uv` 使用 `SUM(日 UV)`，同一访客跨日会重复计数，不能解释为区间精确 UV。
+- tenant/application/domain 日报优先使用 scope HLL；scope 行缺失时回退为链接日 UV 之和，同一访客访问多条链接会重复计数。
+- catalog 投影延迟会影响 application/domain 过滤与链接展示补全，但不影响 Redirect 权威跳转。
 
 ## 访问明细导出审批
 
@@ -196,4 +214,14 @@ Redirect 在真实跳转前调用 `VisitRecorderPort.recordVisit()`。Analytics 
 
 ## 一致性与降级
 
-统计链路是最终一致。Redirect 写访问事件后，Redis Stream、Redis 聚合、MySQL 报表之间存在异步延迟。基础 PV/UV 依赖投影和 flush job；访问明细还受 `events.enabled` 和 `sampleRate` 影响。统计系统故障默认不阻断跳转，但会造成报表延迟或缺失，需要通过 stream pending、dead letter 和 dirty stream 状态排查。
+统计链路是最终一致且非 exactly-once。Redirect 写访问事件后，Redis Stream、Redis 聚合、MySQL 报表之间存在异步延迟。基础 PV/UV 依赖 projector 和 dirty-stream flush；访问明细还受 `events.enabled` 和 `sampleRate` 影响。
+
+排障按层定位：
+
+1. visit stream 长度、projector group lag/pending 和失败消息。
+2. Redis PV/HLL 当前值以及 link/scope/dimension dirty stream pending。
+3. flush 日志、ShedLock 和 MySQL upsert 时间。
+4. 明细 consumer name、pending reclaim、采样率与 `stats:visit:events:dlq`。
+5. catalog checkpoint 与 Shortlink 摘要补全。
+
+点击额度另有故障分层：Redis reservation adapter 的 Redis、返回 null、baseline 查询和 seed 异常全部固定 fail-open；`app.analytics.quota.fail-open` 只控制 Redirect 外层仍收到的 Platform quota 查询或端口异常。额度 key 首次建立以已落库 PV 为 baseline，因此尚未 flush 的访问和 fail-open 窗口可能造成低估。

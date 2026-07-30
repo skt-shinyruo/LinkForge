@@ -60,7 +60,7 @@ Governance 管理敏感操作审批请求、审批决策、执行器回调和审
   <rect class="rule" x="525" y="215" width="190" height="112"/>
   <text class="text" x="620" y="245" text-anchor="middle">并发抢占</text>
   <text class="small" x="620" y="268" text-anchor="middle">markApprovedIfPending</text>
-  <text class="small" x="620" y="288" text-anchor="middle">查找执行器</text>
+  <text class="small" x="620" y="288" text-anchor="middle">先校验唯一执行器</text>
   <text class="small" x="620" y="308" text-anchor="middle">执行成功再 markExecuted</text>
 
   <rect class="ok" x="785" y="215" width="190" height="112"/>
@@ -108,14 +108,14 @@ Governance 管理敏感操作审批请求、审批决策、执行器回调和审
 3. 防止非 pending 状态审批。
 4. 防止申请人审批自己的请求。
 5. 执行审批矩阵。
-6. 调 `markApprovedIfPending()` 抢占 pending 状态，避免并发审批。
-7. 查找支持该 operation 的 `ApprovalExecutionPort`。
+6. 查找支持该 operation 的 `ApprovalExecutionPort`，并要求最多一个匹配项。
+7. 调 `markApprovedIfPending()` 抢占 pending 状态，避免并发审批。
 8. 如果存在执行器，调用执行器。
 9. 执行成功后调 `markExecutedIfApproved()`。
 10. 写 `APPROVE_REQUEST` 审计日志。
 11. 回读最新审批请求返回。
 
-如果执行器执行失败，不会写成功审计，也不会标记 executed。这样审批状态和业务执行结果不会被错误地标记为完成。
+没有匹配执行器时，审批稳定停留在 `APPROVED`，表示已经作出人工决策但没有自动执行步骤。多个匹配执行器属于运行时装配错误，会在 CAS 前被拒绝，避免把请求抢占到半推进状态。执行器或审计写入失败会使当前 Spring 事务回滚，本地审批状态不会错误提交；执行器包含事务外副作用时，事务回滚后的重试仍可能再次调用它，因此执行器必须用资源版本或业务幂等键保护。
 
 ## 审批矩阵
 
@@ -183,3 +183,12 @@ Governance 管理敏感操作审批请求、审批决策、执行器回调和审
 - createdAt
 
 审计查询入口是 `GET /api/v1/audit-logs`，要求 `TENANT_ADMIN` 或 `PLATFORM_ADMIN`。
+
+审计是当前业务事务内的追加写：提交审批写 `SUBMIT_REQUEST`，批准写 `APPROVE_REQUEST`。现阶段没有独立 `EXECUTE` 审计或审计级 `executedAt` 字段；审计快照是按操作类型解释的不透明文本，新操作通常是版本化 JSON，但历史外部域名流程可能是纯文本，部分操作的 before 允许为空。读取审计时不得假设每条 snapshot 都能按同一 JSON DTO 解析。
+
+## 并发与重试限制
+
+- `markApprovedIfPending` 和 `markExecutedIfApproved` 是条件更新，保证最终成功提交的本地请求只有一个认领者。
+- 已离开 `PENDING_APPROVAL` 的重复批准返回“状态已变化”，不是“重复成功”的幂等响应。
+- `ApprovalExecutionPort` 对目标地址变更必须重新校验 tenant、link/application、before snapshot、归档和乐观锁；批准本身不是绕过业务并发保护的凭据。
+- Payload codec 对新的结构化请求严格校验 type/version/字段。未知版本、非法 JSON 或 quota 审批缺少 `monthlyLinkLimit` 都拒绝；`monthlyClickLimit` 在该 payload 中可以为空。

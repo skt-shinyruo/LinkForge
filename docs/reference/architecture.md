@@ -61,7 +61,7 @@ LinkForge 是一个模块化单体：后端由 Maven Reactor 组织，前端是�
 2. 使用 `host + code` 查询权威短链读取 API
 3. 对真实未命中写入负缓存
 
-短链变更只会在事务提交后通过 `AfterCommit` 驱逐跳转缓存条目，因此事务回滚不会导致 Redis 与持久化状态发生偏离。系统没有第二条 redirect 投影正确性通道。
+短链变更在业务事务内写缓存失效 outbox，事务提交后再通过 `AfterCommit` 尝试快速驱逐；worker 会对 outbox 重试。事务回滚既不会执行快速路径，也不会留下 outbox。系统没有第二条 redirect 投影正确性通道，Redis 异常或缓存 miss 时始终同步调用 `ShortLinkReadPort`。
 
 ## 前端
 

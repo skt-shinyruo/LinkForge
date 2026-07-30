@@ -5,7 +5,10 @@
 ## 架构与总览
 
 - [架构总览](architecture.md)：模块化单体边界、分层规则、部署拓扑和关键技术约束。
-- [核心逻辑](core-logic.md)：核心业务逻辑、跨上下文链路和前端页面逻辑。
+- [核心逻辑地图](core-logic.md)：核心链路、上下文职责和各权威专题入口。
+- [Foundation 与关键配置](foundation-and-configuration.md)：ID、请求 ID、认证主体、事务后动作、事件存储、启动门禁和默认配置。
+- [发布契约](published-contracts.md)：共享 API、跨上下文端口、事件、审批 payload、Redis key 与兼容性规则。
+- [核心逻辑文档规范](documentation-standards.md)：注释范围、事实源分层、核心目录 schema 和评审门禁。
 
 ## 链路索引
 

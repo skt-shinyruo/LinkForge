@@ -27,6 +27,16 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 
+/**
+ * 将 ShortLink integration outbox 投影为 Analytics 链接目录的消费者。
+ *
+ * <p>目录为应用/域范围报表和额度 SQL 提供链接归属与展示字段。每个事件在独立事务中先应用目录变更、
+ * 再推进 checkpoint；数据库错误回滚该事务并停在当前 seq，之后重试。未知事件类型可安全跳过，以兼容
+ * 新生产者。</p>
+ *
+ * <p>无法解析或违反快照基本约束的事件会写 integration DLQ 并推进 checkpoint，避免坏历史事件永久
+ * 阻塞消费者。DLQ 的可靠性受其底层实现约束，不能将这条异步投影理解为 exactly-once 的跨上下文事务。</p>
+ */
 @Component
 public class ShortLinkCatalogProjectorJob {
 
@@ -61,6 +71,9 @@ public class ShortLinkCatalogProjectorJob {
         this.tx = tpl;
     }
 
+    /**
+     * 在单次调度中最多连续处理十批，防止积压追赶长期占用调度线程。
+     */
     @Scheduled(fixedDelayString = "${APP_ANALYTICS_SHORTLINK_CATALOG_PROJECTOR_DELAY_MS:2000}")
     @SchedulerLock(name = "lf:job:analytics:shortlink-catalog-projector", lockAtMostFor = "PT2M")
     public void project() {
@@ -77,6 +90,11 @@ public class ShortLinkCatalogProjectorJob {
         }
     }
 
+    /**
+     * 处理 checkpoint 之后的一批 ShortLink 事件。
+     *
+     * @return 成功完成事务或被明确跳过的事件数；数据库失败时返回已完成数量并留下当前 checkpoint
+     */
     int projectOnce() {
         long lastSeq = checkpoints.loadOrInit(CONSUMER);
         List<IntegrationEventRow> events = store.listAfterSeqByProducer(PRODUCER, lastSeq, BATCH_LIMIT);

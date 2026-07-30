@@ -15,6 +15,7 @@
         </constructor>
     </resultMap>
 
+    <!-- 唯一键合并同一短链的失效意图；重复入队会重新打开已处理或等待重试的记录。 -->
     <insert id="enqueue">
         INSERT INTO redirect_cache_invalidation_outbox (
             tenant_id,
@@ -46,6 +47,7 @@
             updated_at = CURRENT_TIMESTAMP
     </insert>
 
+    <!-- 不使用 FOR UPDATE/SKIP LOCKED；生产调度依赖 ShedLock 串行，删除操作仍需可重复执行。 -->
     <select id="listDue" resultMap="RedirectCacheInvalidationOutboxRowResultMap">
         SELECT
             id,

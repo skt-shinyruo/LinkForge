@@ -19,6 +19,18 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicReference;
 
+/**
+ * 应用级月点击额度守卫。
+ *
+ * <p>只有携带有效 {@code applicationId} 的链接进入该守卫。额度定义按 UTC 月
+ * {@code [monthStart, nextMonthStart)} 计算；小于等于零的 {@code monthlyClickLimit} 表示不限额。
+ * 每次真实跳转通过 {@link ApplicationClickQuotaReservationPort} 原子预留一个名额，不能用普通查询
+ * 加一替代。</p>
+ *
+ * <p>Platform 的 quota 视图以短 TTL 缓存在进程内，空结果同样可缓存；加载异常绝不缓存。这里的
+ * {@code failOpenOnQuotaErrors} 只处理仍从 Platform 查询或 reservation port 抛出的异常，不能改变
+ * Analytics Redis adapter 自身已定义的固定 fail-open 行为。</p>
+ */
 @Component
 public class RedirectQuotaGuard {
 
@@ -32,6 +44,15 @@ public class RedirectQuotaGuard {
     private final long quotaLookupCacheTtlMillis;
     private final ConcurrentMap<QuotaCacheKey, CachedApplicationQuota> quotaLookupCache = new ConcurrentHashMap<>();
 
+    /**
+     * 创建生产用额度守卫。
+     *
+     * @param failOpenOnQuotaErrors Platform 查询或端口调用抛异常时是否继续跳转
+     * @param quotaLookupCacheTtlSeconds Platform quota 视图的本地缓存秒数，非正值关闭缓存
+     * @param clock UTC 时间来源
+     * @param applicationScopePort Platform quota 查询端口
+     * @param applicationClickQuotaReservationPort 原子月额度预留端口
+     */
     @Autowired
     public RedirectQuotaGuard(
             Clock clock,
@@ -49,6 +70,14 @@ public class RedirectQuotaGuard {
         this.quotaLookupCacheTtlMillis = toMillis(quotaLookupCacheTtlSeconds);
     }
 
+    /**
+     * 以默认 30 秒 quota 查询缓存创建守卫。
+     *
+     * @param clock UTC 时间来源
+     * @param applicationScopePort Platform quota 查询端口
+     * @param applicationClickQuotaReservationPort 原子月额度预留端口
+     * @param failOpenOnQuotaErrors Platform/端口异常是否放行
+     */
     public RedirectQuotaGuard(
             Clock clock,
             ApplicationScopePort applicationScopePort,
@@ -64,6 +93,13 @@ public class RedirectQuotaGuard {
         );
     }
 
+    /**
+     * 以 fail-closed 和默认查询缓存创建守卫。
+     *
+     * @param clock UTC 时间来源
+     * @param applicationScopePort Platform quota 查询端口
+     * @param applicationClickQuotaReservationPort 原子月额度预留端口
+     */
     public RedirectQuotaGuard(
             Clock clock,
             ApplicationScopePort applicationScopePort,
@@ -88,6 +124,15 @@ public class RedirectQuotaGuard {
         return new RedirectQuotaGuard(clock, noQuotaApplicationScopePort(), allowAllClickQuotaReservationPort());
     }
 
+    /**
+     * 为给定链接尝试预留本月点击额度。
+     *
+     * <p>返回 {@code null} 表示可继续跳转；返回 {@code QUOTA_EXCEEDED} 表示不得记录访问或写
+     * Location。该方法只在调用方已经完成静态可用性和预览确认之后调用。</p>
+     *
+     * @param meta 已通过静态可用性检查的短链元数据
+     * @return {@code null} 表示预留成功或无需限额，否则为不可用原因
+     */
     RedirectResolution.UnavailableReason unavailableReason(LinkMeta meta) {
         if (meta == null) {
             return null;
@@ -155,6 +200,7 @@ public class RedirectQuotaGuard {
 
         AtomicReference<Optional<ApplicationQuotaView>> quotaRef = new AtomicReference<>();
         AtomicReference<Exception> failureRef = new AtomicReference<>();
+        // compute 让同一个 application 的并发首读共用一次远端查询；异常不留下失败缓存。
         quotaLookupCache.compute(key, (ignored, existing) -> {
             long computeNowMillis = clock.instant().toEpochMilli();
             if (existing != null && existing.isFresh(computeNowMillis)) {

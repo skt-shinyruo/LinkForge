@@ -83,6 +83,37 @@ class ApplicationProvisioningServiceTest {
     }
 
     @Test
+    void createApplication_shouldAcceptApplicationKeyAtDatabaseLimit() {
+        ApplicationRepository applicationRepository = mock(ApplicationRepository.class);
+        ApplicationProvisioningService service = newService(applicationRepository, mock(DomainRepository.class));
+        String applicationKey = "a".repeat(64);
+
+        ApplicationResult result = service.createApplication(
+                1L,
+                actor(),
+                new CreateApplicationCommand(applicationKey, "API")
+        );
+
+        assertThat(result.applicationKey()).isEqualTo(applicationKey);
+        verify(applicationRepository).insert(org.mockito.ArgumentMatchers.any(Application.class));
+    }
+
+    @Test
+    void createApplication_shouldRejectApplicationKeyBeyondDatabaseLimitBeforeInsert() {
+        ApplicationRepository applicationRepository = mock(ApplicationRepository.class);
+        ApplicationProvisioningService service = newService(applicationRepository, mock(DomainRepository.class));
+
+        assertThatThrownBy(() -> service.createApplication(
+                1L,
+                actor(),
+                new CreateApplicationCommand("a".repeat(65), "API")
+        ))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("applicationKey 过长");
+        verify(applicationRepository, never()).insert(org.mockito.ArgumentMatchers.any(Application.class));
+    }
+
+    @Test
     void createTenantSharedDomain_shouldTranslateDuplicateHostname() {
         DomainRepository domainRepository = mock(DomainRepository.class);
         ApplicationProvisioningService service = newService(domainRepository);

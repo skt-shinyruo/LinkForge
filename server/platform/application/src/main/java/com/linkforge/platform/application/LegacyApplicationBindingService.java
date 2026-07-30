@@ -19,6 +19,16 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.net.URI;
 
+/**
+ * 为尚未显式选择应用和域名的旧接口提供兼容绑定。
+ *
+ * <p>首次访问某租户时，该服务在一个事务中按需创建固定键的默认应用、默认策略、默认额度和专属域名；
+ * 已存在的应用或域名会被复用。它不会修复“应用已存在但策略或额度缺失”之类的部分历史数据，
+ * 也不会重新校验既有域名的状态及其与默认应用的绑定关系。</p>
+ *
+ * <p>当前实现采用先查询后插入，没有分布式锁、upsert 或冲突重读。数据库唯一约束可以防止生成两份
+ * 默认资源，但并发首次开通时失败的一方会收到持久化异常，需要由上层在新事务中重试。</p>
+ */
 @Service
 class LegacyApplicationBindingService {
 
@@ -47,6 +57,15 @@ class LegacyApplicationBindingService {
         this.coreProperties = coreProperties;
     }
 
+    /**
+     * 返回租户的旧接口默认绑定，不存在时在当前事务内创建。
+     *
+     * <p>默认域名为 {@code legacy-{tenantId}.{baseHost}}；{@code baseHost} 优先取
+     * {@code core.base-url} 的主机名，配置缺失或非法时使用 {@code legacy-host}。</p>
+     *
+     * @param tenantId 租户标识
+     * @return 可供旧接口填充的应用和专属域名标识
+     */
     @Transactional
     LegacyBinding ensureLegacyDefaultBinding(long tenantId) {
         Application application = applicationRepository.findByTenantIdAndApplicationKey(tenantId, LEGACY_DEFAULT_APPLICATION_KEY)
@@ -114,7 +133,7 @@ class LegacyApplicationBindingService {
                     host = uri.getHost().toLowerCase();
                 }
             } catch (Exception ignored) {
-                // fall through to synthetic host
+                // 非法配置不阻断旧接口开通，继续使用可预测的合成主机名。
             }
         }
         return "legacy-" + tenantId + "." + host;

@@ -563,4 +563,72 @@ class UpdateShortLinkCommandHandlerTest {
         verify(shortLinkRepository, never()).update(link);
         verify(domainEventDispatcher, never()).publish(eq(link), eq(clock.instant()));
     }
+
+    @Test
+    void handle_shouldRejectExpiresAtValueTogetherWithClearFlag() {
+        ShortLinkRepository shortLinkRepository = mock(ShortLinkRepository.class);
+        ShortLinkDomainEventDispatcher domainEventDispatcher = mock(ShortLinkDomainEventDispatcher.class);
+        Clock clock = Clock.fixed(Instant.parse("2026-04-01T00:00:00Z"), ZoneOffset.UTC);
+        UpdateShortLinkCommandHandler handler = new UpdateShortLinkCommandHandler(
+                shortLinkRepository,
+                mock(SetLinkTagsCommandHandler.class),
+                domainEventDispatcher,
+                mock(LinkTagRepository.class),
+                mock(RedirectCacheSyncPort.class),
+                mock(RedirectCacheInvalidationOutboxPort.class),
+                mock(ShortLinkDtoMapper.class),
+                mock(PostCommitHookPort.class),
+                clock,
+                mock(ApprovalSubmissionPort.class)
+        );
+        ShortLink link = ShortLink.create(
+                104L,
+                1L,
+                null,
+                null,
+                ShortCode.of("expiry1"),
+                ShortLinkLifecycleState.ACTIVE,
+                HttpUrl.of("https://example.com/old"),
+                null,
+                true,
+                null,
+                null,
+                false,
+                null,
+                null,
+                null,
+                CreatedByType.USER,
+                7L
+        );
+        when(shortLinkRepository.findByTenantIdAndId(1L, 104L)).thenReturn(java.util.Optional.of(link));
+
+        assertThatThrownBy(() -> handler.handle(
+                1L,
+                104L,
+                new UpdateLinkRequest(
+                        null,
+                        null,
+                        Instant.parse("2026-05-01T00:00:00Z"),
+                        true,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null
+                ),
+                new UserActor(1L, 7L, "owner@example.com", Set.of("USER")),
+                LocalDateTime.parse("2026-04-01T00:00:00")
+        ))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.BAD_REQUEST))
+                .hasMessageContaining("clearExpiresAt");
+
+        verify(shortLinkRepository, never()).update(link);
+        verifyNoInteractions(domainEventDispatcher);
+    }
 }

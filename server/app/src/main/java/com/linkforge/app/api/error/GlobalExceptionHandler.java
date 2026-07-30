@@ -16,6 +16,13 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+/**
+ * 管理 API 的统一异常到 {@link ApiResponse} 映射。
+ *
+ * <p>业务异常保持其公开错误码和 HTTP 状态；Bean Validation、缺参数和 Spring 拒绝访问映射为稳定的 400/403。
+ * 未预期异常只记录服务端日志并返回通用 500，避免泄漏堆栈、SQL 或凭据信息。该 advice 不覆盖 Redirect 的
+ * HTML/重定向响应链路。</p>
+ */
 @RestControllerAdvice(basePackages = {
         "com.linkforge.accounts",
         "com.linkforge.shortlink",
@@ -27,6 +34,7 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    /** 保留业务层已定义的公开错误码与消息。 */
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusiness(BusinessException ex) {
         AppErrorCode ec = ex.getErrorCode();
@@ -35,6 +43,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(status).body(body);
     }
 
+    /** 返回首个 Bean Validation 错误，避免暴露内部绑定对象。 */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException ex) {
         String msg = ex.getBindingResult().getAllErrors().isEmpty()
@@ -44,6 +53,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 
+    /** 映射方法参数约束异常为 400。 */
     @ExceptionHandler(ConstraintViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handleConstraint(ConstraintViolationException ex) {
         String msg = ex.getConstraintViolations().isEmpty()
@@ -53,6 +63,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 
+    /** 映射缺失请求参数为 400，并仅回显参数名。 */
     @ExceptionHandler(MissingServletRequestParameterException.class)
     public ResponseEntity<ApiResponse<Void>> handleMissingRequestParameter(MissingServletRequestParameterException ex) {
         String parameterName = ex == null ? null : ex.getParameterName();
@@ -63,6 +74,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 
+    /** 记录完整异常但向客户端隐藏内部原因。 */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleOther(Exception ex) {
         // 避免把敏感信息回传给客户端；详细信息记录在服务端日志
@@ -75,6 +87,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
     }
 
+    /** 将 Spring 方法安全拒绝转换为稳定的 403 响应。 */
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException ex) {
         ApiResponse<Void> body = ApiResponse.error(

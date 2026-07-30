@@ -34,6 +34,17 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
+/**
+ * 更新短链可变属性，并处理应用短链目标地址变更的审批分支。
+ *
+ * <p>处理器先按租户读取聚合，再通过 {@link ShortLinkUserAccess} 校验用户是否能访问该短链。
+ * 应用短链的目标地址发生变化时，只允许单独提交该变化：处理器创建审批单并返回待审批视图，
+ * 不直接修改短链、标签，也不发布短链事件或清理缓存。未触发审批时，聚合更新和标签替换位于同一事务，
+ * 仓储以版本号执行乐观锁；过期写会令整个事务回滚。</p>
+ *
+ * <p>成功直写后会在事务内发布领域事件并登记缓存失效 outbox，提交后再执行一次 best-effort 缓存清理；
+ * 即时清理失败由 outbox 重试承担可靠性。</p>
+ */
 @Component
 public class UpdateShortLinkCommandHandler {
 
@@ -72,10 +83,35 @@ public class UpdateShortLinkCommandHandler {
         this.approvalSubmissionPort = approvalSubmissionPort;
     }
 
+    /**
+     * 更新短链，或在需要治理审批时仅提交目标地址变更申请。
+     *
+     * <p>所有 {@code clearXxx=true} 均表示显式清空；同一次请求若还提供对应新值会被拒绝，
+     * 包括 {@code clearExpiresAt + expiresAt}、{@code clearRedirectStatusCode + redirectStatusCode}
+     * 和 {@code clearQueryForwardMode + queryForwardMode}。重复直写需携带从当前聚合读取的版本，
+     * 并发修改失败会返回 {@code LINK_STALE_WRITE}，调用方应重新读取后决定是否重试。</p>
+     *
+     * @param tenantId 当前租户，必须与用户和短链归属一致
+     * @param linkId 待更新短链
+     * @param req 部分更新参数，不能为 {@code null}
+     * @param actor 当前用户；用于短链访问控制和审批申请人审计
+     * @param requestedAt 审批申请时间；仅审批分支使用
+     * @return 更新后的短链，或原短链附带待审批信息的视图
+     * @throws BusinessException 权限、不变量、清空字段冲突或乐观锁校验失败时抛出
+     */
     @Transactional
     public LinkDto handle(long tenantId, long linkId, UpdateLinkRequest req, UserActor actor, LocalDateTime requestedAt) {
         if (req == null) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "UpdateLinkRequest 不能为空");
+        }
+        if (Boolean.TRUE.equals(req.clearExpiresAt()) && req.expiresAt() != null) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "clearExpiresAt=true 时不允许同时传 expiresAt");
+        }
+        if (Boolean.TRUE.equals(req.clearRedirectStatusCode()) && req.redirectStatusCode() != null) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "clearRedirectStatusCode=true 时不允许同时传 redirectStatusCode");
+        }
+        if (Boolean.TRUE.equals(req.clearQueryForwardMode()) && req.queryForwardMode() != null) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "clearQueryForwardMode=true 时不允许同时传 queryForwardMode");
         }
         ShortLink link = shortLinkRepository.findByTenantIdAndId(tenantId, linkId)
                 .orElseThrow(() -> new BusinessException(ShortLinkErrorCode.LINK_NOT_FOUND));
@@ -153,9 +189,6 @@ public class UpdateShortLinkCommandHandler {
         }
 
         if (Boolean.TRUE.equals(req.clearRedirectStatusCode())) {
-            if (req.redirectStatusCode() != null) {
-                throw new BusinessException(ErrorCode.BAD_REQUEST, "clearRedirectStatusCode=true 时不允许同时传 redirectStatusCode");
-            }
             link.clearRedirectStatusCode();
         } else if (req.redirectStatusCode() != null) {
             try {
@@ -169,7 +202,7 @@ public class UpdateShortLinkCommandHandler {
             link.setPreviewEnabled(req.previewEnabled());
         }
         if (req.unavailableLandingUrl() != null) {
-            // explicit empty string clears
+            // 该字段没有独立 clear 标志，显式空字符串表示清空。
             String normalized = normalizeNullable(req.unavailableLandingUrl());
             if (normalized == null) {
                 link.clearUnavailableLandingUrl();
@@ -183,9 +216,6 @@ public class UpdateShortLinkCommandHandler {
         }
 
         if (Boolean.TRUE.equals(req.clearQueryForwardMode())) {
-            if (req.queryForwardMode() != null) {
-                throw new BusinessException(ErrorCode.BAD_REQUEST, "clearQueryForwardMode=true 时不允许同时传 queryForwardMode");
-            }
             link.clearQueryForwardMode();
         } else if (req.queryForwardMode() != null) {
             try {

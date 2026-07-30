@@ -12,6 +12,16 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * 审批请求仓储的 MyBatis 适配器。
+ *
+ * <p>所有读取和状态更新都带租户条件，避免仅凭全局 ID 穿透租户边界。审批与执行状态通过
+ * 单条条件更新完成，受影响行数为零表示请求不存在、租户不匹配或状态已被并发请求推进；
+ * 适配器不会把这些情况重新读取后猜测为成功。</p>
+ *
+ * <p>该适配器不自行开启事务，审批记录、业务执行和审计记录是否原子提交由应用服务事务决定。
+ * 数据库异常不会被吞掉，由 MyBatis/Spring 翻译后向上层传播。</p>
+ */
 @Component
 public class ApprovalRepositoryMybatisAdapter implements ApprovalRepository {
 
@@ -36,6 +46,12 @@ public class ApprovalRepositoryMybatisAdapter implements ApprovalRepository {
         return mapper.listByTenantId(tenantId).stream().map(this::toDomain).toList();
     }
 
+    /**
+     * 仅当记录仍为 {@code PENDING_APPROVAL} 时认领审批。
+     *
+     * <p>当前 CAS 条件是 {@code tenantId + requestId + status}，不包含执行器标识；唯一执行器的
+     * 选择与冲突校验必须在应用层进入此 CAS 前完成。重复调用或并发输家返回 {@code false}。</p>
+     */
     @Override
     public boolean markApprovedIfPending(
             long tenantId,
@@ -55,6 +71,12 @@ public class ApprovalRepositoryMybatisAdapter implements ApprovalRepository {
         ) > 0;
     }
 
+    /**
+     * 仅当记录仍为 {@code APPROVED} 时标记执行完成。
+     *
+     * <p>返回 {@code false} 不是幂等成功，而是状态竞争或目标不匹配信号，调用方必须将其视为
+     * 执行状态未被可靠记录。</p>
+     */
     @Override
     public boolean markExecutedIfApproved(long tenantId, long requestId, LocalDateTime executedAt) {
         return mapper.markExecutedIfApproved(tenantId, requestId, executedAt) > 0;

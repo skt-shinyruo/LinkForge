@@ -1,0 +1,293 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "foundation.id-generation",
+      "context": "foundation",
+      "sources": [
+        "server/foundation/core/src/main/java/com/linkforge/foundation/id/SnowflakeIdGenerator.java",
+        "server/foundation/core/src/main/java/com/linkforge/foundation/config/IdProperties.java"
+      ],
+      "document": "docs/reference/foundation-and-configuration.md",
+      "heading": "Snowflake ID"
+    },
+    {
+      "id": "foundation.request-correlation",
+      "context": "foundation",
+      "sources": [
+        "server/foundation/runtime-web/src/main/java/com/linkforge/foundation/runtime/web/RequestIdFilter.java"
+      ],
+      "document": "docs/reference/foundation-and-configuration.md",
+      "heading": "请求 ID 与错误关联"
+    },
+    {
+      "id": "foundation.auth-principal",
+      "context": "foundation",
+      "sources": [
+        "server/foundation/runtime-security/src/main/java/com/linkforge/foundation/runtime/security/AuthContext.java",
+        "server/foundation/core/src/main/java/com/linkforge/foundation/security/AuthPrincipal.java"
+      ],
+      "document": "docs/reference/foundation-and-configuration.md",
+      "heading": "认证主体边界"
+    },
+    {
+      "id": "foundation.post-commit-and-events",
+      "context": "foundation",
+      "sources": [
+        "server/foundation/runtime-tx/src/main/java/com/linkforge/foundation/runtime/tx/AfterCommit.java",
+        "server/foundation/runtime-tx/src/main/java/com/linkforge/foundation/runtime/tx/SpringPostCommitHookAdapter.java",
+        "server/foundation/core/src/main/java/com/linkforge/foundation/eventing/IntegrationEventStore.java",
+        "server/foundation/runtime-persistence/src/main/java/com/linkforge/foundation/runtime/eventing/MybatisIntegrationEventStore.java"
+      ],
+      "document": "docs/reference/foundation-and-configuration.md",
+      "heading": "事务后动作"
+    },
+    {
+      "id": "accounts.auth-and-session",
+      "context": "accounts",
+      "sources": [
+        "server/accounts/application/src/main/java/com/linkforge/accounts/application/AuthService.java",
+        "server/accounts/application/src/main/java/com/linkforge/accounts/application/UserAdminService.java",
+        "server/accounts/application/src/main/java/com/linkforge/accounts/application/AccountStatusService.java"
+      ],
+      "document": "docs/reference/auth-and-session.md",
+      "heading": "关键业务规则"
+    },
+    {
+      "id": "accounts.api-key",
+      "context": "accounts",
+      "sources": [
+        "server/accounts/application/src/main/java/com/linkforge/accounts/application/ApiKeyService.java",
+        "server/accounts/infrastructure/src/main/java/com/linkforge/accounts/infrastructure/cache/RedisApiKeyAuthCache.java"
+      ],
+      "document": "docs/reference/openapi-api-key.md",
+      "heading": "API Key 生命周期"
+    },
+    {
+      "id": "platform.control-plane",
+      "context": "platform",
+      "sources": [
+        "server/platform/application/src/main/java/com/linkforge/platform/application/ApplicationProvisioningService.java",
+        "server/platform/application/src/main/java/com/linkforge/platform/application/PlatformControlPlaneService.java",
+        "server/platform/domain/src/main/java/com/linkforge/platform/domain/Hostname.java"
+      ],
+      "document": "docs/reference/platform-control-plane.md",
+      "heading": "关键业务规则"
+    },
+    {
+      "id": "shortlink.aggregate",
+      "context": "shortlink",
+      "sources": [
+        "server/shortlink/domain/src/main/java/com/linkforge/shortlink/domain/ShortLink.java",
+        "server/shortlink/domain/src/main/java/com/linkforge/shortlink/domain/ShortCode.java",
+        "server/shortlink/domain/src/main/java/com/linkforge/shortlink/domain/HttpUrl.java"
+      ],
+      "document": "docs/reference/shortlink-management.md",
+      "heading": "创建短链规则"
+    },
+    {
+      "id": "shortlink.commands",
+      "context": "shortlink",
+      "sources": [
+        "server/shortlink/application/src/main/java/com/linkforge/shortlink/application/command/CreateShortLinkCommandHandler.java",
+        "server/shortlink/application/src/main/java/com/linkforge/shortlink/application/command/UpdateShortLinkCommandHandler.java",
+        "server/shortlink/application/src/main/java/com/linkforge/shortlink/application/command/DeleteShortLinkCommandHandler.java"
+      ],
+      "document": "docs/reference/shortlink-management.md",
+      "heading": "更新、审批、归档和删除"
+    },
+    {
+      "id": "shortlink.cache-outbox",
+      "context": "shortlink",
+      "sources": [
+        "server/shortlink/infrastructure/src/main/java/com/linkforge/shortlink/infrastructure/redirect/RedirectCacheInvalidationOutboxJob.java",
+        "server/shortlink/infrastructure/src/main/java/com/linkforge/shortlink/infrastructure/redirect/RedirectCacheSyncAdapter.java"
+      ],
+      "document": "docs/reference/cross-context-events.md",
+      "heading": "缓存失效语义"
+    },
+    {
+      "id": "redirect.resolve",
+      "context": "redirect",
+      "sources": [
+        "server/redirect/application/src/main/java/com/linkforge/redirect/application/RedirectService.java",
+        "server/redirect/application/src/main/java/com/linkforge/redirect/application/RedirectQuotaGuard.java",
+        "server/redirect/application/src/main/java/com/linkforge/redirect/application/RedirectUrlBuilder.java"
+      ],
+      "document": "docs/reference/redirect-and-cache.md",
+      "heading": "主流程"
+    },
+    {
+      "id": "redirect.risk-control",
+      "context": "redirect",
+      "sources": [
+        "server/redirect/interfaces/src/main/java/com/linkforge/redirect/interfaces/web/RedirectRiskControlFilter.java",
+        "server/redirect/interfaces/src/main/java/com/linkforge/redirect/interfaces/web/RedirectClientIpResolver.java"
+      ],
+      "document": "docs/reference/redirect-and-cache.md",
+      "heading": "风控规则"
+    },
+    {
+      "id": "analytics.visit-projection",
+      "context": "analytics",
+      "sources": [
+        "server/analytics/application/src/main/java/com/linkforge/analytics/application/AnalyticsVisitEventService.java",
+        "server/analytics/infrastructure/src/main/java/com/linkforge/analytics/infrastructure/job/AnalyticsRedirectEventProjectorJob.java",
+        "server/analytics/infrastructure/src/main/java/com/linkforge/analytics/infrastructure/job/AnalyticsRedisAggregateWriter.java"
+      ],
+      "document": "docs/reference/analytics-ingestion-and-reporting.md",
+      "heading": "聚合投影"
+    },
+    {
+      "id": "analytics.flush-and-detail",
+      "context": "analytics",
+      "sources": [
+        "server/analytics/infrastructure/src/main/java/com/linkforge/analytics/infrastructure/job/AnalyticsFlushJob.java",
+        "server/analytics/infrastructure/src/main/java/com/linkforge/analytics/infrastructure/job/AnalyticsDimensionFlushJob.java",
+        "server/analytics/infrastructure/src/main/java/com/linkforge/analytics/infrastructure/job/AnalyticsEventIngestJob.java"
+      ],
+      "document": "docs/reference/analytics-ingestion-and-reporting.md",
+      "heading": "落库与明细"
+    },
+    {
+      "id": "analytics.reporting",
+      "context": "analytics",
+      "sources": [
+        "server/analytics/application/src/main/java/com/linkforge/analytics/application/AnalyticsReportingApplicationService.java",
+        "server/analytics/application/src/main/java/com/linkforge/analytics/application/AnalyticsExportRequestService.java"
+      ],
+      "document": "docs/reference/analytics-ingestion-and-reporting.md",
+      "heading": "报表查询"
+    },
+    {
+      "id": "governance.approval",
+      "context": "governance",
+      "sources": [
+        "server/governance/domain/src/main/java/com/linkforge/governance/domain/ApprovalRequest.java",
+        "server/governance/application/src/main/java/com/linkforge/governance/application/GovernanceService.java"
+      ],
+      "document": "docs/reference/governance-approval-audit.md",
+      "heading": "审批执行"
+    },
+    {
+      "id": "frontend.session-and-transport",
+      "context": "frontend",
+      "sources": [
+        "web/src/router/index.ts",
+        "web/src/stores/auth.ts",
+        "web/src/services/http.ts",
+        "web/src/services/apiContract.ts"
+      ],
+      "document": "docs/reference/frontend-console.md",
+      "heading": "路由与会话"
+    },
+    {
+      "id": "frontend.link-workflow",
+      "context": "frontend",
+      "sources": [
+        "web/src/composables/links/linkFormCodec.ts",
+        "web/src/composables/links/useLinkMutations.ts",
+        "web/src/composables/links/useLinkImportExport.ts"
+      ],
+      "document": "docs/reference/frontend-console.md",
+      "heading": "页面 composables"
+    },
+    {
+      "id": "frontend.stats-workflow",
+      "context": "frontend",
+      "sources": [
+        "web/src/composables/useStatsPage.ts",
+        "web/src/composables/useApplicationDetailPage.ts"
+      ],
+      "document": "docs/reference/frontend-console.md",
+      "heading": "统计页"
+    },
+    {
+      "id": "contracts.api",
+      "context": "contracts",
+      "sources": [
+        "server/contracts/api/src/main/java/com/linkforge/contract/accounts/AccountsErrorCode.java",
+        "server/contracts/api/src/main/java/com/linkforge/contract/api/ApiResponse.java",
+        "server/contracts/api/src/main/java/com/linkforge/contract/api/AppErrorCode.java",
+        "server/contracts/api/src/main/java/com/linkforge/contract/api/BusinessException.java",
+        "server/contracts/api/src/main/java/com/linkforge/contract/api/ErrorCode.java",
+        "server/contracts/api/src/main/java/com/linkforge/contract/openapi/OpenApiErrorCode.java",
+        "server/contracts/api/src/main/java/com/linkforge/contract/shortlink/ShortLinkErrorCode.java"
+      ],
+      "document": "docs/reference/published-contracts.md",
+      "heading": "API 响应与错误"
+    },
+    {
+      "id": "contracts.analytics",
+      "context": "contracts",
+      "sources": [
+        "server/contracts/analytics/src/main/java/com/linkforge/contract/analytics/AnalyticsKeys.java",
+        "server/contracts/analytics/src/main/java/com/linkforge/contract/analytics/ApplicationClickQuotaReservationPort.java",
+        "server/contracts/analytics/src/main/java/com/linkforge/contract/analytics/ApplicationClickUsagePort.java",
+        "server/contracts/analytics/src/main/java/com/linkforge/contract/analytics/RedirectVisitRecord.java",
+        "server/contracts/analytics/src/main/java/com/linkforge/contract/analytics/VisitContext.java",
+        "server/contracts/analytics/src/main/java/com/linkforge/contract/analytics/VisitRecorderPort.java"
+      ],
+      "document": "docs/reference/published-contracts.md",
+      "heading": "Analytics 发布契约"
+    },
+    {
+      "id": "contracts.platform",
+      "context": "contracts",
+      "sources": [
+        "server/contracts/platform/src/main/java/com/linkforge/contract/platform/ApplicationQuotaView.java",
+        "server/contracts/platform/src/main/java/com/linkforge/contract/platform/ApplicationScopePort.java",
+        "server/contracts/platform/src/main/java/com/linkforge/contract/platform/DomainHostnameLookupPort.java",
+        "server/contracts/platform/src/main/java/com/linkforge/contract/platform/LegacyApplicationBindingView.java",
+        "server/contracts/platform/src/main/java/com/linkforge/contract/platform/LegacyApplicationProvisioningPort.java"
+      ],
+      "document": "docs/reference/published-contracts.md",
+      "heading": "Platform 发布端口"
+    },
+    {
+      "id": "contracts.redirect",
+      "context": "contracts",
+      "sources": [
+        "server/contracts/redirect/src/main/java/com/linkforge/contract/redirect/LinkCachePort.java",
+        "server/contracts/redirect/src/main/java/com/linkforge/contract/redirect/LinkMeta.java"
+      ],
+      "document": "docs/reference/published-contracts.md",
+      "heading": "Redirect 缓存契约"
+    },
+    {
+      "id": "contracts.shortlink",
+      "context": "contracts",
+      "sources": [
+        "server/contracts/shortlink/src/main/java/com/linkforge/contract/shortlink/ShortLinkEventTypes.java",
+        "server/contracts/shortlink/src/main/java/com/linkforge/contract/shortlink/ShortLinkPublicSnapshot.java",
+        "server/contracts/shortlink/src/main/java/com/linkforge/contract/shortlink/ShortLinkReadPort.java",
+        "server/contracts/shortlink/src/main/java/com/linkforge/contract/shortlink/event/ShortLinkArchivedV1.java",
+        "server/contracts/shortlink/src/main/java/com/linkforge/contract/shortlink/event/ShortLinkCreatedV1.java",
+        "server/contracts/shortlink/src/main/java/com/linkforge/contract/shortlink/event/ShortLinkDeletedV1.java",
+        "server/contracts/shortlink/src/main/java/com/linkforge/contract/shortlink/event/ShortLinkRestoredV1.java",
+        "server/contracts/shortlink/src/main/java/com/linkforge/contract/shortlink/event/ShortLinkUpdatedV1.java"
+      ],
+      "document": "docs/reference/published-contracts.md",
+      "heading": "Shortlink 集成事件"
+    },
+    {
+      "id": "contracts.governance",
+      "context": "contracts",
+      "sources": [
+        "server/contracts/governance/src/main/java/com/linkforge/contract/governance/AnalyticsDetailExportApprovalPayload.java",
+        "server/contracts/governance/src/main/java/com/linkforge/contract/governance/ApplicationQuotaIncreaseApprovalPayload.java",
+        "server/contracts/governance/src/main/java/com/linkforge/contract/governance/ApprovalExecutionPort.java",
+        "server/contracts/governance/src/main/java/com/linkforge/contract/governance/ApprovalExecutionRequest.java",
+        "server/contracts/governance/src/main/java/com/linkforge/contract/governance/ApprovalPayloadCodec.java",
+        "server/contracts/governance/src/main/java/com/linkforge/contract/governance/ApprovalPayloadTypes.java",
+        "server/contracts/governance/src/main/java/com/linkforge/contract/governance/ApprovalRequester.java",
+        "server/contracts/governance/src/main/java/com/linkforge/contract/governance/ApprovalRequestView.java",
+        "server/contracts/governance/src/main/java/com/linkforge/contract/governance/ApprovalSubmissionPort.java",
+        "server/contracts/governance/src/main/java/com/linkforge/contract/governance/LinkDestinationChangeApprovalPayload.java",
+        "server/contracts/governance/src/main/java/com/linkforge/contract/governance/SensitiveOperation.java"
+      ],
+      "document": "docs/reference/published-contracts.md",
+      "heading": "Governance payload 与执行端口"
+    }
+  ]
+}

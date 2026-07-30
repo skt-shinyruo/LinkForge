@@ -25,19 +25,11 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * JWT authentication filter for management APIs.
+ * 管理 API 的 JWT 认证过滤器。
  *
- * <p>Accepted sources:</p>
- * <ul>
- *   <li>{@code Authorization: Bearer ...} header</li>
- *   <li>Cookie token (when cookie mode enabled)</li>
- * </ul>
- *
- * <p>Important behavior parity with the previous composite filter:</p>
- * <ul>
- *   <li>Invalid/oversized cookie JWT: clear cookie and continue chain (do not hard 401).</li>
- *   <li>Invalid/oversized Bearer JWT: strict 401.</li>
- * </ul>
+ * <p>按优先级读取 {@code Authorization: Bearer}，再在 Cookie 模式开启时读取指定 Cookie。Bearer JWT 无效或
+ * 过长时立即返回 401；Cookie JWT 无效或过长时清除 Cookie 后继续链路，使公开登录/注册端点仍可用。验签成功后
+ * 仍必须通过 {@link AccountStatusVerifier} 检查用户、租户和 tokenVersion，JWT 本身不是即时账户状态事实。</p>
  */
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
@@ -68,6 +60,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         this.securityProperties = securityProperties;
     }
 
+    /**
+     * 解析凭据、建立 SecurityContext，或按凭据来源执行对应的失败策略。
+     *
+     * <p>若上游已建立 Authentication，本过滤器不覆盖它，保证优先安全链和测试/代理注入的认证上下文可保留。</p>
+     */
     @Override
     protected void doFilterInternal(
             HttpServletRequest request,
@@ -106,12 +103,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         new UsernamePasswordAuthenticationToken(principal, "N/A", authorities);
                 SecurityContextHolder.getContext().setAuthentication(at);
             } catch (BusinessException e) {
-                // Authenticated-but-disabled: do not clear cookie; return explicit 403 business code.
+                // 已认证但被禁用：保留 Cookie，并返回明确业务错误而非伪装为令牌损坏。
                 errorResponseWriter.write(response, e.getErrorCode().getHttpStatus(), e.getErrorCode(), e.getMessage());
                 return;
             } catch (Exception e) {
                 if (resolved.source() == JwtTokenSource.COOKIE) {
-                    // Cookie mode: clear and continue (permitAll endpoints must still work).
+                    // Cookie 模式清除坏令牌并继续，保证 permitAll 端点仍可访问。
                     clearJwtCookieIfEnabled(response);
                 } else {
                     errorResponseWriter.write(response, HttpServletResponse.SC_UNAUTHORIZED, ErrorCode.UNAUTHORIZED);
@@ -123,6 +120,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
+    /**
+     * 解析 JWT 来源，优先 Bearer header；Cookie 仅在配置开启时参与。
+     *
+     * <p>本方法不验证 token 内容，空/无效 token 由调用方统一处理。</p>
+     */
     private ResolvedJwtToken resolveJwtToken(HttpServletRequest request) {
         if (request == null) {
             return null;
@@ -155,6 +157,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         return null;
     }
 
+    /** 删除配置的 JWT Cookie；未启用 Cookie 模式、响应为空时保持 no-op。 */
     private void clearJwtCookieIfEnabled(HttpServletResponse response) {
         if (response == null) {
             return;

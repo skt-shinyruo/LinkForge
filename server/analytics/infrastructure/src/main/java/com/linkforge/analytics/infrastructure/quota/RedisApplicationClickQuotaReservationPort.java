@@ -13,6 +13,15 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
 
+/**
+ * 以 Redis 原子脚本预留应用月度点击额度的适配器。
+ *
+ * <p>计数器首次缺失时先从 MySQL 日表读取已累计 PV，再在一个 Lua 脚本中初始化并预留一次点击，避免
+ * 多实例竞争造成明显超额。计数器保留到月末后两天，给异步日表回填留出缓冲。</p>
+ *
+ * <p>这是可用性优先的控制点：Redis、MySQL 基线查询、脚本返回异常或未知结果都会 fail-open，允许
+ * 重定向继续；只有脚本明确返回额度耗尽才拒绝。因而它不能作为精确计费或硬性反作弊边界。</p>
+ */
 @Component
 public class RedisApplicationClickQuotaReservationPort implements ApplicationClickQuotaReservationPort {
 
@@ -96,6 +105,11 @@ public class RedisApplicationClickQuotaReservationPort implements ApplicationCli
         this.queryRepository = queryRepository;
     }
 
+    /**
+     * 尝试为一次点击预留配额。
+     *
+     * @return {@code false} 仅表示 Redis 脚本明确判定已达上限；无上限、无效参数和基础设施失败均允许
+     */
     @Override
     public boolean tryReserveMonthlyClick(
             long tenantId,

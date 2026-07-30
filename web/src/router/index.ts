@@ -13,6 +13,12 @@ const LinksView = () => import("../views/LinksView.vue");
 const TagsView = () => import("../views/TagsView.vue");
 const StatsView = () => import("../views/StatsView.vue");
 
+/**
+ * 控制台路由与前端可见性边界。
+ *
+ * `requiresTenantAdmin` 只允许租户管理员，`requiresAdmin` 同时允许租户管理员和平台管理员。
+ * 这些守卫用于导航体验，不能替代后端 `@PreAuthorize` 和 tenant scope 校验。
+ */
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
@@ -43,6 +49,12 @@ export const router = createRouter({
   ],
 });
 
+/**
+ * 在解析受保护页面前完成一次会话 bootstrap。
+ *
+ * `auth.init()` 内部复用同一个 in-flight Promise，因此首次打开时多个导航不会并发请求 `/me`。
+ * 未认证时保留原始 `fullPath`，登录页可在成功后恢复目标位置。
+ */
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
   await auth.init();

@@ -13,6 +13,12 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+/**
+ * 当前租户审计日志的只读 HTTP 边界。
+ *
+ * <p>租户 ID 取自认证主体，客户端不能跨租户指定查询范围；只有租户管理员和平台管理员可访问。
+ * 返回内容包含审批前后快照，调用方应按敏感数据处理。</p>
+ */
 @RestController
 @RequestMapping("/api/v1/audit-logs")
 public class AuditController {
@@ -23,6 +29,7 @@ public class AuditController {
         this.governanceService = governanceService;
     }
 
+    /** 查询当前租户的全部审计记录，按创建时间和 ID 倒序；当前接口不分页。 */
     @GetMapping
     @PreAuthorize("hasRole('TENANT_ADMIN') or hasRole('PLATFORM_ADMIN')")
     public ApiResponse<List<AuditLogHttpResponse>> list() {

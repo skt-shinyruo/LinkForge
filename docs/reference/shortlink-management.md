@@ -13,7 +13,7 @@ Shortlink 是短链真相写侧，拥有短链生命周期、目标地址、短�
 - `GET /api/v1/links`
 - `GET /api/v1/applications/{applicationId}/links`
 - `GET /api/v1/links/{id}`
-- `PATCH /api/v1/links/{id}`
+- `PUT /api/v1/links/{id}`
 - `POST /api/v1/links/{id}/archive`
 - `POST /api/v1/links/{id}/restore`
 - `DELETE /api/v1/links/{id}`
@@ -75,7 +75,7 @@ OpenAPI 入口见 [OpenAPI 与 API Key 链路](openapi-api-key.md)。
   <rect class="ok" x="755" y="205" width="220" height="105"/>
   <text class="text" x="865" y="236" text-anchor="middle">事件与缓存</text>
   <text class="small" x="865" y="258" text-anchor="middle">发布短链集成事件</text>
-  <text class="small" x="865" y="278" text-anchor="middle">事务提交后驱逐 Redirect cache</text>
+  <text class="small" x="865" y="278" text-anchor="middle">outbox + 提交后快速驱逐</text>
   <text class="small" x="865" y="298" text-anchor="middle">返回 LinkDto</text>
 
   <rect class="box" x="235" y="380" width="740" height="64"/>
@@ -124,7 +124,17 @@ OpenAPI 入口见 [OpenAPI 与 API Key 链路](openapi-api-key.md)。
 - queryForwardAllowlist
 - tags
 
-写入使用乐观锁，失败返回 `LINK_STALE_WRITE`。更新成功后发布事件，事务提交后驱逐 Redirect 缓存。
+写入使用乐观锁，失败返回 `LINK_STALE_WRITE`。更新成功后发布事件、在同一事务写缓存失效 outbox，并在提交后尝试快速驱逐 Redirect 缓存。
+
+clear 字段是显式协议，而不是“空字符串自动清除”：
+
+| 字段 | 设置值 | 清除标志 | 同时传值与 clear |
+| --- | --- | --- | --- |
+| expiresAt | `expiresAt` | `clearExpiresAt` | 参数错误 |
+| redirect status | `redirectStatusCode` | `clearRedirectStatusCode` | 参数错误 |
+| query mode | `queryForwardMode` | `clearQueryForwardMode` | 参数错误 |
+
+冲突会在产生审批、标签、事件或 outbox 副作用前拒绝。空 `unavailableLandingUrl` 清空该字段，空 allowlist 清空当前覆盖值，`note` 的空字符串是有效业务值；即使没有有效字段改变，当前实现仍可能执行乐观锁更新、发 UPDATED 事件并触发缓存失效。
 
 ### 目标地址变更审批
 
@@ -144,6 +154,17 @@ OpenAPI 入口见 [OpenAPI 与 API Key 链路](openapi-api-key.md)。
 - 恢复：`RestoreShortLinkCommandHandler` 清空 `archivedAtUtc`；未归档时幂等返回。
 - 删除：`DeleteShortLinkCommandHandler` 要求短链已归档，先删除标签关系，再按版本删除短链。
 
+### 权限和作用域
+
+| 主体 | 非应用级链接 | 应用级链接 | 生命周期命令 |
+| --- | --- | --- | --- |
+| 普通用户 | 只能浏览/修改自己创建的 USER 链接 | 不可经 body 或路径扩大范围 | 不可归档、恢复、删除 |
+| 租户管理员 | 可管理本租户链接 | 可在路径与 body applicationId 一致时管理 | 可归档、恢复、删除 |
+| 已绑定 API Key | 仅绑定 application 的范围 | 仅绑定 application | 不走控制台生命周期入口 |
+| 未绑定历史 API Key | 认证阶段拒绝 | 认证阶段拒绝 | 不适用 |
+
+越权和跨租户链接统一以 `LINK_NOT_FOUND` 隐藏资源存在性。`archive/restore/delete(long tenantId, ...)` 是受 Controller `TENANT_ADMIN` 保护的可信内部入口，直接调用者必须自行维持该前提。
+
 ## CSV 导入导出
 
 - 导入由 `ImportShortLinksCsvCommandHandler` 处理，每行使用 `RequiresNewTransactionPort` 独立事务。
@@ -151,6 +172,8 @@ OpenAPI 入口见 [OpenAPI 与 API Key 链路](openapi-api-key.md)。
 - 应用级导入必须提供 `domainId`，也支持 CSV 行里通过 hostname 找域名。
 - `expiresAt` 支持 ISO-8601 Instant/OffsetDateTime，也兼容 legacy `LocalDateTime` 并按 UTC 处理。
 - 导出由 `ExportShortLinksCsvQueryHandler` 复用搜索逻辑，输出 linkId、applicationId、domainId、hostname、code、originalUrl、note、enabled、expiresAt、tags。
+
+标签和 query allowlist 的上限是规范化行为：标签最多 20，allowlist 最多 50；超出项会被截断而不是稳定拒绝。allowlist 逗号序列化上限 1024，匹配大小写敏感。`HttpUrl` 的验证只是 URI/http(s)/host/2048 长度校验，不意味着 DNS 可达、目标非私网或跳转目标已通过安全审查。
 
 ## 源码分析
 
@@ -180,7 +203,7 @@ OpenAPI 入口见 [OpenAPI 与 API Key 链路](openapi-api-key.md)。
   - 调 `ApplicationScopePort.requireApplicationAndDomainAuthorized()`。
   - 调 `ApplicationLinkQuotaReservationPort.tryReserveMonthlyLink()`。
   - 构造 `ShortLink` 聚合并写库。
-  - 调 `SetLinkTagsCommandHandler`，发布领域事件，事务提交后驱逐缓存。
+  - 调 `SetLinkTagsCommandHandler`，发布领域事件，在同一事务写缓存失效 outbox，并在提交后快速驱逐缓存。
 - `server/shortlink/application/src/main/java/com/linkforge/shortlink/application/command/UpdateShortLinkCommandHandler.java`
   - 处理审批分支、局部更新、乐观锁、事件和缓存驱逐。
 - `server/shortlink/application/src/main/java/com/linkforge/shortlink/application/query/SearchShortLinksQueryHandler.java`
@@ -216,4 +239,6 @@ OpenAPI 入口见 [OpenAPI 与 API Key 链路](openapi-api-key.md)。
 
 ## 一致性设计
 
-Shortlink 的写操作把缓存驱逐延迟到事务提交后执行。代码通过 `PostCommitHookPort` 调用 `redirectCacheSync.evict(...)`，避免数据库回滚但 Redis 已被驱逐或写入错误状态。Redirect 缓存不是事实来源，缓存未命中时总会回源 Shortlink 读端口。
+Shortlink 的写操作在业务事务内追加集成事件和缓存失效 outbox。提交后 `PostCommitHookPort` 会尝试 `redirectCacheSync.evict(...)` 快速路径；该动作失败不回滚已提交业务，outbox worker 负责后续重试。驱逐允许重复，事务回滚不会留下 outbox 或运行 after-commit。Redirect 缓存不是事实来源，缓存未命中时总会回源 `ShortLinkReadPort`。
+
+发链额度预留与插入短链处于同一事务，后续标签/事件失败会一起回滚；MySQL named lock 获取失败和真正额度耗尽都返回未获得名额。领域事件 dispatcher 会 destructive pull 聚合事件并马上发布，因此一个聚合不应积累多轮状态变化后再延迟 dispatch；事件消费者必须接受重放，不存在 exactly-once 承诺。

@@ -18,10 +18,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Bootstrap-layer startup validation.
+ * 应用组合根的启动期配置门禁。
  *
- * <p>Rationale: keep configuration guardrails in the executable {@code app} module,
- * instead of scattering them inside domain bounded contexts.</p>
+ * <p>Foundation 基础检查与各上下文 {@link StartupCheck} 的结果会被收集后一次性失败，避免只因装配顺序不同
+ * 而遗漏错误。strict 模式由 {@code prod} profile 或 {@code app.strict-config=true} 触发；检查器只能追加
+ * 错误，最终异常由本类统一抛出。</p>
  */
 @Component
 public class AppStartupValidator implements ApplicationRunner {
@@ -45,6 +46,11 @@ public class AppStartupValidator implements ApplicationRunner {
         this.startupChecks = startupChecks == null ? List.of() : List.copyOf(startupChecks);
     }
 
+    /**
+     * 执行所有已注册启动检查。
+     *
+     * @throws IllegalStateException 存在任意配置错误时，消息包含所有已收集条目
+     */
     @Override
     public void run(ApplicationArguments args) {
         boolean strict = env.acceptsProfiles(Profiles.of("prod"))
@@ -54,7 +60,7 @@ public class AppStartupValidator implements ApplicationRunner {
 
         StartupValidation.validateIdBasics(idProperties, strict, log, errors);
 
-        // API shortlink requires baseUrl for shortUrl composition.
+        // 管理 API 的 shortUrl 拼接需要公开 baseUrl，不能从单个请求的 Host 头兜底。
         if (StartupValidation.isBlank(coreProperties == null ? null : coreProperties.getBaseUrl())) {
             errors.add("app.base-url 不能为空（用于拼接 shortUrl）");
         }

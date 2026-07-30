@@ -24,6 +24,14 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * 编排短链 CSV 批量导入，并将每一行转换为独立的创建命令。
+ *
+ * <p>该类本身不包裹批次事务；每一行通过 {@link RequiresNewTransactionPort} 在新事务中执行，
+ * 因而允许部分成功。某行失败只记录行号与错误信息，不会回滚已经提交的其他行，也不会阻止后续行继续处理。
+ * 创建时的应用/域名授权、额度、事件和缓存一致性规则均委托给 {@link CreateShortLinkCommandHandler}。
+ * 当调用方给出作用域 ID 时，作用域值优先于 CSV 对应列。</p>
+ */
 @Component
 public class ImportShortLinksCsvCommandHandler {
 
@@ -49,10 +57,32 @@ public class ImportShortLinksCsvCommandHandler {
         this.domainHostnameLookupPort = domainHostnameLookupPort;
     }
 
+    /**
+     * 按 CSV 每行自带的应用和域名信息导入短链。
+     *
+     * @param tenantId 当前租户；所有域名解析和创建均限制在该租户内
+     * @param createdBy 创建主体，合法性由创建命令统一校验
+     * @param rows 已完成语法解析的 CSV 行，不能为 {@code null}
+     * @return 成功数、失败数及逐行错误；单行失败不会以异常终止整个批次
+     */
     public ImportResult handle(long tenantId, CreatedBy createdBy, List<ShortLinkCsvImportRow> rows) {
         return handle(tenantId, createdBy, rows, null, null);
     }
 
+    /**
+     * 在可选应用/域名作用域内逐行导入短链。
+     *
+     * <p>每行使用新事务，成功行在方法返回前已经独立提交。域名 hostname 的解析结果只在本次调用内缓存；
+     * 解析不到域名、字段非法或创建失败都会转换为该行的失败结果。只有批次参数本身非法（例如
+     * {@code rows == null}）才会直接抛出业务异常。</p>
+     *
+     * @param tenantId 当前租户
+     * @param createdBy 创建主体
+     * @param rows CSV 行
+     * @param scopedApplicationId 非空时覆盖所有行的 {@code applicationId}
+     * @param scopedDomainId 非空时覆盖所有行的域名字段
+     * @return 可部分成功的导入汇总
+     */
     public ImportResult handle(
             long tenantId,
             CreatedBy createdBy,

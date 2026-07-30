@@ -18,6 +18,12 @@ function buildRange(days: number) {
   return { from: format(from), to: format(to) };
 }
 
+/**
+ * 应用详情页的一次性并发加载编排。
+ *
+ * 应用列表、API Key、7 日 overview、Top links 和域名使用同一个路由 applicationId 并行请求；任一失败
+ * 会进入统一错误态，不展示混合的新旧快照。`recentPv` 是分日 PV 求和，不对 UV 做错误的跨日求和。
+ */
 export function useApplicationDetailPage() {
   const route = useRoute();
 

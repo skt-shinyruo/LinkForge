@@ -9,9 +9,22 @@ import org.springframework.stereotype.Component;
 
 import java.util.Map;
 
+/**
+ * 将 Servlet 请求收敛为 Redirect 应用层输入。
+ *
+ * <p>生产的 {@code /r/**} 请求应优先使用风控 filter 已写入的 {@link VisitInfo}，以确保客户端 IP 和
+ * tracking 参数经过统一的可信代理、allowlist 与限长规则。属性缺失时的回退只服务于非标准内部调用，
+ * 不会自行信任 forwarded headers。</p>
+ */
 @Component
 public class RedirectHttpRequestMapper {
 
+    /**
+     * 提取 host、HTML 接受能力、确认标记和访问上下文。
+     *
+     * <p>host 统一为小写并去除端口，短码本身保持原样，由应用层统一校验。任何存在的
+     * {@code __lf_confirm} 参数都视为确认，且该内部参数后续不会被 URL builder 透传。</p>
+     */
     public ResolveRedirectRequest fromHttp(String code, HttpServletRequest request) {
         VisitInfo visitInfo = resolveVisitInfo(request);
         return new ResolveRedirectRequest(

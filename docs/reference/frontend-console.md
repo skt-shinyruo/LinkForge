@@ -103,6 +103,14 @@
 
 `auth.init()` 会调用 `/api/v1/me` 补齐用户、租户和角色，并用 `initInFlight` 避免并发初始化。
 
+初始化状态有三个重要约束：
+
+- Bearer storage 中存在 token 只代表“可以尝试认证”，最终以 `/me` 为准。
+- Cookie 模式不读取 HttpOnly token，以 `/me` 返回的 email/roles 建立前端会话快照。
+- 初始化失败会清 token、roles 和 tenantId，并稳定设置 `initialized=true`；否则路由守卫会反复 bootstrap。
+
+`requiresTenantAdmin` 只允许 `TENANT_ADMIN`；`requiresAdmin` 允许 `TENANT_ADMIN` 或 `PLATFORM_ADMIN`。平台管理员会被挡在租户控制面页面之外，但能访问共享审批/审计页面。路由元信息只改善导航体验，后端权限仍是最终边界。
+
 ## HTTP transport
 
 `web/src/services/http.ts` 是所有 service 的基础：
@@ -112,9 +120,25 @@
 - 401 会清 token，并调用 `main.ts` 注册的 unauthorized handler 跳回登录页。
 - `apiFetch()` 统一解析后端 `ApiResponse`，非 2xx 抛异常并保留后端 message。
 
+Cookie 写请求的 CSRF 初始化由一个共享 Promise 收敛，并发首写只请求一次 `/api/v1/auth/csrf`。初始化网络失败不会永久缓存失败，后续请求可以重试；当前请求仍会发给服务端，由服务端 CSRF 规则拒绝，前端不会把缺 token 当作成功降级。
+
+401 回调在同一 microtask 内去重，避免一个页面的并发请求触发多次登录跳转。`auth.logout()` 通知服务端是 best-effort：即使网络失败也会清本地状态，但不能据此宣称旧 bearer token 已在服务端撤销。
+
+### API contract
+
+`web/src/services/apiContract.ts` 统一端点和第二层业务响应检查：
+
+- `apiFetch()` 负责 HTTP 状态和 JSON 形状；HTTP 2xx 内仍可能有非零业务 code。
+- `ensureApiSuccess()` 检查 `code===0`，允许成功响应没有 data。
+- `requireApiData()` 用于后端承诺返回资源的调用，成功但缺 data 也视为协议错误。
+- `buildQueryString()` 保留 `false` 和 `0`，省略 null/undefined，默认省略空字符串。
+- `API_ENDPOINTS` 是控制台路径 SSOT。应用域名授权固定为 `/applications/{id}/domain-authorizations/{domainId}`；链接和统计的应用作用域固定走 `/applications/{id}/...`。
+
+Blob 下载和 `FormData` 上传直接使用 `authFetch()`，因为 `apiFetch()` 会消费 body 并要求 JSON。
+
 ## services
 
-services 只负责 HTTP transport，不持有页面状态：
+services 只负责 HTTP transport，不持有页面状态，也不在各文件复制路径：
 
 - `web/src/services/links.ts`：短链列表、创建、更新、归档、恢复、删除、CSV 导入导出。应用级短链自动走 `/applications/{id}/links` 路径。
 - `web/src/services/applications.ts`：应用列表和创建。
@@ -138,19 +162,22 @@ services 只负责 HTTP transport，不持有页面状态：
   - 删除前要求短链已归档。
 - `web/src/composables/links/linkFormCodec.ts`
   - 标签和 query allowlist 支持逗号或换行分隔、去重。
-  - `datetime-local` 转 ISO instant。
-  - 空过期时间、状态码、query mode 转成 clear 语义。
+  - `datetime-local` 按浏览器时区解释，再转 UTC ISO instant。
+  - 编辑时空过期时间、状态码、query mode 转成对应 clear flag，且不会同时发送值与 clear。
+  - 空 allowlist/tags 发送空数组，表示显式清空；创建时空可选字段则省略。
 - `web/src/composables/links/useLinkImportExport.ts`
   - CSV 导入用 `FormData`。
   - 导出拿 Blob 并下载 `links.csv`。
 - `web/src/composables/useStatsPage.ts`
   - 默认 7 天，也支持 30 天。
   - 租户管理员可选应用范围。
-  - 概览、Top 链接、单链接日统计并行加载。
+  - 先按后端分页完整拉取链接选项，再并行加载概览、Top 链接、单链接日统计。
+  - 日期范围按 UTC 自然日构造，不把分日 HLL UV 求和成精确区间 UV。
 - `web/src/composables/useApplicationsPage.ts`
   - 应用列表和创建。
 - `web/src/composables/useApplicationDetailPage.ts`
-  - 并行加载应用列表、API Keys、应用概览、Top 链接、应用域名。
+  - 使用同一个 route applicationId 并行加载应用列表、API Keys、应用概览、Top 链接、应用域名。
+  - 任一请求失败进入统一错误态，避免主动拼接部分新、部分旧的详情快照。
 - `web/src/composables/useDomainsPage.ts`
   - 域名创建和共享域名授权。
 - `web/src/composables/useApiKeysPage.ts`
@@ -182,6 +209,8 @@ services 只负责 HTTP transport，不持有页面状态：
 3. 并行请求概览、Top 链接、单链接日统计。
 4. Top 链接支持按 PV/UV 切换。
 5. 复制 shortUrl 失败时静默，不影响主要页面。
+
+页面加载有意使用 `Promise.all` 缩短等待时间，但当前 composables 没有统一的 AbortController 或请求序号。用户快速连续切换应用、日期或链接时，较旧请求可能晚于新请求写回状态；这是当前限制，后端权限与数据正确性不受影响，但 UI 可能短暂展示旧筛选结果。
 
 ## 源码边界
 

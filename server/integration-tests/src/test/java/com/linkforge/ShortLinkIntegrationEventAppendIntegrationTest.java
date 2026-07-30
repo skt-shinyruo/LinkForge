@@ -1,5 +1,7 @@
 package com.linkforge;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.contract.shortlink.ShortLinkEventTypes;
 import com.linkforge.foundation.security.AuthPrincipal;
@@ -89,7 +91,7 @@ class ShortLinkIntegrationEventAppendIntegrationTest {
     }
 
     @Test
-    void create_should_append_integration_event() {
+    void create_should_append_integration_event() throws Exception {
         CreateLinkRequest req = new CreateLinkRequest(
                 "https://example.com",
                 "note",
@@ -126,5 +128,33 @@ class ShortLinkIntegrationEventAppendIntegrationTest {
         );
 
         assertThat(count).isEqualTo(1);
+
+        String payloadJson = jdbcTemplate.queryForObject(
+                """
+                        SELECT payload_json
+                        FROM integration_events
+                        WHERE producer = ?
+                          AND event_type = ?
+                          AND tenant_id = ?
+                          AND aggregate_type = 'shortlink'
+                          AND aggregate_id = ?
+                        """,
+                String.class,
+                "shortlink",
+                ShortLinkEventTypes.SHORT_LINK_CREATED_V1,
+                TENANT_ID,
+                dto.id()
+        );
+        JsonNode payload = new ObjectMapper().readTree(payloadJson);
+
+        assertThat(payload.fieldNames()).toIterable().containsExactlyInAnyOrder(
+                "eventId", "occurredAtUtc", "tenantId", "linkId", "code", "snapshot"
+        );
+        assertThat(payload.path("eventId").asText()).isNotBlank();
+        assertThat(payload.path("occurredAtUtc").isTextual()).isTrue();
+        assertThat(payload.path("tenantId").asLong()).isEqualTo(TENANT_ID);
+        assertThat(payload.path("linkId").asLong()).isEqualTo(dto.id());
+        assertThat(payload.path("snapshot").path("linkId").asLong()).isEqualTo(dto.id());
+        assertThat(payload.path("snapshot").path("originalUrl").asText()).isEqualTo("https://example.com");
     }
 }

@@ -11,6 +11,13 @@ import org.springframework.stereotype.Component;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * 将不可写入的访问明细复制到同源 Stream 的诊断 DLQ。
+ *
+ * <p>DLQ key 固定为 {@code {visitStream}:dlq}，仅保留定位所需的 streamId、租户、链接、requestId、
+ * 分类原因和截断后的错误文本，不复制原始 UA/IP 等敏感字段。写入和裁剪均为 best-effort：失败只记日志，
+ * 上游仍会 ACK 已确认的 poison record，以避免一个诊断设施故障阻塞消费组。</p>
+ */
 @Component
 public class VisitEventDeadLetterWriter {
 
@@ -26,6 +33,9 @@ public class VisitEventDeadLetterWriter {
         this.redis = redis;
     }
 
+    /**
+     * 尽力记录一条数据完整性错误，不向调用方传播 Redis 异常。
+     */
     public void write(String streamKey, RecordId recordId, LinkVisitEventInsertRow row, Exception error) {
         if (redis == null || streamKey == null || streamKey.isBlank() || row == null) {
             return;

@@ -2,6 +2,12 @@ import { computed, ref, type Ref } from "vue";
 import { exportLinksCsv, importLinksCsv } from "../../services/links";
 import type { LinkExportQuery, LinkImportQuery, LinkImportResult } from "../../services/types";
 
+/**
+ * 编排 CSV 导入导出。
+ *
+ * 导入结果逐行展示并在完成后刷新列表；应用级 scope 由调用方 query 显式提供。导出固定请求最多 1000 条，
+ * Blob URL 仅在触发浏览器下载期间存活，不把认证信息放入下载 URL。
+ */
 export function useLinkImportExport(args: {
   importFile: Ref<File | null>;
   importing: Ref<boolean>;

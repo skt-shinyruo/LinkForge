@@ -8,6 +8,18 @@ import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 
+/**
+ * 账户状态的 Redis 尽力缓存实现。
+ *
+ * <p>缓存不是账户状态的事实源。读取返回 {@code null} 时，既可能是未命中，也可能是空值、
+ * 不兼容的序列化内容或 Redis 故障；应用层必须把它解释为“未知”并回源数据库，不能据此放行。
+ * 命中的快照会在 TTL 内直接参与认证判断；写入或删除失败不会阻断业务事务，但可能让状态变更、
+ * 注销或密码重置延迟到旧缓存过期后才完全生效。</p>
+ *
+ * <p>租户状态直接保存字符串；用户状态使用
+ * {@code v1|tenantId|status|tokenVersion}。无法解析的用户状态会被尽力删除，以免持续污染后续读取。
+ * 所有写入都要求正数 TTL，避免无期限保存可能过期的授权信息。</p>
+ */
 @Component
 public class RedisAccountStatusCache implements AccountStatusCache {
 

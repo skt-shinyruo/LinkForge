@@ -10,6 +10,12 @@ import org.springframework.stereotype.Component;
 import java.net.URI;
 import java.util.List;
 
+/**
+ * Redirect 与 Edge 配置的启动期门禁。
+ *
+ * <p>它只校验静态配置组合：缓存 TTL、状态码、landing URL、query 参数模式、可信代理 CIDR 与风控阈值。
+ * 通过校验不代表 Redis、Shortlink 或反向代理链已经可用；这些运行时问题仍须由监控和降级路径处理。</p>
+ */
 @Component
 public class RedirectStartupCheck implements StartupCheck {
 
@@ -21,6 +27,9 @@ public class RedirectStartupCheck implements StartupCheck {
         this.edgeProperties = edgeProperties;
     }
 
+    /**
+     * 将可恢复的配置错误追加到共享列表，由统一启动策略决定是否在 strict 模式阻止启动。
+     */
     @Override
     public void validate(boolean strict, List<String> errors) {
         validateRedirect(errors);

@@ -25,10 +25,11 @@ import java.io.IOException;
 import java.util.Set;
 
 /**
- * OpenAPI-only authentication filter.
+ * OpenAPI 专用 API Key 认证过滤器。
  *
- * <p>Only used on OpenAPI routes (e.g. {@code /api/v1/open/**}). It MUST authenticate via {@code X-API-Key}
- * and must not accept JWT/cookie auth.</p>
+ * <p>仅挂在 {@code /api/v1/open/**} 链路，必须通过 {@code X-API-Key} 认证，绝不接受 JWT/Cookie 回退。
+ * 成功后构造 {@link AuthPrincipal} 的最小租户主体，并把 API Key ID 与 application scope 放入
+ * {@link ApiKeyAuthenticationDetails}；原始 Key 不进入 SecurityContext、日志或响应。</p>
  */
 public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
 
@@ -48,6 +49,11 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
         this.errorResponseWriter = errorResponseWriter;
     }
 
+    /**
+     * 验证 header、确认租户仍启用并建立 OPENAPI 角色的安全上下文。
+     *
+     * <p>所有未预期认证异常都收敛为公开的无效 Key 响应，避免暴露解析、数据库或哈希差异。</p>
+     */
     @Override
     protected void doFilterInternal(
             HttpServletRequest request,
@@ -97,6 +103,7 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
         }
     }
 
+    /** 将内部失败分类转换为 OpenAPI 稳定错误码。 */
     private static AppErrorCode toErrorCode(ApiKeyAuthenticationException e) {
         if (e != null && e.failure() == ApiKeyAuthenticationFailure.DISABLED) {
             return OpenApiErrorCode.API_KEY_DISABLED;

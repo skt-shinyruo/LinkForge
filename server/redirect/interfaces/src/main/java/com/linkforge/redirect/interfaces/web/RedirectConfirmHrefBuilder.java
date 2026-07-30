@@ -6,6 +6,12 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.Map;
 
+/**
+ * 为 HTML 预览页构造确认跳转地址。
+ *
+ * <p>它只保留有界数量和长度的原请求参数，并剔除内部 {@code __lf_confirm}/{@code __lf_preview}，最后
+ * 添加唯一的确认标记。总长度超限时退化为只含确认标记的当前路径，避免预览页成为超长 URL 放大器。</p>
+ */
 @Component
 public class RedirectConfirmHrefBuilder {
 
@@ -15,6 +21,9 @@ public class RedirectConfirmHrefBuilder {
     private static final int MAX_CONFIRM_VALUE_LEN = 256;
     private static final int MAX_CONFIRM_HREF_LEN = 4096;
 
+    /**
+     * 构造同一路径上的确认 URL，不信任或复制 host/scheme。
+     */
     public String build(HttpServletRequest request) {
         String path = request == null ? null : request.getRequestURI();
         if (path == null || path.isBlank()) {

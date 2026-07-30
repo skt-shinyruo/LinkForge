@@ -23,7 +23,14 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * /r/** 防滥用 Filter：构造 VisitInfo，并按配置执行基础风控（黑白名单 / 限流 / bot 策略）。
+ * {@code /r/**} 的请求前风控过滤器。
+ *
+ * <p>它先基于可信代理规则构造并限制 {@link VisitInfo}，将其放入 request attribute，再执行 IP、bot 与
+ * 限流策略。拒绝请求时本过滤器直接写入 no-store 的 HTML/JSON 错误，不会进入 Controller 或触发访问
+ * 统计。非 {@code /r/**} 路径完全跳过。</p>
+ *
+ * <p>tracking 参数只采集 allowlist 中的首个值，并限制数量、字段名和值长度。其目的是给 Analytics 提供
+ * 有界维度，不得把任意 query 或原始敏感 header 作为统计数据传播。</p>
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 20)
@@ -31,6 +38,9 @@ public class RedirectRiskControlFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(RedirectRiskControlFilter.class);
 
+    /**
+     * 在同一请求内交给 {@link RedirectHttpRequestMapper} 的已清洗访问上下文属性名。
+     */
     public static final String ATTR_VISIT_INFO = "linkforge.visitInfo";
     private static final int DEFAULT_MAX_TRACKING_VALUE_LEN = 128;
     private static final int DEFAULT_MAX_UA_LEN = 512;
@@ -53,12 +63,21 @@ public class RedirectRiskControlFilter extends OncePerRequestFilter {
         this.analyticsProperties = analyticsProperties;
     }
 
+    /**
+     * 仅拦截应用 context path 下的 {@code /r/} 前缀，避免影响控制面和 API 请求。
+     */
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = pathWithinApp(request);
         return path == null || !path.startsWith("/r/");
     }
 
+    /**
+     * 构造访问上下文并执行风险决策。
+     *
+     * <p>允许时只继续 filter chain；拒绝时保留 {@code Retry-After}（若有）并由统一 writer 输出安全
+     * 响应。日志只用于排障，不能据其字段推断 Analytics 已写入。</p>
+     */
     @Override
     protected void doFilterInternal(
             HttpServletRequest request,
@@ -96,7 +115,7 @@ public class RedirectRiskControlFilter extends OncePerRequestFilter {
         String ip = clientIpResolver.resolveClientIp(request);
         int maxUaLen = resolveMaxUserAgentLength();
         String ua = truncateHeader(request == null ? null : request.getHeader("User-Agent"), maxUaLen);
-        // Referer / language only affect analytics dimensions; cap them to avoid overlong headers
+        // Referer / language 只影响 Analytics 维度，必须限长以避免异常 header 扩张内存。
         String referer = truncateHeader(request == null ? null : request.getHeader("Referer"), 2048);
         String acceptLanguage = truncateHeader(request == null ? null : request.getHeader("Accept-Language"), 256);
         Map<String, String> trackingParams = extractTrackingParams(request);
@@ -116,7 +135,7 @@ public class RedirectRiskControlFilter extends OncePerRequestFilter {
                 ? null
                 : analyticsProperties.getTrackingParamAllowlist();
         if (allowlist == null || allowlist.isEmpty()) {
-            // 安全默认：仅采集常见营销参数，避免把业务 query（token/账号等）带入统计链路
+            // 安全默认：仅采集常见营销参数，避免把 token/账号等业务 query 带入统计链路。
             allowlist = List.of("utm_*", "gclid", "fbclid");
         }
 
@@ -168,9 +187,9 @@ public class RedirectRiskControlFilter extends OncePerRequestFilter {
                 v = analyticsProperties.getEvents().getMaxTrackingValueLength();
             }
         } catch (Exception ignored) {
-            // ignore
+            // 配置读取失败时沿用默认 tracking 参数长度。
         }
-        // Safety bound: avoid accidentally huge value propagating into memory / logs.
+        // 安全上限：避免配置错误把超长值传播到内存、Redis 或日志。
         if (v <= 0) {
             return DEFAULT_MAX_TRACKING_VALUE_LEN;
         }
@@ -186,7 +205,7 @@ public class RedirectRiskControlFilter extends OncePerRequestFilter {
                 v = analyticsProperties.getEvents().getMaxUserAgentLength();
             }
         } catch (Exception ignored) {
-            // ignore
+            // 配置读取失败时沿用默认 UA 长度。
         }
         if (v <= 0) {
             return DEFAULT_MAX_UA_LEN;
@@ -265,7 +284,7 @@ public class RedirectRiskControlFilter extends OncePerRequestFilter {
         if (path == null) {
             return null;
         }
-        // 仅用于风控维度，不做业务校验；实际解析仍以 Controller 的 path variable 为准
+        // 只用于风控维度，不做业务校验；实际解析仍以 Controller path variable 为准。
         if (!path.startsWith("/r/")) {
             return null;
         }

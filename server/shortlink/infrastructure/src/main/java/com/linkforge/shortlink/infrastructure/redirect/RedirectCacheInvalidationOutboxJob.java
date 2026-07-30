@@ -13,6 +13,16 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 
+/**
+ * 重试短链跳转缓存失效的持久化 outbox 任务。
+ *
+ * <p>应用事务先持久化待失效项，提交后再做一次低延迟的 best-effort 删除；无论快路径是否成功，本任务都会
+ * 扫描到期记录并重复执行删除，成功后才标记完成。因此处理语义至少一次，缓存删除必须保持幂等。</p>
+ *
+ * <p>ShedLock 用于避免多个应用实例同时跑批；查询本身不领取或锁定行，绕过调度锁并发调用时仍可能重复处理。
+ * 单次调度限制批次数和每批行数，失败记录采用指数退避且不设最大尝试次数，避免暂时性 Redis/域名查询故障
+ * 丢失最终失效机会。</p>
+ */
 @Component
 public class RedirectCacheInvalidationOutboxJob {
 
@@ -36,6 +46,9 @@ public class RedirectCacheInvalidationOutboxJob {
         this.clock = clock;
     }
 
+    /**
+     * 分批处理当前到期记录；每轮最多处理 {@code BATCH_LIMIT * MAX_BATCHES} 条。
+     */
     @Scheduled(fixedDelayString = "${APP_SHORTLINK_REDIRECT_CACHE_INVALIDATION_OUTBOX_DELAY_MS:1000}")
     @SchedulerLock(name = "lf:job:shortlink:redirect-cache-invalidation-outbox", lockAtMostFor = "PT2M")
     public void process() {
@@ -52,6 +65,12 @@ public class RedirectCacheInvalidationOutboxJob {
         }
     }
 
+    /**
+     * 执行一批缓存失效并分别记录成功或下次重试时间。
+     *
+     * <p>一条记录失败不会阻断同批其他记录。返回值是已尝试处理的非空行数，而不是成功数，供外层判断是否
+     * 继续拉取下一批。</p>
+     */
     int processOnce() {
         LocalDateTime nowUtc = nowUtc();
         List<RedirectCacheInvalidationOutboxRow> rows = outbox.listDue(nowUtc, BATCH_LIMIT);

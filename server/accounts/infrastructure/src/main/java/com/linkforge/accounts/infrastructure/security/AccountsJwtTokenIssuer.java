@@ -5,6 +5,11 @@ import org.springframework.stereotype.Component;
 
 import java.util.Set;
 
+/**
+ * 将 Accounts 应用层的令牌签发端口适配到统一的 {@link JwtService}。
+ *
+ * <p>该适配器不复制 claims、TTL 或签名规则，确保登录与底层 JWT 校验共享同一份安全配置。</p>
+ */
 @Component
 public class AccountsJwtTokenIssuer implements AccountsTokenIssuer {
 

@@ -1,9 +1,9 @@
 package com.linkforge.shortlink.interfaces.web;
 
 import com.linkforge.foundation.persistence.PageResult;
+import com.linkforge.shortlink.application.LinkDto;
 import com.linkforge.shortlink.application.CreateLinkRequest;
 import com.linkforge.shortlink.application.ImportResult;
-import com.linkforge.shortlink.application.LinkDto;
 import com.linkforge.shortlink.application.TagDto;
 import com.linkforge.shortlink.application.UpdateLinkRequest;
 import com.linkforge.shortlink.interfaces.web.dto.ImportHttpResponse;

@@ -4,16 +4,26 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.List;
 
+/**
+ * Analytics 聚合、Redis 流和访问明细的运行时配置。
+ *
+ * <p>所有按日聚合和访客指纹口径使用 UTC。此对象只描述采集/消费边界，不承诺 Redis Stream 或投影的
+ * exactly-once：故障重放可能重复 PV，UV 由近似去重结构计算。</p>
+ */
 @ConfigurationProperties(prefix = "app.analytics")
 public class AnalyticsProperties {
 
+    /** 用于访客/IP 指纹哈希的私有盐；启动检查要求非空且严格模式拒绝明显开发默认值。 */
     private String salt;
+
+    /** Analytics Redis key 的保留时间，单位为天；启动检查要求大于 0。 */
     private long redisKeyTtlDays;
 
     /**
      * flush 回补窗口（天数，包含今天）。
      *
-     * <p>用于定时作业停摆/部署中断后的追赶补齐：会尝试 flush 最近 N 天的 active-set。</p>
+     * <p>用于定时作业停摆/部署中断后的追赶补齐：会尝试消费最近 N 天的 dirty stream。
+     * 窗口会被 Redis key TTL 截断。</p>
      */
     private int flushBackfillDays = 7;
 
@@ -84,6 +94,12 @@ public class AnalyticsProperties {
         this.visitStream = visitStream;
     }
 
+    /**
+     * 解析访问流近似长度上限。
+     *
+     * <p>独立的 {@code visit-stream.max-len} 非 {@code null} 时优先使用；否则兼容回退到
+     * {@code events.stream-max-len}。最终值小于等于 0 表示 Redis 写入后不主动 trim，可能导致内存持续增长。</p>
+     */
     public long resolveVisitStreamMaxLen() {
         Long dedicated = visitStream == null ? null : visitStream.getMaxLen();
         if (dedicated != null) {
@@ -92,6 +108,7 @@ public class AnalyticsProperties {
         return events == null ? 200_000L : events.getStreamMaxLen();
     }
 
+    /** 聚合维度写入与落库的开关及允许类型。 */
     public static class Dimensions {
         /**
          * 是否启用维度统计写入（Edge 写 Redis；API flush 落库）。
@@ -102,11 +119,6 @@ public class AnalyticsProperties {
          * 启用的维度类型列表（可选，为空时使用默认推荐集合）。
          */
         private List<String> types;
-
-        /**
-         * 每次 flush（按天）最多处理的活跃短链数上限。
-         */
-        private int maxLinksPerDay = 5000;
 
         public boolean isEnabled() {
             return enabled;
@@ -124,20 +136,19 @@ public class AnalyticsProperties {
             this.types = types;
         }
 
-        public int getMaxLinksPerDay() {
-            return maxLinksPerDay;
-        }
-
-        public void setMaxLinksPerDay(int maxLinksPerDay) {
-            this.maxLinksPerDay = maxLinksPerDay;
-        }
     }
 
+    /**
+     * 完整访问事件 Redis Stream 的容量控制。
+     *
+     * <p>{@code null} 保持兼容并回退到 {@code events.stream-max-len}；正值使用 Redis approximate trim，
+     * 小于等于 0 关闭 trim。</p>
+     */
     public static class VisitStream {
         /**
-         * Redis Stream approximate max length for the full-fidelity redirect visit stream.
+         * 完整重定向访问流的 Redis Stream 近似最大长度。
          *
-         * <p>Null keeps compatibility by falling back to events.stream-max-len. Values <= 0 disable trim.</p>
+         * <p>空值回退到 {@code events.stream-max-len}；小于等于 0 表示关闭 trim。</p>
          */
         private Long maxLen;
 
@@ -150,9 +161,17 @@ public class AnalyticsProperties {
         }
     }
 
+    /**
+     * 访问明细流的异步消费与保留配置。
+     *
+     * <p>该开关不关闭 Redirect 主链路的访问记录调用，也不控制聚合 dirty stream；{@code enabled=false}
+     * 只使明细 Stream 的消费/落库和保留作业跳过。写入端的异常是否影响重定向由 {@code failOpen} 决定。</p>
+     */
     public static class Events {
         /**
-         * 是否启用访问明细事件（Edge → Redis Stream → API 异步落库）。
+         * 是否启用访问明细 Stream 的异步消费和落库。
+         *
+         * <p>关闭时已有 Stream 数据不会自动删除，且不改变主访问量聚合；重新开启后消费者可继续读取保留消息。</p>
          */
         private boolean enabled;
 
@@ -195,7 +214,10 @@ public class AnalyticsProperties {
         private int maxTrackingValueLength = 128;
 
         /**
-         * Redis/DB 异常时是否放行（fail-open）。默认 true。
+         * 访问事件写入器发生运行时异常时是否放行重定向主链路，默认 {@code true}。
+         *
+         * <p>设为 {@code false} 时异常会向 Redirect 主链路传播；它不改变异步消费作业自身的 best-effort
+         * 重试策略。</p>
          */
         private boolean failOpen = true;
 

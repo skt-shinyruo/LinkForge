@@ -46,7 +46,6 @@ class AnalyticsDimensionFlushJobTest {
         properties.setFlushBackfillDays(1);
         properties.getDimensions().setEnabled(true);
         properties.getDimensions().setTypes(List.of("referer_domain"));
-        properties.getDimensions().setMaxLinksPerDay(10);
         properties.getEvents().setPendingReclaimEnabled(false);
 
         @SuppressWarnings("unchecked")
@@ -155,7 +154,7 @@ class AnalyticsDimensionFlushJobTest {
     }
 
     @Test
-    void flushActiveMembers_should_surface_member_failure_as_retryable_batch_failure() {
+    void flushDirtyMembers_should_surface_member_failure_as_retryable_batch_failure() {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         LinkStatsDimDailyMapper mapper = mock(LinkStatsDimDailyMapper.class);
         AnalyticsProperties properties = new AnalyticsProperties();
@@ -173,14 +172,14 @@ class AnalyticsDimensionFlushJobTest {
 
         AnalyticsDimensionFlushJob job = new AnalyticsDimensionFlushJob(redis, mapper, properties);
 
-        boolean flushed = job.flushActiveMembers(LocalDate.of(2026, 2, 19), properties.getDimensions(), List.of("1:10"));
+        boolean flushed = job.flushDirtyMembers(LocalDate.of(2026, 2, 19), properties.getDimensions(), List.of("1:10"));
 
         assertThat(flushed).isFalse();
         verify(mapper, never()).batchUpsert(any());
     }
 
     @Test
-    void flushActiveMembers_should_compute_uv_by_pfcount_and_write_to_mysql() {
+    void flushDirtyMembers_should_compute_uv_by_pfcount_and_write_to_mysql() {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         LinkStatsDimDailyMapper mapper = mock(LinkStatsDimDailyMapper.class);
         AnalyticsProperties properties = new AnalyticsProperties();
@@ -203,7 +202,7 @@ class AnalyticsDimensionFlushJobTest {
         AnalyticsDimensionFlushJob job = new AnalyticsDimensionFlushJob(redis, mapper, properties);
 
         LocalDate day = LocalDate.of(2026, 2, 19);
-        job.flushActiveMembers(day, properties.getDimensions(), List.of("1:10"));
+        job.flushDirtyMembers(day, properties.getDimensions(), List.of("1:10"));
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<LinkStatsDimDailyUpsertRow>> batchCaptor = ArgumentCaptor.forClass(List.class);

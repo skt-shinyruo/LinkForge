@@ -13,6 +13,16 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 将不可信的 Redis Stream 字段转换为可写入访问明细表的受限行。
+ *
+ * <p>该边界负责验证 tenant/link/requestId，并对来自请求的维度和 UA 文本做长度截断，使数据库列约束
+ * 不会把整批消费变成 poison batch。无效记录进入 {@link Batch#ackAlways()}：它们不具备重试价值，
+ * 应由消费者确认而不是永久留在 pending。</p>
+ *
+ * <p>事件发生时间以毫秒转换为 UTC {@code LocalDateTime}；缺失或非法时间退回当前时间，因而不能将
+ * Stream 明细用作严格审计时钟。</p>
+ */
 @Component
 public class VisitEventBatchAssembler {
 
@@ -32,6 +42,11 @@ public class VisitEventBatchAssembler {
         this.idGenerator = idGenerator;
     }
 
+    /**
+     * 组装一批可插入项和必须直接 ACK 的无效项。
+     *
+     * @param records 来自同一 Redis Stream 的消息；空输入返回两个空列表
+     */
     public Batch assemble(List<MapRecord<String, Object, Object>> records) {
         if (records == null || records.isEmpty()) {
             return new Batch(List.of(), List.of());
@@ -124,9 +139,15 @@ public class VisitEventBatchAssembler {
         return value.length() <= maxLen ? value : value.substring(0, maxLen);
     }
 
+    /**
+     * 消费批次的分流结果；{@code ackAlways} 中的消息不会尝试写入 MySQL。
+     */
     public record Batch(List<IngestItem> items, List<RecordId> ackAlways) {
     }
 
+    /**
+     * 将原始 Stream record id 与已通过输入边界的数据库行绑定，供成功写入后 ACK。
+     */
     public record IngestItem(RecordId recordId, LinkVisitEventInsertRow row) {
     }
 }

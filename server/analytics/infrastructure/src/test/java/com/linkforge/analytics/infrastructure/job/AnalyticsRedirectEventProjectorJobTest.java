@@ -12,7 +12,6 @@ import org.springframework.data.redis.connection.stream.StreamOffset;
 import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.HyperLogLogOperations;
-import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.StreamOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
@@ -62,11 +61,6 @@ class AnalyticsRedirectEventProjectorJobTest {
         when(hllOps.add(anyString(), any(String[].class))).thenReturn(1L);
 
         @SuppressWarnings("unchecked")
-        SetOperations<String, String> setOps = mock(SetOperations.class);
-        when(redis.opsForSet()).thenReturn(setOps);
-        when(setOps.add(anyString(), any(String[].class))).thenReturn(1L);
-
-        @SuppressWarnings("unchecked")
         HashOperations<String, Object, Object> hashOps = mock(HashOperations.class);
         when(redis.opsForHash()).thenReturn(hashOps);
         when(hashOps.increment(anyString(), any(), eq(1L))).thenReturn(1L);
@@ -95,15 +89,15 @@ class AnalyticsRedirectEventProjectorJobTest {
         job.project();
 
         LocalDate day = LocalDate.of(2026, 4, 24);
-        InOrder inOrder = inOrder(valueOps, hllOps, setOps, hashOps, streamOps);
+        InOrder inOrder = inOrder(valueOps, hllOps, hashOps, streamOps);
         inOrder.verify(valueOps).increment(AnalyticsKeys.pvKey(1L, 10L, day));
         inOrder.verify(hllOps).add(eq(AnalyticsKeys.uvKey(1L, 10L, day)), eq(new String[]{"visitor-1"}));
         inOrder.verify(hllOps).add(eq(AnalyticsKeys.tenantScopeUvKey(1L, day)), eq(new String[]{"visitor-1"}));
         inOrder.verify(hllOps).add(eq(AnalyticsKeys.applicationScopeUvKey(1L, 100L, day)), eq(new String[]{"visitor-1"}));
         inOrder.verify(hllOps).add(eq(AnalyticsKeys.domainScopeUvKey(1L, 200L, day)), eq(new String[]{"visitor-1"}));
-        inOrder.verify(setOps).add(eq(AnalyticsKeys.activeSetKey(day)), eq(new String[]{AnalyticsKeys.activeMember(1L, 10L)}));
         inOrder.verify(hashOps).increment(AnalyticsKeys.dimPvHashKey(1L, 10L, day, "referer_domain"), "example.com", 1L);
         inOrder.verify(streamOps).acknowledge(eq(AnalyticsKeys.visitEventStreamKey()), eq("lf-visit-projector"), any(RecordId[].class));
+        verify(redis, never()).opsForSet();
 
         @SuppressWarnings({"rawtypes", "unchecked"})
         ArgumentCaptor<MapRecord> streamAddCaptor = ArgumentCaptor.forClass(MapRecord.class);
@@ -118,6 +112,19 @@ class AnalyticsRedirectEventProjectorJobTest {
                         AnalyticsKeys.statsDirtyStreamKey(day),
                         AnalyticsKeys.dimDirtyStreamKey(day)
                 );
+        assertThat(streamAddCaptor.getAllValues())
+                .filteredOn(dirtyRecord -> AnalyticsKeys.statsDirtyStreamKey(day).equals(dirtyRecord.getStream()))
+                .singleElement()
+                .extracting(MapRecord::getValue)
+                .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.MAP)
+                .containsEntry("member", "1:10")
+                .containsKey("ts");
+        assertThat(streamAddCaptor.getAllValues())
+                .filteredOn(dirtyRecord -> AnalyticsKeys.dimDirtyStreamKey(day).equals(dirtyRecord.getStream()))
+                .singleElement()
+                .extracting(MapRecord::getValue)
+                .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.MAP)
+                .containsEntry("member", "1:10");
     }
 
     @Test

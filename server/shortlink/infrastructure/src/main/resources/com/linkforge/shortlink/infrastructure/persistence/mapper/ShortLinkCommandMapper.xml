@@ -48,6 +48,7 @@
         )
     </insert>
 
+    <!-- 版本判断和 version + 1 在同一 UPDATE 内完成，避免先查后写覆盖并发变更。 -->
     <update id="update" parameterType="com.linkforge.shortlink.infrastructure.persistence.entity.ShortLinkEntity">
         UPDATE short_links
         SET original_url = #{originalUrl},
@@ -74,6 +75,7 @@
           AND version = #{param3}
     </delete>
 
+    <!-- 迁移兼容回填仅认双空 scope；重复执行不会覆盖已经归属的新旧短链。 -->
     <update id="backfillOwnershipByTenant">
         UPDATE short_links
         SET application_id = #{param2},

@@ -9,6 +9,16 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * Accounts 上下文的启动安全门禁。
+ *
+ * <p>该检查由应用启动器统一收集错误后一次性中止启动，不在此处直接抛异常。无论是否为严格模式，
+ * JWT 密钥缺失、Cookie 属性组合非法，以及携带凭证的 CORS 配置使用通配来源都会被拒绝；
+ * {@code prod} profile 或 {@code app.strict-config=true} 启用严格模式后，还会拒绝开发示例密钥和
+ * 未启用 Secure 的认证 Cookie，防止可启动但不适合生产的配置进入服务流量。</p>
+ *
+ * <p>这里只校验能够静态判断的配置关系，不替代请求期的 JWT、账户状态、租户状态和 CSRF 校验。</p>
+ */
 @Component
 public class AccountsStartupCheck implements StartupCheck {
 
@@ -22,6 +32,12 @@ public class AccountsStartupCheck implements StartupCheck {
         this.corsProperties = corsProperties;
     }
 
+    /**
+     * 将当前配置的全部错误追加到共享错误列表。
+     *
+     * @param strict 是否按生产安全基线校验
+     * @param errors 启动器提供的聚合错误列表
+     */
     @Override
     public void validate(boolean strict, List<String> errors) {
         validateJwt(strict, errors);

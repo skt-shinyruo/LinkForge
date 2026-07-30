@@ -14,6 +14,12 @@ public final class StartupValidation {
     private StartupValidation() {
     }
 
+    /**
+     * 校验 Snowflake 节点号及 strict 模式下的默认节点组合。
+     *
+     * <p>本方法只向 {@code errors} 追加问题，不抛异常；{@code strict} 为 true 时拒绝本地兼容默认值 1/1，
+     * 非 strict 模式保留该值而不记录告警。</p>
+     */
     public static void validateIdBasics(IdProperties properties, boolean strict, Logger log, List<String> errors) {
         if (properties == null) {
             errors.add("id 配置缺失");
@@ -23,7 +29,7 @@ public final class StartupValidation {
         long workerId = properties.getWorkerId();
         long datacenterId = properties.getDatacenterId();
 
-        // Snowflake: workerId/datacenterId 均为 5 bits（0~31）
+        // Snowflake 的 workerId/datacenterId 均占 5 bit，合法范围为 0..31。
         if (workerId < 0 || workerId > 31) {
             errors.add("app.id.worker-id 仅支持 0~31");
         }
@@ -31,17 +37,18 @@ public final class StartupValidation {
             errors.add("app.id.datacenter-id 仅支持 0~31");
         }
 
-        // 多实例部署护栏：避免“默认值忘改”导致 ID 冲突（主键冲突/数据错写）
+        // 多实例部署护栏：避免“默认值忘改”导致 ID 冲突、主键冲突或数据错写。
         if (strict && workerId == 1L && datacenterId == 1L) {
             errors.add("生产/strict 模式禁止使用默认 app.id.worker-id=1 且 app.id.datacenter-id=1；多实例部署会发生 ID 冲突，请显式配置（例如通过 ID_WORKER_ID/ID_DATACENTER_ID）");
         }
 
-        // 非严格模式保持静默，避免本地开发日志噪音；如需强约束请开启 app.strict-config 或 prod profile
+        // 非严格模式保持静默，避免本地开发日志噪音；强约束由 app.strict-config 或 prod profile 开启。
         if (!strict && workerId == 1L && datacenterId == 1L && log != null) {
-            // no-op (intentionally silent)
+            // 有意保持无操作。
         }
     }
 
+    /** 校验 Redirect 默认状态码和缓存 TTL 的基本边界；只追加错误，不负责加载或修复配置。 */
     public static void validateRedirectBasics(RedirectProperties properties, List<String> errors) {
         if (properties == null) {
             errors.add("redirect 配置缺失");
@@ -59,6 +66,11 @@ public final class StartupValidation {
         }
     }
 
+    /**
+     * 校验 Analytics 盐和 Redis 生命周期。
+     *
+     * <p>明显开发盐在 strict 模式作为错误，在非 strict 模式仅写 warn；本方法不记录盐原文。</p>
+     */
     public static void validateAnalyticsBasics(AnalyticsProperties properties, boolean strict, Logger log, List<String> errors) {
         if (properties == null) {
             errors.add("analytics 配置缺失");
@@ -81,6 +93,11 @@ public final class StartupValidation {
         }
     }
 
+    /**
+     * 校验统计追踪参数白名单中的精确项或单个末尾通配项。
+     *
+     * <p>空项被忽略；单独的 {@code *} 和包含其他字符的模式会追加错误。</p>
+     */
     public static void validateAnalyticsTrackingAllowlist(AnalyticsProperties properties, List<String> errors) {
         if (properties == null) {
             return;
@@ -101,6 +118,11 @@ public final class StartupValidation {
         }
     }
 
+    /**
+     * 在维度写入已启用时校验 Redis key 中使用的维度类型名。
+     *
+     * <p>允许小写字母、数字和下划线；空项被忽略，配置未启用或未设置类型时不追加错误。</p>
+     */
     public static void validateAnalyticsDimensionsTypes(AnalyticsProperties properties, List<String> errors) {
         if (properties == null) {
             return;
@@ -133,6 +155,12 @@ public final class StartupValidation {
         }
     }
 
+    /**
+     * 在访问明细消费已启用时校验采样、截断和保留边界。
+     *
+     * <p>关闭 {@code events.enabled} 时明细作业不会启动，因此这些值不在此方法中阻止启动；该开关不代表
+     * Redirect 主链路停止记录访问。</p>
+     */
     public static void validateAnalyticsEvents(AnalyticsProperties properties, List<String> errors) {
         if (properties == null) {
             return;
@@ -156,6 +184,7 @@ public final class StartupValidation {
         }
     }
 
+    /** 判断非空配置值是否含有已知开发占位片段；用于提示而非密码强度评估。 */
     public static boolean looksLikeDev(String v) {
         String t = v.trim().toLowerCase();
         return t.contains("dev-change-me")
@@ -164,10 +193,12 @@ public final class StartupValidation {
                 || t.contains("change-me");
     }
 
+    /** 返回值是否为 {@code null}、空字符串或仅由空白组成。 */
     public static boolean isBlank(String v) {
         return v == null || v.trim().isBlank();
     }
 
+    /** 去除首尾空白；空结果标准化为 {@code null}。 */
     public static String trimToNull(String v) {
         if (v == null) {
             return null;
@@ -176,6 +207,7 @@ public final class StartupValidation {
         return t.isBlank() ? null : t;
     }
 
+    /** 判断参数模式是否为字母数字下划线的精确项，或带单个末尾 {@code *} 的前缀项。 */
     public static boolean isValidParamPattern(String p) {
         if (p == null || p.isBlank()) {
             return false;

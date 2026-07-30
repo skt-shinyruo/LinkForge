@@ -4,10 +4,19 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.List;
 
+/**
+ * 重定向主链路的默认行为和缓存配置。
+ *
+ * <p>字段为全局默认值，单条短链可通过自身配置覆盖其中一部分。缓存 TTL 的单位均为秒；有效缓存与 404
+ * 负缓存的具体三态处理由 Redirect 上下文实现，本类型不保存链接可用性事实。</p>
+ */
 @ConfigurationProperties(prefix = "app.redirect")
 public class RedirectProperties {
 
+    /** 成功解析短链缓存的 TTL（秒）；启动检查要求大于 0。 */
     private long cacheTtlSeconds;
+
+    /** 未由短链自身覆盖时使用的 HTTP 重定向状态码，只支持 301 或 302。 */
     private int defaultStatusCode;
 
     /**
@@ -107,4 +116,3 @@ public class RedirectProperties {
         this.queryForwardReservedParams = queryForwardReservedParams;
     }
 }
-

@@ -14,6 +14,13 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
+/**
+ * 在 Filter 阶段直接写出 Redirect 错误响应。
+ *
+ * <p>风控拒绝发生在 Controller 前，不能依赖 {@code RestControllerAdvice}。本 writer 根据 Accept 输出安全的
+ * HTML 或 JSON，强制 no-store，并保证每个响应都带 requestId；当上游 filter 尚未建立 requestId 时会生成
+ * 一个仅用于当前响应的值。</p>
+ */
 @Component
 public class RedirectErrorResponseWriter {
 
@@ -23,6 +30,12 @@ public class RedirectErrorResponseWriter {
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * 将已决策的拒绝写到 Servlet 响应。
+     *
+     * <p>该方法只负责协议编码，不重复执行风险策略。{@code errorCode} 与 {@code message} 必须来自受控
+     * 的 Redirect 业务逻辑，调用者不能传入未清洗的异常内容。</p>
+     */
     public void write(
             HttpServletRequest request,
             HttpServletResponse response,
@@ -68,6 +81,9 @@ public class RedirectErrorResponseWriter {
         return a.contains("text/html") || a.contains("application/xhtml+xml");
     }
 
+    /**
+     * 渲染不含内部诊断信息的最小错误页面。
+     */
     private static String renderHtml(int httpStatus, String message, String requestId) {
         String title = httpStatus == 429 ? "请求过于频繁" : "请求被拒绝";
         String msg = message == null || message.isBlank() ? "请求无法处理。" : escapeHtml(message);

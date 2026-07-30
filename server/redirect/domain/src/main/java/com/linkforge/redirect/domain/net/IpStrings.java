@@ -10,6 +10,12 @@ public final class IpStrings {
     private IpStrings() {
     }
 
+    /**
+     * 清理 remote 地址或 forwarded header 中的单个 token。
+     *
+     * <p>支持带引号、IPv4 端口和方括号 IPv6 形式，但不把值本身视为可信；调用方仍须通过
+     * {@link #isValidIp(String)} 和可信代理链规则判断能否使用。</p>
+     */
     public static String cleanIpToken(String raw) {
         if (raw == null) {
             return null;
@@ -44,6 +50,9 @@ public final class IpStrings {
         return t;
     }
 
+    /**
+     * 按纯字面 IPv4/IPv6 规则验证地址，不做 DNS 解析。
+     */
     public static boolean isValidIp(String ip) {
         if (ip == null || ip.isBlank()) {
             return false;

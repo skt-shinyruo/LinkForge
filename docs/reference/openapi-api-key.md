@@ -51,7 +51,7 @@ OpenAPI 链路让内部系统通过 API Key 创建和查询短链。它和控制
   <rect class="warn" x="745" y="195" width="190" height="100"/>
   <text class="text" x="840" y="226" text-anchor="middle">ShortLinkActorScopeResolver</text>
   <text class="small" x="840" y="249" text-anchor="middle">绑定应用只能访问绑定应用</text>
-  <text class="small" x="840" y="269" text-anchor="middle">未绑定需显式应用上下文</text>
+  <text class="small" x="840" y="269" text-anchor="middle">未绑定历史 key 直接无效</text>
 
   <rect class="ok" x="745" y="335" width="190" height="55"/>
   <text class="text" x="840" y="357" text-anchor="middle">复用 Shortlink 用例</text>
@@ -69,8 +69,8 @@ OpenAPI 链路让内部系统通过 API Key 创建和查询短链。它和控制
 
 - 创建：`POST /api/v1/api-keys`
 - 列表：`GET /api/v1/api-keys`
-- 禁用：`POST /api/v1/api-keys/{id}/disable`
-- 启用：`POST /api/v1/api-keys/{id}/enable`
+- 禁用：`PUT /api/v1/api-keys/{id}/disable`
+- 启用：`PUT /api/v1/api-keys/{id}/enable`
 - 轮换：`POST /api/v1/api-keys/{id}/rotate`
 
 创建 API Key 必须提供 `applicationId`，Accounts 会通过 Platform 的 `ApplicationScopePort.requireApplicationExists()` 确认应用属于当前租户。返回给客户端的明文 key 格式为 `lfk_{id}_{secret}`，数据库只保存 secret 的密码哈希。明文 key 只在创建和轮换响应中出现。
@@ -94,6 +94,16 @@ OpenAPI 链路让内部系统通过 API Key 创建和查询短链。它和控制
 - 禁用的 API Key 会写短 TTL 认证缓存，重新启用或轮换后在事务提交后驱逐缓存。
 - `lastUsedAt` 更新带节流，优先用 Redis token 控制写库频率，避免每次 OpenAPI 请求都更新数据库。
 
+缓存只保存 disabled 负结果，不能把 active key 缓存在 Redis 后跳过数据库或 BCrypt secret 校验。缓存坏值、miss 或 Redis 故障都会回源；禁用写入和启用/轮换驱逐都在事务提交后执行，因而允许很短的陈旧窗口。
+
+| 状态/输入 | 认证结果 | 说明 |
+| --- | --- | --- |
+| 格式、prefix、id、secret hash 不合法 | invalid | 不区分细节，避免凭据枚举 |
+| key disabled | disabled/拒绝 | 可由短 TTL disabled 缓存短路 |
+| key active 且 applicationId 已绑定 | 成功 | 随后仍校验租户 ACTIVE |
+| 历史 key 未绑定 applicationId | invalid/拒绝 | 不允许用路径或 request body 临时扩大 scope |
+| Redis 节流或缓存不可用 | 回源或跳过 lastUsed 写回 | 不改变 API Key 本身的校验规则 |
+
 ## 源码分析
 
 ### 管理 API Key
@@ -105,6 +115,7 @@ OpenAPI 链路让内部系统通过 API Key 创建和查询短链。它和控制
   - `create()`：校验应用存在，生成 secret，保存 hash。
   - `authenticate()`：解析 `lfk_{id}_{secret}`，校验长度、prefix、id、secret hash 和状态。
   - `disable()`、`enable()`、`rotate()`：更新状态或 secret，并处理认证缓存驱逐。
+  - 旧的 `create(tenantId, name)` 重载刻意拒绝缺少 `applicationId` 的调用，防止创建无 scope 新 key。
 
 ### OpenAPI 安全链
 

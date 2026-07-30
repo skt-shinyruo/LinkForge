@@ -29,9 +29,16 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.regex.Pattern;
 
 /**
- * 访问明细事件落库作业：消费 Redis Stream 并批量写入 MySQL。
+ * 将访问 Redis Stream 中的可采样明细异步写入 MySQL 的消费者。
  *
- * <p>原则：best-effort，不影响主链路；失败时保留 pending，等待后续重试。</p>
+ * <p>访问流也供核心 PV/UV 投影使用，但本作业只在 {@code analytics.events.enabled} 时运行，并按
+ * {@code sampleRate} 决定是否保留明细。因此关闭明细或采样丢弃不影响核心统计。读取顺序为本 consumer
+ * 的 pending、可接管的闲置 pending、再到新消息。</p>
+ *
+ * <p>批量插入以 {@code requestId} 的数据库唯一性配合 {@code INSERT ... ON DUPLICATE KEY} 实现
+ * 幂等写入；ACK 与数据库提交不在同一事务中，ACK 失败会导致安全的重放。普通数据库失败保留 pending；
+ * 数据完整性失败时逐条隔离，坏记录写入 DLQ 后 ACK。DLQ 写入是 best-effort，故 DLQ 故障不会阻塞
+ * 原消息，也可能导致诊断记录缺失。</p>
  */
 @Component
 public class AnalyticsEventIngestJob {
@@ -63,6 +70,11 @@ public class AnalyticsEventIngestJob {
         this.deadLetterWriter = new VisitEventDeadLetterWriter(redis);
     }
 
+    /**
+     * 执行一轮明细消费，不把 Redis 或数据库故障传播到调度线程。
+     *
+     * <p>即使访问流持续有消息，关闭明细功能也只停止本消费者；聚合投影消费者仍可处理同一 Stream。</p>
+     */
     @Scheduled(fixedDelayString = "${APP_ANALYTICS_EVENT_INGEST_DELAY_MS:2000}")
     public void ingest() {
         AnalyticsProperties.Events cfg = analyticsProperties == null ? null : analyticsProperties.getEvents();
@@ -171,6 +183,12 @@ public class AnalyticsEventIngestJob {
         }
     }
 
+    /**
+     * 组装、采样并写入一批记录。
+     *
+     * <p>结构非法、缺失 requestId 或被采样丢弃的记录会 ACK，不会因为不可持久化数据永久占用 pending。
+     * 可恢复的数据访问错误不 ACK 有效项，以便下一轮重试。</p>
+     */
     void ingestRecords(String streamKey, List<MapRecord<String, Object, Object>> records) {
         if (records == null || records.isEmpty()) {
             return;
@@ -241,6 +259,12 @@ public class AnalyticsEventIngestJob {
         return ThreadLocalRandom.current().nextDouble() < sampleRate;
     }
 
+    /**
+     * 批量完整性错误后的逐条隔离。
+     *
+     * <p>单条完整性错误视为 poison record：尽力写 DLQ 后确认原消息，防止整个组永久卡住。普通数据访问
+     * 错误被视为暂态或基础设施故障，停止隔离并保留余下消息 pending。</p>
+     */
     private void isolatePoisonAndAck(String streamKey, List<VisitEventBatchAssembler.IngestItem> items) {
         if (items == null || items.isEmpty()) {
             return;

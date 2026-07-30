@@ -8,6 +8,13 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 
+/**
+ * 用户角色关联存储端口的 MyBatis 适配器。
+ *
+ * <p>写入参与调用方事务，唯一性和并发冲突由数据库约束及上层异常映射负责。
+ * 批量查询对 {@code null}/空 ID 集合直接返回不可变空列表，避免生成无意义的 IN 条件；
+ * Mapper 无结果同样规范化为空列表。</p>
+ */
 @Component
 public class AccountsUserRoleStoreMybatisAdapter implements AccountsUserRoleStore {
 

@@ -3,6 +3,20 @@ package com.linkforge.platform.domain;
 import java.net.IDN;
 import java.util.Locale;
 
+/**
+ * 平台登记域名使用的规范化 DNS 主机名值对象。
+ *
+ * <p>构造时会去除首尾空白、按 {@link Locale#ROOT} 转为小写，并使用 STD3 规则将国际化域名
+ * 转为 ASCII（Punycode）。因此 {@link #value()} 始终返回可稳定比较和持久化的 ASCII 形式，而不是
+ * 调用方传入的原始文本。</p>
+ *
+ * <p>该值对象只接受至少包含两个 label 的域名，并拒绝 URL、端口、路径、用户信息、通配符、
+ * {@code localhost}、IPv4 字面量、尾随点以及超出 DNS 长度限制的输入。它不执行 DNS 解析，也不证明
+ * 域名所有权或可达性；这些属于平台控制面的后续校验职责。</p>
+ *
+ * @param value 待规范化的主机名；为 {@code null}、空白或不符合上述规则时抛出
+ *              {@link IllegalArgumentException}
+ */
 public record Hostname(String value) {
 
     public Hostname {
@@ -12,6 +26,13 @@ public record Hostname(String value) {
         value = normalize(value);
     }
 
+    /**
+     * 解析并规范化外部主机名输入。
+     *
+     * @param raw 外部输入，不得包含协议、端口或路径
+     * @return 规范化后的主机名值对象
+     * @throws IllegalArgumentException 输入为空或不是允许登记的 DNS 主机名
+     */
     public static Hostname parse(String raw) {
         return new Hostname(raw);
     }

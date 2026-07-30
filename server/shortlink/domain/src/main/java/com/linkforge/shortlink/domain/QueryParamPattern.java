@@ -3,15 +3,16 @@ package com.linkforge.shortlink.domain;
 import static com.linkforge.shortlink.domain.ShortLinkDomainException.Reason.INVALID_QUERY_FORWARD_ALLOWLIST_ITEM;
 
 /**
- * Query parameter name/prefix pattern.
+ * 查询参数名或参数名前缀模式。
  *
- * <p>Allowed forms (V1):</p>
+ * <p>支持以下形式：</p>
  * <ul>
- *   <li>{@code utm_source}</li>
- *   <li>{@code utm_*} (suffix '*' allowed only at the end, and pattern cannot be {@code *})</li>
+ *   <li>{@code utm_source}：精确匹配参数名；</li>
+ *   <li>{@code utm_*}：仅允许在末尾出现一个 {@code *}，表示前缀匹配。</li>
  * </ul>
  *
- * <p>Characters allowed in base: {@code [0-9A-Za-z_]}</p>
+ * <p>构造时去除首尾空白；基础部分只能包含 ASCII {@code [0-9A-Za-z_]}，且不允许空基础或单独的
+ * {@code *}。模式保留大小写，消费方按大小写敏感的精确/前缀规则匹配。</p>
  */
 public record QueryParamPattern(String value) {
 
@@ -44,8 +45,10 @@ public record QueryParamPattern(String value) {
         }
     }
 
+    /**
+     * 从外部文本创建并校验一个模式。
+     */
     public static QueryParamPattern of(String raw) {
         return new QueryParamPattern(raw);
     }
 }
-

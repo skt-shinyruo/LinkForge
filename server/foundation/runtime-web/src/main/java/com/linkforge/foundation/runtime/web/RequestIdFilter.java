@@ -15,11 +15,15 @@ import java.io.IOException;
 import java.util.UUID;
 
 /**
- * Runtime-owned servlet filter for request-id propagation.
+ * HTTP 请求关联 ID 的运行时过滤器。
  *
- * <p>This bean lives under {@code foundation.runtime.web} because it is part of the executable
- * HTTP runtime: it reads request headers, populates logging context, and writes response headers.
- * The shared-library side of {@code foundation} should expose only reusable types, not servlet beans.
+ * <p>过滤器只接受由字母、数字、{@code -}、{@code _}、{@code .} 组成且长度不超过 64 的
+ * {@code X-Request-Id}；不符合约束的客户端值会被替换为服务端生成的 UUID。该 ID 仅用于日志、错误响应
+ * 和排障关联，不是认证或授权凭据。</p>
+ *
+ * <p>在进入下游链路前，它同时写入响应头、{@link RequestId} 和 MDC；无论下游是否抛错，都会在
+ * {@code finally} 中清理线程局部状态，避免线程池复用时串到下一请求。Servlet 依赖留在 runtime 包，
+ * 共享层只暴露无框架的 {@link RequestId}。</p>
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 10)
@@ -52,6 +56,12 @@ public class RequestIdFilter extends OncePerRequestFilter {
         }
     }
 
+    /**
+     * 规范化可由客户端传入的关联 ID。
+     *
+     * <p>返回 {@code null} 表示调用方必须生成新值；该方法不会截断超长值，防止攻击者利用截断制造
+     * 难以区分的日志关联。</p>
+     */
     static String sanitizeRequestId(String raw) {
         if (raw == null) {
             return null;

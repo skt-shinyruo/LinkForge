@@ -2,6 +2,12 @@ package com.linkforge.governance.infrastructure.persistence.entity;
 
 import java.time.LocalDateTime;
 
+/**
+ * {@code audit_logs} 表的 MyBatis 行模型。
+ *
+ * <p>before/after snapshot 保存不透明原文，不在持久化层解释或改写；内容可能是版本化 JSON、
+ * 历史纯文本或 {@code null}，具体格式由审计事件类型决定。</p>
+ */
 public class AuditLogEntity {
 
     private Long id;

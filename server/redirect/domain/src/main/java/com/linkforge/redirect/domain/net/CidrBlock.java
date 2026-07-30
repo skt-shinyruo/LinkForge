@@ -18,6 +18,12 @@ public final class CidrBlock {
         this.prefixLength = prefixLength;
     }
 
+    /**
+     * 解析严格的 IPv4/IPv6 CIDR 字面量。
+     *
+     * <p>未提供前缀时按单地址网段处理；结果在创建时掩码化，因此 {@link #contains(String)} 只需比较
+     * 同地址族的网络部分。非法配置抛出 {@link IllegalArgumentException}，供启动校验阻止不安全部署。</p>
+     */
     public static CidrBlock parse(String raw) {
         if (raw == null) {
             throw new IllegalArgumentException("CIDR 不能为空");
@@ -58,6 +64,9 @@ public final class CidrBlock {
         return new CidrBlock(network, prefixLen);
     }
 
+    /**
+     * 判断字符串 IP 是否属于当前网段；非法、不同地址族的输入返回 {@code false}。
+     */
     public boolean contains(String ip) {
         byte[] bytes = IpStrings.parseIpLiteralToBytes(ip);
         if (bytes == null || bytes.length != network.length) {
@@ -66,6 +75,9 @@ public final class CidrBlock {
         return Arrays.equals(masked(bytes, prefixLength), network);
     }
 
+    /**
+     * 判断已解析 IP 是否属于当前网段；不触发 DNS 解析。
+     */
     public boolean contains(InetAddress addr) {
         if (addr == null) {
             return false;

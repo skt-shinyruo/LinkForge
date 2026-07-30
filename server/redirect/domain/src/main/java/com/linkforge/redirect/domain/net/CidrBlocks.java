@@ -12,6 +12,12 @@ public final class CidrBlocks {
     private CidrBlocks() {
     }
 
+    /**
+     * 将配置列表解析成不可变 CIDR 集合。
+     *
+     * <p>空元素被忽略，任一非空非法项会带上配置字段名抛出异常；不能静默跳过，否则 trusted proxy 或
+     * denylist 会在配置错误时悄然缩小。</p>
+     */
     public static List<CidrBlock> parseList(List<String> raw, String fieldName) {
         if (raw == null || raw.isEmpty()) {
             return List.of();
@@ -31,6 +37,9 @@ public final class CidrBlocks {
         return Collections.unmodifiableList(out);
     }
 
+    /**
+     * 判断地址是否匹配任一网段；空列表按不匹配处理。
+     */
     public static boolean containsAny(List<CidrBlock> blocks, String ip) {
         if (blocks == null || blocks.isEmpty()) {
             return false;

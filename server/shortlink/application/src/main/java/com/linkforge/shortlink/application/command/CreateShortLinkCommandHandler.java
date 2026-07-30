@@ -36,6 +36,17 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 
+/**
+ * 创建短链聚合并协调应用作用域、额度、标签、领域事件和跳转缓存失效。
+ *
+ * <p>应用短链必须同时提供 {@code applicationId} 与 {@code domainId}，并在写入前通过应用/域名授权及
+ * 月度发链额度检查；未绑定应用和域名的历史作用域仍按仓储规则创建。聚合、标签、领域事件发布端口和
+ * 缓存失效 outbox 在同一事务中执行。事务提交后会立即尝试清理跳转缓存；快路径失败不会回滚业务事务，
+ * 后续由已持久化的 outbox 重试。</p>
+ *
+ * <p>创建命令没有幂等键，自动码的重复请求会创建新短链。自定义码先做友好冲突检查，数据库唯一约束
+ * 仍是并发竞争的最终防线，并将冲突稳定映射为 {@code CODE_ALREADY_EXISTS}。</p>
+ */
 @Component
 public class CreateShortLinkCommandHandler {
 
@@ -80,6 +91,15 @@ public class CreateShortLinkCommandHandler {
         this.applicationScopePort = applicationScopePort;
     }
 
+    /**
+     * 在一个事务中创建短链及其附属标签，并登记事件与缓存失效任务。
+     *
+     * @param tenantId 短链所属租户
+     * @param createdBy 创建主体；必须具有正 ID 和明确主体类型
+     * @param req 创建参数；应用 ID 与域名 ID 必须同时提供或同时省略
+     * @return 已持久化短链及标签的当前视图
+     * @throws BusinessException 主体、作用域、额度、短码或聚合不变量校验失败时抛出
+     */
     @Transactional
     public LinkDto handle(long tenantId, CreatedBy createdBy, CreateLinkRequest req) {
         if (createdBy == null || createdBy.id() <= 0 || createdBy.type() == null) {

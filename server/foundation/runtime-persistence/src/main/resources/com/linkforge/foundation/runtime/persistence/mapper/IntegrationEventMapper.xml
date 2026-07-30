@@ -4,7 +4,7 @@
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.linkforge.foundation.runtime.persistence.mapper.IntegrationEventMapper">
 
-    <!-- Explicit constructor mapping: avoids relying on underscore-to-camel for record components like occurredAtUtc -->
+    <!-- 显式构造器映射：避免依赖下划线转驼峰来绑定 occurredAtUtc 等 record 组件。 -->
     <resultMap id="IntegrationEventRowResultMap" type="com.linkforge.foundation.eventing.IntegrationEventRow">
         <constructor>
             <!-- MyBatis type alias: 'long' -> java.lang.Long, '_long' -> primitive long -->

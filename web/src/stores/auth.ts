@@ -5,6 +5,12 @@ import type { ApiResponse, AuthResponse } from "../services/types";
 type AuthMode = "bearer" | "cookie";
 const AUTH_MODE = (import.meta.env.VITE_AUTH_MODE || "bearer") as AuthMode;
 
+/**
+ * 控制台认证状态的唯一 store。
+ *
+ * bearer 模式以 token 是否存在表示候选登录态，cookie 模式以 `/me` 返回的用户邮箱表示登录态；
+ * 两种模式都必须经过 `init()` 向后端复核。`initInFlight` 收敛路由并发初始化，失败会稳定清空本地状态。
+ */
 export const useAuthStore = defineStore("auth", {
   state: () => ({
     token: (AUTH_MODE === "bearer" ? (getToken() as string | null) : null) as string | null,
@@ -36,6 +42,7 @@ export const useAuthStore = defineStore("auth", {
       clearToken();
     },
 
+    /** 初始化当前会话；并发调用共享请求，完成后无论成功失败都会置为 initialized。 */
     async init() {
       this.hydrate();
       if (this.initialized) {
@@ -70,6 +77,7 @@ export const useAuthStore = defineStore("auth", {
       return this.initInFlight;
     },
 
+    /** 登录并按认证模式保存 bearer token 或仅接受服务端 HttpOnly cookie。 */
     async login(email: string, password: string) {
       const r: ApiResponse<AuthResponse> = await apiFetch<AuthResponse>("/api/v1/auth/login", {
         method: "POST",
@@ -95,6 +103,10 @@ export const useAuthStore = defineStore("auth", {
       }
     },
 
+    /**
+     * 先 best-effort 通知后端递增 tokenVersion，再无条件清理本地状态。
+     * 网络失败时本地已退出，但旧 bearer token 的服务端撤销不能被视为已完成。
+     */
     async logout() {
       try {
         await apiFetch<void>("/api/v1/auth/logout", { method: "POST" });

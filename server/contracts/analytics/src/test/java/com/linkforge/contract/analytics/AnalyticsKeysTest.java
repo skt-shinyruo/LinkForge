@@ -11,8 +11,7 @@ class AnalyticsKeysTest {
     @Test
     void keys_should_use_expected_format() {
         LocalDate day = LocalDate.of(2026, 2, 19);
-        assertThat(AnalyticsKeys.activeSetKey(day)).isEqualTo("stats:active:20260219");
-        assertThat(AnalyticsKeys.activeMember(12L, 34L)).isEqualTo("12:34");
+        assertThat(AnalyticsKeys.dirtyLinkMember(12L, 34L)).isEqualTo("12:34");
         assertThat(AnalyticsKeys.pvKey(12L, 34L, day)).isEqualTo("stats:pv:12:34:20260219");
         assertThat(AnalyticsKeys.uvKey(12L, 34L, day)).isEqualTo("stats:uv:12:34:20260219");
         assertThat(AnalyticsKeys.scopeDirtyStreamKey(day)).isEqualTo("stats:dirty:scope:20260219");

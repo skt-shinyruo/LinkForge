@@ -22,6 +22,13 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 
+/**
+ * 将短链转换为归档状态。
+ *
+ * <p>归档状态变更、领域事件和缓存失效 outbox 位于同一事务，仓储更新使用聚合版本做乐观锁。
+ * 提交后会立即尝试清理跳转缓存，失败时由 outbox 后台重试。该处理器只按租户隔离数据，
+ * 不接收用户主体，调用方必须在进入命令前完成操作权限校验。</p>
+ */
 @Component
 public class ArchiveShortLinkCommandHandler {
 
@@ -54,6 +61,17 @@ public class ArchiveShortLinkCommandHandler {
         this.clock = clock;
     }
 
+    /**
+     * 归档指定短链。
+     *
+     * <p>已经归档的短链会直接返回当前视图，不重复写库、发事件或清缓存；首次状态转换若遇到并发版本变化，
+     * 则整个事务失败并返回 {@code LINK_STALE_WRITE}。</p>
+     *
+     * @param tenantId 短链所属租户
+     * @param linkId 待归档短链
+     * @return 归档后的短链及其标签；重复归档返回现有状态
+     * @throws BusinessException 短链不存在、状态不允许或发生乐观锁冲突时抛出
+     */
     @Transactional
     public LinkDto handle(long tenantId, long linkId) {
         ShortLink link = shortLinkRepository.findByTenantIdAndId(tenantId, linkId)

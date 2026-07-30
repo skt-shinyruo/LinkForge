@@ -20,9 +20,10 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Import;
 
 /**
- * LinkForge backend monolith entrypoint.
+ * LinkForge 后端单体的 Spring Boot 入口。
  *
- * <p>Combines API service and Redirect Edge into a single Spring Boot application.</p>
+ * <p>它显式组合管理 API 与 Redirect Edge 所需的各上下文运行时模块，并集中启用共享配置绑定。业务上下文
+ * 不依赖根包扫描相互发现，新增上下文应通过自身 runtime module 由此处显式导入。</p>
  */
 @SpringBootApplication(scanBasePackages = {
         "com.linkforge.app.api",

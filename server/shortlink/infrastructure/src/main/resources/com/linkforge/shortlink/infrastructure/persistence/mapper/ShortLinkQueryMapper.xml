@@ -123,6 +123,7 @@
         LIMIT 1
     </select>
 
+    <!-- Active 在此仅约束域名状态并排除归档；短链 enabled/expiry/lifecycle 由 Redirect 统一判定。 -->
     <select id="findActiveByHostnameAndCode" resultMap="ShortLinkResultMap">
         SELECT
         <include refid="shortLinkColumnsAliased"/>,
@@ -188,6 +189,7 @@
           AND created_at &lt; #{toExclusiveUtc}
     </select>
 
+    <!-- count 与分页列表共享该过滤片段，修改筛选规则时必须保持两种查询口径一致。 -->
     <sql id="searchWhere">
         <where>
             tenant_id = #{tenantId}

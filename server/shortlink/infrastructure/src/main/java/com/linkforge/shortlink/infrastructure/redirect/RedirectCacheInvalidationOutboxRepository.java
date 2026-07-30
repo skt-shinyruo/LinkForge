@@ -9,6 +9,13 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 
+/**
+ * 跳转缓存失效 outbox 的 MyBatis 适配器。
+ *
+ * <p>{@link #enqueue(long, Long, String)} 通常参与短链写事务，保证状态变更与失效意图原子提交。
+ * 数据库唯一键以 {@code tenantId + domainScope + code} 合并重复意图，其中无域名短链用 {@code 0}
+ * 归一化；重复入队会把既有记录重新置为待处理，并清空错误与重试计数。</p>
+ */
 @Component
 public class RedirectCacheInvalidationOutboxRepository implements RedirectCacheInvalidationOutboxPort {
 
@@ -22,6 +29,11 @@ public class RedirectCacheInvalidationOutboxRepository implements RedirectCacheI
         this.clock = clock;
     }
 
+    /**
+     * 在当前事务中登记缓存失效意图。
+     *
+     * @throws IllegalArgumentException 租户非法或短码为空时抛出
+     */
     @Override
     public void enqueue(long tenantId, Long domainId, String code) {
         if (tenantId <= 0) {
@@ -39,14 +51,19 @@ public class RedirectCacheInvalidationOutboxRepository implements RedirectCacheI
         );
     }
 
+    /**
+     * 按到期时间和主键顺序读取待处理项；该查询不占有任务，调用方依赖调度锁避免并发领取。
+     */
     public List<RedirectCacheInvalidationOutboxRow> listDue(LocalDateTime nowUtc, int limit) {
         return mapper.listDue(nowUtc, limit);
     }
 
+    /** 仅当记录仍为 {@code PENDING} 时标记完成。 */
     public void markProcessed(long id, LocalDateTime processedAtUtc) {
         mapper.markProcessed(id, processedAtUtc);
     }
 
+    /** 仅当记录仍为 {@code PENDING} 时保存错误摘要和下次重试时间。 */
     public void markFailed(long id, int attempts, String lastError, LocalDateTime nextAttemptAtUtc) {
         mapper.markFailed(id, attempts, lastError, nextAttemptAtUtc);
     }

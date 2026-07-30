@@ -25,6 +25,14 @@ function getErrorMessage(caught: unknown, fallbackMessage: string) {
   return caught instanceof Error ? caught.message : fallbackMessage;
 }
 
+/**
+ * 统计页异步编排。
+ *
+ * 链接选项按后端分页完整拉取，随后并行加载 overview、Top links 和选中链接日统计。日期范围按 UTC
+ * 自然日构造；应用切换会先重建可选链接再读取报表。函数不把分日 HLL UV 相加为全范围精确 UV。
+ *
+ * 快速连续切换目前没有 AbortController/请求序号保护，较早请求可能晚于较新请求落地，这是已知 UI 限制。
+ */
 export function useStatsPage() {
   const error = ref<string | null>(null);
   const loading = ref(false);

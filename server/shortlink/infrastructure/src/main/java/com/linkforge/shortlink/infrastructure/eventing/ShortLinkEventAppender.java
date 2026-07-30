@@ -15,6 +15,13 @@ import org.springframework.stereotype.Component;
 import java.time.Instant;
 import java.util.UUID;
 
+/**
+ * 将短链状态快照序列化后追加到共享集成事件表。
+ *
+ * <p>调用方应在保存短链的同一个数据库事务中调用本组件，从而使业务数据与事件记录原子提交。
+ * 序列化或写库失败会直接向上传播并回滚业务事务，不能在此处降级吞错，否则下游投影可能永久缺失状态变化。
+ * 每次追加都会生成新的 {@code eventId}；消费方必须以该 ID 去重，并按事件表序号推进自己的检查点。</p>
+ */
 @Component
 public class ShortLinkEventAppender {
 
@@ -85,4 +92,3 @@ public class ShortLinkEventAppender {
         );
     }
 }
-

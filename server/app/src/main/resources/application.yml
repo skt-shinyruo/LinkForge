@@ -82,7 +82,6 @@ app:
       max-len: ${ANALYTICS_VISIT_STREAM_MAX_LEN:}
     dimensions:
       enabled: ${ANALYTICS_DIMENSIONS_ENABLED:false}
-      max-links-per-day: ${ANALYTICS_DIMENSIONS_MAX_LINKS_PER_DAY:5000}
       types: ${ANALYTICS_DIMENSIONS_TYPES:}
     events:
       # 可选访问明细落库（Redis Stream -> MySQL link_visit_events），默认关闭；不影响基础 PV/UV

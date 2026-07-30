@@ -10,6 +10,16 @@ import org.springframework.stereotype.Component;
 
 import java.net.URI;
 
+/**
+ * 删除 Redirect 上下文维护的短链缓存键。
+ *
+ * <p>一次调用会先删除历史的纯短码键，再按域名删除当前 host-aware 键，并在命中 Legacy 域名映射时补删
+ * 基础域名兼容键。多个删除动作不是原子的，中途失败会抛出异常交给 outbox 重试；已经删除的键再次删除
+ * 必须视为成功，因此整个操作可安全重入。</p>
+ *
+ * <p>无法解析配置中的基础 URL 时跳过兼容键；指定 {@code domainId} 却查不到域名时也只能删除纯短码键。
+ * 这些情况不伪造域名，依靠后续正常读取与 TTL 收敛残留的 host-aware 缓存。</p>
+ */
 @Component
 public class RedirectCacheSyncAdapter implements RedirectCacheSyncPort {
 
@@ -25,10 +35,15 @@ public class RedirectCacheSyncAdapter implements RedirectCacheSyncPort {
         this.coreProperties = coreProperties;
     }
 
+    /**
+     * 删除给定短链可能对应的所有已知缓存键。
+     *
+     * @throws IllegalStateException 任一底层缓存删除报告失败时抛出，以触发持久化重试
+     */
     @Override
     public void evict(long tenantId, Long domainId, String code) {
         if (linkCache.tryEvict(code)) {
-            // keep going for host-aware keys
+            // 纯短码键成功后仍需继续删除按主机隔离的键。
         } else {
             log.debug("redirect cache evict failed: code={}", code);
             throw new IllegalStateException("redirect cache evict failed: code=" + code);

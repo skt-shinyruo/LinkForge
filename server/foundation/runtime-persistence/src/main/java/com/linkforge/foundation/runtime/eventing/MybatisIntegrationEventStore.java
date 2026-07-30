@@ -8,6 +8,12 @@ import org.springframework.stereotype.Repository;
 import java.time.Instant;
 import java.util.List;
 
+/**
+ * 基于 MyBatis 的集成事件日志实现。
+ *
+ * <p>本适配器不自行开启新事务、不发布到外部 broker，也不保存消费者 checkpoint；调用线程的 Spring
+ * 事务决定 append 是否与业务写入原子提交。</p>
+ */
 @Repository
 public class MybatisIntegrationEventStore implements IntegrationEventStore {
 

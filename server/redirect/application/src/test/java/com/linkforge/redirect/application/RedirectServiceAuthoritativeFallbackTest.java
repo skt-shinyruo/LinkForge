@@ -24,9 +24,30 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class RedirectServiceAuthoritativeFallbackTest {
+
+    @Test
+    void resolve_shouldNotQueryAuthorityOnNegativeCacheHit() {
+        RecordingLinkCache cache = new RecordingLinkCache(LinkCachePort.LookupResult.negativeHit());
+        ShortLinkReadPort shortLinkReadPort = mock(ShortLinkReadPort.class);
+        RedirectService service = new RedirectService(
+                cache,
+                shortLinkReadPort,
+                visit -> {
+                },
+                Clock.systemUTC()
+        );
+
+        RedirectResolution resolution = service.resolve(
+                new ResolveRedirectRequest("missing123", "go.example.test", false, false, null)
+        );
+
+        assertThat(resolution.kind()).isEqualTo(RedirectResolution.Kind.NOT_FOUND);
+        verifyNoInteractions(shortLinkReadPort);
+    }
 
     @Test
     void resolve_shouldUseShortLinkReadPortBeforeProjectionOnCacheMiss() {
@@ -465,11 +486,20 @@ class RedirectServiceAuthoritativeFallbackTest {
 
     private static final class RecordingLinkCache implements LinkCachePort {
 
+        private final LookupResult lookupResult;
         private LinkMeta cachedMeta;
+
+        private RecordingLinkCache() {
+            this(LookupResult.miss());
+        }
+
+        private RecordingLinkCache(LookupResult lookupResult) {
+            this.lookupResult = lookupResult;
+        }
 
         @Override
         public LookupResult lookup(String code) {
-            return LookupResult.miss();
+            return lookupResult;
         }
 
         @Override

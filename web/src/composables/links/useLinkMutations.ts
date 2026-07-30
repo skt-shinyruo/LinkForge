@@ -8,6 +8,12 @@ import {
 import type { LinkDto } from "../../services/types";
 import { buildCreatePayload, buildEditPayload, fillEditFormFromLink, type LinkCreateFormState, type LinkEditFormState } from "./linkFormCodec";
 
+/**
+ * 编排链接页面的创建、编辑和生命周期命令。
+ *
+ * composable 只执行前端交互前置检查；归档状态、应用/域名授权、删除前置条件和审批仍由后端强制。
+ * 每个成功命令都等待列表 reload，以后端返回状态覆盖本地推测；目标地址审批返回 pending 时保留当前生效地址。
+ */
 export function useLinkMutations(args: {
   createForm: LinkCreateFormState;
   editForm: LinkEditFormState;

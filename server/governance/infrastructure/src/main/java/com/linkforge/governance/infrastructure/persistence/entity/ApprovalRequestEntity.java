@@ -2,6 +2,12 @@ package com.linkforge.governance.infrastructure.persistence.entity;
 
 import java.time.LocalDateTime;
 
+/**
+ * {@code approval_requests} 表的 MyBatis 行模型。
+ *
+ * <p>枚举按名称持久化，时间字段遵循调用链的 UTC {@link LocalDateTime} 约定；领域状态约束不在
+ * 此可变实体中执行，而由领域对象和条件更新 SQL 保证。</p>
+ */
 public class ApprovalRequestEntity {
 
     private Long id;

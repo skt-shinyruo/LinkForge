@@ -13,9 +13,13 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * Redirect Edge 的基础风控：IP 黑白名单、简单 bot 识别、Redis 限流。
+ * Redirect Edge 的基础风控：IP 黑白名单、轻量 bot 识别和 Redis 固定窗口限流。
  *
- * <p>注意：此处的限流与 bot 识别属于“防滥用/降级”能力，不替代 WAF / CDN / 网关的第一道防线。</p>
+ * <p>执行顺序固定为 denylist、非空 allowlist、bot 直接阻断、IP 限流、IP+code 限流。denylist 优先，
+ * 因而同一地址同时命中两张表时仍被拒绝。此处只做请求前的防滥用/降级，不能替代 WAF、CDN 或网关。</p>
+ *
+ * <p>限流端口异常是否放行由 {@code app.edge.risk-control.rate-limit.fail-open} 决定；IP 解析可信边界
+ * 不在本类，而由 {@code RedirectClientIpResolver} 在 filter 中完成。</p>
  */
 @Component
 public class RedirectRiskControl {
@@ -44,6 +48,12 @@ public class RedirectRiskControl {
     private final long botIpMaxRequests;
     private final boolean botBlock;
 
+    /**
+     * 从 Edge 配置建立只读的风控策略快照。
+     *
+     * @param properties Edge 与 risk-control 配置；为空时风控关闭
+     * @param rateLimiter 固定窗口计数端口；启用限流时必须可用
+     */
     public RedirectRiskControl(EdgeProperties properties, RateLimiterPort rateLimiter) {
         this.rateLimiter = rateLimiter;
 
@@ -70,6 +80,17 @@ public class RedirectRiskControl {
         this.botBlock = bot != null && bot.isBlock();
     }
 
+    /**
+     * 对已清洗的客户端上下文作出允许、403 或 429 决策。
+     *
+     * <p>code 只参与 IP+code 限流维度，不能通过本方法绕过 RedirectService 的短码校验。未启用风控时
+     * 不访问限流器，直接放行。</p>
+     *
+     * @param clientIp 已按可信代理规则解析的客户端 IP；为空按 unknown 维度处理
+     * @param userAgent 已限长的 User-Agent，可为 {@code null}
+     * @param code 仅用于 IP+code 限流的原始短码
+     * @return 允许、403 或 429 的完整决策
+     */
     public Decision check(String clientIp, String userAgent, String code) {
         if (!enabled) {
             return Decision.allow();
@@ -77,7 +98,7 @@ public class RedirectRiskControl {
 
         String ip = normalizeIp(clientIp);
 
-        // deny 优先
+        // deny 优先，确保 allowlist 不能意外覆盖显式封禁。
         if (CidrBlocks.containsAny(ipDenylist, ip)) {
             return Decision.forbidden("ip_denylist", "IP 已被禁止访问");
         }
@@ -167,7 +188,7 @@ public class RedirectRiskControl {
         if (v.isBlank()) {
             return null;
         }
-        // Keep consistent with Redirect short code constraints (max 32, alphanumeric only).
+        // 与 RedirectService 的短码输入边界保持一致，避免攻击输入扩张 Redis key。
         if (v.length() > 32) {
             return null;
         }
@@ -183,6 +204,9 @@ public class RedirectRiskControl {
         return v;
     }
 
+    /**
+     * 风控检查的完整结果；{@code retryAfterSeconds} 仅在 429 时可能有值。
+     */
     public record Decision(
             boolean allowed,
             int httpStatus,

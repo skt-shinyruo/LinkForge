@@ -12,6 +12,16 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+
+/**
+ * 基于 MySQL 日汇总和明细表的报表查询实现。
+ *
+ * <p>日统计查询的 {@code from}/{@code to} 均为包含端点的 UTC 日期。链接榜单和维度查询对日表的
+ * UV 直接求和，跨天或跨链接并不代表全局精确去重；租户、应用、域日统计优先使用范围 HLL 快照表，
+ * 缺失时才回退到链接 UV 求和。所有 UV 都是 HyperLogLog 近似值。</p>
+ *
+ * <p>本层不补齐没有访问的日期，也不在内存重新排序或分页；输入范围、上限和授权由应用服务验证。</p>
+ */
 @Service
 public class AnalyticsQueryServiceImpl implements AnalyticsQueryService {
 
@@ -53,6 +63,9 @@ public class AnalyticsQueryServiceImpl implements AnalyticsQueryService {
                 .toList();
     }
 
+    /**
+     * 按 PV 或 UV 查询租户榜单；同分时 SQL 以另一指标和链接 ID 提供稳定排序。
+     */
     @Override
     public List<TopLinkStat> topLinks(long tenantId, LocalDate from, LocalDate to, int limit) {
         return topLinks(tenantId, from, to, limit, TopSortBy.PV);
@@ -85,6 +98,11 @@ public class AnalyticsQueryServiceImpl implements AnalyticsQueryService {
         return toTopLinkStats(rows);
     }
 
+    /**
+     * 聚合一个链接某个维度的日表快照。
+     *
+     * <p>返回的占比以该维度类型在同一区间的 PV 总和为分母；UV 仅作展示，不能相加得到精确独立访客。</p>
+     */
     @Override
     public List<DimensionStat> linkDimensions(
             long tenantId,
@@ -108,6 +126,9 @@ public class AnalyticsQueryServiceImpl implements AnalyticsQueryService {
         )).toList();
     }
 
+    /**
+     * 返回按发生时间倒序的已落库明细。该数据受采样和异步落库延迟影响，不等同于实时全量访问日志。
+     */
     @Override
     public List<VisitEvent> linkEvents(long tenantId, long linkId, LocalDateTime from, LocalDateTime to, int limit) {
         return queryRepository.linkEvents(tenantId, linkId, from, to, limit)

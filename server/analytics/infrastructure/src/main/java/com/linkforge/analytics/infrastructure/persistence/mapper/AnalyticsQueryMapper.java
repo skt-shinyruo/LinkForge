@@ -7,6 +7,13 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
+/**
+ * 报表读取 SQL 的 MyBatis 映射。
+ *
+ * <p>日统计范围使用闭区间，应用额度统计单独使用 {@code [fromInclusiveUtc, toExclusiveUtc)}。租户、
+ * 应用、域的日 UV 查询优先使用 {@code analytics_scope_stats_daily} 中的范围 HLL 快照，缺失时回退到
+ * 链接日 UV 求和；后者并非跨链接精确去重。</p>
+ */
 @Mapper
 public interface AnalyticsQueryMapper {
 
@@ -18,6 +25,7 @@ public interface AnalyticsQueryMapper {
 
     List<AnalyticsDailyStatRow> domainDaily(long tenantId, long domainId, LocalDate from, LocalDate to);
 
+    /** 查询月度额度初始化使用的应用 PV，结束日期为排他边界。 */
     Long countApplicationPv(
             @Param("tenantId") long tenantId,
             @Param("applicationId") long applicationId,

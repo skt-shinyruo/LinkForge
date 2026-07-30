@@ -15,6 +15,12 @@ public final class UserAgentBotDetector {
 
     private static final int MAX_UA_LEN = 512;
 
+    /**
+     * 以大小写无关的关键字包含匹配识别 UA。
+     *
+     * <p>只检查有限长度的 UA，避免攻击者把超长 header 放大为每次请求的大字符串扫描；结果仅适合作为
+     * 风控降级信号，不能作为身份或安全证明。</p>
+     */
     public static boolean isBot(String userAgent, List<String> keywords) {
         if (userAgent == null || userAgent.isBlank()) {
             return false;

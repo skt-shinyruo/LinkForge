@@ -22,6 +22,15 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * 租户管理员维护租户内用户的 HTTP 边界。
+ *
+ * <p>所有端点要求已认证 JWT 主体和 {@code TENANT_ADMIN} 角色。操作者 tenantId 只来自
+ * {@link AuthContext}，目标用户 id 不能改变租户作用域；应用服务负责再次校验目标归属、角色集合和
+ * 状态迁移。停用操作还传递操作者 userId，以便应用层执行禁止停用自身等业务不变量。</p>
+ *
+ * <p>请求和响应均不返回密码哈希；重置密码只把明文交给应用层完成单向哈希和 token version 失效处理。</p>
+ */
 @RestController
 @RequestMapping("/api/v1/users")
 public class UserAdminController {

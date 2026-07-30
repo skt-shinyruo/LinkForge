@@ -8,6 +8,7 @@ type QueryStringOptions = {
   skipEmptyString?: boolean;
 };
 
+/** 检查 HTTP 200 内的业务 code；成功数据允许为 `undefined`。 */
 export function ensureApiSuccess<T>(
   response: ApiResponse<T>,
   fallbackMessage: string,
@@ -18,6 +19,7 @@ export function ensureApiSuccess<T>(
   return response.data;
 }
 
+/** 检查业务成功且必须存在 data，适用于后端承诺返回资源的命令和查询。 */
 export function requireApiData<T>(
   response: ApiResponse<T>,
   fallbackMessage: string,
@@ -29,6 +31,10 @@ export function requireApiData<T>(
   return data;
 }
 
+/**
+ * 使用 `URLSearchParams` 编码查询参数；null/undefined 永不发送，空字符串默认也省略。
+ * false 和 0 是有效协议值，不能因 JavaScript truthy 规则被丢弃。
+ */
 export function buildQueryString(
   values: Record<string, QueryValue>,
   options: QueryStringOptions = {},
@@ -56,6 +62,7 @@ export function withQuery(
   return queryString ? `${path}?${queryString}` : path;
 }
 
+/** 解析调用方已获得的原始响应；空 body 返回空对象，业务成功检查由调用方决定。 */
 export async function parseApiResponse<T>(response: Response): Promise<ApiResponse<T>> {
   const text = await response.text();
   if (!text) {
@@ -68,6 +75,12 @@ function applicationPath(applicationId: number): string {
   return `${API_V1}/applications/${applicationId}`;
 }
 
+/**
+ * 控制台端点的单一事实源。
+ *
+ * application-scoped 链接和统计统一使用 `/applications/{id}/...`；共享域名授权使用
+ * `domain-authorizations`。service 不应再内联复制这些路径。
+ */
 export const API_ENDPOINTS = {
   applications: {
     collection: `${API_V1}/applications`,

@@ -7,6 +7,13 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 
+/**
+ * 用户存储端口的 MyBatis 适配器。
+ *
+ * <p>事务边界由调用方应用服务控制，本类仅完成端口数据与持久化实体之间的无损映射。
+ * 单条查询未命中返回 {@code null}，列表无结果返回不可变空列表；{@code null} 写入参数为无操作。
+ * 密码字段始终按已编码摘要传递，本层不接收、还原或记录明文凭据。</p>
+ */
 @Component
 public class AccountsUserStoreMybatisAdapter implements AccountsUserStore {
 

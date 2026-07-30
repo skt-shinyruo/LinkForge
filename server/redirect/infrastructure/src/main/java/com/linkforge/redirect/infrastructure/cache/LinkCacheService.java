@@ -12,6 +12,16 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 
+/**
+ * {@link LinkCachePort} 的 Redis 三态缓存实现。
+ *
+ * <p>正缓存保存 {@link LinkMeta} JSON，负缓存保存固定 sentinel {@code __lf_not_found__}。读取故障、
+ * 反序列化失败和没有 key 都映射为 {@code MISS}，绝不可映射为负缓存命中；这样 RedirectService 会回源
+ * Shortlink，而不会把基础设施故障暴露为 404。</p>
+ *
+ * <p>写入与驱逐都是 best-effort 优化副作用：失败不抛给跳转主链路，Shortlink 的失效 outbox 负责最终
+ * 重试。key 保留 code 大小写；host 存在时使用小写、去端口的 host-scoped key。</p>
+ */
 @Service
 public class LinkCacheService implements LinkCachePort {
 
@@ -31,15 +41,21 @@ public class LinkCacheService implements LinkCachePort {
     }
 
     /**
-     * 从 Redis 读取缓存（包含“短码不存在”的负缓存）。
+     * 读取 legacy/unscoped 缓存。
      *
-     * <p>说明：负缓存用于抵御随机短码扫描导致的缓存穿透。</p>
+     * <p>负缓存仅表示权威读已确认不存在，用于抵御随机短码扫描的缓存穿透。</p>
      */
     @Override
     public LookupResult lookup(String code) {
         return lookup(null, code);
     }
 
+    /**
+     * 读取给定 host + code 的三态缓存结果。
+     *
+     * <p>host 将在本实现中规范化为小写且去端口；code 由调用方验证后原样保留，以维持大小写敏感短码
+     * 的缓存隔离。</p>
+     */
     @Override
     public LookupResult lookup(String host, String code) {
         if (code == null || code.isBlank()) {
@@ -50,7 +66,7 @@ public class LinkCacheService implements LinkCachePort {
         try {
             raw = redis.opsForValue().get(key(host, code));
         } catch (Exception e) {
-            // 缓存异常：降级为未命中，让主链路回源
+            // 缓存异常必须降级为 MISS，让主链路同步回源。
             log.debug("cache read failed: host={}, code={}, err={}", host, code, e.getMessage());
             return LookupResult.miss();
         }
@@ -63,7 +79,7 @@ public class LinkCacheService implements LinkCachePort {
         try {
             return LookupResult.hit(objectMapper.readValue(raw, LinkMeta.class));
         } catch (Exception e) {
-            // 缓存反序列化失败时，直接当作未命中并清理
+            // 坏值不能等同于不存在；尽力清理后返回 MISS。
             try {
                 redis.delete(key(host, code));
             } catch (Exception ex) {
@@ -74,24 +90,35 @@ public class LinkCacheService implements LinkCachePort {
         }
     }
 
+    /**
+     * 兼容旧调用面读取正缓存元数据；负缓存与未命中都会返回 {@code null}，新代码应使用三态 lookup。
+     */
     public LinkMeta get(String code) {
         return lookup(code).meta();
     }
 
+    /**
+     * 兼容旧调用面尽力写入正缓存，调用者不应据此推断写入必然成功。
+     */
     public void put(LinkMeta meta) {
         tryPut(meta);
     }
 
     /**
-     * 尝试写入缓存；成功返回 true，失败返回 false（不抛异常）。
+     * 尝试写入 legacy/unscoped 正缓存。
      *
-     * <p>说明：提供给 projector/job 等“需要感知写入是否成功以便重试”的场景。</p>
+     * <p>返回值只说明本次 Redis 调用是否成功，不是短链事实是否已持久化的确认。</p>
      */
     @Override
     public boolean tryPut(LinkMeta meta) {
         return tryPut(null, meta);
     }
 
+    /**
+     * 尝试写入指定 host + code 的正缓存。
+     *
+     * <p>无效元数据视为无需写入的成功，Redis 或 JSON 失败返回 {@code false} 并由上层决定是否重试。</p>
+     */
     @Override
     public boolean tryPut(String host, LinkMeta meta) {
         if (meta == null || meta.code() == null || meta.code().isBlank()) {
@@ -106,7 +133,7 @@ public class LinkCacheService implements LinkCachePort {
             );
             return true;
         } catch (Exception e) {
-            // 缓存写入失败不应影响主链路
+            // 缓存写入失败不应影响主链路；outbox 会在后续变更时处理失效。
             log.debug(
                     "cache write failed: host={}, code={}, tenantId={}, linkId={}, err={}",
                     resolveCacheHost(host, meta),
@@ -119,11 +146,19 @@ public class LinkCacheService implements LinkCachePort {
         }
     }
 
+    /**
+     * 为 legacy/unscoped code 尽力写入短 TTL 负缓存。
+     */
     @Override
     public void markNotFound(String code) {
         markNotFound(null, code);
     }
 
+    /**
+     * 为指定 host + code 尽力写入短 TTL 负缓存。
+     *
+     * <p>只有 Shortlink 权威读正常返回空时才允许调用本方法；TTL 非正时显式关闭负缓存。</p>
+     */
     @Override
     public void markNotFound(String host, String code) {
         if (code == null || code.isBlank()) {
@@ -136,23 +171,31 @@ public class LinkCacheService implements LinkCachePort {
         try {
             redis.opsForValue().set(key(host, code), NOT_FOUND_SENTINEL, Duration.ofSeconds(ttlSeconds));
         } catch (Exception e) {
-            // 负缓存写入失败不应影响主链路
+            // 负缓存写入失败只增加回源次数，不能影响本次查询结论。
             log.debug("cache write not-found failed: host={}, code={}, err={}", host, code, e.getMessage());
         }
     }
 
+    /**
+     * 兼容旧调用面驱逐 legacy/unscoped key。
+     */
     public void evict(String code) {
         tryEvict(code);
     }
 
     /**
-     * 尝试驱逐缓存；成功返回 true，失败返回 false（不抛异常）。
+     * 尝试驱逐 legacy/unscoped key。
+     *
+     * <p>驱逐可重复调用，after-commit 快路径和 outbox worker 都可能执行它。</p>
      */
     @Override
     public boolean tryEvict(String code) {
         return tryEvict(null, code);
     }
 
+    /**
+     * 尝试驱逐指定 host + code 的 key，重复调用安全。
+     */
     @Override
     public boolean tryEvict(String host, String code) {
         if (code == null || code.isBlank()) {

@@ -7,6 +7,13 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 
+/**
+ * 标签仓储的 MyBatis 适配器。
+ *
+ * <p>标签名称在查询入口去除首尾空白，空名称不访问数据库；唯一性与租户隔离由
+ * {@code tags(tenant_id, name)} 对应的数据约束和 SQL 共同保证。写入冲突不会在此层吞掉，
+ * 由上层事务按统一的数据访问异常处理。</p>
+ */
 @Repository
 public class MybatisTagRepository implements TagRepository {
 
@@ -70,4 +77,3 @@ public class MybatisTagRepository implements TagRepository {
         return t.isBlank() ? null : t;
     }
 }
-

@@ -76,6 +76,10 @@
         ORDER BY created_at DESC, id DESC
     </select>
 
+    <!--
+        审批认领的并发边界：唯一执行器已由应用层在进入此语句前校验，本语句只按
+        tenant_id + id + PENDING_APPROVAL 原子抢占。零行更新表示目标不存在、跨租户或状态已变化。
+    -->
     <update id="markApprovedIfPending">
         UPDATE approval_requests
         SET status = 'APPROVED',
@@ -89,6 +93,9 @@
           AND status = 'PENDING_APPROVAL'
     </update>
 
+    <!--
+        仅在执行器成功返回后推进状态。零行更新不是幂等成功，调用方会将其视为执行状态记录失败并回滚事务。
+    -->
     <update id="markExecutedIfApproved">
         UPDATE approval_requests
         SET status = 'EXECUTED',

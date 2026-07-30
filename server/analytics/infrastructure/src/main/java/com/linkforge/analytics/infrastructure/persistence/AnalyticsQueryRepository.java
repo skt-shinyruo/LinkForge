@@ -10,6 +10,14 @@ import org.springframework.stereotype.Repository;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+
+/**
+ * Analytics MyBatis 查询的防御性仓储边界。
+ *
+ * <p>该类保留 SQL 已定义的 UTC 日期边界、排序和限制，只把可空数据库数值规范为零、把空结果规范为空列表。
+ * 日表是异步快照：查询结果可能落后实时 Redis 聚合，且 UV 由 HLL 估算；调用方不能将其解释为精确实时
+ * 计费值。</p>
+ */
 @Repository
 public class AnalyticsQueryRepository {
 
@@ -43,6 +51,9 @@ public class AnalyticsQueryRepository {
                 .toList();
     }
 
+    /**
+     * 统计应用在 UTC 半开日期范围内的链接 PV，总额用于额度计数器的首次 Redis 基线。
+     */
     public long countApplicationPv(long tenantId, long applicationId, LocalDate fromInclusiveUtc, LocalDate toExclusiveUtc) {
         Long value = queryMapper.countApplicationPv(tenantId, applicationId, fromInclusiveUtc, toExclusiveUtc);
         return safeLong(value);

@@ -18,6 +18,16 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * 将重定向访问转换为 Redis Stream 事件的基础设施适配器。
+ *
+ * <p>此处始终写入 {@link AnalyticsKeys#visitEventStreamKey()}，即使 {@code app.analytics.events.enabled}
+ * 为 {@code false} 或明细采样率为零也一样。访问流同时是核心 PV/UV 投影的输入；{@code events}
+ * 配置只控制后续明细落库，不能阻断聚合统计。</p>
+ *
+ * <p>调用方决定 Redis 故障是否 fail-open。本适配器不吞掉写流异常，避免把“事件未入流”伪装成成功；
+ * {@code AnalyticsVisitEventService} 会按照 {@code app.analytics.events.fail-open} 决定是否影响重定向。</p>
+ */
 @Component
 public class RedisAnalyticsVisitEventAppender implements AnalyticsVisitEventAppender {
 
@@ -29,6 +39,15 @@ public class RedisAnalyticsVisitEventAppender implements AnalyticsVisitEventAppe
         this.analyticsProperties = analyticsProperties;
     }
 
+    /**
+     * 写入单次访问的规范化事件字段，并按配置近似裁剪 Stream 长度。
+     *
+     * <p>{@code requestId} 在这里生成，供明细表的幂等写入使用。时间按 UTC 日切分，以便 visitor
+     * 指纹、Redis 聚合 key 与日汇总表共享同一个统计日。原始 IP 不会进入 Stream；只保存带盐指纹和
+     * 归一化后的维度。</p>
+     *
+     * @param event 由重定向链路提供的访问上下文；为空时无副作用
+     */
     @Override
     public void append(AnalyticsVisitEventService.RedirectVisitEvent event) {
         if (redis == null || event == null) {

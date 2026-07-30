@@ -4,6 +4,12 @@
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.linkforge.analytics.infrastructure.persistence.mapper.AnalyticsQueryMapper">
 
+    <!--
+      报表读取以 UTC 日表为事实来源。linkDaily/top/dimension 的 UV 是逐行 HLL 快照求和，不能解释为跨链接或
+      跨天精确去重；tenant/application/domain 日统计优先关联 analytics_scope_stats_daily 的范围 HLL 快照，
+      历史数据尚未回填时才回退到链接 UV 求和。除 countApplicationPv 外，日期参数均为包含端点。
+    -->
+
     <resultMap id="DailyStatRowResultMap" type="com.linkforge.analytics.infrastructure.persistence.mapper.AnalyticsDailyStatRow">
         <result property="day" column="day"/>
         <result property="pv" column="pv"/>
@@ -113,6 +119,7 @@
     </select>
 
     <select id="countApplicationPv" resultType="long">
+        <!-- 月额度基线使用 [fromInclusiveUtc, toExclusiveUtc)，与其他报表的闭区间不同。 -->
         SELECT COALESCE(SUM(s.pv), 0) AS total_pv
         FROM link_stats_daily s
         JOIN analytics_link_catalog c

@@ -4,6 +4,7 @@
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.linkforge.foundation.runtime.persistence.mapper.IntegrationCheckpointMapper">
 
+    <!-- update 是无条件覆盖；同一 consumer 的单调推进由应用消费者保证。 -->
     <select id="findLastSeq" resultType="java.lang.Long">
         SELECT last_seq
         FROM integration_consumer_checkpoint
@@ -22,4 +23,3 @@
         WHERE consumer = #{consumer}
     </update>
 </mapper>
-

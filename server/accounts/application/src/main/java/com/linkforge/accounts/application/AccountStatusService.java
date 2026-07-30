@@ -14,13 +14,16 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 
 /**
- * Account status checks for authentication flows.
+ * 认证请求的租户、用户状态与令牌版本校验器。
  *
- * <p>Tenant/user status is validated at login time, but issued JWT/API keys can outlive status
- * changes. This service enforces status checks on subsequent requests.</p>
+ * <p>登录时的状态检查不能覆盖 JWT 或 API Key 的整个有效期，因此安全过滤器会在后续请求中调用
+ * 本服务。租户先于用户校验；用户还必须属于令牌中的租户，提供 {@code tokenVersion} 时还必须与
+ * 当前缓存快照或持久化快照中的版本一致。</p>
  *
- * <p>Implementation uses best-effort Redis caching with short TTL to reduce DB pressure. When Redis
- * is unavailable, checks fall back to the persistence store.</p>
+ * <p>状态缓存使用 30 秒 TTL，并以 {@code null} 同时表示未命中、无效缓存值或缓存不可用，随后安全
+ * 地回源数据库。未知用户状态统一收敛为 disabled；不存在的租户/用户、归属不符和版本不符统一返回
+ * unauthorized，避免泄漏账号信息。持久化记录是权威来源，但命中的状态快照会在 30 秒 TTL 内直接
+ * 参与认证判断，因此禁用、启用和令牌撤销允许存在有界的缓存陈旧窗口。</p>
  */
 @Service
 public class AccountStatusService implements AccountStatusVerifier {
@@ -38,6 +41,12 @@ public class AccountStatusService implements AccountStatusVerifier {
         this.statusCache = statusCache;
     }
 
+    /**
+     * 要求租户存在且处于启用状态。
+     *
+     * <p>缓存只识别 {@code active}/{@code disabled}；其他值按未命中处理。持久化中的非 active 状态
+     * 都按 disabled 缓存和拒绝。</p>
+     */
     @Transactional(readOnly = true)
     public void requireActiveTenant(long tenantId) {
         if (tenantId <= 0) {
@@ -66,11 +75,21 @@ public class AccountStatusService implements AccountStatusVerifier {
         statusCache.writeTenantStatus(tenantId, AccountsConstants.STATUS_ACTIVE, CACHE_TTL);
     }
 
+    /**
+     * 校验用户、租户和归属关系，但不校验 JWT 版本。
+     *
+     * <p>该重载用于没有用户令牌版本语义的可信调用路径。</p>
+     */
     @Transactional(readOnly = true)
     public void requireActiveUserAndTenant(long userId, long tenantId) {
         requireActiveUserAndTenant(userId, tenantId, SKIP_TOKEN_VERSION_CHECK);
     }
 
+    /**
+     * 校验用户和租户均启用、用户属于租户，且当前版本与令牌版本一致。
+     *
+     * <p>版本不匹配表示令牌已因注销或密码重置而失效，统一返回 unauthorized。</p>
+     */
     @Transactional(readOnly = true)
     public void requireActiveUserAndTenant(long userId, long tenantId, int tokenVersion) {
         if (userId <= 0 || tenantId <= 0) {

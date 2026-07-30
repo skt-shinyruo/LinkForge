@@ -11,6 +11,11 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 
+/**
+ * 将 Spring Security 的已认证但无权限场景输出为统一 JSON 403。
+ *
+ * <p>不向客户端回显被拒绝的具体授权表达式或资源信息，避免辅助权限枚举。</p>
+ */
 @Component
 public class RestAccessDeniedHandler implements AccessDeniedHandler {
 
@@ -20,6 +25,7 @@ public class RestAccessDeniedHandler implements AccessDeniedHandler {
         this.errorResponseWriter = errorResponseWriter;
     }
 
+    /** 写出统一 {@code FORBIDDEN} 响应。 */
     @Override
     public void handle(
             HttpServletRequest request,

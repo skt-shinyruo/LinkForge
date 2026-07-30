@@ -111,7 +111,7 @@ class AnalyticsFlushJobTest {
     }
 
     @Test
-    void flushActiveMembers_should_skip_rows_when_pv_key_missing() {
+    void flushDirtyMembers_should_skip_rows_when_pv_key_missing() {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         LinkStatsDailyMapper mapper = mock(LinkStatsDailyMapper.class);
         AnalyticsProperties properties = new AnalyticsProperties();
@@ -127,7 +127,7 @@ class AnalyticsFlushJobTest {
         AnalyticsFlushJob job = new AnalyticsFlushJob(redis, mapper, properties);
 
         LocalDate day = LocalDate.of(2026, 2, 19);
-        job.flushActiveMembers(day, List.of("1:10", "1:20"));
+        job.flushDirtyMembers(day, List.of("1:10", "1:20"));
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<LinkStatsDailyUpsertRow>> batchCaptor = ArgumentCaptor.forClass(List.class);
@@ -145,7 +145,7 @@ class AnalyticsFlushJobTest {
     }
 
     @Test
-    void flushActiveMembers_should_not_skip_rows_when_uv_is_zero() {
+    void flushDirtyMembers_should_not_skip_rows_when_uv_is_zero() {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         LinkStatsDailyMapper mapper = mock(LinkStatsDailyMapper.class);
         AnalyticsProperties properties = new AnalyticsProperties();
@@ -161,7 +161,7 @@ class AnalyticsFlushJobTest {
         AnalyticsFlushJob job = new AnalyticsFlushJob(redis, mapper, properties);
 
         LocalDate day = LocalDate.of(2026, 2, 19);
-        job.flushActiveMembers(day, List.of("1:10"));
+        job.flushDirtyMembers(day, List.of("1:10"));
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<LinkStatsDailyUpsertRow>> batchCaptor = ArgumentCaptor.forClass(List.class);
@@ -179,7 +179,7 @@ class AnalyticsFlushJobTest {
     }
 
     @Test
-    void flushActiveScopeMembers_should_write_deduplicated_scope_uv_counts() {
+    void flushDirtyScopeMembers_should_write_deduplicated_scope_uv_counts() {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         LinkStatsDailyMapper linkMapper = mock(LinkStatsDailyMapper.class);
         AnalyticsScopeStatsDailyMapper scopeMapper = mock(AnalyticsScopeStatsDailyMapper.class);
@@ -191,7 +191,7 @@ class AnalyticsFlushJobTest {
         AnalyticsFlushJob job = new AnalyticsFlushJob(redis, linkMapper, scopeMapper, properties);
 
         LocalDate day = LocalDate.of(2026, 4, 24);
-        job.flushActiveScopeMembers(day, List.of(
+        job.flushDirtyScopeMembers(day, List.of(
                 "tenant:1:0",
                 "application:1:100",
                 "domain:1:200",

@@ -3,9 +3,11 @@ package com.linkforge.shortlink.domain;
 import static com.linkforge.shortlink.domain.ShortLinkDomainException.Reason.INVALID_CODE;
 
 /**
- * Short code value object.
+ * 大小写敏感的短码值对象。
  *
- * <p>Constraints (V1): length 6-32, ASCII alphanumeric, case-sensitive.</p>
+ * <p>构造时先去除首尾空白，再要求长度为 6 至 32，且每个字符都属于 ASCII {@code [0-9A-Za-z]}。
+ * 不执行大小写折叠或其他规范化，因此 {@code abc123} 与 {@code ABC123} 是不同短码。唯一性不属于单值约束，
+ * 由仓储按域名范围检查。</p>
  */
 public record ShortCode(String value) {
 
@@ -31,8 +33,13 @@ public record ShortCode(String value) {
         }
     }
 
+    /**
+     * 从外部字符串创建并校验短码。
+     *
+     * @param raw 可包含首尾空白的原始值
+     * @return 已去除首尾空白的短码
+     */
     public static ShortCode of(String raw) {
         return new ShortCode(raw);
     }
 }
-

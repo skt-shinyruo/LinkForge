@@ -9,6 +9,9 @@ import java.util.Map;
 /**
  * 访问维度归一化工具：将 Referer / Accept-Language / UA / UTM 等高噪音输入转换为低基数维度值，
  * 用于统计聚合与明细落库（避免把完整 URL、超长 UA、敏感 query 等直接写入持久层）。
+ *
+ * <p>这是一层容量与隐私防线，不是完整的浏览器识别器。未知、畸形或被截断的输入会折叠为有限值；调用方不能把
+ * 归一化结果当作权威客户端身份或安全决策依据。</p>
  */
 public final class VisitDimensionNormalizer {
 
@@ -25,6 +28,19 @@ public final class VisitDimensionNormalizer {
     private VisitDimensionNormalizer() {
     }
 
+    /**
+     * 从不可信访问上下文提取可聚合的有限维度。
+     *
+     * <p>长度参数小于等于零时使用默认值，超过内部绝对上限时截断到上限。缺失 Referer 记为 {@code direct}，
+     * 畸形 Referer/语言或未知 UA 记为 {@code unknown}；仅提取 {@code utm_source}、{@code utm_medium} 和
+     * {@code utm_campaign}，其余跟踪参数不会进入统计维度。</p>
+     *
+     * @param visitContext 原始请求上下文，可为空
+     * @param maxDimValueLen 域名和普通维度允许的最大长度
+     * @param maxUaRawLen 明细保留的原始 User-Agent 最大长度
+     * @param maxTrackingValueLen 单个 UTM 值允许的最大长度
+     * @return 无 null 集合且字段已受长度限制的维度快照
+     */
     public static Normalized normalize(VisitContext visitContext, int maxDimValueLen, int maxUaRawLen, int maxTrackingValueLen) {
         int safeMaxDimValueLen = normalizeMaxLen(maxDimValueLen, DEFAULT_MAX_DIM_VALUE_LEN, ABS_MAX_DIM_VALUE_LEN);
         int safeMaxUaRawLen = normalizeMaxLen(maxUaRawLen, DEFAULT_MAX_UA_RAW_LEN, ABS_MAX_UA_RAW_LEN);
@@ -279,6 +295,7 @@ public final class VisitDimensionNormalizer {
     record Tracking(String utmSource, String utmMedium, String utmCampaign) {
     }
 
+    /** 归一化后的统计/明细维度快照；字段可为 {@code null} 时表示对应 UTM 或原始 UA 未提供。 */
     public record Normalized(
             String refererDomain,
             String language,

@@ -9,6 +9,22 @@ import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 
+/**
+ * API Key 认证所需的 Redis 辅助状态。
+ *
+ * <p>{@code auth:api_key:*} 是禁用态负缓存，不是成功认证缓存：当前实现只写入禁用记录，
+ * 且应用层即使读到历史 ACTIVE 条目也仍会回源数据库并校验 BCrypt。因而缓存不可用、未命中、
+ * 空值或坏值统一返回 {@code null}，只会增加数据库读取，不会绕过密钥和状态校验。</p>
+ *
+ * <p>读取兼容旧 {@code v1|tenantId|status|secretDigest} 格式；该格式没有
+ * {@code applicationId}，解析结果保留为 {@code null}。新格式为
+ * {@code v2|tenantId|applicationId|status|secretDigest}，其中空 applicationId 不会被推断或补绑。
+ * 这种兼容仅用于安全地识别禁用状态，历史未绑定 Key 仍由权威记录判定为无效。</p>
+ *
+ * <p>{@code auth:api_key:last_used:*} 使用带 TTL 的 SETNX 作为写回节流令牌。
+ * 其三态结果明确区分“取得令牌”“已有令牌”和“Redis 不可用”，让应用层在故障时使用数据库时间提示降级。
+ * 所有 Redis 写入、删除均为尽力操作，不参与业务事务。</p>
+ */
 @Component
 public class RedisApiKeyAuthCache implements ApiKeyAuthCache {
 
@@ -60,6 +76,12 @@ public class RedisApiKeyAuthCache implements ApiKeyAuthCache {
         }
     }
 
+    /**
+     * 尝试取得 {@code last_used_at} 写回令牌。
+     *
+     * @return 非正间隔或令牌已存在时为 {@link LastUsedTokenResult#NOT_ACQUIRED}；
+     *         Redis 读写失败时为 {@link LastUsedTokenResult#CACHE_UNAVAILABLE}
+     */
     @Override
     public LastUsedTokenResult tryAcquireLastUsedToken(long apiKeyId, long intervalSeconds) {
         if (intervalSeconds <= 0) {

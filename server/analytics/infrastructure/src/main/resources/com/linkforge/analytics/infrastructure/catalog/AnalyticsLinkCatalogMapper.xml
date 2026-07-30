@@ -5,6 +5,7 @@
 <mapper namespace="com.linkforge.analytics.infrastructure.catalog.AnalyticsLinkCatalogMapper">
 
     <insert id="upsert">
+        <!-- 由 ShortLink outbox 重放驱动；以 tenant_id + link_id 覆盖同一链接的最新投影快照。 -->
         INSERT INTO analytics_link_catalog (
             tenant_id,
             link_id,

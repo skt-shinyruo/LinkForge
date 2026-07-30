@@ -37,7 +37,7 @@ Platform 是 LinkForge 的控制面，负责租户下的应用、域名、授权
   <text class="text" x="350" y="76" text-anchor="middle">Platform Controllers</text>
   <text class="small" x="350" y="98" text-anchor="middle">/applications</text>
   <text class="small" x="350" y="118" text-anchor="middle">/domains</text>
-  <text class="small" x="350" y="138" text-anchor="middle">/authorize-domain</text>
+  <text class="small" x="350" y="138" text-anchor="middle">/domain-authorizations</text>
 
   <rect class="box" x="515" y="45" width="205" height="102"/>
   <text class="text" x="618" y="76" text-anchor="middle">PlatformControlPlaneService</text>
@@ -88,10 +88,10 @@ Platform 是 LinkForge 的控制面，负责租户下的应用、域名、授权
 - `GET /api/v1/applications`：租户应用列表。
 - `POST /api/v1/applications`：创建租户应用。
 - `GET /api/v1/domains`：租户域名列表。
-- `POST /api/v1/domains`：创建租户共享域名。
+- `POST /api/v1/domains/tenant-shared`：创建租户共享域名。
 - `GET /api/v1/applications/{applicationId}/domains`：应用可用域名。
 - `POST /api/v1/applications/{applicationId}/domains`：创建应用专属域名。
-- `POST /api/v1/applications/{applicationId}/domains/{domainId}/authorize`：把共享域名授权给应用。
+- `POST /api/v1/applications/{applicationId}/domain-authorizations/{domainId}`：把共享域名授权给应用。
 - `GET /api/v1/platform/applications`、`GET /api/v1/platform/domains`：平台管理员全局查询。
 
 ## 关键业务规则
@@ -100,8 +100,11 @@ Platform 是 LinkForge 的控制面，负责租户下的应用、域名、授权
 
 - actor 必须属于当前租户。
 - `applicationKey` 和 `displayName` 必填。
+- `applicationKey` 最大 64 字符，`displayName` 最大 128 字符；HTTP 与应用层校验都以数据库列宽为界，64 可接受、65 稳定返回 400。
 - 创建应用时同步创建默认 `ApplicationPolicy` 和 `ApplicationQuota`。
 - 默认策略和额度来自 `PlatformDefaults`。
+
+创建在一个事务中写 application、policy 和 quota；`applicationKey` 的唯一约束仍是最终并发裁决，预查不能取代数据库冲突处理。
 
 ### 域名创建
 
@@ -119,6 +122,8 @@ Platform 是 LinkForge 的控制面，负责租户下的应用、域名、授权
 - 应用专属域名必须绑定当前应用。
 - 租户共享域名必须存在应用授权关系。
 - 专属域名不能通过共享授权接口授权给其他应用。
+
+共享域名授权当前是“确保关系存在”的写操作，调用方应按应用层返回的业务结果重试；它不是借由 HTTP 方法名自动获得的分布式幂等保证。`application_policy` 目前作为控制面事实保存，Shortlink 不会自动把它的默认跳转策略覆盖到每一条链接。
 
 ## 源码分析
 
@@ -189,3 +194,10 @@ Platform 是 LinkForge 的控制面，负责租户下的应用、域名、授权
 - Analytics 和 Shortlink 需要展示 hostname 时调用 `DomainHostnameLookupPort`。
 
 Platform 因此是控制面事实来源，但不直接参与跳转 URL 解析；跳转正确性仍由 Shortlink 权威读端口和 Redirect 缓存保证。
+
+## 配额与兼容限制
+
+- `ApplicationQuota` 的月发链和月点击限制按 UTC 月解释；非正数表示不限制。
+- Shortlink 发链预留使用 MySQL named lock，锁获取失败与真实额度耗尽当前都会表现为未获得名额，调用方不能从同一个结果推断根因。
+- Redirect 点击额度的实时计数由 Analytics Redis adapter 管理，Platform 只发布 quota 配置/视图；Redis adapter 的内部故障固定 fail-open，详见[统计采集与报表](analytics-ingestion-and-reporting.md)。
+- `LegacyApplicationBindingService` 是历史未分应用数据的兼容路径。它会尝试创建 `legacy-default` 绑定，但不应成为新业务的默认开通方式。

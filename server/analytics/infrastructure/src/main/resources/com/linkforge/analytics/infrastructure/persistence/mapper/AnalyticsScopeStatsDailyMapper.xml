@@ -5,6 +5,7 @@
 <mapper namespace="com.linkforge.analytics.infrastructure.persistence.mapper.AnalyticsScopeStatsDailyMapper">
 
     <insert id="batchUpsert">
+        <!-- 范围 UV 来自独立 HLL，避免将多个链接的近似 UV 直接相加。 -->
         INSERT INTO analytics_scope_stats_daily (tenant_id, scope_type, scope_id, day, uv, updated_at)
         VALUES
         <foreach collection="list" item="r" separator=",">

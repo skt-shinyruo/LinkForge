@@ -1,8 +1,13 @@
 package com.linkforge.foundation.id;
 
 /**
- * 简化 Snowflake 实现：用于在分布式部署场景生成全局唯一 64-bit ID。
- * 说明：workerId/datacenterId 可通过配置扩展；MVP 先使用固定值。
+ * 生成进程内单调的 Snowflake 64-bit ID。
+ *
+ * <p>epoch 固定为 2024-01-01T00:00:00Z，节点号各占 5 bit，序列占 12 bit。Spring 运行时从
+ * {@code app.id.worker-id/datacenter-id} 注入节点号；无参构造的 1/1 仅供直接构造兼容。</p>
+ *
+ * <p>同毫秒序列耗尽或时钟回拨时会同步等待，较大回拨因此可能阻塞调用线程。多实例节点组合重复会
+ * 破坏唯一性，必须依赖启动门禁和部署配置避免。</p>
  */
 public class SnowflakeIdGenerator {
 
@@ -27,11 +32,21 @@ public class SnowflakeIdGenerator {
     private long lastTimestamp = -1L;
     private long sequence = 0L;
 
+    /**
+     * 使用兼容节点组合 1/1 构造生成器。
+     *
+     * <p>仅适用于直接构造或本地运行；生产 Spring 应用应使用 {@code IdProperties} 注入的显式节点号。</p>
+     */
     public SnowflakeIdGenerator() {
-        // MVP：使用固定值；生产环境建议由配置注入并确保不同实例不冲突
+        // 直接构造的兼容默认值；Spring 运行时使用配置化构造器。
         this(1L, 1L);
     }
 
+    /**
+     * 使用部署分配的 worker/datacenter 节点号构造生成器。
+     *
+     * @throws IllegalArgumentException 任一节点号不在 0..31 时抛出
+     */
     public SnowflakeIdGenerator(long workerId, long datacenterId) {
         if (workerId > MAX_WORKER_ID || workerId < 0) {
             throw new IllegalArgumentException("workerId out of range");
@@ -43,11 +58,16 @@ public class SnowflakeIdGenerator {
         this.datacenterId = datacenterId;
     }
 
+    /**
+     * 生成该进程内严格递增的 ID。
+     *
+     * <p>方法同步以保护毫秒序列；同毫秒的 4096 个序列耗尽或系统时间回拨时会自旋等待下一毫秒。因此调用
+     * 可能阻塞，且不同节点之间不保证 ID 的全局时间顺序。跨进程唯一性仍依赖节点组合不重复。</p>
+     */
     public synchronized long nextId() {
         long timestamp = currentTime();
         if (timestamp < lastTimestamp) {
-            // 容忍极小概率的系统时钟回拨：等待到 lastTimestamp 之后再继续生成，避免直接 500
-            // 说明：若回拨幅度过大，可能意味着宿主机时钟异常，仍需人工介入
+            // 回拨时等待而不是生成倒退时间位；长时间等待说明宿主机时钟异常，应由运维处理。
             timestamp = waitNextMillis(lastTimestamp);
         }
 

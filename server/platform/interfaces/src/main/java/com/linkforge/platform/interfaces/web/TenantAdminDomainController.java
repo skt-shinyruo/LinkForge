@@ -19,6 +19,12 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+/**
+ * 租户管理员的域名控制面入口。
+ *
+ * <p>所有查询和写入都以认证主体中的 tenantId 为边界；路径中的 applicationId
+ * 只标识目标资源，不能扩大主体的租户范围。</p>
+ */
 @RestController
 @RequestMapping("/api/v1")
 public class TenantAdminDomainController {
@@ -29,6 +35,7 @@ public class TenantAdminDomainController {
         this.platformControlPlaneService = platformControlPlaneService;
     }
 
+    /** 返回当前租户可管理的全部域名。 */
     @GetMapping("/domains")
     @PreAuthorize("hasRole('TENANT_ADMIN')")
     public ApiResponse<List<DomainHttpResponse>> list() {
@@ -41,6 +48,9 @@ public class TenantAdminDomainController {
         );
     }
 
+    /**
+     * 返回指定应用可使用的域名，包括应用专属域名和已授权的租户共享域名。
+     */
     @GetMapping("/applications/{applicationId}/domains")
     @PreAuthorize("hasRole('TENANT_ADMIN')")
     public ApiResponse<List<DomainHttpResponse>> listByApplication(
@@ -55,6 +65,7 @@ public class TenantAdminDomainController {
         );
     }
 
+    /** 创建可由同租户多个应用显式授权使用的共享域名。 */
     @PostMapping("/domains/tenant-shared")
     @PreAuthorize("hasRole('TENANT_ADMIN')")
     public ApiResponse<DomainHttpResponse> createTenantSharedDomain(
@@ -75,6 +86,7 @@ public class TenantAdminDomainController {
         );
     }
 
+    /** 创建仅供指定应用使用的专属域名。 */
     @PostMapping("/applications/{applicationId}/domains")
     @PreAuthorize("hasRole('TENANT_ADMIN')")
     public ApiResponse<DomainHttpResponse> createApplicationDedicatedDomain(

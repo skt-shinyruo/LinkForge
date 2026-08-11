@@ -4,16 +4,12 @@ import com.linkforge.analytics.infrastructure.persistence.mapper.LinkStatsDimDai
 import com.linkforge.analytics.infrastructure.persistence.mapper.LinkStatsDimDailyUpsertRow;
 import com.linkforge.contract.analytics.AnalyticsKeys;
 import com.linkforge.foundation.config.AnalyticsProperties;
+import com.linkforge.foundation.observability.OperationalMetrics;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
-import org.springframework.data.redis.connection.stream.Consumer;
 import org.springframework.data.redis.connection.stream.MapRecord;
-import org.springframework.data.redis.connection.stream.ReadOffset;
-import org.springframework.data.redis.connection.stream.RecordId;
-import org.springframework.data.redis.connection.stream.StreamOffset;
-import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.RedisCallback;
@@ -21,10 +17,13 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -60,15 +59,29 @@ public class AnalyticsDimensionFlushJob {
     private final StringRedisTemplate redis;
     private final LinkStatsDimDailyMapper linkStatsDimDailyMapper;
     private final AnalyticsProperties analyticsProperties;
+    private final RedisStreamBatchConsumer streamConsumer;
+    private final OperationalMetrics metrics;
 
     public AnalyticsDimensionFlushJob(
             StringRedisTemplate redis,
             LinkStatsDimDailyMapper linkStatsDimDailyMapper,
             AnalyticsProperties analyticsProperties
     ) {
+        this(redis, linkStatsDimDailyMapper, analyticsProperties, OperationalMetrics.noop());
+    }
+
+    @Autowired
+    public AnalyticsDimensionFlushJob(
+            StringRedisTemplate redis,
+            LinkStatsDimDailyMapper linkStatsDimDailyMapper,
+            AnalyticsProperties analyticsProperties,
+            OperationalMetrics metrics
+    ) {
         this.redis = redis;
         this.linkStatsDimDailyMapper = linkStatsDimDailyMapper;
         this.analyticsProperties = analyticsProperties;
+        this.metrics = metrics == null ? OperationalMetrics.noop() : metrics;
+        this.streamConsumer = new RedisStreamBatchConsumer(redis, GROUP, CONSUMER, "analytics_dimension_flush", this.metrics);
     }
 
     /**
@@ -94,37 +107,25 @@ public class AnalyticsDimensionFlushJob {
 
     private void flushDay(LocalDate day, AnalyticsProperties.Dimensions cfg) {
         String streamKey = AnalyticsKeys.dimDirtyStreamKey(day);
-        if (!ensureGroup(streamKey)) {
+        if (!streamConsumer.ensureGroup(streamKey)) {
             return;
         }
 
-        Consumer consumer = Consumer.from(GROUP, CONSUMER);
         while (true) {
-            List<MapRecord<String, Object, Object>> records = readSafe(
-                    consumer,
-                    StreamReadOptions.empty().count(BATCH_SIZE),
-                    StreamOffset.create(streamKey, ReadOffset.from("0-0"))
-            );
-            if (records == null || records.isEmpty()) {
-                records = readSafe(
-                        consumer,
-                        StreamReadOptions.empty().count(BATCH_SIZE),
-                        StreamOffset.create(streamKey, ReadOffset.lastConsumed())
-                );
-            }
+            List<MapRecord<String, Object, Object>> records = readNext(streamKey);
             if (records == null || records.isEmpty()) {
                 return;
             }
 
             List<String> members = extractMembers(records);
             if (members.isEmpty()) {
-                acknowledge(streamKey, records.stream().map(MapRecord::getId).toList());
+                streamConsumer.acknowledge(streamKey, records.stream().map(MapRecord::getId).toList());
                 continue;
             }
             if (!flushDirtyMembers(day, cfg, members)) {
                 return;
             }
-            acknowledge(streamKey, records.stream().map(MapRecord::getId).toList());
+            streamConsumer.acknowledge(streamKey, records.stream().map(MapRecord::getId).toList());
         }
     }
 
@@ -141,13 +142,19 @@ public class AnalyticsDimensionFlushJob {
         return Math.max(days, 1);
     }
 
-    private boolean hasKey(String key) {
-        try {
-            Boolean exists = redis.hasKey(key);
-            return exists != null && exists;
-        } catch (Exception e) {
-            return false;
-        }
+    private List<MapRecord<String, Object, Object>> readNext(String streamKey) {
+        AnalyticsProperties.Events events = analyticsProperties == null ? null : analyticsProperties.getEvents();
+        boolean reclaimEnabled = events == null || events.isPendingReclaimEnabled();
+        long minIdleMs = events == null ? 60_000L : Math.max(events.getPendingReclaimMinIdleMs(), 0L);
+        int reclaimCount = events == null ? BATCH_SIZE : Math.max(events.getPendingReclaimCount(), 1);
+        return streamConsumer.readNext(
+                streamKey,
+                BATCH_SIZE,
+                null,
+                reclaimEnabled,
+                Duration.ofMillis(minIdleMs),
+                reclaimCount
+        );
     }
 
     /**
@@ -158,13 +165,14 @@ public class AnalyticsDimensionFlushJob {
      */
     boolean flushDirtyMembers(LocalDate day, AnalyticsProperties.Dimensions cfg, List<String> members) {
         long startNs = System.nanoTime();
-        List<MemberParts> parts = new ArrayList<>(members.size());
+        Map<MemberParts, MemberParts> partsByKey = new LinkedHashMap<>();
         for (String m : members) {
             MemberParts p = parseDirtyLinkMember(m);
             if (p != null) {
-                parts.add(p);
+                partsByKey.putIfAbsent(p, p);
             }
         }
+        List<MemberParts> parts = new ArrayList<>(partsByKey.values());
         if (parts.isEmpty()) {
             return true;
         }
@@ -229,6 +237,7 @@ public class AnalyticsDimensionFlushJob {
                         }
                     }
                 } catch (Exception ex) {
+                    metrics.increment("linkforge.job.failures", "job", "analytics_dimension_flush", "stage", "redis_scan");
                     log.debug("scan dim hash failed: key={}, err={}", key, ex.getMessage());
                     return false;
                 }
@@ -317,53 +326,17 @@ public class AnalyticsDimensionFlushJob {
         if (batch == null || batch.isEmpty()) {
             return true;
         }
+        long startedAt = System.nanoTime();
         try {
             linkStatsDimDailyMapper.batchUpsert(batch);
+            metrics.add("linkforge.job.rows", batch.size(), "job", "analytics_dimension_flush", "result", "success");
+            metrics.record("linkforge.job.db_batch", Duration.ofNanos(System.nanoTime() - startedAt), "job", "analytics_dimension_flush", "result", "success");
             return true;
         } catch (DataAccessException e) {
+            metrics.increment("linkforge.job.failures", "job", "analytics_dimension_flush", "stage", "database");
+            metrics.record("linkforge.job.db_batch", Duration.ofNanos(System.nanoTime() - startedAt), "job", "analytics_dimension_flush", "result", "failure");
             log.warn("flush dim batch failed: size={}, err={}", batch.size(), e.getMessage());
             return false;
-        }
-    }
-
-    private boolean ensureGroup(String streamKey) {
-        if (!hasKey(streamKey)) {
-            return false;
-        }
-        try {
-            redis.opsForStream().createGroup(streamKey, ReadOffset.from("0-0"), GROUP);
-            return true;
-        } catch (Exception e) {
-            if (RedisStreamGroupErrors.isBusyGroup(e)) {
-                return true;
-            }
-            String msg = e.getMessage();
-            log.debug("create dim dirty stream group failed: streamKey={}, err={}", streamKey, msg);
-            return false;
-        }
-    }
-
-    private List<MapRecord<String, Object, Object>> readSafe(
-            Consumer consumer,
-            StreamReadOptions options,
-            StreamOffset<String> offset
-    ) {
-        try {
-            return redis.opsForStream().read(consumer, options, offset);
-        } catch (Exception e) {
-            log.debug("read dim dirty stream failed: streamKey={}, err={}", offset == null ? null : offset.getKey(), e.getMessage());
-            return null;
-        }
-    }
-
-    private void acknowledge(String streamKey, List<RecordId> ids) {
-        if (ids == null || ids.isEmpty()) {
-            return;
-        }
-        try {
-            redis.opsForStream().acknowledge(streamKey, GROUP, ids.toArray(new RecordId[0]));
-        } catch (Exception e) {
-            log.debug("ack dim dirty stream failed: streamKey={}, size={}, err={}", streamKey, ids.size(), e.getMessage());
         }
     }
 

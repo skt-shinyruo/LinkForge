@@ -1,5 +1,7 @@
 import type { ApiResponse } from "./types";
 
+export type RuntimeValidator<T> = (value: unknown) => value is T;
+
 const API_V1 = "/api/v1";
 
 type QueryValue = string | number | boolean | null | undefined;
@@ -62,13 +64,37 @@ export function withQuery(
   return queryString ? `${path}?${queryString}` : path;
 }
 
-/** 解析调用方已获得的原始响应；空 body 返回空对象，业务成功检查由调用方决定。 */
-export async function parseApiResponse<T>(response: Response): Promise<ApiResponse<T>> {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** 将未知 JSON 解码为统一响应；可选 validator 同时锁定 data 的运行时形状。 */
+export function decodeApiResponse<T>(
+  value: unknown,
+  validateData?: RuntimeValidator<T>,
+): ApiResponse<T> {
+  if (!isRecord(value) || typeof value.code !== "number" || typeof value.message !== "string") {
+    throw new Error("Invalid API response envelope");
+  }
+  if (value.requestId !== undefined && typeof value.requestId !== "string") {
+    throw new Error("Invalid API response requestId");
+  }
+  if (value.data !== undefined && validateData && !validateData(value.data)) {
+    throw new Error("Invalid API response data");
+  }
+  return value as ApiResponse<T>;
+}
+
+/** 解析调用方已获得的原始响应；非空 body 必须符合统一 envelope。 */
+export async function parseApiResponse<T>(
+  response: Response,
+  validateData?: RuntimeValidator<T>,
+): Promise<ApiResponse<T>> {
   const text = await response.text();
   if (!text) {
     return {} as ApiResponse<T>;
   }
-  return JSON.parse(text) as ApiResponse<T>;
+  return decodeApiResponse(JSON.parse(text) as unknown, validateData);
 }
 
 function applicationPath(applicationId: number): string {
@@ -131,3 +157,45 @@ export const API_ENDPOINTS = {
     collection: `${API_V1}/audit-logs`,
   },
 } as const;
+
+/** 前端实际消费的 method/path 清单；与仓库根 contracts/web-api-v1.snapshot.json 对比。 */
+export const WEB_API_CONTRACT_ENDPOINTS = [
+  ["GET", "/api/v1/me"],
+  ["POST", "/api/v1/auth/login"],
+  ["POST", "/api/v1/auth/logout"],
+  ["GET", "/api/v1/applications"],
+  ["POST", "/api/v1/applications"],
+  ["GET", "/api/v1/domains"],
+  ["GET", "/api/v1/applications/{applicationId}/domains"],
+  ["POST", "/api/v1/domains/tenant-shared"],
+  ["POST", "/api/v1/applications/{applicationId}/domains"],
+  ["POST", "/api/v1/applications/{applicationId}/domain-authorizations/{domainId}"],
+  ["GET", "/api/v1/links"],
+  ["POST", "/api/v1/links"],
+  ["GET", "/api/v1/applications/{applicationId}/links"],
+  ["POST", "/api/v1/applications/{applicationId}/links"],
+  ["GET", "/api/v1/links/{linkId}"],
+  ["PUT", "/api/v1/links/{linkId}"],
+  ["DELETE", "/api/v1/links/{linkId}"],
+  ["POST", "/api/v1/links/{linkId}/archive"],
+  ["POST", "/api/v1/links/{linkId}/restore"],
+  ["POST", "/api/v1/links/import"],
+  ["POST", "/api/v1/applications/{applicationId}/links/import"],
+  ["GET", "/api/v1/links/export"],
+  ["GET", "/api/v1/applications/{applicationId}/links/export"],
+  ["GET", "/api/v1/stats/overview"],
+  ["GET", "/api/v1/applications/{applicationId}/stats/overview"],
+  ["GET", "/api/v1/stats/top-links"],
+  ["GET", "/api/v1/applications/{applicationId}/stats/top-links"],
+  ["GET", "/api/v1/stats/links/{linkId}/daily"],
+  ["GET", "/api/v1/api-keys"],
+  ["POST", "/api/v1/api-keys"],
+  ["PUT", "/api/v1/api-keys/{id}/disable"],
+  ["PUT", "/api/v1/api-keys/{id}/enable"],
+  ["POST", "/api/v1/api-keys/{id}/rotate"],
+  ["GET", "/api/v1/tags"],
+  ["POST", "/api/v1/tags"],
+  ["GET", "/api/v1/approvals"],
+  ["POST", "/api/v1/approvals/{requestId}/approve"],
+  ["GET", "/api/v1/audit-logs"],
+] as const;

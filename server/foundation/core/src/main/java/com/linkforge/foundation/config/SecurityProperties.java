@@ -128,10 +128,12 @@ public class SecurityProperties {
     /**
      * OpenAPI API Key 认证路径的性能配置。
      *
-     * <p>API Key 原文只在创建时交付，之后鉴权始终依赖持久化哈希校验。缓存只可短路已禁用状态，不能把
-     * active 缓存视为凭据授权事实。</p>
+     * <p>API Key 原文只在创建时交付，之后鉴权始终依赖持久化摘要校验。缓存只可短路已禁用状态，不能把
+     * active 缓存视为凭据授权事实。新凭据使用带服务端 pepper 的 HMAC-SHA256，历史 BCrypt 会在成功认证时升级。</p>
      */
     public static class ApiKey {
+        /** API Key HMAC pepper；为空时兼容使用 JWT secret，生产环境建议配置独立随机值。 */
+        private String hmacPepper;
         /**
          * 认证成功后写回 last_used_at 的最小间隔（秒）。
          *
@@ -143,11 +145,19 @@ public class SecurityProperties {
         /**
          * OpenAPI API Key 鉴权缓存 TTL（秒）。
          *
-         * <p>该缓存只保存 disabled 短路状态；active 或未知状态仍回源数据库并执行 BCrypt，
+         * <p>该缓存只保存 disabled 短路状态；active 或未知状态仍回源数据库并验证凭据摘要，
          * 因而缓存不能充当有效凭据的授权事实源。</p>
          * <p>设为 0 表示关闭 disabled 负缓存。</p>
          */
         private long authCacheTtlSeconds = 60;
+
+        public String getHmacPepper() {
+            return hmacPepper;
+        }
+
+        public void setHmacPepper(String hmacPepper) {
+            this.hmacPepper = hmacPepper;
+        }
 
         public long getLastUsedUpdateIntervalSeconds() {
             return lastUsedUpdateIntervalSeconds;

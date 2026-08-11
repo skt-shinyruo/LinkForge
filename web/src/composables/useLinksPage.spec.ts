@@ -1,13 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
-import type { LinkDto, PageResponse } from "../services/types";
+import type { DomainDto, LinkDto, PageResponse } from "../services/types";
 
 const listLinksMock = vi.hoisted(() => vi.fn());
+const listDomainsForApplicationMock = vi.hoisted(() => vi.fn());
 const useLinkImportExportMock = vi.hoisted(() => vi.fn());
 const useLinkMutationsMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../services/links", () => ({
   listLinks: listLinksMock,
+}));
+
+vi.mock("../services/domains", () => ({
+  listDomainsForApplication: listDomainsForApplicationMock,
 }));
 
 vi.mock("./links/useLinkImportExport", () => ({
@@ -24,9 +29,11 @@ type LinksPagePublic = {
   page: { value: number };
   size: { value: number };
   total: { value: number };
+  availableDomains: { value: DomainDto[] };
   load: () => Promise<void>;
   setArchived: (value: boolean) => Promise<void> | void;
   setKeyword: (value: string) => void;
+  setSelectedApplicationId: (value: number | null) => Promise<void>;
 };
 
 function createPageResponse(overrides: Partial<PageResponse<LinkDto>> = {}): PageResponse<LinkDto> {
@@ -56,6 +63,7 @@ describe("useLinksPage", () => {
     vi.resetModules();
     setActivePinia(createPinia());
     listLinksMock.mockReset();
+    listDomainsForApplicationMock.mockReset();
     useLinkMutationsMock.mockReset();
     useLinkImportExportMock.mockReset();
 
@@ -97,12 +105,16 @@ describe("useLinksPage", () => {
 
     await page.load();
 
-    expect(listLinksMock).toHaveBeenCalledWith({
-      page: 2,
-      size: 25,
-      archived: false,
-      keyword: "promo",
-    });
+    expect(listLinksMock).toHaveBeenCalledWith(
+      {
+        page: 2,
+        size: 25,
+        applicationId: undefined,
+        archived: false,
+        keyword: "promo",
+      },
+      { signal: expect.any(AbortSignal) },
+    );
     expect(page.items.value).toEqual([createLink(201)]);
     expect(page.total.value).toBe(88);
   });
@@ -128,6 +140,89 @@ describe("useLinksPage", () => {
         archived: true,
         keyword: "campaign",
       }),
+      { signal: expect.any(AbortSignal) },
     );
+  });
+
+  it("keeps the newest response when requests resolve out of order", async () => {
+    let resolveFirst!: (value: PageResponse<LinkDto>) => void;
+    let resolveSecond!: (value: PageResponse<LinkDto>) => void;
+    listLinksMock
+      .mockImplementationOnce(
+        () => new Promise<PageResponse<LinkDto>>((resolve) => {
+          resolveFirst = resolve;
+        }),
+      )
+      .mockImplementationOnce(
+        () => new Promise<PageResponse<LinkDto>>((resolve) => {
+          resolveSecond = resolve;
+        }),
+      );
+
+    const { useLinksPage } = await import("./useLinksPage");
+    const page = useLinksPage() as unknown as LinksPagePublic;
+
+    page.filters.keyword = "old";
+    const firstLoad = page.load();
+    page.filters.keyword = "new";
+    const secondLoad = page.load();
+
+    const firstSignal = listLinksMock.mock.calls[0]?.[1]?.signal as AbortSignal;
+    expect(firstSignal.aborted).toBe(true);
+
+    resolveSecond(createPageResponse({ items: [createLink(2)], total: 1 }));
+    await secondLoad;
+    resolveFirst(createPageResponse({ items: [createLink(1)], total: 99 }));
+    await firstLoad;
+
+    expect(page.items.value).toEqual([createLink(2)]);
+    expect(page.total.value).toBe(1);
+  });
+
+  it("keeps domains from the newest application when requests resolve out of order", async () => {
+    let resolveFirst!: (value: DomainDto[]) => void;
+    let resolveSecond!: (value: DomainDto[]) => void;
+    listDomainsForApplicationMock
+      .mockImplementationOnce(
+        () => new Promise<DomainDto[]>((resolve) => {
+          resolveFirst = resolve;
+        }),
+      )
+      .mockImplementationOnce(
+        () => new Promise<DomainDto[]>((resolve) => {
+          resolveSecond = resolve;
+        }),
+      );
+    listLinksMock.mockResolvedValue(createPageResponse());
+
+    const { useAuthStore } = await import("../stores/auth");
+    const auth = useAuthStore();
+    auth.roles = ["TENANT_ADMIN"];
+    const { useLinksPage } = await import("./useLinksPage");
+    const page = useLinksPage() as unknown as LinksPagePublic;
+
+    const firstSelection = page.setSelectedApplicationId(11);
+    const secondSelection = page.setSelectedApplicationId(22);
+    const firstSignal = listDomainsForApplicationMock.mock.calls[0]?.[1]?.signal as AbortSignal;
+    expect(firstSignal.aborted).toBe(true);
+
+    resolveSecond([{
+      id: 220,
+      tenantId: 7,
+      applicationId: 22,
+      hostname: "new.example.test",
+      scope: "APPLICATION_DEDICATED",
+    }]);
+    await secondSelection;
+    resolveFirst([{
+      id: 110,
+      tenantId: 7,
+      applicationId: 11,
+      hostname: "old.example.test",
+      scope: "APPLICATION_DEDICATED",
+    }]);
+    await firstSelection;
+
+    expect(page.availableDomains.value.map((domain) => domain.id)).toEqual([220]);
   });
 });

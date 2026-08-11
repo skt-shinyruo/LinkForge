@@ -165,6 +165,86 @@ class ShortLinkPaginationApiIntegrationTest {
     }
 
     @Test
+    void cursorPagination_shouldSkipCountAndContinueWithoutOverlappingRows() throws Exception {
+        RegisteredPrincipal principal = registerTenantAdmin();
+        AppDomainFixture fixture = provisionDedicatedApplication(
+                principal.tenantId(),
+                "pagination-cursor-" + principal.tenantId(),
+                "pagination-cursor-" + principal.tenantId() + ".example.test"
+        );
+        createScopedLink(principal.token(), fixture, "https://example.com/pagination/cursor-a", "cursor-a");
+        createScopedLink(principal.token(), fixture, "https://example.com/pagination/cursor-b", "cursor-b");
+        createScopedLink(principal.token(), fixture, "https://example.com/pagination/cursor-c", "cursor-c");
+
+        JsonNode first = getJson(
+                get("/api/v1/links")
+                        .header("Authorization", "Bearer " + principal.token())
+                        .param("page", "0")
+                        .param("size", "2")
+                        .param("includeTotal", "false")
+        );
+        JsonNode firstData = first.get("data");
+        assertThat(first.get("code").asInt()).isEqualTo(0);
+        assertThat(firstData.get("total").asLong()).isEqualTo(-1L);
+        assertThat(firstData.get("items")).hasSize(2);
+        assertThat(firstData.get("hasMore").asBoolean()).isTrue();
+        String nextCursor = firstData.get("nextCursor").asText();
+        assertThat(nextCursor).isNotBlank();
+
+        JsonNode second = getJson(
+                get("/api/v1/links")
+                        .header("Authorization", "Bearer " + principal.token())
+                        .param("size", "2")
+                        .param("includeTotal", "false")
+                        .param("cursor", nextCursor)
+        );
+        JsonNode secondData = second.get("data");
+        assertThat(secondData.get("total").asLong()).isEqualTo(-1L);
+        assertThat(secondData.get("items")).hasSize(1);
+        assertThat(secondData.get("hasMore").asBoolean()).isFalse();
+        assertThat(secondData.get("nextCursor").isNull()).isTrue();
+        assertThat(linkIdentity(secondData.get("items").get(0)))
+                .isNotIn(linkIdentity(firstData.get("items").get(0)), linkIdentity(firstData.get("items").get(1)));
+    }
+
+    @Test
+    void searchIndexes_shouldBeInstalledAndAvailableToKeysetPlan() throws Exception {
+        RegisteredPrincipal principal = registerTenantAdmin();
+        AppDomainFixture fixture = provisionDedicatedApplication(
+                principal.tenantId(),
+                "pagination-index-" + principal.tenantId(),
+                "pagination-index-" + principal.tenantId() + ".example.test"
+        );
+        createScopedLink(principal.token(), fixture, "https://example.com/pagination/index", "index");
+
+        Integer indexCount = jdbcTemplate.queryForObject(
+                """
+                        SELECT COUNT(*)
+                        FROM information_schema.statistics
+                        WHERE table_schema = DATABASE()
+                          AND table_name = 'short_links'
+                          AND index_name = 'idx_short_links_tenant_archived_created_id'
+                        """,
+                Integer.class
+        );
+        assertThat(indexCount).isGreaterThan(0);
+
+        String explain = jdbcTemplate.queryForObject(
+                """
+                        EXPLAIN FORMAT=JSON
+                        SELECT id
+                        FROM short_links FORCE INDEX (idx_short_links_tenant_archived_created_id)
+                        WHERE tenant_id = ? AND archived_at IS NULL
+                        ORDER BY created_at DESC, id DESC
+                        LIMIT 20
+                        """,
+                String.class,
+                principal.tenantId()
+        );
+        assertThat(explain).contains("idx_short_links_tenant_archived_created_id");
+    }
+
+    @Test
     void application_scoped_link_api_should_reject_access_to_other_application_in_same_tenant() throws Exception {
         RegisteredPrincipal principal = registerTenantAdmin();
         AppDomainFixture firstApp = provisionDedicatedApplication(

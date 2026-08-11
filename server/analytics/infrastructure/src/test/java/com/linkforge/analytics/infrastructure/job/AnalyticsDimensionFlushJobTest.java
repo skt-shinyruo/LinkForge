@@ -179,7 +179,7 @@ class AnalyticsDimensionFlushJobTest {
     }
 
     @Test
-    void flushDirtyMembers_should_compute_uv_by_pfcount_and_write_to_mysql() {
+    void flushDirtyMembers_should_deduplicate_members_compute_uv_and_write_to_mysql() {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         LinkStatsDimDailyMapper mapper = mock(LinkStatsDimDailyMapper.class);
         AnalyticsProperties properties = new AnalyticsProperties();
@@ -202,11 +202,12 @@ class AnalyticsDimensionFlushJobTest {
         AnalyticsDimensionFlushJob job = new AnalyticsDimensionFlushJob(redis, mapper, properties);
 
         LocalDate day = LocalDate.of(2026, 2, 19);
-        job.flushDirtyMembers(day, properties.getDimensions(), List.of("1:10"));
+        job.flushDirtyMembers(day, properties.getDimensions(), List.of("1:10", "1:10", "1:10"));
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<LinkStatsDimDailyUpsertRow>> batchCaptor = ArgumentCaptor.forClass(List.class);
         verify(mapper).batchUpsert(batchCaptor.capture());
+        verify(hashOps).scan(anyString(), any());
 
         List<LinkStatsDimDailyUpsertRow> rows = batchCaptor.getValue();
         assertThat(rows).hasSize(1);

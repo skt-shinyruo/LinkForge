@@ -56,7 +56,8 @@ docker compose --env-file .env down -v
 ```bash
 cd server
 mvn test
-mvn -Pit test   # 运行集成测试（需要 Docker/Testcontainers）
+mvn verify       # 单元测试 + JaCoCo 报告，不需要 Docker
+mvn -Pit verify  # 额外运行集成测试（需要 Docker/Testcontainers）
 mvn -pl app spring-boot:run
 ```
 

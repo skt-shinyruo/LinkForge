@@ -10,8 +10,9 @@ import java.util.List;
  * <p>所有方法都要求调用方显式传入 tenantId，适配器不得把资源 ID 当作跨租户全局查询条件。日统计的
  * {@code from}/{@code to} 均为 UTC 日期且包含两端；访问明细时间使用 UTC {@link LocalDateTime}。</p>
  *
- * <p>PV 可能受 stream 重放影响，UV 来自 HyperLogLog 或其持久化快照。多日 UV 目前是日 UV 之和，不能解释为
- * 区间精确去重人数。空列表表示该读模型中没有匹配行，不承诺资源存在性。</p>
+ * <p>标准事件的 Stream 重放由 requestId 幂等投影保护；历史无 requestId 消息或调用方重复生成事件仍可能影响
+ * PV。UV 来自 HyperLogLog 或其持久化快照，多日 UV 目前是日 UV 之和，不能解释为区间精确去重人数。
+ * 空列表表示该读模型中没有匹配行，不承诺资源存在性。</p>
  */
 public interface AnalyticsQueryService {
 

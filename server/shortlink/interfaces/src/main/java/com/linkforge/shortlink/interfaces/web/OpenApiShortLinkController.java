@@ -74,12 +74,16 @@ public class OpenApiShortLinkController {
             @RequestParam(required = false) Boolean enabled,
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String cursor,
+            @RequestParam(defaultValue = "true") boolean includeTotal
     ) {
         ApiKeyActor actor = principalActorMapper.requireApiKey(AuthContext.requirePrincipal());
         PageResult<LinkDto> result = shortLinkQueryUseCase.browseForApiKey(
                 actor,
-                new BrowseLinksRequest(false, enabled, keyword, null, null, null, page, size, 100)
+                new BrowseLinksRequest(
+                        false, enabled, keyword, null, null, null, page, size, 100, cursor, includeTotal
+                )
         );
         return ApiResponse.ok(ShortLinkHttpMapper.toPageResponse(result), RequestId.get());
     }
@@ -90,12 +94,16 @@ public class OpenApiShortLinkController {
             @RequestParam(required = false) Boolean enabled,
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String cursor,
+            @RequestParam(defaultValue = "true") boolean includeTotal
     ) {
         ApiKeyActor actor = principalActorMapper.requireApiKey(AuthContext.requirePrincipal());
         PageResult<LinkDto> result = shortLinkQueryUseCase.browseForApiKey(
                 actor,
-                new BrowseLinksRequest(false, enabled, keyword, null, null, applicationId, page, size, 100)
+                new BrowseLinksRequest(
+                        false, enabled, keyword, null, null, applicationId, page, size, 100, cursor, includeTotal
+                )
         );
         return ApiResponse.ok(ShortLinkHttpMapper.toPageResponse(result), RequestId.get());
     }

@@ -49,4 +49,6 @@ public interface ShortLinkQueryMapper {
     long countSearch(ShortLinkSearchParam param);
 
     List<ShortLinkEntity> listSearch(ShortLinkSearchParam param);
+
+    List<ShortLinkEntity> listSearchAfter(ShortLinkSearchParam param);
 }

@@ -1,12 +1,14 @@
 package com.linkforge.analytics.infrastructure.job;
 
 import com.linkforge.analytics.infrastructure.persistence.mapper.LinkVisitEventInsertRow;
+import com.linkforge.foundation.observability.OperationalMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.connection.stream.RecordId;
 import org.springframework.data.redis.connection.stream.StreamRecords;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -28,9 +30,16 @@ public class VisitEventDeadLetterWriter {
     private static final int MAX_REQUEST_ID_LEN = 64;
 
     private final StringRedisTemplate redis;
+    private final OperationalMetrics metrics;
 
     public VisitEventDeadLetterWriter(StringRedisTemplate redis) {
+        this(redis, OperationalMetrics.noop());
+    }
+
+    @Autowired
+    public VisitEventDeadLetterWriter(StringRedisTemplate redis, OperationalMetrics metrics) {
         this.redis = redis;
+        this.metrics = metrics == null ? OperationalMetrics.noop() : metrics;
     }
 
     /**
@@ -54,7 +63,13 @@ public class VisitEventDeadLetterWriter {
         try {
             redis.opsForStream().add(StreamRecords.newRecord().in(dlqKey).ofStrings(fields));
             redis.opsForStream().trim(dlqKey, DLQ_MAX_LEN, true);
+            metrics.increment("linkforge.dead_letter.events", "source", "analytics_visit_ingest", "result", "written");
+            Long size = redis.opsForStream().size(dlqKey);
+            if (size != null) {
+                metrics.set("linkforge.dead_letter.size", size, "source", "analytics_visit_ingest");
+            }
         } catch (Exception ex) {
+            metrics.increment("linkforge.dead_letter.events", "source", "analytics_visit_ingest", "result", "failure");
             log.debug("dead-letter write failed: streamId={}, err={}", recordId, ex.getMessage());
         }
     }

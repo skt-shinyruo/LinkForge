@@ -101,4 +101,19 @@ public interface ShortLinkRepository {
      * 返回空列表，不返回 {@code null}。</p>
      */
     List<ShortLink> listSearch(long tenantId, ShortLinkSearchQuery query, long offset, int limit);
+
+    /**
+     * 按 {@code created_at DESC, id DESC} 从游标之后读取结果，避免数据库扫描并丢弃深 offset。
+     *
+     * <p>生产持久化 adapter 必须实现本方法；默认实现用于让不支持游标的测试替身显式失败。</p>
+     */
+    default List<ShortLink> listSearchAfter(
+            long tenantId,
+            ShortLinkSearchQuery query,
+            LocalDateTime cursorCreatedAtUtc,
+            long cursorId,
+            int limit
+    ) {
+        throw new UnsupportedOperationException("cursor pagination is not supported by this repository adapter");
+    }
 }

@@ -58,6 +58,11 @@ public class AccountsApiKeyStoreMybatisAdapter implements AccountsApiKeyStore {
     }
 
     @Override
+    public boolean updateKeyHashIfCurrent(Long apiKeyId, String expectedKeyHash, String newKeyHash) {
+        return apiKeyMapper.updateKeyHashIfCurrent(apiKeyId, expectedKeyHash, newKeyHash) > 0;
+    }
+
+    @Override
     public void updateLastUsedAt(Long apiKeyId, LocalDateTime lastUsedAt) {
         apiKeyMapper.updateLastUsedAt(apiKeyId, lastUsedAt);
     }

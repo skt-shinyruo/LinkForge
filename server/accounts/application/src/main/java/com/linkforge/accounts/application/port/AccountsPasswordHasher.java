@@ -1,9 +1,10 @@
 package com.linkforge.accounts.application.port;
 
 /**
- * 账户密码和 API Key secret 的单向哈希端口。
+ * 账户密码及历史凭据摘要的单向哈希端口。
  *
- * <p>实现必须使用适合凭证存储、包含随机盐的慢哈希算法，因此同一明文的编码结果不要求相等。
+ * <p>实现必须使用适合用户密码存储、包含随机盐的慢哈希算法，因此同一明文的编码结果不要求相等。
+ * 新 API Key 使用独立的 peppered HMAC codec；本端口只负责兼容验证及迁移历史 BCrypt Key。
  * 明文仅可在调用栈内短暂存在，不得记录日志或落库。</p>
  */
 public interface AccountsPasswordHasher {

@@ -9,6 +9,7 @@ import com.linkforge.shortlink.domain.event.ShortLinkUpdated;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
 
@@ -504,6 +505,124 @@ public class ShortLink {
         Objects.requireNonNull(updatedAtUtc, "updatedAtUtc must be provided in UTC");
         this.updatedAtUtc = updatedAtUtc;
         recordDomainEvent(new ShortLinkUpdated(id, tenantId, domainId, code.value(), updatedAtUtc));
+    }
+
+    /**
+     * 校验并比较规范化 patch，不修改聚合。
+     *
+     * <p>审批分支和普通更新都使用该结果，避免分别维护两套“是否真的变化”规则。</p>
+     */
+    public ShortLinkChangeSet planPatch(ShortLinkPatch patch) {
+        Objects.requireNonNull(patch, "patch");
+        requireNotArchivedForUpdate();
+        EnumSet<ShortLinkChangeSet.Field> changes = EnumSet.noneOf(ShortLinkChangeSet.Field.class);
+
+        if (patch.originalUrl().isClear()) {
+            throw new ShortLinkDomainException(ShortLinkDomainException.Reason.INVALID_URL, "originalUrl 不能为空");
+        }
+        if (patch.originalUrl().isSet() && !Objects.equals(originalUrl, patch.originalUrl().value())) {
+            changes.add(ShortLinkChangeSet.Field.ORIGINAL_URL);
+        }
+
+        if (!patch.note().isUnchanged()) {
+            String requested = patch.note().isClear() ? null : normalizeNote(patch.note().value());
+            if (!Objects.equals(note, requested)) {
+                changes.add(ShortLinkChangeSet.Field.NOTE);
+            }
+        }
+        if (patch.enabled().isClear()) {
+            throw new IllegalArgumentException("enabled cannot be cleared");
+        }
+        if (patch.enabled().isSet() && enabled != patch.enabled().value()) {
+            changes.add(ShortLinkChangeSet.Field.ENABLED);
+        }
+        if (!patch.expiresAtUtc().isUnchanged()) {
+            LocalDateTime requested = patch.expiresAtUtc().isClear() ? null : patch.expiresAtUtc().value();
+            if (!Objects.equals(expiresAtUtc, requested)) {
+                changes.add(ShortLinkChangeSet.Field.EXPIRES_AT);
+            }
+        }
+        if (!patch.redirectStatusCode().isUnchanged()) {
+            Integer requested = patch.redirectStatusCode().isClear()
+                    ? null
+                    : validateRedirectStatusCode(patch.redirectStatusCode().value());
+            if (!Objects.equals(redirectStatusCode, requested)) {
+                changes.add(ShortLinkChangeSet.Field.REDIRECT_STATUS_CODE);
+            }
+        }
+        if (patch.previewEnabled().isClear()) {
+            throw new IllegalArgumentException("previewEnabled cannot be cleared");
+        }
+        if (patch.previewEnabled().isSet() && previewEnabled != patch.previewEnabled().value()) {
+            changes.add(ShortLinkChangeSet.Field.PREVIEW_ENABLED);
+        }
+        if (!patch.unavailableLandingUrl().isUnchanged()) {
+            HttpUrl requested = patch.unavailableLandingUrl().isClear() ? null : patch.unavailableLandingUrl().value();
+            if (!Objects.equals(unavailableLandingUrl, requested)) {
+                changes.add(ShortLinkChangeSet.Field.UNAVAILABLE_LANDING_URL);
+            }
+        }
+        if (!patch.queryForwardMode().isUnchanged()) {
+            QueryForwardMode requested = patch.queryForwardMode().isClear() ? null : patch.queryForwardMode().value();
+            if (queryForwardMode != requested) {
+                changes.add(ShortLinkChangeSet.Field.QUERY_FORWARD_MODE);
+            }
+        }
+        if (!patch.queryForwardAllowlist().isUnchanged()) {
+            QueryForwardAllowlist requested = patch.queryForwardAllowlist().isClear()
+                    ? QueryForwardAllowlist.empty()
+                    : patch.queryForwardAllowlist().value();
+            if (!queryForwardAllowlist.values().equals(requested.values())) {
+                changes.add(ShortLinkChangeSet.Field.QUERY_FORWARD_ALLOWLIST);
+            }
+        }
+        if (!patch.lifecycleState().isUnchanged()) {
+            ShortLinkLifecycleState requested = patch.lifecycleState().isClear()
+                    ? ShortLinkLifecycleState.ACTIVE
+                    : patch.lifecycleState().value();
+            if (lifecycleState != requested) {
+                changes.add(ShortLinkChangeSet.Field.LIFECYCLE_STATE);
+            }
+        }
+        return new ShortLinkChangeSet(changes);
+    }
+
+    /** 应用已经通过 {@link #planPatch(ShortLinkPatch)} 校验的实际变化。 */
+    public ShortLinkChangeSet applyPatch(ShortLinkPatch patch) {
+        ShortLinkChangeSet changes = planPatch(patch);
+        if (changes.changed(ShortLinkChangeSet.Field.ORIGINAL_URL)) {
+            changeOriginalUrl(patch.originalUrl().value());
+        }
+        if (changes.changed(ShortLinkChangeSet.Field.NOTE)) {
+            changeNote(patch.note().isClear() ? null : patch.note().value());
+        }
+        if (changes.changed(ShortLinkChangeSet.Field.ENABLED)) {
+            setEnabled(patch.enabled().value());
+        }
+        if (changes.changed(ShortLinkChangeSet.Field.EXPIRES_AT)) {
+            setExpiresAtUtc(patch.expiresAtUtc().isClear() ? null : patch.expiresAtUtc().value());
+        }
+        if (changes.changed(ShortLinkChangeSet.Field.REDIRECT_STATUS_CODE)) {
+            setRedirectStatusCode(patch.redirectStatusCode().isClear() ? null : patch.redirectStatusCode().value());
+        }
+        if (changes.changed(ShortLinkChangeSet.Field.PREVIEW_ENABLED)) {
+            setPreviewEnabled(patch.previewEnabled().value());
+        }
+        if (changes.changed(ShortLinkChangeSet.Field.UNAVAILABLE_LANDING_URL)) {
+            setUnavailableLandingUrl(patch.unavailableLandingUrl().isClear() ? null : patch.unavailableLandingUrl().value());
+        }
+        if (changes.changed(ShortLinkChangeSet.Field.QUERY_FORWARD_MODE)) {
+            setQueryForwardMode(patch.queryForwardMode().isClear() ? null : patch.queryForwardMode().value());
+        }
+        if (changes.changed(ShortLinkChangeSet.Field.QUERY_FORWARD_ALLOWLIST)) {
+            setQueryForwardAllowlist(patch.queryForwardAllowlist().isClear()
+                    ? QueryForwardAllowlist.empty()
+                    : patch.queryForwardAllowlist().value());
+        }
+        if (changes.changed(ShortLinkChangeSet.Field.LIFECYCLE_STATE)) {
+            setLifecycleState(patch.lifecycleState().isClear() ? null : patch.lifecycleState().value());
+        }
+        return changes;
     }
 
     public void changeOriginalUrl(HttpUrl newUrl) {

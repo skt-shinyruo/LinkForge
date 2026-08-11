@@ -12,8 +12,8 @@ import java.util.Set;
  * 没有独立 clear 标志，传空白字符串表示清空；非空 {@code queryForwardAllowlist} 会整体替换现有白名单，
  * 空列表因此表示清空。</p>
  *
- * <p>{@code expiresAt} 是绝对时间，进入领域层前按 UTC 转换。该命令不是客户端幂等写：即使没有有效字段变化，
- * 当前实现仍可能推进乐观锁版本、发布更新事件并触发缓存失效。</p>
+ * <p>{@code expiresAt} 是绝对时间，进入领域层前按 UTC 转换。处理器会先把输入归一化为三态 patch 并与聚合快照比较；
+ * 没有字段或标签实际变化时直接返回当前视图，不推进乐观锁版本、不发布事件，也不触发缓存失效。</p>
  */
 public record UpdateLinkRequest(
         String originalUrl,

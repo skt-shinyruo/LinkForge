@@ -15,6 +15,7 @@ import {
 } from "./links/linkFormCodec";
 import { useLinkImportExport } from "./links/useLinkImportExport";
 import { useLinkMutations } from "./links/useLinkMutations";
+import { useLatestRequest } from "./useLatestRequest";
 
 export type { LinkCreateFormState, LinkEditFormState } from "./links/linkFormCodec";
 
@@ -30,10 +31,8 @@ function getErrorMessage(error: unknown, fallbackMessage: string): string {
 }
 
 export function useLinksPage() {
-  const loading = ref(false);
   const creating = ref(false);
   const importing = ref(false);
-  const error = ref<string | null>(null);
   const items = ref<LinkDto[]>([]);
   const applications = ref<ApplicationDto[]>([]);
   const availableDomains = ref<DomainDto[]>([]);
@@ -55,6 +54,10 @@ export function useLinksPage() {
 
   const auth = useAuthStore();
   const isAdmin = computed(() => auth.isTenantAdmin);
+  const latestLoad = useLatestRequest(getErrorMessage);
+  const latestDomainLoad = useLatestRequest(getErrorMessage);
+  const loading = latestLoad.loading;
+  const error = latestLoad.error;
 
   function resetCreateForm() {
     Object.assign(createForm, createEmptyCreateForm());
@@ -65,26 +68,23 @@ export function useLinksPage() {
   }
 
   async function load(targetPage = page.value) {
-    loading.value = true;
-    error.value = null;
-
-    try {
-      const response = await listLinks({
-        page: targetPage,
-        size: size.value,
-        applicationId: selectedApplicationId.value ?? undefined,
-        archived: filters.showArchived,
-        keyword: filters.keyword.trim() || undefined,
-      });
-      items.value = response.items;
-      total.value = response.total;
-      page.value = response.page;
-      size.value = response.size;
-    } catch (caught) {
-      error.value = getErrorMessage(caught, "加载失败");
-    } finally {
-      loading.value = false;
-    }
+    const query = {
+      page: targetPage,
+      size: size.value,
+      applicationId: selectedApplicationId.value ?? undefined,
+      archived: filters.showArchived,
+      keyword: filters.keyword.trim() || undefined,
+    };
+    await latestLoad.run(
+      (signal) => listLinks(query, { signal }),
+      (response) => {
+        items.value = response.items;
+        total.value = response.total;
+        page.value = response.page;
+        size.value = response.size;
+      },
+      "加载失败",
+    );
   }
 
   async function loadAdminOptions() {
@@ -107,18 +107,27 @@ export function useLinksPage() {
 
   async function loadDomainsForApplication(applicationId: number | null) {
     if (!isAdmin.value || applicationId == null) {
+      latestDomainLoad.cancel();
       availableDomains.value = [];
       selectedDomainId.value = null;
       return;
     }
-    const nextDomains = await listDomainsForApplication(applicationId);
-    availableDomains.value = nextDomains;
-    if (nextDomains.length === 0) {
-      selectedDomainId.value = null;
-      return;
-    }
-    if (!nextDomains.some((domain) => domain.id === selectedDomainId.value)) {
-      selectedDomainId.value = nextDomains[0]!.id;
+    await latestDomainLoad.run(
+      (signal) => listDomainsForApplication(applicationId, { signal }),
+      (nextDomains) => {
+        availableDomains.value = nextDomains;
+        if (nextDomains.length === 0) {
+          selectedDomainId.value = null;
+          return;
+        }
+        if (!nextDomains.some((domain) => domain.id === selectedDomainId.value)) {
+          selectedDomainId.value = nextDomains[0]!.id;
+        }
+      },
+      "加载应用域名失败",
+    );
+    if (latestDomainLoad.error.value) {
+      error.value = latestDomainLoad.error.value;
     }
   }
 

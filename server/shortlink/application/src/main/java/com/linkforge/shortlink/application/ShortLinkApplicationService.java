@@ -98,19 +98,21 @@ public class ShortLinkApplicationService implements
 
     @Override
     public PageResult<LinkDto> browseForUser(UserActor actor, BrowseLinksRequest request) {
-        return search(
+        return browse(
                 actor.tenantId(),
                 ShortLinkUserAccess.scopeBrowse(actor, actorScopeResolver.resolveBrowseForUser(actor, request)),
-                actorScopeResolver.pageQuery(request)
+                actorScopeResolver.pageQuery(request),
+                request
         );
     }
 
     @Override
     public PageResult<LinkDto> browseForApiKey(ApiKeyActor actor, BrowseLinksRequest request) {
-        return search(
+        return browse(
                 actor.tenantId(),
                 actorScopeResolver.resolveBrowseForApiKey(actor, request),
-                actorScopeResolver.pageQuery(request)
+                actorScopeResolver.pageQuery(request),
+                request
         );
     }
 
@@ -151,6 +153,18 @@ public class ShortLinkApplicationService implements
     @Override
     public PageResult<LinkDto> search(long tenantId, ShortLinkSearchQuery query, PageQuery pageQuery) {
         return searchHandler.handle(tenantId, query, pageQuery);
+    }
+
+    private PageResult<LinkDto> browse(
+            long tenantId,
+            ShortLinkSearchQuery query,
+            PageQuery pageQuery,
+            BrowseLinksRequest request
+    ) {
+        if (request.includeTotal() && (request.cursor() == null || request.cursor().isBlank())) {
+            return search(tenantId, query, pageQuery);
+        }
+        return searchHandler.handle(tenantId, query, pageQuery, request.includeTotal(), request.cursor());
     }
 
     @Override

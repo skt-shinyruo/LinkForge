@@ -26,7 +26,7 @@ COPY integration-tests /app/integration-tests
 # BuildKit cache keeps Maven artifacts across image rebuilds and reduces first-run network flakiness.
 RUN --mount=type=cache,target=/root/.m2 \
     mvn -q -DskipTests -pl app -am package \
- && cp app/target/linkforge-server-*.jar /app/app.jar
+ && cp app/target/linkforge-server-*-exec.jar /app/app.jar
 
 FROM ${RUNTIME_IMAGE}
 WORKDIR /app

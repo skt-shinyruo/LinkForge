@@ -33,7 +33,6 @@
         <module>platform</module>
         <module>governance</module>
         <module>app</module>
-        <module>integration-tests</module>
     </modules>
 
     <properties>
@@ -46,6 +45,7 @@
         <mybatis-spring-boot.version>3.0.4</mybatis-spring-boot.version>
         <shardingsphere.version>5.5.3</shardingsphere.version>
         <commons-lang3.version>3.18.0</commons-lang3.version>
+        <jacoco.version>0.8.14</jacoco.version>
         <!-- Docker Desktop (2026+) 默认最低 API 版本为 1.44，旧版 1.41 会导致 Testcontainers 探测失败 -->
         <docker.api.version>1.44</docker.api.version>
     </properties>
@@ -318,6 +318,36 @@
                 </plugin>
             </plugins>
         </pluginManagement>
+        <plugins>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco.version}</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>it</id>
+            <modules>
+                <module>integration-tests</module>
+            </modules>
+        </profile>
+    </profiles>
 
 </project>

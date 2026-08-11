@@ -129,7 +129,7 @@ public class MybatisShortLinkRepository implements ShortLinkRepository {
      */
     @Override
     public long countSearch(long tenantId, ShortLinkSearchQuery query) {
-        ShortLinkSearchParam param = toSearchParam(tenantId, query, 0, 1);
+        ShortLinkSearchParam param = toSearchParam(tenantId, query, 0, 1, null, null);
         return queryMapper.countSearch(param);
     }
 
@@ -141,7 +141,7 @@ public class MybatisShortLinkRepository implements ShortLinkRepository {
      */
     @Override
     public List<ShortLink> listSearch(long tenantId, ShortLinkSearchQuery query, long offset, int limit) {
-        ShortLinkSearchParam param = toSearchParam(tenantId, query, offset, limit);
+        ShortLinkSearchParam param = toSearchParam(tenantId, query, offset, limit, null, null);
         List<ShortLinkEntity> rows = queryMapper.listSearch(param);
         if (rows == null || rows.isEmpty()) {
             return List.of();
@@ -149,7 +149,37 @@ public class MybatisShortLinkRepository implements ShortLinkRepository {
         return rows.stream().map(ShortLinkEntityMapper::toDomain).toList();
     }
 
-    private static ShortLinkSearchParam toSearchParam(long tenantId, ShortLinkSearchQuery query, long offset, int limit) {
+    @Override
+    public List<ShortLink> listSearchAfter(
+            long tenantId,
+            ShortLinkSearchQuery query,
+            LocalDateTime cursorCreatedAtUtc,
+            long cursorId,
+            int limit
+    ) {
+        ShortLinkSearchParam param = toSearchParam(
+                tenantId,
+                query,
+                0L,
+                limit,
+                cursorCreatedAtUtc,
+                cursorId
+        );
+        List<ShortLinkEntity> rows = queryMapper.listSearchAfter(param);
+        if (rows == null || rows.isEmpty()) {
+            return List.of();
+        }
+        return rows.stream().map(ShortLinkEntityMapper::toDomain).toList();
+    }
+
+    private static ShortLinkSearchParam toSearchParam(
+            long tenantId,
+            ShortLinkSearchQuery query,
+            long offset,
+            int limit,
+            LocalDateTime cursorCreatedAtUtc,
+            Long cursorId
+    ) {
         ShortLinkSearchQuery q = query == null ? new ShortLinkSearchQuery(false, null, null, null, null) : query;
         return new ShortLinkSearchParam(
                 tenantId,
@@ -162,7 +192,9 @@ public class MybatisShortLinkRepository implements ShortLinkRepository {
                 q.createdByType() == null ? null : q.createdByType().name(),
                 q.unscopedOnly(),
                 offset,
-                limit
+                limit,
+                cursorCreatedAtUtc,
+                cursorId
         );
     }
 

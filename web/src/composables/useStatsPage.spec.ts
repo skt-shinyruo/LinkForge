@@ -127,13 +127,22 @@ describe("useStatsPage", () => {
 
     expect(listApplicationsMock).toHaveBeenCalledTimes(1);
     expect(page.selectedApplicationId.value).toBeNull();
-    expect(listLinksMock).toHaveBeenCalledWith({
-      applicationId: undefined,
-      page: 0,
-      size: 100,
-    });
-    expect(fetchOverviewStatsMock).toHaveBeenCalledWith(expect.objectContaining({ applicationId: undefined }));
-    expect(fetchTopLinksStatsMock).toHaveBeenCalledWith(expect.objectContaining({ applicationId: undefined }));
+    expect(listLinksMock).toHaveBeenCalledWith(
+      {
+        applicationId: undefined,
+        page: 0,
+        size: 100,
+      },
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(fetchOverviewStatsMock).toHaveBeenCalledWith(
+      expect.objectContaining({ applicationId: undefined }),
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(fetchTopLinksStatsMock).toHaveBeenCalledWith(
+      expect.objectContaining({ applicationId: undefined }),
+      { signal: expect.any(AbortSignal) },
+    );
   });
 
   it("does not load tenant application options for platform admins", async () => {
@@ -158,11 +167,14 @@ describe("useStatsPage", () => {
     await flushPromises();
 
     expect(listApplicationsMock).not.toHaveBeenCalled();
-    expect(listLinksMock).toHaveBeenCalledWith({
-      applicationId: undefined,
-      page: 0,
-      size: 100,
-    });
+    expect(listLinksMock).toHaveBeenCalledWith(
+      {
+        applicationId: undefined,
+        page: 0,
+        size: 100,
+      },
+      { signal: expect.any(AbortSignal) },
+    );
   });
 
   it("copies the published short URL without rebuilding it from the console origin", async () => {

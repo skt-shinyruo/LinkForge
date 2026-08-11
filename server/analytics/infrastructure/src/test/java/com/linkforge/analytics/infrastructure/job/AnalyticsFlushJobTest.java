@@ -8,6 +8,7 @@ import com.linkforge.foundation.config.AnalyticsProperties;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.data.redis.connection.stream.Consumer;
 import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.ReadOffset;
@@ -36,11 +37,87 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.inOrder;
 
 class AnalyticsFlushJobTest {
+
+    @Test
+    void flushDirtyMembers_should_deduplicate_hot_link_signals_within_a_batch() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        LinkStatsDailyMapper mapper = mock(LinkStatsDailyMapper.class);
+        AnalyticsProperties properties = new AnalyticsProperties();
+
+        @SuppressWarnings("unchecked")
+        ValueOperations<String, String> valueOps = mock(ValueOperations.class);
+        when(redis.opsForValue()).thenReturn(valueOps);
+        when(valueOps.multiGet(anyList())).thenAnswer(invocation -> {
+            List<String> keys = invocation.getArgument(0);
+            assertThat(keys).hasSize(1);
+            return List.of("9");
+        });
+        when(redis.getStringSerializer()).thenReturn(new StringRedisSerializer());
+        when(redis.executePipelined(any(RedisCallback.class))).thenReturn(List.of(4L));
+
+        AnalyticsFlushJob job = new AnalyticsFlushJob(redis, mapper, properties);
+        job.flushDirtyMembers(LocalDate.of(2026, 4, 24), List.of("1:10", "1:10", "1:10"));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<LinkStatsDailyUpsertRow>> batchCaptor = ArgumentCaptor.forClass(List.class);
+        verify(mapper).batchUpsert(batchCaptor.capture());
+        assertThat(batchCaptor.getValue()).hasSize(1);
+    }
+
+    @Test
+    void flush_should_retry_pending_batch_after_database_failure_before_reading_new_messages() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        LinkStatsDailyMapper mapper = mock(LinkStatsDailyMapper.class);
+        AnalyticsProperties properties = new AnalyticsProperties();
+        properties.setFlushBackfillDays(1);
+        properties.getEvents().setPendingReclaimEnabled(false);
+
+        @SuppressWarnings("unchecked")
+        StreamOperations<String, Object, Object> streamOps = mock(StreamOperations.class);
+        when(redis.opsForStream()).thenReturn(streamOps);
+        when(redis.hasKey(anyString())).thenReturn(true);
+        when(streamOps.createGroup(anyString(), any(ReadOffset.class), anyString()))
+                .thenThrow(new RuntimeException("BUSYGROUP Consumer Group name already exists"));
+
+        @SuppressWarnings("unchecked")
+        MapRecord<String, Object, Object> dirtyRecord = mock(MapRecord.class);
+        when(dirtyRecord.getId()).thenReturn(RecordId.of("1-0"));
+        when(dirtyRecord.getValue()).thenReturn((Map) Map.of("member", "1:10"));
+        when(streamOps.read(any(Consumer.class), any(StreamReadOptions.class), any(StreamOffset.class)))
+                .thenReturn(
+                        List.of(),
+                        (List) List.of(dirtyRecord),
+                        (List) List.of(dirtyRecord),
+                        List.of(),
+                        List.of()
+                );
+
+        @SuppressWarnings("unchecked")
+        ValueOperations<String, String> valueOps = mock(ValueOperations.class);
+        when(redis.opsForValue()).thenReturn(valueOps);
+        when(valueOps.multiGet(anyList())).thenReturn(List.of("7"));
+        when(redis.getStringSerializer()).thenReturn(new StringRedisSerializer());
+        when(redis.executePipelined(any(RedisCallback.class))).thenReturn(List.of(3L));
+        when(mapper.batchUpsert(anyList()))
+                .thenThrow(new DataAccessResourceFailureException("database down"))
+                .thenReturn(1);
+
+        AnalyticsFlushJob job = new AnalyticsFlushJob(redis, mapper, properties);
+
+        job.flush();
+        verify(streamOps, never()).acknowledge(anyString(), anyString(), any(RecordId[].class));
+
+        job.flush();
+
+        verify(mapper, times(2)).batchUpsert(anyList());
+        verify(streamOps).acknowledge(anyString(), eq("lf-stats-flush"), any(RecordId[].class));
+    }
 
     @Test
     void flush_should_consume_dirty_members_from_stream_and_ack_after_successful_mysql_write() {

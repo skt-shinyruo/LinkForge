@@ -15,6 +15,7 @@ import org.springframework.data.redis.core.HyperLogLogOperations;
 import org.springframework.data.redis.core.StreamOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.data.redis.core.script.RedisScript;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -25,15 +26,54 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class AnalyticsRedirectEventProjectorJobTest {
+
+    @Test
+    void aggregateWriter_should_route_replayed_requestId_through_the_same_atomic_dedup_script() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        AnalyticsProperties properties = new AnalyticsProperties();
+        properties.setRedisKeyTtlDays(7);
+        properties.getDimensions().setEnabled(true);
+        properties.getDimensions().setTypes(List.of("referer_domain"));
+
+        when(redis.execute(any(RedisScript.class), anyList(), any(Object[].class)))
+                .thenReturn(1L, 0L);
+
+        AnalyticsRedisAggregateWriter writer = new AnalyticsRedisAggregateWriter(redis, properties);
+        Map<String, String> event = Map.of(
+                "requestId", "request-123",
+                "ts", String.valueOf(Instant.parse("2026-04-24T10:15:30Z").toEpochMilli()),
+                "tenantId", "1",
+                "linkId", "10",
+                "visitorKey", "visitor-1",
+                "refererDomain", "example.com"
+        );
+
+        writer.write(event);
+        writer.write(event);
+
+        @SuppressWarnings("rawtypes")
+        ArgumentCaptor<List> keysCaptor = ArgumentCaptor.forClass(List.class);
+        verify(redis, times(2)).execute(any(RedisScript.class), keysCaptor.capture(), any(Object[].class));
+        assertThat(keysCaptor.getAllValues()).hasSize(2);
+        assertThat(keysCaptor.getAllValues().get(0))
+                .isEqualTo(keysCaptor.getAllValues().get(1))
+                .contains(AnalyticsKeys.projectionDedupKey("request-123"));
+        verify(redis, never()).opsForValue();
+        verify(redis, never()).opsForHash();
+        verify(redis, never()).opsForHyperLogLog();
+        verify(redis, never()).opsForStream();
+    }
 
     @Test
     void project_should_apply_async_aggregates_and_ack_after_successful_projection() {

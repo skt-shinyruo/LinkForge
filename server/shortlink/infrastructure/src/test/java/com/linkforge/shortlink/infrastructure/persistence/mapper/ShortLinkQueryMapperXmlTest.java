@@ -19,6 +19,17 @@ class ShortLinkQueryMapperXmlTest {
         assertThat(xml).contains("d.status = 'ACTIVE'");
     }
 
+    @Test
+    void searchQueries_shouldUseKeysetCursorAndIndexedTextSearch() throws IOException {
+        String xml = mapperXml();
+
+        assertThat(xml).contains("<select id=\"listSearchAfter\"");
+        assertThat(xml).contains("created_at &lt; #{cursorCreatedAtUtc}");
+        assertThat(xml).contains("id &lt; #{cursorId}");
+        assertThat(xml).contains("MATCH(original_url, note) AGAINST (#{keyword} IN NATURAL LANGUAGE MODE)");
+        assertThat(xml).contains("code LIKE CONCAT(#{keyword}, '%')");
+    }
+
     private static String mapperXml() throws IOException {
         try (InputStream in = ShortLinkQueryMapperXmlTest.class.getClassLoader().getResourceAsStream(
                 "com/linkforge/shortlink/infrastructure/persistence/mapper/ShortLinkQueryMapper.xml"

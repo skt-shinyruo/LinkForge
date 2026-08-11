@@ -94,7 +94,9 @@ OpenAPI 链路让内部系统通过 API Key 创建和查询短链。它和控制
 - 禁用的 API Key 会写短 TTL 认证缓存，重新启用或轮换后在事务提交后驱逐缓存。
 - `lastUsedAt` 更新带节流，优先用 Redis token 控制写库频率，避免每次 OpenAPI 请求都更新数据库。
 
-缓存只保存 disabled 负结果，不能把 active key 缓存在 Redis 后跳过数据库或 BCrypt secret 校验。缓存坏值、miss 或 Redis 故障都会回源；禁用写入和启用/轮换驱逐都在事务提交后执行，因而允许很短的陈旧窗口。
+缓存只保存 disabled 负结果，不能把 active key 缓存在 Redis 后跳过数据库或 secret 摘要校验。新 Key 使用独立服务端
+pepper 的 HMAC-SHA-256 和常量时间比较；历史 BCrypt 摘要在首次成功认证后通过 CAS 升级。缓存坏值、miss 或 Redis
+故障都会回源；禁用写入和启用/轮换驱逐都在事务提交后执行，因而允许很短的陈旧窗口。
 
 | 状态/输入 | 认证结果 | 说明 |
 | --- | --- | --- |

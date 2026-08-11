@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { apiFetch, clearToken, getToken, setToken } from "../services/http";
 import type { ApiResponse, AuthResponse } from "../services/types";
+import { isAuthResponse, isAuthUser } from "../services/runtimeContracts";
 
 type AuthMode = "bearer" | "cookie";
 const AUTH_MODE = (import.meta.env.VITE_AUTH_MODE || "bearer") as AuthMode;
@@ -27,7 +28,7 @@ export const useAuthStore = defineStore("auth", {
     isAdmin: (s) => s.roles.includes("TENANT_ADMIN") || s.roles.includes("PLATFORM_ADMIN"),
   },
   actions: {
-    applyUser(data: any) {
+    applyUser(data: AuthResponse["user"]) {
       this.email = data.email;
       this.tenantId = data.tenantId;
       this.roles = Array.isArray(data.roles) ? data.roles : [];
@@ -60,7 +61,11 @@ export const useAuthStore = defineStore("auth", {
 
       this.initInFlight = (async () => {
         try {
-          const r: ApiResponse<any> = await apiFetch<any>("/api/v1/me");
+          const r: ApiResponse<AuthResponse["user"]> = await apiFetch<AuthResponse["user"]>(
+            "/api/v1/me",
+            {},
+            isAuthUser,
+          );
           if (r.code !== 0 || !r.data) {
             this.clearState();
             return;
@@ -79,10 +84,14 @@ export const useAuthStore = defineStore("auth", {
 
     /** 登录并按认证模式保存 bearer token 或仅接受服务端 HttpOnly cookie。 */
     async login(email: string, password: string) {
-      const r: ApiResponse<AuthResponse> = await apiFetch<AuthResponse>("/api/v1/auth/login", {
-        method: "POST",
-        body: JSON.stringify({ email, password }),
-      });
+      const r: ApiResponse<AuthResponse> = await apiFetch<AuthResponse>(
+        "/api/v1/auth/login",
+        {
+          method: "POST",
+          body: JSON.stringify({ email, password }),
+        },
+        isAuthResponse,
+      );
       if (r.code !== 0 || !r.data?.user) {
         throw new Error(r.message || "登录失败");
       }

@@ -62,6 +62,15 @@
         LIMIT #{limit}
     </select>
 
+    <select id="pendingStats"
+            resultType="com.linkforge.shortlink.infrastructure.redirect.RedirectCacheInvalidationOutboxStats">
+        SELECT
+            COUNT(*) AS pendingCount,
+            MIN(created_at) AS oldestCreatedAtUtc
+        FROM redirect_cache_invalidation_outbox
+        WHERE status = 'PENDING'
+    </select>
+
     <update id="markProcessed">
         UPDATE redirect_cache_invalidation_outbox
         SET status = 'PROCESSED',

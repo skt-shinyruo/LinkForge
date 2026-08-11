@@ -58,6 +58,10 @@ public class RedirectCacheInvalidationOutboxRepository implements RedirectCacheI
         return mapper.listDue(nowUtc, limit);
     }
 
+    public RedirectCacheInvalidationOutboxStats pendingStats() {
+        return mapper.pendingStats();
+    }
+
     /** 仅当记录仍为 {@code PENDING} 时标记完成。 */
     public void markProcessed(long id, LocalDateTime processedAtUtc) {
         mapper.markProcessed(id, processedAtUtc);

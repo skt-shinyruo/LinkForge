@@ -6,6 +6,7 @@ import type {
   TopLinkStat,
   TopLinksQuery,
 } from "./types";
+import { arrayOf, isDailyStat, isTopLinkStat } from "./runtimeContracts";
 
 function buildRangeQuery(range: StatsRangeQuery): Record<string, string> {
   return {
@@ -14,17 +15,25 @@ function buildRangeQuery(range: StatsRangeQuery): Record<string, string> {
   };
 }
 
-export async function fetchOverviewStats(range: StatsRangeQuery): Promise<DailyStat[]> {
+export async function fetchOverviewStats(
+  range: StatsRangeQuery,
+  options: Pick<RequestInit, "signal"> = {},
+): Promise<DailyStat[]> {
   const path = range.applicationId
     ? API_ENDPOINTS.stats.overview(range.applicationId)
     : API_ENDPOINTS.stats.overview();
   const response = await apiFetch<DailyStat[]>(
     withQuery(path, buildRangeQuery(range), { skipEmptyString: false }),
+    options,
+    arrayOf(isDailyStat),
   );
   return ensureApiSuccess(response, "加载概览失败") ?? [];
 }
 
-export async function fetchTopLinksStats(query: TopLinksQuery): Promise<TopLinkStat[]> {
+export async function fetchTopLinksStats(
+  query: TopLinksQuery,
+  options: Pick<RequestInit, "signal"> = {},
+): Promise<TopLinkStat[]> {
   const path = query.applicationId
     ? API_ENDPOINTS.stats.topLinks(query.applicationId)
     : API_ENDPOINTS.stats.topLinks();
@@ -38,6 +47,8 @@ export async function fetchTopLinksStats(query: TopLinksQuery): Promise<TopLinkS
       },
       { skipEmptyString: false },
     ),
+    options,
+    arrayOf(isTopLinkStat),
   );
   return ensureApiSuccess(response, "加载 Top 报表失败") ?? [];
 }
@@ -45,11 +56,14 @@ export async function fetchTopLinksStats(query: TopLinksQuery): Promise<TopLinkS
 export async function fetchLinkDailyStats(
   linkId: number,
   range: StatsRangeQuery,
+  options: Pick<RequestInit, "signal"> = {},
 ): Promise<DailyStat[]> {
   const response = await apiFetch<DailyStat[]>(
     withQuery(API_ENDPOINTS.stats.linkDaily(linkId), buildRangeQuery(range), {
       skipEmptyString: false,
     }),
+    options,
+    arrayOf(isDailyStat),
   );
   return ensureApiSuccess(response, "加载短链统计失败") ?? [];
 }

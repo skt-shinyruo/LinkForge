@@ -28,6 +28,7 @@ import org.springframework.context.annotation.Import;
 @SpringBootApplication(scanBasePackages = {
         "com.linkforge.app.api",
         "com.linkforge.app.config",
+        "com.linkforge.app.observability",
         "com.linkforge.app.scheduling",
         "com.linkforge.app.security",
         "com.linkforge.app.startup"

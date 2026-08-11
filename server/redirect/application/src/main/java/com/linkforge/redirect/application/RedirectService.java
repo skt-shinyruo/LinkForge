@@ -9,12 +9,14 @@ import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.contract.redirect.LinkCachePort;
 import com.linkforge.contract.redirect.LinkMeta;
 import com.linkforge.contract.shortlink.ShortLinkReadPort;
+import com.linkforge.foundation.observability.OperationalMetrics;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.linkforge.redirect.application.error.RedirectBusinessException;
 import com.linkforge.redirect.application.error.RedirectErrorCode;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -38,6 +40,7 @@ public class RedirectService {
     private final VisitRecorderPort visitRecorderPort;
     private final Clock clock;
     private final RedirectQuotaGuard quotaGuard;
+    private final OperationalMetrics metrics;
 
     /**
      * 创建生产主流程所需的依赖。
@@ -51,7 +54,6 @@ public class RedirectService {
      * @param clock UTC 时间来源
      * @param quotaGuard 应用额度守卫；仅兼容场景可为 {@code null}
      */
-    @Autowired
     public RedirectService(
             LinkCachePort linkCache,
             ShortLinkReadPort shortLinkReadPort,
@@ -59,11 +61,24 @@ public class RedirectService {
             Clock clock,
             RedirectQuotaGuard quotaGuard
     ) {
+        this(linkCache, shortLinkReadPort, visitRecorderPort, clock, quotaGuard, OperationalMetrics.noop());
+    }
+
+    @Autowired
+    public RedirectService(
+            LinkCachePort linkCache,
+            ShortLinkReadPort shortLinkReadPort,
+            VisitRecorderPort visitRecorderPort,
+            Clock clock,
+            RedirectQuotaGuard quotaGuard,
+            OperationalMetrics metrics
+    ) {
         this.linkCache = linkCache;
         this.shortLinkReadPort = shortLinkReadPort;
         this.visitRecorderPort = visitRecorderPort;
         this.clock = clock;
         this.quotaGuard = quotaGuard == null ? RedirectQuotaGuard.disabled(clock) : quotaGuard;
+        this.metrics = metrics == null ? OperationalMetrics.noop() : metrics;
     }
 
     /**
@@ -197,6 +212,31 @@ public class RedirectService {
      * @return 可供接口层渲染的决策，不抛出未找到业务异常
      */
     public RedirectResolution resolve(ResolveRedirectRequest request) {
+        long startedAt = System.nanoTime();
+        try {
+            RedirectResolution resolution = resolveDecision(request);
+            String result = redirectResultTag(resolution);
+            metrics.increment("linkforge.redirect.requests", "result", result);
+            metrics.record(
+                    "linkforge.redirect.duration",
+                    Duration.ofNanos(System.nanoTime() - startedAt),
+                    "result",
+                    result
+            );
+            return resolution;
+        } catch (RuntimeException ex) {
+            metrics.increment("linkforge.redirect.requests", "result", "failure");
+            metrics.record(
+                    "linkforge.redirect.duration",
+                    Duration.ofNanos(System.nanoTime() - startedAt),
+                    "result",
+                    "failure"
+            );
+            throw ex;
+        }
+    }
+
+    private RedirectResolution resolveDecision(ResolveRedirectRequest request) {
         if (request == null) {
             return RedirectResolution.notFound(null, false);
         }
@@ -293,9 +333,27 @@ public class RedirectService {
             return cached.meta();
         }
 
-        LinkMeta meta = shortLinkReadPort.findRedirectMetaByHostAndCode(host, normalized)
-                .map(RedirectService::toLinkMeta)
-                .orElse(null);
+        long startedAt = System.nanoTime();
+        LinkMeta meta;
+        try {
+            meta = shortLinkReadPort.findRedirectMetaByHostAndCode(host, normalized)
+                    .map(RedirectService::toLinkMeta)
+                    .orElse(null);
+            metrics.record(
+                    "linkforge.redirect.authoritative_lookup",
+                    Duration.ofNanos(System.nanoTime() - startedAt),
+                    "result",
+                    meta == null ? "miss" : "hit"
+            );
+        } catch (RuntimeException ex) {
+            metrics.record(
+                    "linkforge.redirect.authoritative_lookup",
+                    Duration.ofNanos(System.nanoTime() - startedAt),
+                    "result",
+                    "failure"
+            );
+            throw ex;
+        }
         if (meta != null) {
             linkCache.tryPut(host, meta);
             return meta;
@@ -312,6 +370,16 @@ public class RedirectService {
             throw new RedirectBusinessException(RedirectErrorCode.LINK_NOT_FOUND);
         }
         return normalized;
+    }
+
+    private static String redirectResultTag(RedirectResolution resolution) {
+        if (resolution == null || resolution.kind() == null) {
+            return "unknown";
+        }
+        if (resolution.kind() != RedirectResolution.Kind.UNAVAILABLE || resolution.unavailableReason() == null) {
+            return resolution.kind().name().toLowerCase(java.util.Locale.ROOT);
+        }
+        return "unavailable_" + resolution.unavailableReason().name().toLowerCase(java.util.Locale.ROOT);
     }
 
     private static String normalizeCode(String code) {

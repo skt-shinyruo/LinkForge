@@ -1,11 +1,13 @@
 package com.linkforge.shortlink.infrastructure.redirect;
 
 import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
+import com.linkforge.foundation.observability.OperationalMetrics;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -35,15 +37,27 @@ public class RedirectCacheInvalidationOutboxJob {
     private final RedirectCacheInvalidationOutboxRepository outbox;
     private final RedirectCacheSyncPort redirectCacheSync;
     private final Clock clock;
+    private final OperationalMetrics metrics;
 
     public RedirectCacheInvalidationOutboxJob(
             RedirectCacheInvalidationOutboxRepository outbox,
             RedirectCacheSyncPort redirectCacheSync,
             Clock clock
     ) {
+        this(outbox, redirectCacheSync, clock, OperationalMetrics.noop());
+    }
+
+    @Autowired
+    public RedirectCacheInvalidationOutboxJob(
+            RedirectCacheInvalidationOutboxRepository outbox,
+            RedirectCacheSyncPort redirectCacheSync,
+            Clock clock,
+            OperationalMetrics metrics
+    ) {
         this.outbox = outbox;
         this.redirectCacheSync = redirectCacheSync;
         this.clock = clock;
+        this.metrics = metrics == null ? OperationalMetrics.noop() : metrics;
     }
 
     /**
@@ -52,6 +66,7 @@ public class RedirectCacheInvalidationOutboxJob {
     @Scheduled(fixedDelayString = "${APP_SHORTLINK_REDIRECT_CACHE_INVALIDATION_OUTBOX_DELAY_MS:1000}")
     @SchedulerLock(name = "lf:job:shortlink:redirect-cache-invalidation-outbox", lockAtMostFor = "PT2M")
     public void process() {
+        observeBacklog();
         int total = 0;
         for (int i = 0; i < MAX_BATCHES; i++) {
             int n = processOnce();
@@ -85,7 +100,9 @@ public class RedirectCacheInvalidationOutboxJob {
             try {
                 redirectCacheSync.evict(row.tenantId(), row.domainId(), row.code());
                 outbox.markProcessed(row.id(), nowUtc());
+                metrics.increment("linkforge.outbox.events", "outbox", "redirect_cache_invalidation", "result", "success");
             } catch (RuntimeException ex) {
+                metrics.increment("linkforge.outbox.events", "outbox", "redirect_cache_invalidation", "result", "retry");
                 int attempts = row.attempts() + 1;
                 outbox.markFailed(
                         row.id(),
@@ -97,6 +114,22 @@ public class RedirectCacheInvalidationOutboxJob {
             handled++;
         }
         return handled;
+    }
+
+    private void observeBacklog() {
+        try {
+            RedirectCacheInvalidationOutboxStats stats = outbox.pendingStats();
+            long pending = stats == null ? 0L : Math.max(stats.pendingCount(), 0L);
+            metrics.set("linkforge.outbox.pending", pending, "outbox", "redirect_cache_invalidation");
+            long ageSeconds = 0L;
+            if (stats != null && stats.oldestCreatedAtUtc() != null) {
+                ageSeconds = Math.max(Duration.between(stats.oldestCreatedAtUtc(), nowUtc()).toSeconds(), 0L);
+            }
+            metrics.set("linkforge.outbox.oldest_age_seconds", ageSeconds, "outbox", "redirect_cache_invalidation");
+        } catch (RuntimeException ex) {
+            metrics.increment("linkforge.outbox.failures", "outbox", "redirect_cache_invalidation", "stage", "observe");
+            log.debug("redirect cache invalidation outbox metrics failed: err={}", ex.getMessage());
+        }
     }
 
     private LocalDateTime nextAttemptAt(int attempts) {

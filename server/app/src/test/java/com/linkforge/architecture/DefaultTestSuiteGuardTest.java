@@ -15,15 +15,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 class DefaultTestSuiteGuardTest {
 
     @Test
-    void integration_tests_should_be_part_of_default_reactor() throws Exception {
+    void integration_tests_should_be_isolated_behind_it_profile() throws Exception {
         Element project = DocumentBuilderFactory.newInstance()
                 .newDocumentBuilder()
                 .parse(resolveFromCurrentWorkspace("../pom.xml", "server/pom.xml").toFile())
                 .getDocumentElement();
 
         assertThat(childTexts(project, "modules", "module"))
-                .as("Default mvn test must include runtime/cross-context integration tests")
-                .contains("integration-tests");
+                .as("Default mvn test must remain a Docker-free unit suite")
+                .doesNotContain("integration-tests");
 
         List<String> profileIdsWithIntegrationTests = childElements(project, "profiles").stream()
                 .flatMap(profiles -> childElements(profiles, "profile").stream())
@@ -32,8 +32,32 @@ class DefaultTestSuiteGuardTest {
                 .toList();
 
         assertThat(profileIdsWithIntegrationTests)
-                .as("integration-tests must not be hidden behind an opt-in Maven profile")
-                .isEmpty();
+                .as("The it profile must include runtime/cross-context integration tests")
+                .containsExactly("it");
+    }
+
+    @Test
+    void executable_jar_should_not_replace_the_thin_reactor_artifact() throws Exception {
+        Element project = DocumentBuilderFactory.newInstance()
+                .newDocumentBuilder()
+                .parse(resolveFromCurrentWorkspace("pom.xml", "server/app/pom.xml").toFile())
+                .getDocumentElement();
+
+        Element springBootPlugin = childElements(project, "build").stream()
+                .flatMap(build -> childElements(build, "plugins").stream())
+                .flatMap(plugins -> childElements(plugins, "plugin").stream())
+                .filter(plugin -> "spring-boot-maven-plugin".equals(childText(plugin, "artifactId")))
+                .findFirst()
+                .orElseThrow();
+
+        String classifier = childElements(springBootPlugin, "configuration").stream()
+                .map(configuration -> childText(configuration, "classifier"))
+                .findFirst()
+                .orElse("");
+
+        assertThat(classifier)
+                .as("Integration tests need the thin jar; the executable Boot jar must be attached separately")
+                .isEqualTo("exec");
     }
 
     private static Path resolveFromCurrentWorkspace(String... relativePaths) {

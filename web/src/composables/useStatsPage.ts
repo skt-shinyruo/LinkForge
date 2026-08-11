@@ -4,6 +4,7 @@ import { listLinks } from "../services/links";
 import { useAuthStore } from "../stores/auth";
 import { fetchLinkDailyStats, fetchOverviewStats, fetchTopLinksStats } from "../services/stats";
 import type { ApplicationDto, DailyStat, LinkDto, TopLinkSortBy, TopLinkStat } from "../services/types";
+import { useLatestRequest } from "./useLatestRequest";
 
 const LINK_OPTIONS_PAGE_SIZE = 100;
 
@@ -31,11 +32,12 @@ function getErrorMessage(caught: unknown, fallbackMessage: string) {
  * 链接选项按后端分页完整拉取，随后并行加载 overview、Top links 和选中链接日统计。日期范围按 UTC
  * 自然日构造；应用切换会先重建可选链接再读取报表。函数不把分日 HLL UV 相加为全范围精确 UV。
  *
- * 快速连续切换目前没有 AbortController/请求序号保护，较早请求可能晚于较新请求落地，这是已知 UI 限制。
+ * 所有报表读取先形成局部快照，再由 latest-request 控制器一次提交；快速切换不会混入旧响应。
  */
 export function useStatsPage() {
-  const error = ref<string | null>(null);
-  const loading = ref(false);
+  const latestRefresh = useLatestRequest(getErrorMessage);
+  const error = latestRefresh.error;
+  const loading = latestRefresh.loading;
 
   const rangeDays = ref<7 | 30>(7);
   const topSortBy = ref<TopLinkSortBy>("pv");
@@ -66,17 +68,17 @@ export function useStatsPage() {
     { name: "UV", data: linkStats.value.map((stat) => stat.uv) },
   ]);
 
-  async function loadLinks() {
+  async function fetchLinksSnapshot(applicationId: number | null, signal: AbortSignal) {
     const nextLinks: LinkDto[] = [];
     let nextPage = 0;
     let totalLinks = 0;
 
     do {
       const response = await listLinks({
-        applicationId: selectedApplicationId.value ?? undefined,
+        applicationId: applicationId ?? undefined,
         page: nextPage,
         size: LINK_OPTIONS_PAGE_SIZE,
-      });
+      }, { signal });
       nextLinks.push(...response.items);
       totalLinks = response.total;
       nextPage += 1;
@@ -86,16 +88,7 @@ export function useStatsPage() {
       }
     } while (nextLinks.length < totalLinks);
 
-    links.value = nextLinks;
-
-    if (links.value.length === 0) {
-      selectedLinkId.value = null;
-      return;
-    }
-
-    if (!links.value.some((link) => link.id === selectedLinkId.value)) {
-      selectedLinkId.value = links.value[0]!.id;
-    }
+    return nextLinks;
   }
 
   const auth = useAuthStore();
@@ -116,46 +109,51 @@ export function useStatsPage() {
     }
   }
 
-  async function loadOverview() {
-    overviewStats.value = await fetchOverviewStats({
-      ...range.value,
-      applicationId: selectedApplicationId.value ?? undefined,
-    });
-  }
-
-  async function loadTopLinks() {
-    topLinks.value = await fetchTopLinksStats({
-      ...range.value,
-      applicationId: selectedApplicationId.value ?? undefined,
-      limit: 10,
-      sortBy: topSortBy.value,
-    });
-  }
-
   async function setSelectedApplicationId(value: number | null) {
     selectedApplicationId.value = value;
     await refresh();
   }
 
-  async function loadLinkStats() {
-    if (!selectedLinkId.value) {
-      linkStats.value = [];
-      return;
-    }
-    linkStats.value = await fetchLinkDailyStats(selectedLinkId.value, range.value);
-  }
-
   async function refresh() {
-    loading.value = true;
-    error.value = null;
-    try {
-      await loadLinks();
-      await Promise.all([loadOverview(), loadTopLinks(), loadLinkStats()]);
-    } catch (caught) {
-      error.value = getErrorMessage(caught, "加载失败");
-    } finally {
-      loading.value = false;
-    }
+    const applicationId = selectedApplicationId.value;
+    const rangeSnapshot = { ...range.value };
+    const sortBy = topSortBy.value;
+    const requestedLinkId = selectedLinkId.value;
+
+    await latestRefresh.run(
+      async (signal) => {
+        const nextLinks = await fetchLinksSnapshot(applicationId, signal);
+        const nextSelectedLinkId = nextLinks.some((link) => link.id === requestedLinkId)
+          ? requestedLinkId
+          : nextLinks[0]?.id ?? null;
+        const scopedRange = {
+          ...rangeSnapshot,
+          applicationId: applicationId ?? undefined,
+        };
+        const [nextOverview, nextTopLinks, nextLinkStats] = await Promise.all([
+          fetchOverviewStats(scopedRange, { signal }),
+          fetchTopLinksStats({ ...scopedRange, limit: 10, sortBy }, { signal }),
+          nextSelectedLinkId == null
+            ? Promise.resolve([] satisfies DailyStat[])
+            : fetchLinkDailyStats(nextSelectedLinkId, rangeSnapshot, { signal }),
+        ]);
+        return {
+          linkStats: nextLinkStats,
+          links: nextLinks,
+          overviewStats: nextOverview,
+          selectedLinkId: nextSelectedLinkId,
+          topLinks: nextTopLinks,
+        };
+      },
+      (snapshot) => {
+        links.value = snapshot.links;
+        selectedLinkId.value = snapshot.selectedLinkId;
+        overviewStats.value = snapshot.overviewStats;
+        topLinks.value = snapshot.topLinks;
+        linkStats.value = snapshot.linkStats;
+      },
+      "加载失败",
+    );
   }
 
   function setRange(days: 7 | 30) {
@@ -168,16 +166,12 @@ export function useStatsPage() {
       return;
     }
     topSortBy.value = value;
-    void loadTopLinks().catch((caught) => {
-      error.value = getErrorMessage(caught, "加载 Top 报表失败");
-    });
+    void refresh();
   }
 
   function onSelectedLinkChange(value: number | null) {
     selectedLinkId.value = value;
-    void loadLinkStats().catch((caught) => {
-      error.value = getErrorMessage(caught, "加载短链统计失败");
-    });
+    void refresh();
   }
 
   async function copyShort(shortUrl: string | null) {

@@ -1,6 +1,7 @@
 package com.linkforge.shortlink.infrastructure.persistence.mapper;
 
 import com.linkforge.shortlink.infrastructure.redirect.RedirectCacheInvalidationOutboxRow;
+import com.linkforge.shortlink.infrastructure.redirect.RedirectCacheInvalidationOutboxStats;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -29,6 +30,8 @@ public interface RedirectCacheInvalidationOutboxMapper {
             @Param("nowUtc") LocalDateTime nowUtc,
             @Param("limit") int limit
     );
+
+    RedirectCacheInvalidationOutboxStats pendingStats();
 
     int markProcessed(
             @Param("id") long id,

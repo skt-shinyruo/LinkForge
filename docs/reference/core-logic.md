@@ -66,7 +66,8 @@ LinkForge 是模块化单体。`server/app` 是 Spring Boot 组合根，各限�
 4. 明细 consumer 根据配置采样入库；poison message 的 DLQ 写入是 best-effort。
 5. 报表读取 MySQL，并通过 Shortlink 发布读端口补全链接摘要。
 
-统计不是 exactly-once：访问事件重放可能重复 PV，HLL UV 对同一指纹相对幂等。权威口径、隐私与限制见 [统计采集与报表](analytics-ingestion-and-reporting.md)。
+统计是最终一致链路：标准访问事件的 Stream 重放由 requestId 幂等投影保护，历史无 requestId 消息和调用方重复生成
+事件仍可能重复 PV；HLL UV 是近似值。权威口径、隐私与限制见 [统计采集与报表](analytics-ingestion-and-reporting.md)。
 
 ### 审批
 
@@ -126,7 +127,7 @@ LinkForge 是模块化单体。`server/app` 是 Spring Boot 组合根，各限�
 ## 当前限制
 
 - 点击额度 Redis adapter 内部故障固定 fail-open；外围 `quota.fail-open` 只覆盖仍外抛的查询/调用错误。
-- PV 可能因 stream 重放重复；HLL UV 是近似值，跨日 UV 不能直接求和。
+- 标准事件的 stream 重放不会重复 PV；历史无 requestId 或调用方重复生成事件仍可能重复，HLL UV 是近似值且跨日不能直接求和。
 - scope UV 在历史/缺失 scope 数据上存在 fallback，不能当作精确审计口径。
 - 访问明细 DLQ 是 best-effort，极端故障可能出现消息已 ACK 但 DLQ 未写入。
 - legacy provisioning、统计采样和部分审批终态语义为兼容行为，本轮只记录，不做高风险改写。

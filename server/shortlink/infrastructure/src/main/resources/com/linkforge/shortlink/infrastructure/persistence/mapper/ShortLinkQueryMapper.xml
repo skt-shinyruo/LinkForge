@@ -209,9 +209,16 @@
 
             <if test="keyword != null and keyword != ''">
                 AND (
-                    LOWER(code) LIKE CONCAT('%', LOWER(#{keyword}), '%')
-                    OR LOWER(original_url) LIKE CONCAT('%', LOWER(#{keyword}), '%')
-                    OR LOWER(note) LIKE CONCAT('%', LOWER(#{keyword}), '%')
+                    code = #{keyword}
+                    OR code LIKE CONCAT(#{keyword}, '%')
+                    OR MATCH(original_url, note) AGAINST (#{keyword} IN NATURAL LANGUAGE MODE)
+                    OR (
+                        CHAR_LENGTH(#{keyword}) &lt; 3
+                        AND (
+                            original_url LIKE CONCAT('%', #{keyword}, '%')
+                            OR note LIKE CONCAT('%', #{keyword}, '%')
+                        )
+                    )
                 )
             </if>
 
@@ -257,5 +264,18 @@
         <include refid="searchWhere"/>
         ORDER BY created_at DESC, id DESC
         LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="listSearchAfter" resultMap="ShortLinkResultMap">
+        SELECT
+        <include refid="shortLinkColumns"/>
+        FROM short_links
+        <include refid="searchWhere"/>
+          AND (
+              created_at &lt; #{cursorCreatedAtUtc}
+              OR (created_at = #{cursorCreatedAtUtc} AND id &lt; #{cursorId})
+          )
+        ORDER BY created_at DESC, id DESC
+        LIMIT #{limit}
     </select>
 </mapper>

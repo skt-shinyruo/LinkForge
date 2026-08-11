@@ -117,6 +117,26 @@ class RedirectQuotaGuardTest {
         assertThat(quotaReservationPort.monthlyClickLimits()).containsExactly(10L);
     }
 
+    @Test
+    void quotaLookupCache_shouldRemainBoundedWhenApplicationsAreUnbounded() {
+        MutableClock clock = new MutableClock("2026-04-24T10:15:30Z");
+        RecordingApplicationScopePort applicationScopePort = new RecordingApplicationScopePort(quota(Optional.empty()));
+        RedirectQuotaGuard guard = new RedirectQuotaGuard(
+                clock,
+                applicationScopePort,
+                new RecordingQuotaReservationPort(),
+                false,
+                30L,
+                2L
+        );
+
+        guard.unavailableReason(meta(22L, 31L));
+        guard.unavailableReason(meta(22L, 32L));
+        guard.unavailableReason(meta(22L, 33L));
+
+        assertThat(guard.estimatedQuotaCacheSize()).isLessThanOrEqualTo(2L);
+    }
+
     private static QuotaOutcome quota(Optional<ApplicationQuotaView> quota) {
         return () -> quota;
     }

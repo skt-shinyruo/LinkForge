@@ -42,6 +42,109 @@ import static org.mockito.Mockito.when;
 class UpdateShortLinkCommandHandlerTest {
 
     @Test
+    void handle_shouldReturnCurrentViewWithoutWritesForNormalizedNoOpPatch() {
+        ShortLinkRepository shortLinkRepository = mock(ShortLinkRepository.class);
+        SetLinkTagsCommandHandler setLinkTagsHandler = mock(SetLinkTagsCommandHandler.class);
+        ShortLinkDomainEventDispatcher domainEventDispatcher = mock(ShortLinkDomainEventDispatcher.class);
+        LinkTagRepository linkTagRepository = mock(LinkTagRepository.class);
+        RedirectCacheSyncPort redirectCacheSync = mock(RedirectCacheSyncPort.class);
+        RedirectCacheInvalidationOutboxPort outbox = mock(RedirectCacheInvalidationOutboxPort.class);
+        ShortLinkDtoMapper dtoMapper = mock(ShortLinkDtoMapper.class);
+        PostCommitHookPort postCommitHookPort = mock(PostCommitHookPort.class);
+        ApprovalSubmissionPort approvalSubmissionPort = mock(ApprovalSubmissionPort.class);
+        Clock clock = Clock.fixed(Instant.parse("2026-04-01T00:00:00Z"), ZoneOffset.UTC);
+        UpdateShortLinkCommandHandler handler = new UpdateShortLinkCommandHandler(
+                shortLinkRepository,
+                setLinkTagsHandler,
+                domainEventDispatcher,
+                linkTagRepository,
+                redirectCacheSync,
+                outbox,
+                dtoMapper,
+                postCommitHookPort,
+                clock,
+                approvalSubmissionPort
+        );
+        ShortLink link = ShortLink.create(
+                100L,
+                1L,
+                null,
+                null,
+                ShortCode.of("sameLink"),
+                ShortLinkLifecycleState.ACTIVE,
+                HttpUrl.of("https://example.com/same"),
+                "same-note",
+                true,
+                null,
+                302,
+                false,
+                null,
+                null,
+                null,
+                CreatedByType.USER,
+                7L
+        );
+        LinkDto expected = new LinkDto(
+                100L,
+                1L,
+                null,
+                null,
+                "ACTIVE",
+                "sameLink",
+                "https://lf/r/sameLink",
+                "https://example.com/same",
+                "same-note",
+                true,
+                null,
+                null,
+                302,
+                false,
+                null,
+                null,
+                List.of(),
+                List.of("alpha"),
+                Instant.parse("2026-03-31T00:00:00Z")
+        );
+        when(shortLinkRepository.findByTenantIdAndId(1L, 100L)).thenReturn(java.util.Optional.of(link));
+        when(linkTagRepository.findTagNamesByLinkId(100L)).thenReturn(List.of("alpha"));
+        when(dtoMapper.toDto(link, List.of("alpha"))).thenReturn(expected);
+
+        LinkDto actual = handler.handle(
+                1L,
+                100L,
+                new UpdateLinkRequest(
+                        "https://example.com/same",
+                        "same-note",
+                        null,
+                        null,
+                        true,
+                        Set.of(" alpha "),
+                        302,
+                        null,
+                        false,
+                        null,
+                        null,
+                        null,
+                        null,
+                        "ACTIVE"
+                ),
+                new UserActor(1L, 7L, "owner@example.com", Set.of("USER")),
+                LocalDateTime.parse("2026-04-01T00:00:00")
+        );
+
+        assertThat(actual).isSameAs(expected);
+        verify(shortLinkRepository, never()).update(link);
+        verifyNoInteractions(
+                setLinkTagsHandler,
+                domainEventDispatcher,
+                redirectCacheSync,
+                outbox,
+                postCommitHookPort,
+                approvalSubmissionPort
+        );
+    }
+
+    @Test
     void constructor_shouldDependOnGovernanceApprovalSubmissionContract() {
         Constructor<?> constructor = UpdateShortLinkCommandHandler.class.getDeclaredConstructors()[0];
 

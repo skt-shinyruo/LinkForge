@@ -106,7 +106,9 @@
 | 点击额度 | `quota:click:application:{tenantId}:{applicationId}:{yyyyMM}` |
 | 访问流 | `stats:visit:events` |
 
-dirty member 的 `{tenantId}:{linkId}` wire shape 保持不变；它现在只表示“需要刷新”，不表示 active set membership。flush 消费当前累计 PV/HLL 值，所以重复 dirty 消息通常只重复 upsert；上游访问事件重放仍可能重复增加 PV。
+dirty member 的 `{tenantId}:{linkId}` wire shape 保持不变；它现在只表示“需要刷新”，不表示 active set membership。
+flush 消费当前累计 PV/HLL 值，所以重复 dirty 消息只重复 upsert。标准访问事件以 requestId 幂等投影，同一 Stream
+记录重放不会重复增加 PV；历史无 requestId 消息和调用方生成多个 requestId 的重复访问不在该保证内。
 
 ## Shortlink 集成事件
 

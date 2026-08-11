@@ -4,6 +4,7 @@
 # Node
 web/node_modules/
 web/dist/
+web/coverage/
 
 # Local env
 deploy/.env

@@ -20,9 +20,8 @@ import java.util.Map;
  * 上游必须先把应用归属或普通用户的 {@code createdBy + unscopedOnly} 限制写入 query；持久化查询本身始终附带
  * {@code tenantId}，这是最后的数据隔离边界。</p>
  *
- * <p>查询先 count，再按 {@code created_at DESC, id DESC} 读取当前页，offset 最大允许 {@code 100000}
- * （包含边界）。两次 SQL 不在本类建立一致性快照，并发创建、归档或更新过滤字段时，{@code total} 与当前页内容
- * 可能短暂不一致。只有本页短链会触发一次批量标签查询，避免逐行 N+1；标签表没有 tenant 列，因此不得向
+ * <p>兼容路径按 offset 查询，可选择跳过 count；扩展路径使用 {@code created_at DESC, id DESC} keyset cursor，
+ * 不随页深度增加扫描成本。只有本页短链会触发一次批量标签查询，避免逐行 N+1；标签表没有 tenant 列，因此不得向
  * {@link TagMaps} 传入未经租户隔离的聚合。</p>
  */
 @Component
@@ -56,18 +55,54 @@ public class SearchShortLinksQueryHandler {
      * @return 当前页 DTO、总数以及原 page/size
      */
     public PageResult<LinkDto> handle(long tenantId, ShortLinkSearchQuery query, PageQuery pageQuery) {
-        long offset = OffsetPagingGuard.requireOffsetWithin(pageQuery, MAX_SEARCH_OFFSET);
+        return handle(tenantId, query, pageQuery, true, null);
+    }
 
-        long total = shortLinkRepository.countSearch(tenantId, query);
-        if (total <= 0) {
-            return new PageResult<>(List.of(), 0, pageQuery.page(), pageQuery.size());
+    /**
+     * 执行可选总数与可选 keyset cursor 的搜索。游标存在时 page 仅作为响应兼容字段，不参与 SQL。
+     */
+    public PageResult<LinkDto> handle(
+            long tenantId,
+            ShortLinkSearchQuery query,
+            PageQuery pageQuery,
+            boolean includeTotal,
+            String cursor
+    ) {
+        ShortLinkSearchCursorCodec.Cursor decodedCursor = ShortLinkSearchCursorCodec.decode(cursor);
+        long offset = decodedCursor == null
+                ? OffsetPagingGuard.requireOffsetWithin(pageQuery, MAX_SEARCH_OFFSET)
+                : 0L;
+
+        long total = includeTotal ? shortLinkRepository.countSearch(tenantId, query) : -1L;
+        if (includeTotal && total <= 0) {
+            return new PageResult<>(List.of(), 0, pageQuery.page(), pageQuery.size(), false, null);
         }
 
-        List<ShortLink> links = shortLinkRepository.listSearch(tenantId, query, offset, pageQuery.size());
+        int fetchLimit = pageQuery.size() == Integer.MAX_VALUE ? Integer.MAX_VALUE : pageQuery.size() + 1;
+        List<ShortLink> fetched = decodedCursor == null
+                ? shortLinkRepository.listSearch(tenantId, query, offset, includeTotal ? pageQuery.size() : fetchLimit)
+                : shortLinkRepository.listSearchAfter(
+                        tenantId,
+                        query,
+                        decodedCursor.createdAtUtc(),
+                        decodedCursor.id(),
+                        fetchLimit
+                );
+        boolean hasMore = includeTotal && decodedCursor == null
+                ? offset + fetched.size() < total
+                : fetched.size() > pageQuery.size();
+        List<ShortLink> links = hasMore && fetched.size() > pageQuery.size()
+                ? List.copyOf(fetched.subList(0, pageQuery.size()))
+                : List.copyOf(fetched);
+
         Map<Long, List<String>> tags = TagMaps.loadTagsByLinkIds(linkTagRepository, links);
         List<LinkDto> dtos = links.stream()
                 .map(e -> dtoMapper.toDto(e, tags.getOrDefault(e.id(), List.of())))
                 .toList();
-        return new PageResult<>(dtos, total, pageQuery.page(), pageQuery.size());
+        ShortLink last = links.isEmpty() ? null : links.get(links.size() - 1);
+        String nextCursor = hasMore && last != null
+                ? ShortLinkSearchCursorCodec.encode(last.createdAtUtc(), last.id())
+                : null;
+        return new PageResult<>(dtos, total, pageQuery.page(), pageQuery.size(), hasMore, nextCursor);
     }
 }

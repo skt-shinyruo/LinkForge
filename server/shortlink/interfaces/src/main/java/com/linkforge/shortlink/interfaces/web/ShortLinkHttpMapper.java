@@ -88,7 +88,9 @@ public final class ShortLinkHttpMapper {
                 result.items().stream().map(ShortLinkHttpMapper::toLinkResponse).toList(),
                 result.total(),
                 result.page(),
-                result.size()
+                result.size(),
+                result.hasMore(),
+                result.nextCursor()
         );
     }
 

@@ -49,6 +49,8 @@ export type PageResponse<T> = {
   total: number;
   page: number;
   size: number;
+  hasMore?: boolean;
+  nextCursor?: string | null;
 };
 
 export type LinkListQuery = {
@@ -59,6 +61,8 @@ export type LinkListQuery = {
   tag?: string;
   page?: number;
   size?: number;
+  cursor?: string;
+  includeTotal?: boolean;
 };
 
 export type CreateLinkRequest = {

@@ -17,5 +17,7 @@ public interface ApiKeyMapper {
 
     int update(ApiKeyEntity apiKey);
 
+    int updateKeyHashIfCurrent(Long id, String expectedKeyHash, String newKeyHash);
+
     int updateLastUsedAt(Long id, LocalDateTime lastUsedAt);
 }

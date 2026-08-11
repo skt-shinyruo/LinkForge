@@ -13,7 +13,7 @@ import java.time.Duration;
  * API Key 认证所需的 Redis 辅助状态。
  *
  * <p>{@code auth:api_key:*} 是禁用态负缓存，不是成功认证缓存：当前实现只写入禁用记录，
- * 且应用层即使读到历史 ACTIVE 条目也仍会回源数据库并校验 BCrypt。因而缓存不可用、未命中、
+ * 且应用层即使读到历史 ACTIVE 条目也仍会回源数据库并校验凭据摘要。因而缓存不可用、未命中、
  * 空值或坏值统一返回 {@code null}，只会增加数据库读取，不会绕过密钥和状态校验。</p>
  *
  * <p>读取兼容旧 {@code v1|tenantId|status|secretDigest} 格式；该格式没有

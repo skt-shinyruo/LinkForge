@@ -241,12 +241,22 @@ public final class AnalyticsKeys {
      * {@code visitorKey}、{@code ipHash}、{@code uaRaw}、{@code uaFamily}、{@code osFamily}、{@code deviceType}、
      * {@code refererDomain}、{@code language}、{@code utmSource}、{@code utmMedium}、{@code utmCampaign}、
      * {@code applicationId}、{@code domainId}、{@code code}。它不写原始 IP 或 {@code originalUrl}。明细消费
-     * 以 {@code requestId} 去重，PV/UV 投影不以它提供 exactly-once。</p>
+     * 以 {@code requestId} 去重，PV/UV 聚合投影也使用该字段确保同一事件重放时不重复计数。</p>
      *
      * @return 固定的访问事件 Redis Stream key
      */
     public static String visitEventStreamKey() {
         return "stats:visit:events";
+    }
+
+    /**
+     * 返回访问事件聚合投影的幂等标记 key。
+     *
+     * <p>标记的生命周期由聚合 key TTL 控制；requestId 由访问流 appender 生成，不能使用 Stream record id，
+     * 因为 ACK 失败重放时 Stream record id 不会改变但投影进程可能已经重启。</p>
+     */
+    public static String projectionDedupKey(String requestId) {
+        return "stats:projection:dedup:" + requestId;
     }
 
     private static String normalizeDimType(String dimType) {

@@ -1,4 +1,5 @@
 import type { ApiResponse } from "./types";
+import { decodeApiResponse, type RuntimeValidator } from "./apiContract";
 
 const TOKEN_KEY = "linkforge.token";
 
@@ -160,6 +161,7 @@ async function attachCsrfHeaderIfNeeded(headers: Headers, method: string): Promi
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {},
+  validateData?: RuntimeValidator<T>,
 ): Promise<ApiResponse<T>> {
   const headers = new Headers(options.headers || {});
   headers.set("Content-Type", headers.get("Content-Type") || "application/json");
@@ -168,13 +170,15 @@ export async function apiFetch<T>(
 
   const text = await resp.text();
   let data: ApiResponse<T> | null = null;
+  let protocolError: Error | null = null;
   let parseOk = false;
   if (text) {
     try {
-      data = JSON.parse(text) as ApiResponse<T>;
+      data = decodeApiResponse(JSON.parse(text) as unknown, validateData);
       parseOk = true;
-    } catch {
+    } catch (caught) {
       data = null;
+      protocolError = caught instanceof Error ? caught : new Error("Invalid API response");
     }
   } else {
     data = {} as ApiResponse<T>;
@@ -194,7 +198,7 @@ export async function apiFetch<T>(
   }
 
   if (!parseOk || data == null) {
-    throw new Error(`Invalid JSON response (HTTP ${resp.status})`);
+    throw protocolError ?? new Error(`Invalid JSON response (HTTP ${resp.status})`);
   }
 
   return data;

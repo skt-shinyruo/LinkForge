@@ -5,10 +5,12 @@ import com.linkforge.contract.redirect.LinkCachePort;
 import com.linkforge.contract.redirect.LinkCachePort.LookupResult;
 import com.linkforge.contract.redirect.LinkMeta;
 import com.linkforge.foundation.config.RedirectProperties;
+import com.linkforge.foundation.observability.OperationalMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.time.Duration;
 
@@ -33,11 +35,23 @@ public class LinkCacheService implements LinkCachePort {
     private final StringRedisTemplate redis;
     private final ObjectMapper objectMapper;
     private final RedirectProperties redirectProperties;
+    private final OperationalMetrics metrics;
 
     public LinkCacheService(StringRedisTemplate redis, ObjectMapper objectMapper, RedirectProperties redirectProperties) {
+        this(redis, objectMapper, redirectProperties, OperationalMetrics.noop());
+    }
+
+    @Autowired
+    public LinkCacheService(
+            StringRedisTemplate redis,
+            ObjectMapper objectMapper,
+            RedirectProperties redirectProperties,
+            OperationalMetrics metrics
+    ) {
         this.redis = redis;
         this.objectMapper = objectMapper;
         this.redirectProperties = redirectProperties;
+        this.metrics = metrics == null ? OperationalMetrics.noop() : metrics;
     }
 
     /**
@@ -66,19 +80,24 @@ public class LinkCacheService implements LinkCachePort {
         try {
             raw = redis.opsForValue().get(key(host, code));
         } catch (Exception e) {
+            metrics.increment("linkforge.redirect.cache.lookups", "result", "error");
             // 缓存异常必须降级为 MISS，让主链路同步回源。
             log.debug("cache read failed: host={}, code={}, err={}", host, code, e.getMessage());
             return LookupResult.miss();
         }
         if (raw == null) {
+            metrics.increment("linkforge.redirect.cache.lookups", "result", "miss");
             return LookupResult.miss();
         }
         if (NOT_FOUND_SENTINEL.equals(raw)) {
+            metrics.increment("linkforge.redirect.cache.lookups", "result", "negative_hit");
             return LookupResult.negativeHit();
         }
         try {
+            metrics.increment("linkforge.redirect.cache.lookups", "result", "hit");
             return LookupResult.hit(objectMapper.readValue(raw, LinkMeta.class));
         } catch (Exception e) {
+            metrics.increment("linkforge.redirect.cache.lookups", "result", "deserialize_error");
             // 坏值不能等同于不存在；尽力清理后返回 MISS。
             try {
                 redis.delete(key(host, code));
@@ -133,6 +152,7 @@ public class LinkCacheService implements LinkCachePort {
             );
             return true;
         } catch (Exception e) {
+            metrics.increment("linkforge.redirect.cache.operations", "operation", "write", "result", "failure");
             // 缓存写入失败不应影响主链路；outbox 会在后续变更时处理失效。
             log.debug(
                     "cache write failed: host={}, code={}, tenantId={}, linkId={}, err={}",
@@ -171,6 +191,7 @@ public class LinkCacheService implements LinkCachePort {
         try {
             redis.opsForValue().set(key(host, code), NOT_FOUND_SENTINEL, Duration.ofSeconds(ttlSeconds));
         } catch (Exception e) {
+            metrics.increment("linkforge.redirect.cache.operations", "operation", "negative_write", "result", "failure");
             // 负缓存写入失败只增加回源次数，不能影响本次查询结论。
             log.debug("cache write not-found failed: host={}, code={}, err={}", host, code, e.getMessage());
         }
@@ -205,6 +226,7 @@ public class LinkCacheService implements LinkCachePort {
             redis.delete(key(host, code));
             return true;
         } catch (Exception e) {
+            metrics.increment("linkforge.redirect.cache.operations", "operation", "evict", "result", "failure");
             log.debug("cache evict failed: host={}, code={}, err={}", host, code, e.getMessage());
             return false;
         }

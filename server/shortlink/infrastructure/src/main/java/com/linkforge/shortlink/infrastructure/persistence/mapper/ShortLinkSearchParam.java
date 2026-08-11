@@ -1,5 +1,7 @@
 package com.linkforge.shortlink.infrastructure.persistence.mapper;
 
+import java.time.LocalDateTime;
+
 public class ShortLinkSearchParam {
 
     private final long tenantId;
@@ -13,6 +15,8 @@ public class ShortLinkSearchParam {
     private final boolean unscopedOnly;
     private final long offset;
     private final int limit;
+    private final LocalDateTime cursorCreatedAtUtc;
+    private final Long cursorId;
 
     public ShortLinkSearchParam(
             long tenantId,
@@ -25,7 +29,9 @@ public class ShortLinkSearchParam {
             String createdByType,
             boolean unscopedOnly,
             long offset,
-            int limit
+            int limit,
+            LocalDateTime cursorCreatedAtUtc,
+            Long cursorId
     ) {
         this.tenantId = tenantId;
         this.archived = archived;
@@ -38,6 +44,8 @@ public class ShortLinkSearchParam {
         this.unscopedOnly = unscopedOnly;
         this.offset = offset;
         this.limit = limit;
+        this.cursorCreatedAtUtc = cursorCreatedAtUtc;
+        this.cursorId = cursorId;
     }
 
     public long getTenantId() {
@@ -82,5 +90,13 @@ public class ShortLinkSearchParam {
 
     public int getLimit() {
         return limit;
+    }
+
+    public LocalDateTime getCursorCreatedAtUtc() {
+        return cursorCreatedAtUtc;
+    }
+
+    public Long getCursorId() {
+        return cursorId;
     }
 }

@@ -1,4 +1,8 @@
+/// <reference types="node" />
+
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   API_ENDPOINTS,
   buildQueryString,
@@ -6,7 +10,9 @@ import {
   parseApiResponse,
   requireApiData,
   withQuery,
+  WEB_API_CONTRACT_ENDPOINTS,
 } from "./apiContract";
+import { isLinkDto, pageOf } from "./runtimeContracts";
 
 describe("service API contract helpers", () => {
   it("unwraps successful ApiResponse payloads and preserves empty success data", () => {
@@ -62,6 +68,26 @@ describe("service API contract helpers", () => {
     ).resolves.toEqual({ code: 0, message: "ok", data: { success: 1 } });
 
     await expect(parseApiResponse<void>(new Response(""))).resolves.toEqual({});
+    await expect(parseApiResponse(new Response('{"code":0,"message":"ok"}'))).resolves.toEqual({
+      code: 0,
+      message: "ok",
+    });
+    await expect(parseApiResponse(new Response('{"code":"0","message":"ok"}'))).rejects.toThrow(
+      "envelope",
+    );
+  });
+
+  it("keeps the checked frontend endpoint list byte-for-byte aligned with the repository snapshot", () => {
+    const snapshot = JSON.parse(
+      readFileSync(resolve(process.cwd(), "../contracts/web-api-v1.snapshot.json"), "utf8"),
+    ) as { endpoints: readonly (readonly [string, string])[] };
+    expect(WEB_API_CONTRACT_ENDPOINTS).toEqual(snapshot.endpoints);
+  });
+
+  it("rejects malformed DTO data instead of trusting a TypeScript assertion", () => {
+    expect(isLinkDto({ id: 1, tenantId: 2, code: "x" })).toBe(false);
+    expect(pageOf(isLinkDto)({ items: [], total: 0, page: 0, size: 20 })).toBe(true);
+    expect(pageOf(isLinkDto)({ items: [{ id: 1 }], total: 1, page: 0, size: 20 })).toBe(false);
   });
 
   it("centralizes endpoint builders for tenant and application scoped routes", () => {

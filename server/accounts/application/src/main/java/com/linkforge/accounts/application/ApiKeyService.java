@@ -11,6 +11,7 @@ import com.linkforge.contract.openapi.OpenApiErrorCode;
 import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.foundation.config.SecurityProperties;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
+import com.linkforge.foundation.observability.OperationalMetrics;
 import com.linkforge.foundation.security.ApiKeyAuthenticationException;
 import com.linkforge.foundation.security.ApiKeyAuthenticationFailure;
 import com.linkforge.foundation.security.ApiKeyAuthenticationResult;
@@ -19,10 +20,12 @@ import com.linkforge.foundation.tx.PostCommitHookPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Base64;
@@ -51,12 +54,13 @@ public class ApiKeyService implements ApiKeyAuthenticator {
 
     private final SnowflakeIdGenerator idGenerator;
     private final AccountsApiKeyStore apiKeyStore;
-    private final AccountsPasswordHasher passwordHasher;
+    private final ApiKeySecretCodec secretCodec;
     private final SecurityProperties securityProperties;
     private final ApiKeyAuthCache authCache;
     private final Clock clock;
     private final PostCommitHookPort postCommitHookPort;
     private final ApplicationScopePort applicationScopePort;
+    private final OperationalMetrics metrics;
 
     public ApiKeyService(
             SnowflakeIdGenerator idGenerator,
@@ -68,14 +72,40 @@ public class ApiKeyService implements ApiKeyAuthenticator {
             PostCommitHookPort postCommitHookPort,
             ApplicationScopePort applicationScopePort
     ) {
+        this(
+                idGenerator,
+                apiKeyStore,
+                passwordHasher,
+                securityProperties,
+                authCache,
+                clock,
+                postCommitHookPort,
+                applicationScopePort,
+                OperationalMetrics.noop()
+        );
+    }
+
+    @Autowired
+    public ApiKeyService(
+            SnowflakeIdGenerator idGenerator,
+            AccountsApiKeyStore apiKeyStore,
+            AccountsPasswordHasher passwordHasher,
+            SecurityProperties securityProperties,
+            ApiKeyAuthCache authCache,
+            Clock clock,
+            PostCommitHookPort postCommitHookPort,
+            ApplicationScopePort applicationScopePort,
+            OperationalMetrics metrics
+    ) {
         this.idGenerator = idGenerator;
         this.apiKeyStore = apiKeyStore;
-        this.passwordHasher = passwordHasher;
+        this.secretCodec = new ApiKeySecretCodec(passwordHasher, securityProperties);
         this.securityProperties = securityProperties;
         this.authCache = authCache;
         this.clock = clock;
         this.postCommitHookPort = postCommitHookPort;
         this.applicationScopePort = applicationScopePort;
+        this.metrics = metrics == null ? OperationalMetrics.noop() : metrics;
     }
 
     /**
@@ -104,7 +134,7 @@ public class ApiKeyService implements ApiKeyAuthenticator {
                 tenantId,
                 applicationId,
                 name,
-                passwordHasher.encode(secret),
+                secretCodec.encode(secret),
                 AccountsConstants.STATUS_ACTIVE,
                 null,
                 null
@@ -124,6 +154,40 @@ public class ApiKeyService implements ApiKeyAuthenticator {
      * @throws ApiKeyAuthException Key 格式/secret/应用绑定无效，或 Key 已禁用
      */
     public ApiKeyAuthResult authenticate(String apiKey) {
+        long startedAt = System.nanoTime();
+        try {
+            ApiKeyAuthResult result = authenticateInternal(apiKey);
+            metrics.increment("linkforge.auth.api_key.requests", "result", "success");
+            metrics.record(
+                    "linkforge.auth.api_key.duration",
+                    Duration.ofNanos(System.nanoTime() - startedAt),
+                    "result",
+                    "success"
+            );
+            return result;
+        } catch (ApiKeyAuthException ex) {
+            String result = OpenApiErrorCode.API_KEY_DISABLED.equals(ex.errorCode()) ? "disabled" : "invalid";
+            metrics.increment("linkforge.auth.api_key.requests", "result", result);
+            metrics.record(
+                    "linkforge.auth.api_key.duration",
+                    Duration.ofNanos(System.nanoTime() - startedAt),
+                    "result",
+                    result
+            );
+            throw ex;
+        } catch (RuntimeException ex) {
+            metrics.increment("linkforge.auth.api_key.requests", "result", "failure");
+            metrics.record(
+                    "linkforge.auth.api_key.duration",
+                    Duration.ofNanos(System.nanoTime() - startedAt),
+                    "result",
+                    "failure"
+            );
+            throw ex;
+        }
+    }
+
+    private ApiKeyAuthResult authenticateInternal(String apiKey) {
         Parsed parsed = parse(apiKey);
 
         long authCacheTtlSeconds = authCacheTtlSeconds();
@@ -134,7 +198,25 @@ public class ApiKeyService implements ApiKeyAuthenticator {
             throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_DISABLED);
         }
 
-        AccountsApiKeyStore.ApiKey apiKeyRecord = apiKeyStore.findById(parsed.id);
+        long databaseStartedAt = System.nanoTime();
+        AccountsApiKeyStore.ApiKey apiKeyRecord;
+        try {
+            apiKeyRecord = apiKeyStore.findById(parsed.id);
+            metrics.record(
+                    "linkforge.auth.api_key.database_lookup",
+                    Duration.ofNanos(System.nanoTime() - databaseStartedAt),
+                    "result",
+                    apiKeyRecord == null ? "miss" : "hit"
+            );
+        } catch (RuntimeException ex) {
+            metrics.record(
+                    "linkforge.auth.api_key.database_lookup",
+                    Duration.ofNanos(System.nanoTime() - databaseStartedAt),
+                    "result",
+                    "failure"
+            );
+            throw ex;
+        }
         if (apiKeyRecord == null) {
             throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_INVALID);
         }
@@ -150,12 +232,14 @@ public class ApiKeyService implements ApiKeyAuthenticator {
             }
             throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_DISABLED);
         }
-        if (!passwordHasher.matches(parsed.secret, apiKeyRecord.keyHash())) {
+        if (!secretCodec.matches(parsed.secret, apiKeyRecord.keyHash())) {
             throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_INVALID);
         }
         if (apiKeyRecord.applicationId() == null) {
             throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_INVALID);
         }
+
+        upgradeLegacySecretHash(apiKeyRecord, parsed.secret);
 
         tryUpdateLastUsedAtThrottled(parsed.id, apiKeyRecord.lastUsedAt(), true);
 
@@ -220,8 +304,6 @@ public class ApiKeyService implements ApiKeyAuthenticator {
             apiKeyStore.update(apiKey);
         }
         long authCacheTtlSeconds = authCacheTtlSeconds();
-        // 立即禁用缓存，缩小窗口
-        authCache.putDisabled(apiKeyId, apiKey.tenantId() == null ? 0L : apiKey.tenantId(), apiKey.applicationId(), authCacheTtlSeconds);
         putDisabledAfterCommit(
                 apiKeyId,
                 apiKey.tenantId() == null ? 0L : apiKey.tenantId(),
@@ -269,7 +351,7 @@ public class ApiKeyService implements ApiKeyAuthenticator {
 
         String secret = randomSecret();
         String key = API_KEY_PREFIX + "_" + apiKey.id() + "_" + secret;
-        apiKeyStore.update(withKeyHashAndStatus(apiKey, passwordHasher.encode(secret), AccountsConstants.STATUS_ACTIVE));
+        apiKeyStore.update(withKeyHashAndStatus(apiKey, secretCodec.encode(secret), AccountsConstants.STATUS_ACTIVE));
 
         evictAfterCommit(apiKeyId);
 
@@ -394,6 +476,18 @@ public class ApiKeyService implements ApiKeyAuthenticator {
 
     private static boolean tenantIdEquals(Long actual, long expected) {
         return actual != null && actual == expected;
+    }
+
+    private void upgradeLegacySecretHash(AccountsApiKeyStore.ApiKey apiKey, String secret) {
+        if (!secretCodec.needsUpgrade(apiKey.keyHash())) {
+            return;
+        }
+        try {
+            apiKeyStore.updateKeyHashIfCurrent(apiKey.id(), apiKey.keyHash(), secretCodec.encode(secret));
+        } catch (Exception ex) {
+            // 兼容升级不参与认证正确性；后续成功请求会再次尝试。
+            log.debug("upgrade legacy api_key hash failed: id={}, err={}", apiKey.id(), ex.getMessage());
+        }
     }
 
     private static AccountsApiKeyStore.ApiKey withStatus(AccountsApiKeyStore.ApiKey apiKey, String status) {

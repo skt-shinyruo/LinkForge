@@ -2,15 +2,20 @@ package com.linkforge.analytics.infrastructure.job;
 
 import com.linkforge.contract.analytics.AnalyticsKeys;
 import com.linkforge.foundation.config.AnalyticsProperties;
+import com.linkforge.foundation.observability.OperationalMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.connection.stream.StreamRecords;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.Duration;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -20,12 +25,12 @@ import java.util.Map;
  * 将一条访问流事件投影到 Redis 的 PV、UV 与维度聚合。
  *
  * <p>链接 PV 使用计数器，UV 使用 HyperLogLog，因此 UV 是近似值而不是可用于精确结算的去重数。
- * 每次写入都会追加 dirty stream 消息，成员 wire format 固定为 {@code tenantId:linkId}；落库作业
+ * 每个首次投影的事件都会追加 dirty stream 消息，成员 wire format 固定为 {@code tenantId:linkId}；落库作业
  * 读取该成员对应的当前累计值，而不是把消息本身当作增量。</p>
  *
- * <p>本类不提供原子跨 key 事务。投影完成但 Stream ACK 失败时可能重放，进而重复增加 PV；HLL 对重复
- * visitor 较稳定，但整个链路不是 exactly-once。日表使用单调 {@code GREATEST} upsert 缓解重复落库，
- * 不应据此推断访问计数严格无重复。</p>
+ * <p>标准访问事件携带 {@code requestId}，并通过单个 Lua 脚本原子完成去重、聚合和 dirty signal 写入；
+ * ACK 失败后的同一事件重放不会重复增加 PV。历史上没有 requestId 的消息仍走兼容路径，因此只对标准
+ * appender 产生的新事件提供幂等保证。</p>
  */
 @Component
 public class AnalyticsRedisAggregateWriter {
@@ -43,12 +48,95 @@ public class AnalyticsRedisAggregateWriter {
             "utm_campaign"
     );
 
+    private static final DefaultRedisScript<Long> IDEMPOTENT_PROJECTION_SCRIPT = new DefaultRedisScript<>("""
+            local markerTtl = tonumber(ARGV[1]) or 0
+            local aggregateTtl = tonumber(ARGV[2]) or 0
+            local visitor = ARGV[3] or ''
+            local scopeCount = tonumber(ARGV[4]) or 0
+            local dimCount = tonumber(ARGV[5]) or 0
+
+            if redis.call('SETNX', KEYS[1], '1') == 0 then
+                return 0
+            end
+            if markerTtl > 0 then
+                redis.call('EXPIRE', KEYS[1], markerTtl)
+            end
+
+            local argIndex = 6
+            local scopeMembers = {}
+            for i = 1, scopeCount do
+                scopeMembers[i] = ARGV[argIndex]
+                argIndex = argIndex + 1
+            end
+            local dimValues = {}
+            for i = 1, dimCount do
+                dimValues[i] = ARGV[argIndex]
+                argIndex = argIndex + 1
+            end
+            local dirtyMember = ARGV[argIndex]
+            local eventTs = ARGV[argIndex + 1]
+
+            local keyIndex = 2
+            redis.call('INCR', KEYS[keyIndex])
+            keyIndex = keyIndex + 1
+
+            if visitor ~= '' then
+                redis.call('PFADD', KEYS[keyIndex], visitor)
+                keyIndex = keyIndex + 1
+                for i = 1, scopeCount do
+                    redis.call('PFADD', KEYS[keyIndex], visitor)
+                    keyIndex = keyIndex + 1
+                end
+            end
+
+            for i = 1, dimCount do
+                redis.call('HINCRBY', KEYS[keyIndex], dimValues[i], 1)
+                keyIndex = keyIndex + 1
+                if visitor ~= '' then
+                    redis.call('PFADD', KEYS[keyIndex], visitor)
+                end
+                keyIndex = keyIndex + 1
+            end
+
+            local statsDirtyStream = KEYS[keyIndex]
+            keyIndex = keyIndex + 1
+            local scopeDirtyStream = KEYS[keyIndex]
+            keyIndex = keyIndex + 1
+            local dimDirtyStream = KEYS[keyIndex]
+
+            redis.call('XADD', statsDirtyStream, '*', 'member', dirtyMember, 'ts', eventTs)
+            for i = 1, scopeCount do
+                redis.call('XADD', scopeDirtyStream, '*', 'member', scopeMembers[i], 'ts', eventTs)
+            end
+            if dimCount > 0 then
+                redis.call('XADD', dimDirtyStream, '*', 'member', dirtyMember, 'ts', eventTs)
+            end
+
+            if aggregateTtl > 0 then
+                for i = 2, #KEYS do
+                    redis.call('EXPIRE', KEYS[i], aggregateTtl)
+                end
+            end
+            return 1
+            """, Long.class);
+
     private final StringRedisTemplate redis;
     private final AnalyticsProperties analyticsProperties;
+    private final OperationalMetrics metrics;
 
     public AnalyticsRedisAggregateWriter(StringRedisTemplate redis, AnalyticsProperties analyticsProperties) {
+        this(redis, analyticsProperties, OperationalMetrics.noop());
+    }
+
+    @Autowired
+    public AnalyticsRedisAggregateWriter(
+            StringRedisTemplate redis,
+            AnalyticsProperties analyticsProperties,
+            OperationalMetrics metrics
+    ) {
         this.redis = redis;
         this.analyticsProperties = analyticsProperties;
+        this.metrics = metrics == null ? OperationalMetrics.noop() : metrics;
     }
 
     /**
@@ -84,6 +172,26 @@ public class AnalyticsRedisAggregateWriter {
         String dimDirtyStreamKey = AnalyticsKeys.dimDirtyStreamKey(day);
         Date expireAt = resolveDayExpireAtUtc(day);
 
+        String requestId = trimToNull(values.get("requestId"));
+        if (requestId != null) {
+            writeIdempotently(
+                    values,
+                    requestId,
+                    tenantId,
+                    linkId,
+                    applicationId,
+                    domainId,
+                    day,
+                    visitorKey,
+                    dirtyLinkMember,
+                    statsDirtyStreamKey,
+                    scopeDirtyStreamKey,
+                    dimDirtyStreamKey,
+                    expireAt
+            );
+            return;
+        }
+
         redis.opsForValue().increment(pvKey);
         if (visitorKey != null) {
             redis.opsForHyperLogLog().add(uvKey, visitorKey);
@@ -104,31 +212,17 @@ public class AnalyticsRedisAggregateWriter {
         expireAtQuietly(pvKey, expireAt);
         expireAtQuietly(uvKey, expireAt);
 
-        AnalyticsProperties.Dimensions dimensions = analyticsProperties == null ? null : analyticsProperties.getDimensions();
-        if (dimensions == null || !dimensions.isEnabled()) {
+        List<DimensionProjection> dimensions = resolveDimensions(values);
+        if (dimensions.isEmpty()) {
             return;
         }
 
         enqueueDirtyMember(dimDirtyStreamKey, dirtyLinkMember, expireAt);
-        List<String> types = dimensions.getTypes();
-        if (types == null || types.isEmpty()) {
-            types = DEFAULT_DIM_TYPES;
-        }
+        for (DimensionProjection dimension : dimensions) {
+            String dimPvKey = AnalyticsKeys.dimPvHashKey(tenantId, linkId, day, dimension.type());
+            String dimUvKey = AnalyticsKeys.dimUvHllKey(tenantId, linkId, day, dimension.type(), dimension.value());
 
-        for (String rawType : types) {
-            String dimType = normalizeDimType(rawType);
-            if (dimType == null) {
-                continue;
-            }
-            String dimValue = resolveDimValue(dimType, values);
-            if (dimValue == null) {
-                continue;
-            }
-
-            String dimPvKey = AnalyticsKeys.dimPvHashKey(tenantId, linkId, day, dimType);
-            String dimUvKey = AnalyticsKeys.dimUvHllKey(tenantId, linkId, day, dimType, dimValue);
-
-            redis.opsForHash().increment(dimPvKey, dimValue, 1L);
+            redis.opsForHash().increment(dimPvKey, dimension.value(), 1L);
             if (visitorKey != null) {
                 redis.opsForHyperLogLog().add(dimUvKey, visitorKey);
             }
@@ -136,6 +230,137 @@ public class AnalyticsRedisAggregateWriter {
             expireAtQuietly(dimPvKey, expireAt);
             expireAtQuietly(dimUvKey, expireAt);
         }
+    }
+
+    private void writeIdempotently(
+            Map<String, String> values,
+            String requestId,
+            long tenantId,
+            long linkId,
+            long applicationId,
+            long domainId,
+            LocalDate day,
+            String visitorKey,
+            String dirtyLinkMember,
+            String statsDirtyStreamKey,
+            String scopeDirtyStreamKey,
+            String dimDirtyStreamKey,
+            Date expireAt
+    ) {
+        List<ScopeProjection> scopes = new ArrayList<>(3);
+        if (visitorKey != null) {
+            scopes.add(new ScopeProjection(
+                    AnalyticsKeys.tenantScopeUvKey(tenantId, day),
+                    AnalyticsKeys.tenantScopeMember(tenantId)
+            ));
+            if (applicationId > 0) {
+                scopes.add(new ScopeProjection(
+                        AnalyticsKeys.applicationScopeUvKey(tenantId, applicationId, day),
+                        AnalyticsKeys.applicationScopeMember(tenantId, applicationId)
+                ));
+            }
+            if (domainId > 0) {
+                scopes.add(new ScopeProjection(
+                        AnalyticsKeys.domainScopeUvKey(tenantId, domainId, day),
+                        AnalyticsKeys.domainScopeMember(tenantId, domainId)
+                ));
+            }
+        }
+        List<DimensionProjection> dimensions = resolveDimensions(values);
+
+        List<String> keys = new ArrayList<>(8 + scopes.size() + dimensions.size() * 2);
+        keys.add(AnalyticsKeys.projectionDedupKey(requestId));
+        keys.add(AnalyticsKeys.pvKey(tenantId, linkId, day));
+        if (visitorKey != null) {
+            keys.add(AnalyticsKeys.uvKey(tenantId, linkId, day));
+            scopes.stream().map(ScopeProjection::uvKey).forEach(keys::add);
+        }
+        for (DimensionProjection dimension : dimensions) {
+            keys.add(AnalyticsKeys.dimPvHashKey(tenantId, linkId, day, dimension.type()));
+            keys.add(AnalyticsKeys.dimUvHllKey(tenantId, linkId, day, dimension.type(), dimension.value()));
+        }
+        keys.add(statsDirtyStreamKey);
+        keys.add(scopeDirtyStreamKey);
+        keys.add(dimDirtyStreamKey);
+
+        long nowMillis = System.currentTimeMillis();
+        List<String> args = new ArrayList<>(7 + scopes.size() + dimensions.size());
+        args.add(String.valueOf(resolveProjectionMarkerTtlSeconds()));
+        args.add(String.valueOf(resolveAggregateTtlSeconds(expireAt, nowMillis)));
+        args.add(visitorKey == null ? "" : visitorKey);
+        args.add(String.valueOf(scopes.size()));
+        args.add(String.valueOf(dimensions.size()));
+        scopes.stream().map(ScopeProjection::dirtyMember).forEach(args::add);
+        dimensions.stream().map(DimensionProjection::value).forEach(args::add);
+        args.add(dirtyLinkMember);
+        args.add(String.valueOf(nowMillis));
+
+        long startedAt = System.nanoTime();
+        try {
+            Long result = redis.execute(IDEMPOTENT_PROJECTION_SCRIPT, keys, args.toArray());
+            if (result == null) {
+                throw new IllegalStateException("analytics projection script returned null");
+            }
+            String resultTag = result == 0L ? "deduplicated" : "applied";
+            metrics.increment("linkforge.analytics.projection.events", "result", resultTag);
+            if (result != 0L) {
+                long dirtySignals = 1L + scopes.size() + (dimensions.isEmpty() ? 0L : 1L);
+                metrics.add("linkforge.analytics.dirty.signals", dirtySignals, "source", "projection");
+            }
+            metrics.record(
+                    "linkforge.analytics.projection.duration",
+                    Duration.ofNanos(System.nanoTime() - startedAt),
+                    "result",
+                    resultTag
+            );
+        } catch (RuntimeException ex) {
+            metrics.increment("linkforge.analytics.projection.events", "result", "failure");
+            metrics.record(
+                    "linkforge.analytics.projection.duration",
+                    Duration.ofNanos(System.nanoTime() - startedAt),
+                    "result",
+                    "failure"
+            );
+            throw ex;
+        }
+    }
+
+    private List<DimensionProjection> resolveDimensions(Map<String, String> values) {
+        AnalyticsProperties.Dimensions cfg = analyticsProperties == null ? null : analyticsProperties.getDimensions();
+        if (cfg == null || !cfg.isEnabled()) {
+            return List.of();
+        }
+        List<String> types = cfg.getTypes();
+        if (types == null || types.isEmpty()) {
+            types = DEFAULT_DIM_TYPES;
+        }
+        List<DimensionProjection> dimensions = new ArrayList<>(types.size());
+        for (String rawType : types) {
+            String dimType = normalizeDimType(rawType);
+            if (dimType == null) {
+                continue;
+            }
+            String dimValue = resolveDimValue(dimType, values);
+            if (dimValue != null) {
+                dimensions.add(new DimensionProjection(dimType, dimValue));
+            }
+        }
+        return List.copyOf(dimensions);
+    }
+
+    private long resolveProjectionMarkerTtlSeconds() {
+        long ttlDays = analyticsProperties == null ? 0L : analyticsProperties.getRedisKeyTtlDays();
+        AnalyticsProperties.Events events = analyticsProperties == null ? null : analyticsProperties.getEvents();
+        long retentionDays = events == null ? 0L : events.getRetentionDays();
+        return Math.max(Math.max(ttlDays, retentionDays), 1L) * 86_400L;
+    }
+
+    private static long resolveAggregateTtlSeconds(Date expireAt, long nowMillis) {
+        if (expireAt == null) {
+            return 0L;
+        }
+        long remainingMillis = expireAt.getTime() - nowMillis;
+        return Math.max((remainingMillis + 999L) / 1000L, 1L);
     }
 
     private void writeScopeUv(String uvKey, String dirtyStreamKey, String dirtyMember, String visitorKey, Date expireAt) {
@@ -222,5 +447,11 @@ public class AnalyticsRedisAggregateWriter {
         }
         String trimmed = value.trim();
         return trimmed.isBlank() ? null : trimmed;
+    }
+
+    private record ScopeProjection(String uvKey, String dirtyMember) {
+    }
+
+    private record DimensionProjection(String type, String value) {
     }
 }

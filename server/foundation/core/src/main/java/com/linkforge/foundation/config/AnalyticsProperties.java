@@ -7,8 +7,8 @@ import java.util.List;
 /**
  * Analytics 聚合、Redis 流和访问明细的运行时配置。
  *
- * <p>所有按日聚合和访客指纹口径使用 UTC。此对象只描述采集/消费边界，不承诺 Redis Stream 或投影的
- * exactly-once：故障重放可能重复 PV，UV 由近似去重结构计算。</p>
+ * <p>所有按日聚合和访客指纹口径使用 UTC。标准访问事件以 requestId 做幂等聚合投影，Redis Stream
+ * 重放不会重复增加 PV；历史上缺少 requestId 的兼容消息仍是至少一次语义，UV 由近似去重结构计算。</p>
  */
 @ConfigurationProperties(prefix = "app.analytics")
 public class AnalyticsProperties {

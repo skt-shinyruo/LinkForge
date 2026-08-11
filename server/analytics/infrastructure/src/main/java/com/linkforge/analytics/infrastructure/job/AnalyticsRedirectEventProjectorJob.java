@@ -2,19 +2,18 @@ package com.linkforge.analytics.infrastructure.job;
 
 import com.linkforge.contract.analytics.AnalyticsKeys;
 import com.linkforge.foundation.config.AnalyticsProperties;
+import com.linkforge.foundation.observability.OperationalMetrics;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.redis.connection.stream.Consumer;
 import org.springframework.data.redis.connection.stream.MapRecord;
-import org.springframework.data.redis.connection.stream.ReadOffset;
 import org.springframework.data.redis.connection.stream.RecordId;
-import org.springframework.data.redis.connection.stream.StreamOffset;
-import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -25,7 +24,7 @@ import java.util.Map;
  *
  * <p>消费顺序是先读取本 consumer 的 pending，再读取新消息；每条消息只有在
  * {@link AnalyticsRedisAggregateWriter#write(Map)} 返回后才会 ACK。因 Redis 写入与 ACK 不在同一
- * 原子事务中，ACK 失败会在之后重放已经投影的消息，故该链路为至少一次处理而非 exactly-once。</p>
+ * 原子事务中，事件交付仍是至少一次；标准事件由 writer 使用 requestId 幂等投影，因此 ACK 重放不会重复 PV。</p>
  *
  * <p>不含 {@code visitorKey} 的历史或不完整消息没有足够信息计算 UV，会被直接 ACK 丢弃；这是一项
  * 明确的数据兼容策略，而不是重试条件。</p>
@@ -39,18 +38,30 @@ public class AnalyticsRedirectEventProjectorJob {
     private static final String CONSUMER = "lf-visit-projector-consumer";
     private static final int BATCH_SIZE = 200;
 
-    private final StringRedisTemplate redis;
     private final AnalyticsProperties analyticsProperties;
     private final AnalyticsRedisAggregateWriter aggregateWriter;
+    private final RedisStreamBatchConsumer streamConsumer;
+    private final OperationalMetrics metrics;
 
     public AnalyticsRedirectEventProjectorJob(
             StringRedisTemplate redis,
             AnalyticsProperties analyticsProperties,
             AnalyticsRedisAggregateWriter aggregateWriter
     ) {
-        this.redis = redis;
+        this(redis, analyticsProperties, aggregateWriter, OperationalMetrics.noop());
+    }
+
+    @Autowired
+    public AnalyticsRedirectEventProjectorJob(
+            StringRedisTemplate redis,
+            AnalyticsProperties analyticsProperties,
+            AnalyticsRedisAggregateWriter aggregateWriter,
+            OperationalMetrics metrics
+    ) {
         this.analyticsProperties = analyticsProperties;
         this.aggregateWriter = aggregateWriter;
+        this.metrics = metrics == null ? OperationalMetrics.noop() : metrics;
+        this.streamConsumer = new RedisStreamBatchConsumer(redis, GROUP, CONSUMER, "analytics_visit_projector", this.metrics);
     }
 
     /**
@@ -62,24 +73,23 @@ public class AnalyticsRedirectEventProjectorJob {
     @SchedulerLock(name = "lf:job:analytics:redirect-event-projector", lockAtMostFor = "PT2M")
     public void project() {
         String streamKey = AnalyticsKeys.visitEventStreamKey();
-        if (!ensureGroup(streamKey)) {
+        if (!streamConsumer.ensureGroup(streamKey)) {
             return;
         }
 
-        Consumer consumer = Consumer.from(GROUP, CONSUMER);
         while (true) {
-            List<MapRecord<String, Object, Object>> records = readSafe(
-                    consumer,
-                    StreamReadOptions.empty().count(BATCH_SIZE),
-                    StreamOffset.create(streamKey, ReadOffset.from("0-0"))
+            AnalyticsProperties.Events events = analyticsProperties == null ? null : analyticsProperties.getEvents();
+            boolean reclaimEnabled = events == null || events.isPendingReclaimEnabled();
+            long minIdleMs = events == null ? 60_000L : Math.max(events.getPendingReclaimMinIdleMs(), 0L);
+            int reclaimCount = events == null ? BATCH_SIZE : Math.max(events.getPendingReclaimCount(), 1);
+            List<MapRecord<String, Object, Object>> records = streamConsumer.readNext(
+                    streamKey,
+                    BATCH_SIZE,
+                    null,
+                    reclaimEnabled,
+                    Duration.ofMillis(minIdleMs),
+                    reclaimCount
             );
-            if (records == null || records.isEmpty()) {
-                records = readSafe(
-                        consumer,
-                        StreamReadOptions.empty().count(BATCH_SIZE),
-                        StreamOffset.create(streamKey, ReadOffset.lastConsumed())
-                );
-            }
             if (records == null || records.isEmpty()) {
                 return;
             }
@@ -113,66 +123,18 @@ public class AnalyticsRedirectEventProjectorJob {
 
             try {
                 aggregateWriter.write(values);
+                metrics.increment("linkforge.job.events", "job", "analytics_visit_projector", "result", "success");
                 ackIds.add(record.getId());
             } catch (Exception e) {
+                metrics.increment("linkforge.job.failures", "job", "analytics_visit_projector", "stage", "redis_projection");
                 log.warn("project analytics visit event failed: streamId={}, err={}", record.getId(), e.getMessage());
-                acknowledge(streamKey, ackIds);
+                streamConsumer.acknowledge(streamKey, ackIds);
                 return false;
             }
         }
 
-        acknowledge(streamKey, ackIds);
+        streamConsumer.acknowledge(streamKey, ackIds);
         return true;
-    }
-
-    private boolean ensureGroup(String streamKey) {
-        if (!hasKey(streamKey)) {
-            return false;
-        }
-        try {
-            redis.opsForStream().createGroup(streamKey, ReadOffset.from("0-0"), GROUP);
-            return true;
-        } catch (Exception e) {
-            if (RedisStreamGroupErrors.isBusyGroup(e)) {
-                return true;
-            }
-            String msg = e.getMessage();
-            log.debug("create analytics visit projector group failed: streamKey={}, err={}", streamKey, msg);
-            return false;
-        }
-    }
-
-    private boolean hasKey(String key) {
-        try {
-            Boolean exists = redis.hasKey(key);
-            return exists != null && exists;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private List<MapRecord<String, Object, Object>> readSafe(
-            Consumer consumer,
-            StreamReadOptions options,
-            StreamOffset<String> offset
-    ) {
-        try {
-            return redis.opsForStream().read(consumer, options, offset);
-        } catch (Exception e) {
-            log.debug("read analytics visit projector stream failed: streamKey={}, err={}", offset == null ? null : offset.getKey(), e.getMessage());
-            return null;
-        }
-    }
-
-    private void acknowledge(String streamKey, List<RecordId> ids) {
-        if (ids == null || ids.isEmpty()) {
-            return;
-        }
-        try {
-            redis.opsForStream().acknowledge(streamKey, GROUP, ids.toArray(new RecordId[0]));
-        } catch (Exception e) {
-            log.debug("ack analytics visit projector stream failed: streamKey={}, size={}, err={}", streamKey, ids.size(), e.getMessage());
-        }
     }
 
     private static Map<String, String> normalize(Map<Object, Object> raw) {

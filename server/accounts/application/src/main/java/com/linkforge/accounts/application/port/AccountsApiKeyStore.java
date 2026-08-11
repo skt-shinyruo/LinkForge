@@ -36,6 +36,11 @@ public interface AccountsApiKeyStore {
     void update(ApiKey apiKey);
 
     /**
+     * 仅在旧摘要仍匹配时替换 secret 摘要，避免兼容迁移覆盖并发的轮换结果或其他字段。
+     */
+    boolean updateKeyHashIfCurrent(Long apiKeyId, String expectedKeyHash, String newKeyHash);
+
+    /**
      * 更新最近使用时间。该审计字段不参与认证正确性，调用方可对写入进行节流并在失败时继续认证。
      *
      * @param lastUsedAt UTC 时间

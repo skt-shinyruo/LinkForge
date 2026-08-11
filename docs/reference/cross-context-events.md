@@ -95,9 +95,9 @@ Redirect 发生真实跳转时把记录交给 Analytics：
 3. flush consumer 读取 dirty member 对应的当前累计值，upsert MySQL 后 ACK dirty 消息。
 4. 可选明细 consumer 采样、`insert ignore` 并 ACK。
 
-这里存在两类重复：
+这里存在两类重放边界：
 
-- 访问记录在 projector 增量前重放，会重复增加 PV；相同 visitorKey 的 HLL UV 相对幂等。
+- 标准访问记录携带 requestId，projector 重放由 Redis Lua 幂等投影吸收；历史无 requestId 消息仍可能重复增加 PV。
 - dirty message 重放只会再次读取当前累计值并 upsert，通常不会再次增加计数。
 
 因此报表是最终一致且非 exactly-once。dirty stream member 固定为 `{tenantId}:{linkId}`，只表示需要刷新，不是 active-set membership。
@@ -144,7 +144,7 @@ Redirect 发生真实跳转时把记录交给 Analytics：
 1. 检查 visit stream lag/pending/reclaim。
 2. 检查 dirty stream pending 和 flush 日志。
 3. 对比 Redis 当前累计值与 MySQL upsert 值。
-4. 判断是否发生访问记录重放；PV 可重复而 HLL UV 只近似幂等。
+4. 检查 requestId 去重指标和历史无 requestId 消息；调用方重复生成多个 requestId 仍可能使 PV 偏大。
 
 ## 源码入口
 

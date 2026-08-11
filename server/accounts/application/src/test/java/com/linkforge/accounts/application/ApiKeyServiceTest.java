@@ -315,6 +315,38 @@ class ApiKeyServiceTest {
     }
 
     @Test
+    void authenticate_shouldCasUpgradeLegacyBcryptHashAfterSuccessfulVerification() {
+        AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
+        AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
+        SecurityProperties props = new SecurityProperties();
+        props.getApiKey().setHmacPepper("independent-test-pepper-at-least-32-bytes");
+        props.getApiKey().setAuthCacheTtlSeconds(0);
+        props.getApiKey().setLastUsedUpdateIntervalSeconds(0);
+        ApiKeyService service = newService(store, passwordHasher, props, mock(ApiKeyAuthCache.class));
+        AccountsApiKeyStore.ApiKey apiKey = new AccountsApiKeyStore.ApiKey(
+                123L,
+                1L,
+                2001L,
+                "legacy-key",
+                "$2a$legacy",
+                AccountsConstants.STATUS_ACTIVE,
+                null,
+                null
+        );
+        when(store.findById(123L)).thenReturn(apiKey);
+        when(passwordHasher.matches("secret", "$2a$legacy")).thenReturn(true);
+
+        ApiKeyAuthResult result = service.authenticate("lfk_123_secret");
+
+        assertThat(result.apiKeyId()).isEqualTo(123L);
+        verify(store).updateKeyHashIfCurrent(
+                eq(123L),
+                eq("$2a$legacy"),
+                argThat(hash -> hash.startsWith(ApiKeySecretCodec.HMAC_SHA256_PREFIX))
+        );
+    }
+
+    @Test
     void create_shouldBindApiKeyToApplication() {
         AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
         AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);

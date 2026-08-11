@@ -25,10 +25,13 @@ server:
   port: ${SERVER_PORT:8080}
 
 management:
+  server:
+    address: ${MANAGEMENT_BIND_ADDRESS:127.0.0.1}
+    port: ${MANAGEMENT_PORT:8081}
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus
 
 app:
   strict-config: ${APP_STRICT_CONFIG:false}
@@ -54,6 +57,7 @@ app:
       cookie-secure: ${JWT_COOKIE_SECURE:false}
       cookie-same-site: ${JWT_COOKIE_SAMESITE:Lax}
     api-key:
+      hmac-pepper: ${API_KEY_HMAC_PEPPER:${JWT_SECRET:dev-change-me-please-set-env-and-long-enough-32-bytes}}
       last-used-update-interval-seconds: ${API_KEY_LAST_USED_UPDATE_INTERVAL_SECONDS:300}
       auth-cache-ttl-seconds: ${API_KEY_AUTH_CACHE_TTL_SECONDS:60}
   shortlink:
@@ -72,6 +76,8 @@ app:
     redis-key-ttl-days: ${ANALYTICS_REDIS_TTL_DAYS:45}
     quota:
       fail-open: ${ANALYTICS_QUOTA_FAIL_OPEN:false}
+      lookup-cache-ttl-seconds: ${ANALYTICS_QUOTA_LOOKUP_CACHE_TTL_SECONDS:30}
+      lookup-cache-max-entries: ${ANALYTICS_QUOTA_LOOKUP_CACHE_MAX_ENTRIES:10000}
     # flush 回补窗口（最近 N 天，包含今天），用于部署中断后的追赶补齐
     flush-backfill-days: ${ANALYTICS_FLUSH_BACKFILL_DAYS:7}
     # 可选：追踪参数采集白名单（逗号分隔），为空时 Edge 采用安全默认值 utm_*,gclid,fbclid

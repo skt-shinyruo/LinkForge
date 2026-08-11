@@ -70,4 +70,11 @@
         SET last_used_at = #{param2}
         WHERE id = #{param1}
     </update>
+
+    <update id="updateKeyHashIfCurrent">
+        UPDATE api_keys
+        SET key_hash = #{param3}
+        WHERE id = #{param1}
+          AND key_hash = #{param2}
+    </update>
 </mapper>

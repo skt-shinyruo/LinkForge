@@ -108,7 +108,9 @@ Redirect 只在真实跳转前调用 `VisitRecorderPort.recordVisit()`。preview
 - 如果某条失败，会先 ack 已处理记录并停止本轮，让失败记录留在 pending，等待后续重试。
 - 缺少 `visitorKey` 的不可投影记录会 ACK 丢弃，不增加 PV/UV。
 
-该 projector 是增量写：处理同一访问消息两次会重复 `INCR` PV；相同 visitorKey 再次写 HLL 通常不增加 UV。因此基础统计不是 exactly-once。
+标准访问消息携带唯一 `requestId`。writer 用一个 Lua 脚本原子检查幂等标记，并更新 PV、UV、维度和 dirty signal；
+因此“聚合成功但 ACK 失败”导致的同一 Stream 消息重放不会重复增加 PV。历史上缺少 `requestId` 的兼容消息仍走
+至少一次增量路径；Redirect 调用方若把一次业务访问重复调用成多个新 requestId，也不在该幂等边界内。
 
 `AnalyticsRedisAggregateWriter` 维护：
 
@@ -214,7 +216,9 @@ DLQ writer 自己吞 Redis 异常。极端情况下 poison 已被判定并 ACK�
 
 ## 一致性与降级
 
-统计链路是最终一致且非 exactly-once。Redirect 写访问事件后，Redis Stream、Redis 聚合、MySQL 报表之间存在异步延迟。基础 PV/UV 依赖 projector 和 dirty-stream flush；访问明细还受 `events.enabled` 和 `sampleRate` 影响。
+统计链路是最终一致的，不宣称端到端 exactly-once。标准事件的 Stream 重投由 requestId 幂等投影保护，但调用端重复
+生成事件、历史无 requestId 消息以及跨 Redis/MySQL 的异步延迟仍需单独处理。基础 PV/UV 依赖 projector 和
+dirty-stream flush；访问明细还受 `events.enabled` 和 `sampleRate` 影响。
 
 排障按层定位：
 

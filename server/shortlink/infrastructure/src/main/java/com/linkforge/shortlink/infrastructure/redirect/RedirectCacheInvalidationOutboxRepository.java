@@ -14,7 +14,7 @@ import java.util.List;
  *
  * <p>{@link #enqueue(long, Long, String)} 通常参与短链写事务，保证状态变更与失效意图原子提交。
  * 数据库唯一键以 {@code tenantId + domainScope + code} 合并重复意图，其中无域名短链用 {@code 0}
- * 归一化；重复入队会把既有记录重新置为待处理，并清空错误与重试计数。</p>
+ * 归一化；重复入队会原子递增 generation、把既有记录重新置为待处理，并清空错误与重试计数。</p>
  */
 @Component
 public class RedirectCacheInvalidationOutboxRepository implements RedirectCacheInvalidationOutboxPort {
@@ -62,14 +62,20 @@ public class RedirectCacheInvalidationOutboxRepository implements RedirectCacheI
         return mapper.pendingStats();
     }
 
-    /** 仅当记录仍为 {@code PENDING} 时标记完成。 */
-    public void markProcessed(long id, LocalDateTime processedAtUtc) {
-        mapper.markProcessed(id, processedAtUtc);
+    /** 仅当记录仍是 worker 读取到的 {@code PENDING} generation 时标记完成。 */
+    public boolean markProcessed(long id, long generation, LocalDateTime processedAtUtc) {
+        return mapper.markProcessed(id, generation, processedAtUtc) > 0;
     }
 
-    /** 仅当记录仍为 {@code PENDING} 时保存错误摘要和下次重试时间。 */
-    public void markFailed(long id, int attempts, String lastError, LocalDateTime nextAttemptAtUtc) {
-        mapper.markFailed(id, attempts, lastError, nextAttemptAtUtc);
+    /** 仅当记录仍是 worker 读取到的 {@code PENDING} generation 时保存重试状态。 */
+    public boolean markFailed(
+            long id,
+            long generation,
+            int attempts,
+            String lastError,
+            LocalDateTime nextAttemptAtUtc
+    ) {
+        return mapper.markFailed(id, generation, attempts, lastError, nextAttemptAtUtc) > 0;
     }
 
     private LocalDateTime nowUtc() {

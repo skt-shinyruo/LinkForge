@@ -10,13 +10,14 @@
         <result property="applicationId" column="application_id"/>
         <result property="name" column="name"/>
         <result property="keyHash" column="key_hash"/>
+        <result property="keyId" column="key_id"/>
         <result property="status" column="status"/>
         <result property="lastUsedAt" column="last_used_at"/>
         <result property="createdAt" column="created_at"/>
     </resultMap>
 
     <sql id="apiKeyColumns">
-        id, tenant_id, application_id, name, key_hash, status, last_used_at, created_at
+        id, tenant_id, application_id, name, key_hash, key_id, status, last_used_at, created_at
     </sql>
 
     <insert id="insert" parameterType="com.linkforge.accounts.infrastructure.persistence.entity.ApiKeyEntity">
@@ -26,6 +27,7 @@
             application_id,
             name,
             key_hash,
+            key_id,
             status,
             last_used_at
         ) VALUES (
@@ -34,6 +36,7 @@
             #{applicationId},
             #{name},
             #{keyHash},
+            #{keyId},
             #{status},
             #{lastUsedAt}
         )
@@ -60,6 +63,7 @@
             application_id = #{applicationId},
             name = #{name},
             key_hash = #{keyHash},
+            key_id = #{keyId},
             status = #{status},
             last_used_at = #{lastUsedAt}
         WHERE id = #{id}
@@ -73,8 +77,10 @@
 
     <update id="updateKeyHashIfCurrent">
         UPDATE api_keys
-        SET key_hash = #{param3}
+        SET key_hash = #{param4},
+            key_id = #{param5}
         WHERE id = #{param1}
           AND key_hash = #{param2}
+          AND key_id &lt;=&gt; #{param3}
     </update>
 </mapper>

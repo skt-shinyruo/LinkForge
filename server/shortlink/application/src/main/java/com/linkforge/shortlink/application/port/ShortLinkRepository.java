@@ -14,9 +14,9 @@ import java.util.Optional;
  * 按域名查询以全局唯一的 domainId 为 scope，调用方须先验证域名归属；无 scope 查询只服务历史兼容，
  * 两者都不能单独作为租户授权依据。返回 {@link Optional} 或集合的方法不得返回 {@code null}。</p>
  *
- * <p>{@link #update(ShortLink)} 与 {@link #deleteByTenantIdAndId(long, long, long)} 使用聚合版本号做
- * 乐观并发控制。布尔返回值只表达 CAS 是否命中，不区分记录不存在与版本冲突；应用层负责将失败翻译为
- * 稳定业务错误。</p>
+ * <p>{@link #update(ShortLink)} 与 {@link #delete(ShortLink)} 接收已经完成一次命名 mutation 的聚合：聚合版本
+ * 是待持久化的新版本，仓储以其前一版本做乐观并发条件。布尔返回值只表达 CAS 是否命中，不区分记录不存在与
+ * 版本冲突；应用层负责将失败翻译为稳定业务错误。</p>
  */
 public interface ShortLinkRepository {
 
@@ -68,23 +68,21 @@ public interface ShortLinkRepository {
     void insert(ShortLink link);
 
     /**
-     * 按租户、ID 和聚合当前版本执行 CAS 更新，并在数据库中原子递增版本号。
+     * 按租户、ID 和聚合变化前版本执行 CAS，并保存聚合已经推进的新版本。
      *
-     * <p>成功后持久化版本已经加一，但传入聚合的内存版本仍由调用方负责在确认成功后推进；失败时不得推进
-     * 内存版本，也不得覆盖并发写入。</p>
+     * <p>调用前聚合必须通过一个命名领域行为恰好推进一次版本。实现以 {@code link.version() - 1} 为期望版本，
+     * 并把 {@code link.version()} 与全部业务字段原子写入。失败时不得覆盖并发写入。</p>
      *
      * @return 命中当前版本并完成更新时返回 {@code true}；记录不存在或版本已变化时返回 {@code false}
      */
     boolean update(ShortLink link);
 
     /**
-     * 按租户、短链 ID 和版本物理删除记录。
-     *
-     * <p>生命周期是否允许删除由聚合和应用层先行校验；本方法只执行版本受控的持久化删除。</p>
+     * 使用已经由 {@link ShortLink#delete(LocalDateTime)} 记录删除意图并推进版本的聚合执行 CAS 物理删除。
      *
      * @return 删除一行时返回 {@code true}；不存在或发生版本冲突时返回 {@code false}
      */
-    boolean deleteByTenantIdAndId(long tenantId, long linkId, long version);
+    boolean delete(ShortLink link);
 
     /**
      * 使用租户隔离的搜索条件统计结果总数。

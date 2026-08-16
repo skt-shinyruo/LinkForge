@@ -104,15 +104,6 @@
         LIMIT 1
     </select>
 
-    <select id="findActiveByCode" resultMap="ShortLinkResultMap">
-        SELECT
-        <include refid="shortLinkColumns"/>
-        FROM short_links
-        WHERE code = #{param1}
-          AND archived_at IS NULL
-        LIMIT 1
-    </select>
-
     <select id="findActiveUnscopedByCode" resultMap="ShortLinkResultMap">
         SELECT
         <include refid="shortLinkColumns"/>

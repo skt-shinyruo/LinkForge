@@ -69,9 +69,7 @@ public class AnalyticsExportRequestService {
 
         LocalDateTime effectiveTo = to == null ? nowUtc() : to;
         LocalDateTime effectiveFrom = from == null ? effectiveTo.minusDays(1) : from;
-        if (effectiveFrom.isAfter(effectiveTo)) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "from 不能晚于 to");
-        }
+        ReportRange.ofUtc(effectiveFrom, effectiveTo);
 
         return approvalSubmissionPort.requestAnalyticsDetailExportApproval(
                 actor.tenantId(),

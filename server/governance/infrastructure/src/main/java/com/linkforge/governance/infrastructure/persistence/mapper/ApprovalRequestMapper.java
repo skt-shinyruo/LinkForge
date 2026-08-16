@@ -22,8 +22,14 @@ public interface ApprovalRequestMapper {
     /** 按租户与请求 ID 精确读取；未命中时返回 {@code null}。 */
     ApprovalRequestEntity findByTenantIdAndId(@Param("tenantId") long tenantId, @Param("requestId") long requestId);
 
-    /** 返回租户全部审批记录，按创建时间和 ID 倒序；当前接口不分页。 */
-    List<ApprovalRequestEntity> listByTenantId(@Param("tenantId") long tenantId);
+    /** 返回不包含 payload 的有界审批摘要。 */
+    List<ApprovalRequestEntity> listSummaries(
+            @Param("tenantId") long tenantId,
+            @Param("status") String status,
+            @Param("cursorCreatedAt") LocalDateTime cursorCreatedAt,
+            @Param("cursorId") Long cursorId,
+            @Param("limit") int limit
+    );
 
     /**
      * 将 {@code PENDING_APPROVAL} 原子推进为 {@code APPROVED}。

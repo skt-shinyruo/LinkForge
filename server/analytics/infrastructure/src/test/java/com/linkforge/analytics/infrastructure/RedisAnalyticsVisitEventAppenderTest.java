@@ -1,122 +1,119 @@
 package com.linkforge.analytics.infrastructure;
 
 import com.linkforge.analytics.application.AnalyticsVisitEventService;
-import com.linkforge.contract.analytics.AnalyticsKeys;
 import com.linkforge.foundation.config.AnalyticsProperties;
 import org.junit.jupiter.api.Test;
-import org.springframework.data.redis.connection.stream.RecordId;
-import org.springframework.data.redis.core.StreamOperations;
+import org.mockito.ArgumentCaptor;
+import org.springframework.data.redis.connection.RedisConnection;
+import org.springframework.data.redis.connection.RedisStreamCommands;
+import org.springframework.data.redis.connection.stream.MapRecord;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class RedisAnalyticsVisitEventAppenderTest {
 
     @Test
-    void append_shouldWriteStreamWithDefaultProperties() {
-        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+    void append_shouldUseOneApproximateMaxLenXaddWithDefaultCapacity() {
+        RedisBoundary boundary = redisBoundary();
         AnalyticsProperties properties = new AnalyticsProperties();
 
-        @SuppressWarnings("unchecked")
-        StreamOperations<String, Object, Object> streamOps = mock(StreamOperations.class);
-        when(redis.opsForStream()).thenReturn(streamOps);
-        when(streamOps.add(any())).thenReturn(RecordId.of("1-0"));
-
-        RedisAnalyticsVisitEventAppender appender = new RedisAnalyticsVisitEventAppender(redis, properties);
+        RedisAnalyticsVisitEventAppender appender = new RedisAnalyticsVisitEventAppender(boundary.redis(), properties);
 
         appender.append(event());
 
-        verify(streamOps).add(any());
-        verify(streamOps).trim(eq(AnalyticsKeys.visitEventStreamKey()), eq(200_000L), eq(true));
+        RedisStreamCommands.XAddOptions options = captureXaddOptions(boundary);
+        assertThat(options.hasMaxlen()).isTrue();
+        assertThat(options.getMaxlen()).isEqualTo(200_000L);
+        assertThat(options.isApproximateTrimming()).isTrue();
+        verify(boundary.redis(), times(1)).execute(any(RedisCallback.class));
     }
 
     @Test
     void append_shouldWriteStreamWhenEventsAreDisabled() {
-        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        RedisBoundary boundary = redisBoundary();
         AnalyticsProperties properties = new AnalyticsProperties();
         properties.getEvents().setEnabled(false);
 
-        @SuppressWarnings("unchecked")
-        StreamOperations<String, Object, Object> streamOps = mock(StreamOperations.class);
-        when(redis.opsForStream()).thenReturn(streamOps);
-        when(streamOps.add(any())).thenReturn(RecordId.of("1-0"));
-
-        RedisAnalyticsVisitEventAppender appender = new RedisAnalyticsVisitEventAppender(redis, properties);
+        RedisAnalyticsVisitEventAppender appender = new RedisAnalyticsVisitEventAppender(boundary.redis(), properties);
 
         appender.append(event());
 
-        verify(streamOps).add(any());
-        verify(streamOps).trim(eq(AnalyticsKeys.visitEventStreamKey()), eq(200_000L), eq(true));
+        assertThat(captureXaddOptions(boundary).getMaxlen()).isEqualTo(200_000L);
     }
 
     @Test
     void append_shouldWriteStreamWhenDetailSampleRateIsZero() {
-        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        RedisBoundary boundary = redisBoundary();
         AnalyticsProperties properties = new AnalyticsProperties();
         properties.getEvents().setEnabled(true);
         properties.getEvents().setSampleRate(0);
         properties.getEvents().setStreamMaxLen(0);
 
-        @SuppressWarnings("unchecked")
-        StreamOperations<String, Object, Object> streamOps = mock(StreamOperations.class);
-        when(redis.opsForStream()).thenReturn(streamOps);
-        when(streamOps.add(any())).thenReturn(RecordId.of("1-0"));
-
-        RedisAnalyticsVisitEventAppender appender = new RedisAnalyticsVisitEventAppender(redis, properties);
+        RedisAnalyticsVisitEventAppender appender = new RedisAnalyticsVisitEventAppender(boundary.redis(), properties);
 
         appender.append(event());
 
-        verify(streamOps).add(any());
-        verify(streamOps, never()).trim(eq(AnalyticsKeys.visitEventStreamKey()), anyLong(), eq(true));
+        assertThat(captureXaddOptions(boundary).hasMaxlen()).isFalse();
     }
 
     @Test
     void append_shouldWriteStreamWhenEventsEnabledAndSampleRateIsOne() {
-        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        RedisBoundary boundary = redisBoundary();
         AnalyticsProperties properties = new AnalyticsProperties();
         properties.getEvents().setEnabled(true);
         properties.getEvents().setSampleRate(1);
         properties.getEvents().setStreamMaxLen(500);
 
-        @SuppressWarnings("unchecked")
-        StreamOperations<String, Object, Object> streamOps = mock(StreamOperations.class);
-        when(redis.opsForStream()).thenReturn(streamOps);
-        when(streamOps.add(any())).thenReturn(RecordId.of("1-0"));
-
-        RedisAnalyticsVisitEventAppender appender = new RedisAnalyticsVisitEventAppender(redis, properties);
+        RedisAnalyticsVisitEventAppender appender = new RedisAnalyticsVisitEventAppender(boundary.redis(), properties);
 
         appender.append(event());
 
-        verify(streamOps).add(any());
-        verify(streamOps).trim(eq(AnalyticsKeys.visitEventStreamKey()), eq(500L), eq(true));
+        assertThat(captureXaddOptions(boundary).getMaxlen()).isEqualTo(500L);
     }
 
     @Test
     void append_shouldPreferDedicatedVisitStreamMaxLenOverLegacyEventsStreamMaxLen() {
-        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        RedisBoundary boundary = redisBoundary();
         AnalyticsProperties properties = new AnalyticsProperties();
         properties.getEvents().setStreamMaxLen(500);
         properties.getVisitStream().setMaxLen(900L);
 
-        @SuppressWarnings("unchecked")
-        StreamOperations<String, Object, Object> streamOps = mock(StreamOperations.class);
-        when(redis.opsForStream()).thenReturn(streamOps);
-        when(streamOps.add(any())).thenReturn(RecordId.of("1-0"));
-
-        RedisAnalyticsVisitEventAppender appender = new RedisAnalyticsVisitEventAppender(redis, properties);
+        RedisAnalyticsVisitEventAppender appender = new RedisAnalyticsVisitEventAppender(boundary.redis(), properties);
 
         appender.append(event());
 
-        verify(streamOps).add(any());
-        verify(streamOps).trim(eq(AnalyticsKeys.visitEventStreamKey()), eq(900L), eq(true));
+        assertThat(captureXaddOptions(boundary).getMaxlen()).isEqualTo(900L);
+    }
+
+    private static RedisBoundary redisBoundary() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        RedisConnection connection = mock(RedisConnection.class);
+        RedisStreamCommands streamCommands = mock(RedisStreamCommands.class);
+        when(connection.streamCommands()).thenReturn(streamCommands);
+        when(redis.getStringSerializer()).thenReturn(new StringRedisSerializer());
+        when(redis.execute(any(RedisCallback.class))).thenAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            RedisCallback<Object> callback = invocation.getArgument(0);
+            return callback.doInRedis(connection);
+        });
+        return new RedisBoundary(redis, streamCommands);
+    }
+
+    private static RedisStreamCommands.XAddOptions captureXaddOptions(RedisBoundary boundary) {
+        ArgumentCaptor<RedisStreamCommands.XAddOptions> options =
+                ArgumentCaptor.forClass(RedisStreamCommands.XAddOptions.class);
+        verify(boundary.streamCommands()).xAdd(any(MapRecord.class), options.capture());
+        return options.getValue();
     }
 
     private static AnalyticsVisitEventService.RedirectVisitEvent event() {
@@ -134,5 +131,8 @@ class RedisAnalyticsVisitEventAppenderTest {
                 "zh-CN,zh;q=0.9",
                 Map.of("utm_source", "newsletter")
         );
+    }
+
+    private record RedisBoundary(StringRedisTemplate redis, RedisStreamCommands streamCommands) {
     }
 }

@@ -11,6 +11,8 @@
             <arg column="tenant_id" javaType="_long"/>
             <arg column="domain_id" javaType="java.lang.Long"/>
             <arg column="code" javaType="java.lang.String"/>
+            <arg column="status" javaType="java.lang.String"/>
+            <arg column="generation" javaType="_long"/>
             <arg column="attempts" javaType="_int"/>
         </constructor>
     </resultMap>
@@ -23,6 +25,7 @@
             domain_scope,
             code,
             status,
+            generation,
             attempts,
             last_error,
             next_attempt_at,
@@ -33,6 +36,7 @@
             #{domainScope},
             #{code},
             'PENDING',
+            1,
             0,
             NULL,
             #{nextAttemptAtUtc},
@@ -40,6 +44,7 @@
         )
         ON DUPLICATE KEY UPDATE
             status = 'PENDING',
+            generation = generation + 1,
             attempts = 0,
             last_error = NULL,
             next_attempt_at = VALUES(next_attempt_at),
@@ -54,6 +59,8 @@
             tenant_id,
             domain_id,
             code,
+            status,
+            generation,
             attempts
         FROM redirect_cache_invalidation_outbox
         WHERE status = 'PENDING'
@@ -78,6 +85,7 @@
             last_error = NULL,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = #{id}
+          AND generation = #{generation}
           AND status = 'PENDING'
     </update>
 
@@ -88,6 +96,7 @@
             next_attempt_at = #{nextAttemptAtUtc},
             updated_at = CURRENT_TIMESTAMP
         WHERE id = #{id}
+          AND generation = #{generation}
           AND status = 'PENDING'
     </update>
 </mapper>

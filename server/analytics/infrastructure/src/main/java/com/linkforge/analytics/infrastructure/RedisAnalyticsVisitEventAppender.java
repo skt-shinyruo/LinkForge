@@ -7,8 +7,12 @@ import com.linkforge.analytics.application.port.AnalyticsVisitEventAppender;
 import com.linkforge.contract.analytics.AnalyticsKeys;
 import com.linkforge.contract.analytics.VisitContext;
 import com.linkforge.foundation.config.AnalyticsProperties;
-import org.springframework.data.redis.connection.stream.StreamRecords;
+import org.springframework.data.redis.connection.RedisStreamCommands;
+import org.springframework.data.redis.connection.stream.MapRecord;
+import org.springframework.data.redis.connection.stream.RecordId;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -99,13 +103,20 @@ public class RedisAnalyticsVisitEventAppender implements AnalyticsVisitEventAppe
         putIfNonBlank(fields, "domainId", event.domainId() == null ? null : String.valueOf(event.domainId()));
         putIfNonBlank(fields, "code", event.code());
 
-        String streamKey = AnalyticsKeys.visitEventStreamKey();
-        redis.opsForStream().add(StreamRecords.newRecord().in(streamKey).ofStrings(fields));
+        append(fields);
+    }
 
+    private void append(Map<String, String> fields) {
+        RedisSerializer<String> serializer = redis.getStringSerializer();
+        byte[] streamKey = serializer.serialize(AnalyticsKeys.visitEventStreamKey());
+        Map<byte[], byte[]> serializedFields = new LinkedHashMap<>();
+        fields.forEach((key, value) -> serializedFields.put(serializer.serialize(key), serializer.serialize(value)));
+        MapRecord<byte[], byte[], byte[]> record = MapRecord.create(streamKey, serializedFields);
         long maxLen = analyticsProperties == null ? 0L : analyticsProperties.resolveVisitStreamMaxLen();
-        if (maxLen > 0) {
-            redis.opsForStream().trim(streamKey, maxLen, true);
-        }
+        RedisStreamCommands.XAddOptions options = maxLen > 0
+                ? RedisStreamCommands.XAddOptions.maxlen(maxLen).approximateTrimming(true)
+                : RedisStreamCommands.XAddOptions.none();
+        redis.execute((RedisCallback<RecordId>) connection -> connection.streamCommands().xAdd(record, options));
     }
 
     private static void putIfNonBlank(Map<String, String> fields, String key, String value) {

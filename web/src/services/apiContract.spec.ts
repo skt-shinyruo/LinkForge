@@ -12,7 +12,7 @@ import {
   withQuery,
   WEB_API_CONTRACT_ENDPOINTS,
 } from "./apiContract";
-import { isLinkDto, pageOf } from "./runtimeContracts";
+import { cursorPageOf, isLinkDto, pageOf } from "./runtimeContracts";
 
 describe("service API contract helpers", () => {
   it("unwraps successful ApiResponse payloads and preserves empty success data", () => {
@@ -88,6 +88,8 @@ describe("service API contract helpers", () => {
     expect(isLinkDto({ id: 1, tenantId: 2, code: "x" })).toBe(false);
     expect(pageOf(isLinkDto)({ items: [], total: 0, page: 0, size: 20 })).toBe(true);
     expect(pageOf(isLinkDto)({ items: [{ id: 1 }], total: 1, page: 0, size: 20 })).toBe(false);
+    expect(cursorPageOf(isLinkDto)({ items: [], hasMore: false, nextCursor: null })).toBe(true);
+    expect(cursorPageOf(isLinkDto)({ items: [], hasMore: true })).toBe(false);
   });
 
   it("centralizes endpoint builders for tenant and application scoped routes", () => {

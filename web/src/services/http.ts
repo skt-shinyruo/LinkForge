@@ -6,8 +6,8 @@ const TOKEN_KEY = "linkforge.token";
 type AuthMode = "bearer" | "cookie";
 type TokenStorageMode = "local" | "session" | "none";
 
-const AUTH_MODE = ((import.meta as any).env?.VITE_AUTH_MODE || "bearer") as AuthMode;
-const TOKEN_STORAGE_MODE = ((import.meta as any).env?.VITE_TOKEN_STORAGE ||
+const AUTH_MODE = (import.meta.env.VITE_AUTH_MODE || "bearer") as AuthMode;
+const TOKEN_STORAGE_MODE = (import.meta.env.VITE_TOKEN_STORAGE ||
   (AUTH_MODE === "cookie" ? "none" : "session")) as TokenStorageMode;
 
 const CSRF_COOKIE_NAME = "XSRF-TOKEN";
@@ -66,7 +66,8 @@ export function clearToken() {
  * 执行带认证信息的原始 fetch。
  *
  * bearer 模式只在调用方未设置 Authorization 时补 token；cookie 模式携带 credentials，并在写请求前
- * best-effort 初始化 CSRF cookie。响应 401 会清理 token 并通知全局会话处理器，但响应仍交给调用方解析。
+ * best-effort 初始化 CSRF cookie。cookie 模式的写请求收到 403 后会让下一次写请求刷新 CSRF cookie，
+ * 但不会自动重放已经发出的写操作。响应 401 会清理 token 并通知全局会话处理器，响应仍交给调用方解析。
  */
 export async function authFetch(
   path: string,
@@ -90,6 +91,10 @@ export async function authFetch(
     headers,
     credentials: AUTH_MODE === "cookie" ? "include" : options.credentials,
   });
+
+  if (AUTH_MODE === "cookie" && isUnsafeMethod(options.method || "GET") && resp.status === 403) {
+    csrfRefreshRequired = true;
+  }
 
   if (resp.status === 401) {
     clearToken();
@@ -115,18 +120,34 @@ function getCookie(name: string): string | null {
 }
 
 let csrfInitPromise: Promise<void> | null = null;
+let csrfRefreshRequired = false;
+
+function expireCsrfCookie() {
+  if (typeof document !== "undefined") {
+    document.cookie = `${CSRF_COOKIE_NAME}=; Max-Age=0; path=/`;
+  }
+}
 
 async function ensureCsrfCookie(): Promise<void> {
   if (!csrfInitPromise) {
-    csrfInitPromise = fetch(CSRF_ENDPOINT, { method: "GET", credentials: "include" })
-      .then(() => {})
-      .catch((err) => {
-        // 若首次初始化失败（网络/临时错误），不要把失败永久缓存住；允许后续重试。
-        csrfInitPromise = null;
-        throw err;
-      });
+    csrfInitPromise = (async () => {
+      const response = await fetch(CSRF_ENDPOINT, { method: "GET", credentials: "include" });
+      if (!response.ok) {
+        throw new Error(`CSRF initialization failed (HTTP ${response.status})`);
+      }
+      if (!getCookie(CSRF_COOKIE_NAME)) {
+        throw new Error("CSRF initialization did not set the expected cookie");
+      }
+    })();
   }
-  await csrfInitPromise;
+  const pending = csrfInitPromise;
+  try {
+    await pending;
+  } finally {
+    if (csrfInitPromise === pending) {
+      csrfInitPromise = null;
+    }
+  }
 }
 
 async function attachCsrfHeaderIfNeeded(headers: Headers, method: string): Promise<void> {
@@ -137,7 +158,10 @@ async function attachCsrfHeaderIfNeeded(headers: Headers, method: string): Promi
     return;
   }
 
-  let token = getCookie(CSRF_COOKIE_NAME);
+  if (csrfRefreshRequired) {
+    expireCsrfCookie();
+  }
+  let token = csrfRefreshRequired ? null : getCookie(CSRF_COOKIE_NAME);
   if (!token) {
     try {
       await ensureCsrfCookie();
@@ -148,6 +172,7 @@ async function attachCsrfHeaderIfNeeded(headers: Headers, method: string): Promi
     token = getCookie(CSRF_COOKIE_NAME);
   }
   if (token) {
+    csrfRefreshRequired = false;
     headers.set(CSRF_HEADER_NAME, token);
   }
 }
@@ -162,11 +187,13 @@ export async function apiFetch<T>(
   path: string,
   options: RequestInit = {},
   validateData?: RuntimeValidator<T>,
+  observeResponse?: (response: Response) => void,
 ): Promise<ApiResponse<T>> {
   const headers = new Headers(options.headers || {});
   headers.set("Content-Type", headers.get("Content-Type") || "application/json");
 
   const resp = await authFetch(path, { ...options, headers });
+  observeResponse?.(resp);
 
   const text = await resp.text();
   let data: ApiResponse<T> | null = null;

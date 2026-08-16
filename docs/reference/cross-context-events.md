@@ -24,7 +24,7 @@ LinkForge 是模块化单体，但模块边界仍按服务边界对待：
 | `ApprovalSubmissionPort` | Governance | 提交结构化审批 | payload 编码或业务校验失败时不创建请求 |
 | `ApprovalExecutionPort` | 业务上下文 | 执行已批准操作 | 必须重新校验资源状态；操作定义 before snapshot 时还要校验陈旧状态 |
 
-已删除的 `LinkMetaSourcePort` 不再是第二条权威读取契约。Redirect 缓存未命中只调用 `ShortLinkReadPort`，可用性只由 `RedirectService` 判定。
+已删除的 `LinkMetaSourcePort` 不再是第二条权威读取契约。Redirect 缓存未命中只调用 `ShortLinkReadPort`，可用性只由 `RedirectService` 判定。Shortlink 发布实现仅把跳转元数据查询包在只读事务中，按生产 ShardingSphere 的 transactional read strategy 路由 primary；其他控制面读不随之切换。
 
 ## 短链事务写入
 
@@ -47,10 +47,19 @@ LinkForge 是模块化单体，但模块边界仍按服务边界对待：
 - 驱逐必须幂等；after-commit 与 worker 正常情况下会重复。
 - 事务回滚不运行 after-commit，也不会留下 outbox。
 - 快路径失败不改变业务成功响应；worker 继续恢复。
+- outbox 用 `tenantId + domainScope + code` 合并同一失效 identity。首次入队的 generation 为 `1`；
+  后续入队原子递增 generation、恢复 `PENDING` 并清空上一代重试状态。
+- worker 读取 identity、status 和 generation。驱逐成功后的完成更新与驱逐失败后的退避更新都使用
+  `id + generation + PENDING` CAS；如果驱逐期间出现新一代入队，旧 worker 允许完成幂等驱逐，但不能消费或
+  延迟新一代 intent。该语义是 at-least-once，不是 exactly-once。
 - Redis 长时间不可用时，Redirect 读异常降级为 MISS，并同步回源 Shortlink，因此正确性仍由数据库事实保证，代价是性能下降。
 - 负缓存和正缓存都必须驱逐，否则新建链接或状态变化会被旧 sentinel/快照遮蔽。
 
-排障应检查 outbox 的状态、attempt、next retry 和 last error，同时检查 Redis 与 Shortlink 权威读取，而不是手工修改数据库后只清一个 key。
+generation 字段通过 additive migration 引入，默认值 `1` 让历史行和旧实例的 INSERT 在滚动发布中继续工作。
+应先发布 migration 与 generation producer，再在所有旧 producer/worker 退出后依赖 generation CAS 的完整竞态保证；
+混部窗口保持向后兼容，但旧 worker 不理解 generation，仍只具备升级前的一致性保证。
+
+排障应检查 outbox 的 status、generation、attempts、next retry 和 last error，同时检查 Redis 与 Shortlink 权威读取，而不是手工修改数据库后只清一个 key。
 
 ## 领域事件到集成事件
 
@@ -58,6 +67,7 @@ LinkForge 是模块化单体，但模块边界仍按服务边界对待：
 
 - 每次状态变化后应在同一用例内及时 dispatch；不要在一个聚合中积累多轮变更后再依赖“当前快照”猜测每一步历史。
 - publisher 抛错会使业务事务失败，但已从内存聚合拉出的事件不会自动回到列表；调用方依赖事务回滚和整个用例重试，而不是复用同一个聚合实例。
+- ownership 变化使用内部 `ShortLinkOwnershipChanged` 捕获前后 scope，dispatcher 将其映射为现有 UPDATED 集成事件，不扩展跨上下文 wire contract。
 - 未识别的内部领域事件当前会被忽略，这是兼容限制，应通过日志和测试避免悄然丢失新增事件族。
 
 `ShortLinkEventFactory` 创建的 `ShortLinkPublicSnapshot` 是事件时刻的发布事实。事件由 `IntegrationEventStore.append` 与业务数据同事务落库，producer 为 `shortlink`，aggregateType 为 `shortlink`。
@@ -91,23 +101,25 @@ LinkForge 是模块化单体，但模块边界仍按服务边界对待：
 Redirect 发生真实跳转时把记录交给 Analytics：
 
 1. appender 写 `stats:visit:events`。
-2. projector 消费访问记录，增加 Redis PV/HLL 并追加 dirty streams。
-3. flush consumer 读取 dirty member 对应的当前累计值，upsert MySQL 后 ACK dirty 消息。
+2. projector 消费访问记录，增加 Redis PV/HLL 并原子推进 V2 generation marker。
+3. flush consumer 读取 marker member 对应的当前累计值，upsert MySQL 后按 generation compare-and-delete；兼容期同时 ACK legacy dirty Stream。
 4. 可选明细 consumer 采样、`insert ignore` 并 ACK。
 
 这里存在两类重放边界：
 
 - 标准访问记录携带 requestId，projector 重放由 Redis Lua 幂等投影吸收；历史无 requestId 消息仍可能重复增加 PV。
-- dirty message 重放只会再次读取当前累计值并 upsert，通常不会再次增加计数。
+- V2 marker CAS 冲突会保留新 generation；legacy message 重放只会再次读取当前累计值并 upsert，不会由 flush 增加计数。
 
-因此报表是最终一致且非 exactly-once。dirty stream member 固定为 `{tenantId}:{linkId}`，只表示需要刷新，不是 active-set membership。
+因此报表是最终一致且非 exactly-once。dirty member 固定为 `{tenantId}:{linkId}`，只表示需要刷新，不是
+active-set membership。当前 producer 默认只写 V2，consumer 在退役门禁完成前保持 V2/legacy dual-read。
 
 ## ACK、pending 与 DLQ
 
 - Redis consumer group 只有在对应写入成功后才应 ACK。
 - 普通 Redis/DB 故障保留 pending，后续由同 consumer 或 reclaim 处理。
-- poison record 可隔离后 ACK，避免永久阻塞批次。
-- DLQ 写入是 best-effort：极端情况下隔离判断完成、DLQ 写失败后仍可能 ACK，不能把 DLQ 当作无损审计日志。
+- poison record 只有在 DLQ 写入成功后才 ACK；DLQ 写入失败会保留原消息 pending，避免隔离记录丢失。
+- DLQ 写成功后的近似裁剪和容量采样是 best-effort 维护，不改变该次持久化结果。
+- DLQ 写入与原 Stream ACK 不在同一事务中；ACK 失败会保留 pending 并允许安全重放，也可能再次写入同一隔离记录。因此 DLQ 不是事务审计日志。
 - consumer name 应在多实例中稳定且唯一；频繁变化会增加 pending reclaim 压力。
 
 ## 一致性等级
@@ -119,7 +131,7 @@ Redirect 发生真实跳转时把记录交给 Analytics：
 | Redirect 读取 | 同步权威回源 | `ShortLinkReadPort` |
 | Redirect Redis 缓存 | 最终一致/best-effort | outbox 重试 + MISS 回源 |
 | Analytics 目录 | 最终一致 | integration event + checkpoint |
-| PV/UV Redis 到 MySQL | 最终一致 | dirty stream + upsert |
+| PV/UV Redis 到 MySQL | 最终一致 | V2 generation CAS + 当前快照 upsert；兼容期 dual-read legacy Stream |
 | 访问明细 | 可选、采样、最终一致 | visit stream consumer |
 | 审批业务执行 | 状态机 + 业务幂等/CAS | Governance 与执行上下文事务 |
 
@@ -142,7 +154,7 @@ Redirect 发生真实跳转时把记录交给 Analytics：
 ### PV/UV 落后或偏大
 
 1. 检查 visit stream lag/pending/reclaim。
-2. 检查 dirty stream pending 和 flush 日志。
+2. 检查 V2 marker cardinality/age/CAS 冲突、legacy Stream pending 和 flush 日志。
 3. 对比 Redis 当前累计值与 MySQL upsert 值。
 4. 检查 requestId 去重指标和历史无 requestId 消息；调用方重复生成多个 requestId 仍可能使 PV 偏大。
 

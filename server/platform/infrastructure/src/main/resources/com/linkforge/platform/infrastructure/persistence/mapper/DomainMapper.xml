@@ -43,6 +43,13 @@
           AND id = #{domainId}
     </select>
 
+    <select id="findByHostname" resultMap="DomainResultMap">
+        SELECT id, tenant_id, application_id, hostname, scope, status, trust_class, created_at, updated_at
+        FROM domains
+        WHERE hostname = #{hostname}
+        LIMIT 1
+    </select>
+
     <select id="findByTenantIdAndHostname" resultMap="DomainResultMap">
         SELECT id, tenant_id, application_id, hostname, scope, status, trust_class, created_at, updated_at
         FROM domains

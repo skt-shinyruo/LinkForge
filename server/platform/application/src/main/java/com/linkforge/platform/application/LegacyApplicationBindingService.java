@@ -1,11 +1,14 @@
 package com.linkforge.platform.application;
 
+import com.linkforge.contract.api.BusinessException;
+import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.config.CoreProperties;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.platform.application.port.ApplicationPolicyRepository;
 import com.linkforge.platform.application.port.ApplicationQuotaRepository;
 import com.linkforge.platform.application.port.ApplicationRepository;
 import com.linkforge.platform.application.port.DomainRepository;
+import com.linkforge.platform.application.port.LegacyBindingLockRepository;
 import com.linkforge.platform.domain.Application;
 import com.linkforge.platform.domain.ApplicationPolicy;
 import com.linkforge.platform.domain.ApplicationQuota;
@@ -22,12 +25,9 @@ import java.net.URI;
 /**
  * 为尚未显式选择应用和域名的旧接口提供兼容绑定。
  *
- * <p>首次访问某租户时，该服务在一个事务中按需创建固定键的默认应用、默认策略、默认额度和专属域名；
- * 已存在的应用或域名会被复用。它不会修复“应用已存在但策略或额度缺失”之类的部分历史数据，
- * 也不会重新校验既有域名的状态及其与默认应用的绑定关系。</p>
- *
- * <p>当前实现采用先查询后插入，没有分布式锁、upsert 或冲突重读。数据库唯一约束可以防止生成两份
- * 默认资源，但并发首次开通时失败的一方会收到持久化异常，需要由上层在新事务中重试。</p>
+ * <p>同一租户的调用先获取 Platform 自有锁行，再执行 get-or-reconcile。只有 ACTIVE 应用和完整、
+ * ACTIVE 的专属域名绑定可以复用；策略与额度每次都收敛到当前 legacy 默认值。停用或归属冲突不会
+ * 被自动放宽，而是返回确定的业务错误。</p>
  */
 @Service
 class LegacyApplicationBindingService {
@@ -39,6 +39,7 @@ class LegacyApplicationBindingService {
     private final DomainRepository domainRepository;
     private final ApplicationQuotaRepository applicationQuotaRepository;
     private final ApplicationPolicyRepository applicationPolicyRepository;
+    private final LegacyBindingLockRepository legacyBindingLockRepository;
     private final CoreProperties coreProperties;
 
     LegacyApplicationBindingService(
@@ -47,6 +48,7 @@ class LegacyApplicationBindingService {
             DomainRepository domainRepository,
             ApplicationQuotaRepository applicationQuotaRepository,
             ApplicationPolicyRepository applicationPolicyRepository,
+            LegacyBindingLockRepository legacyBindingLockRepository,
             CoreProperties coreProperties
     ) {
         this.idGenerator = idGenerator;
@@ -54,25 +56,33 @@ class LegacyApplicationBindingService {
         this.domainRepository = domainRepository;
         this.applicationQuotaRepository = applicationQuotaRepository;
         this.applicationPolicyRepository = applicationPolicyRepository;
+        this.legacyBindingLockRepository = legacyBindingLockRepository;
         this.coreProperties = coreProperties;
     }
 
     /**
-     * 返回租户的旧接口默认绑定，不存在时在当前事务内创建。
+     * 返回租户的旧接口默认绑定，并在租户级事务锁内补齐可安全修复的部分状态。
      *
      * <p>默认域名为 {@code legacy-{tenantId}.{baseHost}}；{@code baseHost} 优先取
      * {@code core.base-url} 的主机名，配置缺失或非法时使用 {@code legacy-host}。</p>
      *
      * @param tenantId 租户标识
-     * @return 可供旧接口填充的应用和专属域名标识
+     * @return 已验证为 ACTIVE 且归属、绑定和默认配置完整的应用/专属域名标识
      */
     @Transactional
     LegacyBinding ensureLegacyDefaultBinding(long tenantId) {
+        if (tenantId <= 0L) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "租户标识无效");
+        }
+        legacyBindingLockRepository.lockTenant(tenantId);
         Application application = applicationRepository.findByTenantIdAndApplicationKey(tenantId, LEGACY_DEFAULT_APPLICATION_KEY)
                 .orElseGet(() -> createLegacyApplication(tenantId));
+        requireReusableApplication(tenantId, application);
         String hostname = legacyHostname(tenantId);
         Domain domain = domainRepository.findByTenantIdAndHostname(tenantId, hostname)
-                .orElseGet(() -> createLegacyDomain(tenantId, application.id(), hostname));
+                .orElseGet(() -> findConflictingDomainOrCreate(tenantId, application.id(), hostname));
+        requireReusableDomain(tenantId, application.id(), hostname, domain);
+        reconcileConfiguration(application.id());
         return new LegacyBinding(application.id(), domain.id());
     }
 
@@ -88,7 +98,11 @@ class LegacyApplicationBindingService {
                 null
         );
         applicationRepository.insert(application);
-        applicationPolicyRepository.insert(new ApplicationPolicy(
+        return application;
+    }
+
+    private void reconcileConfiguration(long applicationId) {
+        applicationPolicyRepository.upsert(new ApplicationPolicy(
                 applicationId,
                 DomainScope.APPLICATION_DEDICATED,
                 PlatformDefaults.REDIRECT_STATUS_CODE,
@@ -96,14 +110,59 @@ class LegacyApplicationBindingService {
                 null,
                 null
         ));
-        applicationQuotaRepository.insert(new ApplicationQuota(
+        applicationQuotaRepository.upsert(new ApplicationQuota(
                 applicationId,
                 PlatformDefaults.MONTHLY_LINK_LIMIT,
                 PlatformDefaults.MONTHLY_CLICK_LIMIT,
                 null,
                 null
         ));
-        return application;
+    }
+
+    private Domain findConflictingDomainOrCreate(long tenantId, long applicationId, String hostname) {
+        Domain existing = domainRepository.findByHostname(hostname).orElse(null);
+        if (existing != null) {
+            if (existing.tenantId() != tenantId) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "Legacy 默认域名已被其他租户占用");
+            }
+            return existing;
+        }
+        return createLegacyDomain(tenantId, applicationId, hostname);
+    }
+
+    private static void requireReusableApplication(long tenantId, Application application) {
+        if (application.tenantId() != tenantId
+                || !LEGACY_DEFAULT_APPLICATION_KEY.equals(application.applicationKey())) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "Legacy 默认应用归属错误");
+        }
+        if (!PlatformDefaults.APPLICATION_STATUS_ACTIVE.equals(application.status())) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "Legacy 默认应用未启用");
+        }
+    }
+
+    private static void requireReusableDomain(
+            long tenantId,
+            long applicationId,
+            String hostname,
+            Domain domain
+    ) {
+        if (domain.tenantId() != tenantId) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "Legacy 默认域名已被其他租户占用");
+        }
+        if (!hostname.equals(domain.hostname())) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "Legacy 默认域名主机名错误");
+        }
+        if (domain.status() != DomainStatus.ACTIVE) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "Legacy 默认域名未启用");
+        }
+        if (domain.scope() != DomainScope.APPLICATION_DEDICATED
+                || domain.applicationId() == null
+                || domain.applicationId() != applicationId) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "Legacy 默认域名绑定错误");
+        }
+        if (domain.trustClass() != TargetTrustClass.FIRST_PARTY) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "Legacy 默认域名信任配置错误");
+        }
     }
 
     private Domain createLegacyDomain(long tenantId, long applicationId, String hostname) {

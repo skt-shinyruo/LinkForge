@@ -160,19 +160,21 @@ public class UpdateShortLinkCommandHandler {
             return dtoMapper.toDto(link, existingTags);
         }
 
-        link.applyPatch(update.patch());
+        LocalDateTime updatedAtUtc = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
+        try {
+            link.applyUpdate(update.patch(), tagsChanged, updatedAtUtc);
+        } catch (ShortLinkDomainException ex) {
+            throw ShortLinkDomainExceptions.translate(ex);
+        }
 
         if (!shortLinkRepository.update(link)) {
             throw new BusinessException(ShortLinkErrorCode.LINK_STALE_WRITE);
         }
-        link.incrementVersion();
 
         if (tagsChanged) {
             setLinkTagsHandler.handle(tenantId, linkId, update.tags().value());
         }
 
-        LocalDateTime updatedAtUtc = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
-        link.markUpdated(updatedAtUtc);
         domainEventDispatcher.publish(link, updatedAtUtc.toInstant(ZoneOffset.UTC));
         RedirectCacheInvalidations.enqueueAndRunAfterCommit(
                 redirectCacheInvalidationOutbox,

@@ -58,8 +58,16 @@ public class AccountsApiKeyStoreMybatisAdapter implements AccountsApiKeyStore {
     }
 
     @Override
-    public boolean updateKeyHashIfCurrent(Long apiKeyId, String expectedKeyHash, String newKeyHash) {
-        return apiKeyMapper.updateKeyHashIfCurrent(apiKeyId, expectedKeyHash, newKeyHash) > 0;
+    public boolean updateKeyHashIfCurrent(
+            Long apiKeyId,
+            String expectedKeyHash,
+            String expectedKeyId,
+            String newKeyHash,
+            String newKeyId
+    ) {
+        return apiKeyMapper.updateKeyHashIfCurrent(
+                apiKeyId, expectedKeyHash, expectedKeyId, newKeyHash, newKeyId
+        ) > 0;
     }
 
     @Override
@@ -74,6 +82,7 @@ public class AccountsApiKeyStoreMybatisAdapter implements AccountsApiKeyStore {
         entity.setApplicationId(apiKey.applicationId());
         entity.setName(apiKey.name());
         entity.setKeyHash(apiKey.keyHash());
+        entity.setKeyId(apiKey.keyId());
         entity.setStatus(apiKey.status());
         entity.setLastUsedAt(apiKey.lastUsedAt());
         entity.setCreatedAt(apiKey.createdAt());
@@ -90,6 +99,7 @@ public class AccountsApiKeyStoreMybatisAdapter implements AccountsApiKeyStore {
                 entity.getApplicationId(),
                 entity.getName(),
                 entity.getKeyHash(),
+                entity.getKeyId(),
                 entity.getStatus(),
                 entity.getLastUsedAt(),
                 entity.getCreatedAt()

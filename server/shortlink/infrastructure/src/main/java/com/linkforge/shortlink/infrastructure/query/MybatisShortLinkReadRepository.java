@@ -37,8 +37,8 @@ public class MybatisShortLinkReadRepository implements ShortLinkReadRepository {
     /**
      * 按 host 与 code 查询跳转元数据。
      *
-     * <p>host 缺失时按 code 查询未归档记录，供不具备 Host 信息的内部调用兼容使用。host 存在时
-     * 的查找顺序固定为：</p>
+     * <p>host 缺失时仅按 code 查询未绑定域名的未归档记录，供不具备 Host 信息的内部调用兼容使用。
+     * host 存在时的查找顺序固定为：</p>
      * <ol>
      *     <li>匹配处于 {@code ACTIVE} 状态的自定义域名与 code；</li>
      *     <li>仅当 host 等于配置的基础域名时，匹配 {@code legacy-{tenantId}.{baseHost}} 旧域名；</li>
@@ -56,7 +56,7 @@ public class MybatisShortLinkReadRepository implements ShortLinkReadRepository {
             return Optional.empty();
         }
         if (normalizedHost == null) {
-            return Optional.ofNullable(toRedirectLinkMeta(queryMapper.findActiveByCode(normalizedCode)));
+            return Optional.ofNullable(toRedirectLinkMeta(queryMapper.findActiveUnscopedByCode(normalizedCode)));
         }
 
         ShortLinkEntity row = queryMapper.findActiveByHostnameAndCode(normalizedHost, normalizedCode);

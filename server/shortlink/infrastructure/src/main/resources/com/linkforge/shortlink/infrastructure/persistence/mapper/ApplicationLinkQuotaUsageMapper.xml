@@ -45,4 +45,13 @@
           AND month_start = #{monthStartUtc}
           AND used_count &lt; #{monthlyLinkLimit}
     </update>
+
+    <!-- reconciliation 已由短链版本 CAS 保证只成功一次；月份锁保证与创建路径串行。 -->
+    <update id="incrementMonthlyLinkUsageUnbounded">
+        UPDATE application_link_monthly_usages
+        SET used_count = used_count + 1
+        WHERE tenant_id = #{tenantId}
+          AND application_id = #{applicationId}
+          AND month_start = #{monthStartUtc}
+    </update>
 </mapper>

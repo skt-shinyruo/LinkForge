@@ -1,11 +1,17 @@
 package com.linkforge.governance.interfaces.web;
 
+import com.linkforge.contract.api.BusinessException;
+import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.contract.api.ApiResponse;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.runtime.security.AuthContext;
+import com.linkforge.foundation.runtime.web.CursorPaginationHeaders;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.web.RequestId;
 import com.linkforge.governance.application.GovernanceService;
+import com.linkforge.governance.application.GovernancePageResult;
+import com.linkforge.governance.application.ApprovalRequestSummaryResult;
+import com.linkforge.governance.domain.ApprovalStatus;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Size;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -14,10 +20,13 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.ResponseEntity;
 
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.Locale;
 import java.util.List;
 
 /**
@@ -38,13 +47,17 @@ public class ApprovalController {
     }
 
     /**
-     * 查询当前认证主体所属租户的全部审批记录。
+     * 查询当前认证主体所属租户的一页审批摘要。
      *
      * <p>结果按创建时间倒序，且安全响应不暴露 before/after snapshot。</p>
      */
     @GetMapping
     @PreAuthorize("hasRole('TENANT_ADMIN') or hasRole('PLATFORM_ADMIN')")
-    public ApiResponse<List<ApprovalRequestHttpResponse>> list() {
+    public ResponseEntity<ApiResponse<List<ApprovalRequestHttpResponse>>> list(
+            @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "limit", required = false) Integer limit,
+            @RequestParam(name = "cursor", required = false) String cursor
+    ) {
         AuthPrincipal principal = AuthContext.requirePrincipal();
         UserActor actor = new UserActor(
                 principal.getTenantId(),
@@ -52,12 +65,33 @@ public class ApprovalController {
                 principal.getEmail(),
                 principal.getRoles()
         );
-        return ApiResponse.ok(
-                governanceService.listRequests(principal.getTenantId(), actor).stream()
-                        .map(GovernanceHttpMapper::toApprovalResponse)
-                        .toList(),
-                RequestId.get()
+        GovernancePageResult<ApprovalRequestSummaryResult> page = governanceService.listRequests(
+                principal.getTenantId(),
+                actor,
+                parseStatus(status),
+                limit,
+                cursor
         );
+        ResponseEntity.BodyBuilder response = ResponseEntity.ok()
+                .header(CursorPaginationHeaders.HAS_MORE, Boolean.toString(page.hasMore()));
+        if (page.nextCursor() != null) {
+            response.header(CursorPaginationHeaders.NEXT_CURSOR, page.nextCursor());
+        }
+        return response.body(ApiResponse.ok(
+                page.items().stream().map(GovernanceHttpMapper::toApprovalResponse).toList(),
+                RequestId.get()
+        ));
+    }
+
+    private static ApprovalStatus parseStatus(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return ApprovalStatus.valueOf(raw.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "审批状态无效");
+        }
     }
 
     /**

@@ -13,6 +13,20 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "html", "lcov"],
       reportsDirectory: "coverage",
+      thresholds: {
+        "src/composables/useStatsPage.ts": {
+          statements: 87.59,
+          branches: 79.24,
+          functions: 90.9,
+          lines: 87.59,
+        },
+        "src/services/http.ts": {
+          statements: 92.81,
+          branches: 75,
+          functions: 100,
+          lines: 92.81,
+        },
+      },
     },
   },
   server: {

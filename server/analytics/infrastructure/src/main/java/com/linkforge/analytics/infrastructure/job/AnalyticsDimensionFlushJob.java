@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.connection.stream.MapRecord;
+import org.springframework.data.redis.connection.stream.RecordId;
 import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.RedisCallback;
@@ -30,12 +31,15 @@ import java.util.Map;
 /**
  * 将 Redis 维度 PV Hash 和 UV HyperLogLog 快照写入 MySQL 日表。
  *
- * <p>每个 dirty 成员固定为 {@code tenantId:linkId}，每个维度 PV Hash 的 field 是维度值，UV 是
+ * <p>每个 V2 marker field 固定为 {@code tenantId:linkId}，每个维度 PV Hash 的 field 是维度值，UV 是
  * 维度值对应的独立 HLL key。HLL 的 {@code PFCOUNT} 是近似 UV；维度值在 key 中以 SHA-256 后缀编码，
  * 以避免不受控文本膨胀 Redis key。</p>
  *
- * <p>扫描 Redis 或写数据库失败会保留消息 pending。落库使用单调 {@code GREATEST} upsert，所以重放
- * dirty 消息不会降低快照，但 Stream/Redis/数据库并不组成 exactly-once 事务。</p>
+ * <p>扫描 Redis 或写数据库失败会保留 V2 marker；legacy 兼容消息则保留 pending。落库使用单调
+ * {@code GREATEST} upsert，所以重放不会降低快照，但 Redis 与数据库并不组成 exactly-once 事务。</p>
+ *
+ * <p>legacy Stream 的 retained entries 与实际 {@code lag + pending} 分开观测，并跨全部回填日期汇总；
+ * drained 只累计 Redis 实际 ACK 的记录。</p>
  */
 @Component
 public class AnalyticsDimensionFlushJob {
@@ -44,6 +48,7 @@ public class AnalyticsDimensionFlushJob {
     private static final String GROUP = "lf-dim-flush";
     private static final String CONSUMER = "lf-dim-flush-consumer";
     private static final int BATCH_SIZE = 500;
+    private static final int MAX_MARKER_BATCHES_PER_DAY = 10;
 
     private static final List<String> DEFAULT_DIM_TYPES = List.of(
             "referer_domain",
@@ -60,6 +65,8 @@ public class AnalyticsDimensionFlushJob {
     private final LinkStatsDimDailyMapper linkStatsDimDailyMapper;
     private final AnalyticsProperties analyticsProperties;
     private final RedisStreamBatchConsumer streamConsumer;
+    private final LegacyDirtyStreamMetrics legacyStreamMetrics;
+    private final VersionedDirtyMarkerStore markerStore;
     private final OperationalMetrics metrics;
 
     public AnalyticsDimensionFlushJob(
@@ -81,11 +88,14 @@ public class AnalyticsDimensionFlushJob {
         this.linkStatsDimDailyMapper = linkStatsDimDailyMapper;
         this.analyticsProperties = analyticsProperties;
         this.metrics = metrics == null ? OperationalMetrics.noop() : metrics;
-        this.streamConsumer = new RedisStreamBatchConsumer(redis, GROUP, CONSUMER, "analytics_dimension_flush", this.metrics);
+        this.streamConsumer = new RedisStreamBatchConsumer(
+                redis, GROUP, CONSUMER, "analytics_dimension_flush", this.metrics, false);
+        this.legacyStreamMetrics = new LegacyDirtyStreamMetrics(redis, streamConsumer, this.metrics);
+        this.markerStore = new VersionedDirtyMarkerStore(redis);
     }
 
     /**
-     * 扫描 UTC 当日及可回填日期的维度 dirty stream。
+     * 扫描 UTC 当日及可回填日期的维度 V2 marker，并按配置兼容读取 legacy Stream。
      *
      * <p>禁用 {@code analytics.dimensions.enabled} 时整条维度链路停止；链接级 PV/UV 与明细链路不受
      * 此开关影响。</p>
@@ -100,32 +110,106 @@ public class AnalyticsDimensionFlushJob {
 
         LocalDate todayUtc = LocalDate.now(ZoneOffset.UTC);
         int backfillDays = resolveBackfillDays();
+        LegacyDirtyStreamMetrics.Aggregate legacy = legacyReadEnabled()
+                ? legacyStreamMetrics.start("dimension") : null;
         for (int i = 0; i < backfillDays; i++) {
-            flushDay(todayUtc.minusDays(i), cfg);
+            flushDay(todayUtc.minusDays(i), cfg, legacy);
+        }
+        if (legacy != null) {
+            streamConsumer.publishStreamState(legacy.publish());
         }
     }
 
-    private void flushDay(LocalDate day, AnalyticsProperties.Dimensions cfg) {
-        String streamKey = AnalyticsKeys.dimDirtyStreamKey(day);
-        if (!streamConsumer.ensureGroup(streamKey)) {
+    private void flushDay(
+            LocalDate day,
+            AnalyticsProperties.Dimensions cfg,
+            LegacyDirtyStreamMetrics.Aggregate legacy
+    ) {
+        flushVersionedMarkers(day, cfg);
+        if (!legacyReadEnabled()) {
             return;
         }
-
-        while (true) {
-            List<MapRecord<String, Object, Object>> records = readNext(streamKey);
-            if (records == null || records.isEmpty()) {
+        String streamKey = AnalyticsKeys.dimDirtyStreamKey(day);
+        try {
+            if (!streamConsumer.ensureGroup(streamKey)) {
                 return;
             }
 
-            List<String> members = extractMembers(records);
-            if (members.isEmpty()) {
-                streamConsumer.acknowledge(streamKey, records.stream().map(MapRecord::getId).toList());
-                continue;
+            while (true) {
+                List<MapRecord<String, Object, Object>> records = readNext(streamKey);
+                if (records == null || records.isEmpty()) {
+                    return;
+                }
+                List<String> members = extractMembers(records);
+                if (!members.isEmpty() && !flushDirtyMembers(day, cfg, members)) {
+                    return;
+                }
+                if (!acknowledgeLegacy(streamKey, records)) {
+                    return;
+                }
             }
-            if (!flushDirtyMembers(day, cfg, members)) {
+        } finally {
+            legacy.observe(streamKey);
+        }
+    }
+
+    private void flushVersionedMarkers(LocalDate day, AnalyticsProperties.Dimensions cfg) {
+        String markerKey = AnalyticsKeys.dimDirtyMarkerV2Key(day);
+        String firstSeenKey = AnalyticsKeys.dimDirtyMarkerV2FirstSeenKey(day);
+        for (int batch = 0; batch < MAX_MARKER_BATCHES_PER_DAY; batch++) {
+            List<VersionedDirtyMarkerStore.Claim> claims;
+            try {
+                Long cardinality = redis.opsForHash().size(markerKey);
+                metrics.set("linkforge.analytics.dirty.marker.cardinality",
+                        cardinality == null ? 0L : Math.max(cardinality, 0L), "marker", "dimension");
+                claims = markerStore.claim(markerKey, firstSeenKey, BATCH_SIZE);
+                long oldest = claims.stream()
+                        .mapToLong(VersionedDirtyMarkerStore.Claim::firstSeenEpochMillis)
+                        .filter(value -> value > 0)
+                        .min()
+                        .orElse(0L);
+                metrics.set("linkforge.analytics.dirty.marker.oldest_age_millis",
+                        oldest == 0L ? 0L : Math.max(System.currentTimeMillis() - oldest, 0L),
+                        "marker", "dimension");
+            } catch (RuntimeException ex) {
+                metrics.increment("linkforge.job.failures", "job", "analytics_dimension_flush", "stage", "marker_claim");
+                log.debug("claim versioned dimension markers failed: err={}", ex.getMessage());
                 return;
             }
-            streamConsumer.acknowledge(streamKey, records.stream().map(MapRecord::getId).toList());
+            if (claims.isEmpty()) {
+                return;
+            }
+            if (!flushDirtyMembers(day, cfg, claims.stream().map(VersionedDirtyMarkerStore.Claim::member).toList())) {
+                return;
+            }
+            try {
+                VersionedDirtyMarkerStore.Completion completion = markerStore.complete(markerKey, firstSeenKey, claims);
+                metrics.add("linkforge.analytics.dirty.marker.completed", completion.completed(), "marker", "dimension");
+                metrics.add("linkforge.analytics.dirty.marker.generation_conflicts",
+                        completion.generationConflicts(), "marker", "dimension");
+            } catch (RuntimeException ex) {
+                metrics.increment("linkforge.job.failures", "job", "analytics_dimension_flush", "stage", "marker_complete");
+                log.debug("complete versioned dimension markers failed: err={}", ex.getMessage());
+                return;
+            }
+        }
+    }
+
+    private boolean legacyReadEnabled() {
+        AnalyticsProperties.DirtyMarker cfg = analyticsProperties == null ? null : analyticsProperties.getDirtyMarker();
+        return cfg == null || cfg.isLegacyReadEnabled();
+    }
+
+    private boolean acknowledgeLegacy(String streamKey, List<MapRecord<String, Object, Object>> records) {
+        List<RecordId> ids = records.stream().map(MapRecord::getId).toList();
+        long acknowledged = streamConsumer.acknowledge(streamKey, ids);
+        reportLegacyDrained(acknowledged);
+        return acknowledged == ids.size();
+    }
+
+    private void reportLegacyDrained(long records) {
+        if (records > 0) {
+            metrics.add("linkforge.analytics.dirty.legacy.drained", records, "marker", "dimension");
         }
     }
 
@@ -158,7 +242,7 @@ public class AnalyticsDimensionFlushJob {
     }
 
     /**
-     * 扫描 dirty stream 指定链接的维度 Hash，并把当前累计值写入 MySQL。
+     * 扫描 V2 marker 或 legacy Stream 指定链接的维度 Hash，并把当前累计值写入 MySQL。
      *
      * @return {@code true} 表示本批消息可以 ACK；Redis 扫描或数据库写入失败时返回 {@code false}，
      *         由 consumer group pending 消息承担重试

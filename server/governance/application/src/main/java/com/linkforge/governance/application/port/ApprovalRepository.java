@@ -1,7 +1,10 @@
 package com.linkforge.governance.application.port;
 
+import com.linkforge.governance.application.ApprovalRequestSummaryResult;
 import com.linkforge.governance.domain.ApprovalRequest;
+import com.linkforge.governance.domain.ApprovalStatus;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -19,8 +22,17 @@ public interface ApprovalRepository {
     /** 按租户和请求 ID 查询；跨租户或不存在均返回空。 */
     Optional<ApprovalRequest> findByTenantIdAndId(long tenantId, long requestId);
 
-    /** 返回租户内审批请求，约定按创建时间、ID 倒序排列。 */
-    List<ApprovalRequest> listByTenantId(long tenantId);
+    /**
+     * 返回租户内的有界审批摘要，按 {@code created_at DESC, id DESC} 排列。
+     * 实现不得为列表读取 before/after snapshot；cursor 两部分必须共同参与 keyset 条件。
+     */
+    List<ApprovalRequestSummaryResult> listSummaries(
+            long tenantId,
+            ApprovalStatus status,
+            LocalDateTime cursorCreatedAt,
+            Long cursorId,
+            int limit
+    );
 
     /**
      * 原子抢占待审批请求并记录批准决定。

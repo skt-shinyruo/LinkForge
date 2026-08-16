@@ -6,7 +6,7 @@ import { fetchLinkDailyStats, fetchOverviewStats, fetchTopLinksStats } from "../
 import type { ApplicationDto, DailyStat, LinkDto, TopLinkSortBy, TopLinkStat } from "../services/types";
 import { useLatestRequest } from "./useLatestRequest";
 
-const LINK_OPTIONS_PAGE_SIZE = 100;
+const LINK_OPTIONS_PAGE_SIZE = 20;
 
 function toDateUTCString(date: Date) {
   const yyyy = date.getUTCFullYear();
@@ -29,15 +29,27 @@ function getErrorMessage(caught: unknown, fallbackMessage: string) {
 /**
  * 统计页异步编排。
  *
- * 链接选项按后端分页完整拉取，随后并行加载 overview、Top links 和选中链接日统计。日期范围按 UTC
- * 自然日构造；应用切换会先重建可选链接再读取报表。函数不把分日 HLL UV 相加为全范围精确 UV。
+ * 链接选项通过有界 keyset 页按需搜索；overview、Top links 和选中链接日统计拥有独立刷新路径。日期范围按
+ * UTC 自然日构造；应用切换会先重建可选链接再读取报表。函数不把分日 HLL UV 相加为全范围精确 UV。
  *
  * 所有报表读取先形成局部快照，再由 latest-request 控制器一次提交；快速切换不会混入旧响应。
  */
 export function useStatsPage() {
-  const latestRefresh = useLatestRequest(getErrorMessage);
-  const error = latestRefresh.error;
-  const loading = latestRefresh.loading;
+  const latestOverview = useLatestRequest(getErrorMessage);
+  const latestLinkOptions = useLatestRequest(getErrorMessage);
+  const latestLinkTrend = useLatestRequest(getErrorMessage);
+  const latestTopLinks = useLatestRequest(getErrorMessage);
+  const applicationError = ref<string | null>(null);
+  const error = computed(() =>
+    applicationError.value ||
+    latestOverview.error.value ||
+    latestLinkOptions.error.value ||
+    latestLinkTrend.error.value ||
+    latestTopLinks.error.value,
+  );
+  const loading = computed(() =>
+    latestOverview.loading.value || latestLinkTrend.loading.value || latestTopLinks.loading.value,
+  );
 
   const rangeDays = ref<7 | 30>(7);
   const topSortBy = ref<TopLinkSortBy>("pv");
@@ -47,6 +59,10 @@ export function useStatsPage() {
   const applications = ref<ApplicationDto[]>([]);
   const selectedApplicationId = ref<number | null>(null);
   const links = ref<LinkDto[]>([]);
+  const linkSearch = ref("");
+  const appliedLinkSearch = ref("");
+  const nextLinkCursor = ref<string | null>(null);
+  const linkOptionsHasMore = ref(false);
   const selectedLinkId = ref<number | null>(null);
   const linkStats = ref<DailyStat[]>([]);
 
@@ -68,29 +84,6 @@ export function useStatsPage() {
     { name: "UV", data: linkStats.value.map((stat) => stat.uv) },
   ]);
 
-  async function fetchLinksSnapshot(applicationId: number | null, signal: AbortSignal) {
-    const nextLinks: LinkDto[] = [];
-    let nextPage = 0;
-    let totalLinks = 0;
-
-    do {
-      const response = await listLinks({
-        applicationId: applicationId ?? undefined,
-        page: nextPage,
-        size: LINK_OPTIONS_PAGE_SIZE,
-      }, { signal });
-      nextLinks.push(...response.items);
-      totalLinks = response.total;
-      nextPage += 1;
-
-      if (response.items.length === 0) {
-        break;
-      }
-    } while (nextLinks.length < totalLinks);
-
-    return nextLinks;
-  }
-
   const auth = useAuthStore();
   const isTenantAdmin = computed(() => auth.isTenantAdmin);
 
@@ -110,50 +103,87 @@ export function useStatsPage() {
   }
 
   async function setSelectedApplicationId(value: number | null) {
+    const applicationChanged = selectedApplicationId.value !== value;
     selectedApplicationId.value = value;
-    await refresh();
+    if (applicationChanged) {
+      latestLinkTrend.cancel();
+      links.value = [];
+      appliedLinkSearch.value = "";
+      nextLinkCursor.value = null;
+      linkOptionsHasMore.value = false;
+      selectedLinkId.value = null;
+      linkStats.value = [];
+    }
+    await searchLinks();
+    await refreshReports(false);
+  }
+
+  function normalizedLinkSearch() {
+    const value = linkSearch.value.trim();
+    return value || undefined;
+  }
+
+  async function searchLinks() {
+    const applicationId = selectedApplicationId.value;
+    const keyword = normalizedLinkSearch();
+    await latestLinkOptions.run(
+      (signal) => listLinks({
+        applicationId: applicationId ?? undefined,
+        cursor: undefined,
+        includeTotal: false,
+        keyword,
+        size: LINK_OPTIONS_PAGE_SIZE,
+      }, { signal }),
+      (response) => {
+        links.value = response.items;
+        appliedLinkSearch.value = keyword || "";
+        nextLinkCursor.value = response.nextCursor ?? null;
+        linkOptionsHasMore.value = response.hasMore === true && nextLinkCursor.value != null;
+        if (!links.value.some((link) => link.id === selectedLinkId.value)) {
+          selectedLinkId.value = links.value[0]?.id ?? null;
+          linkStats.value = [];
+        }
+      },
+      "加载短链选项失败",
+    );
+    await refreshLinkStats();
+  }
+
+  async function loadMoreLinks() {
+    const cursor = nextLinkCursor.value;
+    if (!cursor || latestLinkOptions.loading.value) {
+      return;
+    }
+    const applicationId = selectedApplicationId.value;
+    const keyword = appliedLinkSearch.value || undefined;
+    await latestLinkOptions.run(
+      (signal) => listLinks({
+        applicationId: applicationId ?? undefined,
+        cursor,
+        includeTotal: false,
+        keyword,
+        size: LINK_OPTIONS_PAGE_SIZE,
+      }, { signal }),
+      (response) => {
+        const existingIds = new Set(links.value.map((link) => link.id));
+        links.value = [...links.value, ...response.items.filter((link) => !existingIds.has(link.id))];
+        nextLinkCursor.value = response.nextCursor ?? null;
+        linkOptionsHasMore.value = response.hasMore === true && nextLinkCursor.value != null;
+      },
+      "加载更多短链失败",
+    );
+  }
+
+  async function refreshReports(includeLinkTrend: boolean) {
+    const requests = [refreshOverview(), refreshTopLinks()];
+    if (includeLinkTrend) {
+      requests.push(refreshLinkStats());
+    }
+    await Promise.all(requests);
   }
 
   async function refresh() {
-    const applicationId = selectedApplicationId.value;
-    const rangeSnapshot = { ...range.value };
-    const sortBy = topSortBy.value;
-    const requestedLinkId = selectedLinkId.value;
-
-    await latestRefresh.run(
-      async (signal) => {
-        const nextLinks = await fetchLinksSnapshot(applicationId, signal);
-        const nextSelectedLinkId = nextLinks.some((link) => link.id === requestedLinkId)
-          ? requestedLinkId
-          : nextLinks[0]?.id ?? null;
-        const scopedRange = {
-          ...rangeSnapshot,
-          applicationId: applicationId ?? undefined,
-        };
-        const [nextOverview, nextTopLinks, nextLinkStats] = await Promise.all([
-          fetchOverviewStats(scopedRange, { signal }),
-          fetchTopLinksStats({ ...scopedRange, limit: 10, sortBy }, { signal }),
-          nextSelectedLinkId == null
-            ? Promise.resolve([] satisfies DailyStat[])
-            : fetchLinkDailyStats(nextSelectedLinkId, rangeSnapshot, { signal }),
-        ]);
-        return {
-          linkStats: nextLinkStats,
-          links: nextLinks,
-          overviewStats: nextOverview,
-          selectedLinkId: nextSelectedLinkId,
-          topLinks: nextTopLinks,
-        };
-      },
-      (snapshot) => {
-        links.value = snapshot.links;
-        selectedLinkId.value = snapshot.selectedLinkId;
-        overviewStats.value = snapshot.overviewStats;
-        topLinks.value = snapshot.topLinks;
-        linkStats.value = snapshot.linkStats;
-      },
-      "加载失败",
-    );
+    await refreshReports(true);
   }
 
   function setRange(days: 7 | 30) {
@@ -166,12 +196,59 @@ export function useStatsPage() {
       return;
     }
     topSortBy.value = value;
-    void refresh();
+    void refreshTopLinks();
   }
 
-  function onSelectedLinkChange(value: number | null) {
+  async function refreshOverview() {
+    const scopedRange = {
+      ...range.value,
+      applicationId: selectedApplicationId.value ?? undefined,
+    };
+    await latestOverview.run(
+      (signal) => fetchOverviewStats(scopedRange, { signal }),
+      (result) => {
+        overviewStats.value = result;
+      },
+      "加载概览失败",
+    );
+  }
+
+  async function refreshTopLinks() {
+    const scopedRange = {
+      ...range.value,
+      applicationId: selectedApplicationId.value ?? undefined,
+      limit: 10,
+      sortBy: topSortBy.value,
+    };
+    await latestTopLinks.run(
+      (signal) => fetchTopLinksStats(scopedRange, { signal }),
+      (result) => {
+        topLinks.value = result;
+      },
+      "加载 Top 链接失败",
+    );
+  }
+
+  async function refreshLinkStats() {
+    const linkId = selectedLinkId.value;
+    if (linkId == null) {
+      linkStats.value = [];
+      latestLinkTrend.cancel();
+      return;
+    }
+    const rangeSnapshot = { ...range.value };
+    await latestLinkTrend.run(
+      (signal) => fetchLinkDailyStats(linkId, rangeSnapshot, { signal }),
+      (result) => {
+        linkStats.value = result;
+      },
+      "加载短链趋势失败",
+    );
+  }
+
+  async function onSelectedLinkChange(value: number | null) {
     selectedLinkId.value = value;
-    void refresh();
+    await refreshLinkStats();
   }
 
   async function copyShort(shortUrl: string | null) {
@@ -192,10 +269,11 @@ export function useStatsPage() {
           try {
             await loadApplications();
           } catch (caught) {
-            error.value = getErrorMessage(caught, "加载应用失败");
+            applicationError.value = getErrorMessage(caught, "加载应用失败");
           }
         }
-        await refresh();
+        await searchLinks();
+        await refreshReports(false);
       })();
     });
   }
@@ -206,7 +284,12 @@ export function useStatsPage() {
     linkChartLabels,
     linkChartSeries,
     linkStats,
+    linkOptionsError: latestLinkOptions.error,
+    linkOptionsHasMore,
+    linkOptionsLoading: latestLinkOptions.loading,
+    linkSearch,
     links,
+    loadMoreLinks,
     loading,
     onSelectedLinkChange,
     overviewChartLabels,
@@ -215,6 +298,7 @@ export function useStatsPage() {
     range,
     rangeDays,
     refresh,
+    searchLinks,
     selectedLink,
     selectedApplicationId,
     selectedLinkId,

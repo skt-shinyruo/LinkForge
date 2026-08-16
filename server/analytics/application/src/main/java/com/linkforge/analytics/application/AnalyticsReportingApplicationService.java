@@ -30,6 +30,7 @@ public class AnalyticsReportingApplicationService implements AnalyticsReportingS
     /** {@inheritDoc} */
     @Override
     public List<TopLinkStat> topLinks(long tenantId, LocalDate from, LocalDate to, int limit, TopSortBy sortBy) {
+        ReportRange.of(from, to);
         return linkSummaryEnricher.enrich(tenantId, analyticsQueryService.topLinks(tenantId, from, to, limit, sortBy));
     }
 
@@ -43,6 +44,7 @@ public class AnalyticsReportingApplicationService implements AnalyticsReportingS
             int limit,
             TopSortBy sortBy
     ) {
+        ReportRange.of(from, to);
         return linkSummaryEnricher.enrich(tenantId, analyticsQueryService.applicationTopLinks(tenantId, applicationId, from, to, limit, sortBy));
     }
 
@@ -56,6 +58,7 @@ public class AnalyticsReportingApplicationService implements AnalyticsReportingS
             int limit,
             TopSortBy sortBy
     ) {
+        ReportRange.of(from, to);
         return linkSummaryEnricher.enrich(tenantId, analyticsQueryService.domainTopLinks(tenantId, domainId, from, to, limit, sortBy));
     }
 }

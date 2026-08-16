@@ -21,6 +21,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -103,6 +104,27 @@ class RedirectServiceAuthoritativeFallbackTest {
         assertThat(resolved).isEqualTo(expected);
         assertThat(cache.cachedMeta).isEqualTo(expected);
         verify(shortLinkReadPort).findRedirectMetaByHostAndCode("go.example.test", "abc123");
+    }
+
+    @Test
+    void resolve_shouldPropagateAuthoritativeFailureWithoutNegativeCaching() {
+        RecordingLinkCache cache = new RecordingLinkCache();
+        ShortLinkReadPort shortLinkReadPort = mock(ShortLinkReadPort.class);
+        RuntimeException failure = new IllegalStateException("primary unavailable");
+        when(shortLinkReadPort.findRedirectMetaByHostAndCode("go.example.test", "abc123"))
+                .thenThrow(failure);
+        RedirectService service = new RedirectService(
+                cache,
+                shortLinkReadPort,
+                visit -> {
+                },
+                Clock.systemUTC()
+        );
+
+        assertThatThrownBy(() -> service.resolve(
+                new ResolveRedirectRequest("abc123", "go.example.test", false, false, null)
+        )).isSameAs(failure);
+        assertThat(cache.markedNotFoundCode).isNull();
     }
 
     @ParameterizedTest
@@ -488,6 +510,7 @@ class RedirectServiceAuthoritativeFallbackTest {
 
         private final LookupResult lookupResult;
         private LinkMeta cachedMeta;
+        private String markedNotFoundCode;
 
         private RecordingLinkCache() {
             this(LookupResult.miss());
@@ -510,6 +533,7 @@ class RedirectServiceAuthoritativeFallbackTest {
 
         @Override
         public void markNotFound(String code) {
+            markedNotFoundCode = code;
         }
 
         @Override

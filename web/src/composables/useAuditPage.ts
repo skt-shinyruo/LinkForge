@@ -9,13 +9,36 @@ function getErrorMessage(error: unknown, fallbackMessage: string) {
 export function useAuditPage() {
   const logs = ref<AuditLogDto[]>([]);
   const loading = ref(false);
+  const hasMore = ref(false);
+  const nextCursor = ref<string | null>(null);
   const error = ref<string | null>(null);
 
   async function load() {
     loading.value = true;
     error.value = null;
     try {
-      logs.value = await listAuditLogs();
+      const page = await listAuditLogs();
+      logs.value = page.items;
+      hasMore.value = page.hasMore;
+      nextCursor.value = page.nextCursor;
+    } catch (caught) {
+      error.value = getErrorMessage(caught, "加载审计日志失败");
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  async function loadMore() {
+    if (loading.value || !hasMore.value || !nextCursor.value) {
+      return;
+    }
+    loading.value = true;
+    error.value = null;
+    try {
+      const page = await listAuditLogs({ cursor: nextCursor.value });
+      logs.value = [...logs.value, ...page.items];
+      hasMore.value = page.hasMore;
+      nextCursor.value = page.nextCursor;
     } catch (caught) {
       error.value = getErrorMessage(caught, "加载审计日志失败");
     } finally {
@@ -31,7 +54,9 @@ export function useAuditPage() {
 
   return {
     error,
+    hasMore,
     load,
+    loadMore,
     loading,
     logs,
   };

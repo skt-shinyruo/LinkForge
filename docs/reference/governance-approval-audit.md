@@ -158,7 +158,7 @@ Governance 管理敏感操作审批请求、审批决策、执行器回调和审
 - `server/governance/application/src/main/java/com/linkforge/governance/application/GovernanceApprovalApplicationService.java`
   - 把跨上下文请求转换成 Governance 内部审批请求。
 - `server/governance/application/src/main/java/com/linkforge/governance/application/GovernanceService.java`
-  - `submitRequest()`、`approveRequest()`、审批矩阵、执行器查找和审计写入。
+  - `submitRequest()`、`approveRequest()`、审批矩阵、执行器查找、审计写入和 keyset summary 分页。
 - `server/governance/interfaces/src/main/java/com/linkforge/governance/interfaces/web/ApprovalController.java`
   - 审批列表和审批动作入口。
 - `server/governance/interfaces/src/main/java/com/linkforge/governance/interfaces/web/AuditController.java`
@@ -167,6 +167,18 @@ Governance 管理敏感操作审批请求、审批决策、执行器回调和审
   - 短链目标地址变更执行器。
 - `server/analytics/application/src/main/java/com/linkforge/analytics/application/AnalyticsExportRequestService.java`
   - 访问明细导出审批提交方。
+
+## 审批与审计列表分页
+
+`GET /api/v1/approvals` 和 `GET /api/v1/audit-logs` 共用以下查询与响应语义：
+
+- `limit` 默认 50，合法范围为 1 到 200；非法值返回 `BAD_REQUEST`。
+- `cursor` 是 `v1` 版本的不透明 Base64URL 值，客户端不得解析或自行拼接；非法版本、载荷、时间或 ID 返回稳定的“分页游标无效”。
+- 排序固定为 `created_at DESC, id DESC`，SQL 使用二元 keyset 条件并读取 `limit + 1` 行，因此同一时间戳的记录不会重复或遗漏，第一页之后插入的更新记录也不会让后续页回跳。
+- 成功信封的 `data` 保持数组形状；`X-Has-More` 表示是否还有下一页，存在下一页时 `X-Next-Cursor` 携带继续查询值。这两个响应头和 `X-Request-Id` 一同通过 CORS 暴露。
+- 审批可按 `status` 过滤；审计可按 `actionType` 和 `resourceType` 过滤。租户范围只取认证主体，并在 SQL 中强制 `tenant_id` 条件。
+
+两个列表都使用不含 before/after snapshot 的轻量读模型，SQL 也不选择这两列。批准/执行审批时仍通过租户加请求 ID 的权威读取加载完整版本化 payload。
 
 ## 审计日志
 
@@ -182,7 +194,7 @@ Governance 管理敏感操作审批请求、审批决策、执行器回调和审
 - afterSnapshot
 - createdAt
 
-审计查询入口是 `GET /api/v1/audit-logs`，要求 `TENANT_ADMIN` 或 `PLATFORM_ADMIN`。
+审计查询入口是 `GET /api/v1/audit-logs`，要求 `TENANT_ADMIN` 或 `PLATFORM_ADMIN`。存储记录包含完整快照，但列表响应只返回身份、操作、资源、请求关联和创建时间摘要，不向列表客户端返回 before/after snapshot。
 
 审计是当前业务事务内的追加写：提交审批写 `SUBMIT_REQUEST`，批准写 `APPROVE_REQUEST`。现阶段没有独立 `EXECUTE` 审计或审计级 `executedAt` 字段；审计快照是按操作类型解释的不透明文本，新操作通常是版本化 JSON，但历史外部域名流程可能是纯文本，部分操作的 before 允许为空。读取审计时不得假设每条 snapshot 都能按同一 JSON DTO 解析。
 

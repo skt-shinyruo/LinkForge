@@ -48,10 +48,12 @@
         )
     </insert>
 
-    <!-- 版本判断和 version + 1 在同一 UPDATE 内完成，避免先查后写覆盖并发变更。 -->
+    <!-- 聚合已由命名行为推进一次版本；用前一版本做 CAS，并保存聚合的新版本。 -->
     <update id="update" parameterType="com.linkforge.shortlink.infrastructure.persistence.entity.ShortLinkEntity">
         UPDATE short_links
-        SET original_url = #{originalUrl},
+        SET application_id = #{applicationId},
+            domain_id = #{domainId},
+            original_url = #{originalUrl},
             note = #{note},
             enabled = #{enabled},
             lifecycle_state = #{lifecycleState},
@@ -62,10 +64,10 @@
             unavailable_landing_url = #{unavailableLandingUrl},
             query_forward_mode = #{queryForwardMode},
             query_forward_allowlist = #{queryForwardAllowlist},
-            version = version + 1
+            version = #{version}
         WHERE tenant_id = #{tenantId}
           AND id = #{id}
-          AND version = #{version}
+          AND version = (#{version} - 1)
     </update>
 
     <delete id="deleteByTenantIdAndIdAndVersion">
@@ -74,14 +76,4 @@
           AND id = #{param2}
           AND version = #{param3}
     </delete>
-
-    <!-- 迁移兼容回填仅认双空 scope；重复执行不会覆盖已经归属的新旧短链。 -->
-    <update id="backfillOwnershipByTenant">
-        UPDATE short_links
-        SET application_id = #{param2},
-            domain_id = #{param3}
-        WHERE tenant_id = #{param1}
-          AND application_id IS NULL
-          AND domain_id IS NULL
-    </update>
 </mapper>

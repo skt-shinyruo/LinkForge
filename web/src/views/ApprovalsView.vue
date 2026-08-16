@@ -61,6 +61,11 @@ const page = useApprovalsPage();
           </tr>
         </tbody>
       </table>
+      <div v-if="page.hasMore.value" class="load-more">
+        <button class="btn secondary" :disabled="page.loading.value" @click="page.loadMore">
+          {{ page.loading.value ? "加载中..." : "加载更多" }}
+        </button>
+      </div>
     </section>
   </AppPageShell>
 </template>
@@ -128,5 +133,11 @@ input {
 
 .error {
   color: #c00;
+}
+
+.load-more {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
 }
 </style>

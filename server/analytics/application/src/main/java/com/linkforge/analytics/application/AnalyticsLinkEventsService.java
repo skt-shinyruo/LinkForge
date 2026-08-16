@@ -21,8 +21,6 @@ import java.util.Set;
 @Service
 public class AnalyticsLinkEventsService {
 
-    private static final int MAX_EVENTS_QUERY_DAYS = 7;
-
     private final AnalyticsQueryService analyticsQueryService;
     private final Clock clock;
 
@@ -34,8 +32,8 @@ public class AnalyticsLinkEventsService {
     /**
      * 返回指定短链的原始访问明细快照。
      *
-     * <p>缺省窗口是以当前 UTC 时刻结束的最近 24 小时；允许的最大跨度为 7 天（含边界），缺省条数为 50，
-     * 合法范围为 1 到 200。所有校验在调用查询端口前完成，失败不产生读取或其他副作用。</p>
+     * <p>缺省窗口是以当前 UTC 时刻结束的最近 24 小时；首尾所处 UTC 自然日均计入，最多 366 个自然日。
+     * 缺省条数为 50，合法范围为 1 到 200。所有校验在调用查询端口前完成，失败不产生读取或其他副作用。</p>
      *
      * <p>结果来自异步采样的明细读模型，因此空结果不代表没有跳转，结果也不承诺完整、实时或 exactly-once。</p>
      *
@@ -57,12 +55,7 @@ public class AnalyticsLinkEventsService {
         requireAdmin(actor);
         LocalDateTime effectiveTo = to == null ? nowUtc() : to;
         LocalDateTime effectiveFrom = from == null ? effectiveTo.minusDays(1) : from;
-        if (effectiveFrom.isAfter(effectiveTo)) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "from 不能晚于 to");
-        }
-        if (effectiveFrom.plusDays(MAX_EVENTS_QUERY_DAYS).isBefore(effectiveTo)) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "事件明细查询时间范围最大为 7 天");
-        }
+        ReportRange.ofUtc(effectiveFrom, effectiveTo);
 
         int effectiveLimit = limit == null ? 50 : limit;
         if (effectiveLimit < 1) {

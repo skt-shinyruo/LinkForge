@@ -57,6 +57,11 @@ public class DomainRepositoryMybatisAdapter implements DomainRepository {
         return Optional.ofNullable(mapper.findByTenantIdAndHostname(tenantId, hostname)).map(this::toDomain);
     }
 
+    @Override
+    public Optional<Domain> findByHostname(String hostname) {
+        return Optional.ofNullable(mapper.findByHostname(hostname)).map(this::toDomain);
+    }
+
     /**
      * 创建应用对租户共享域名的授权关系。
      *

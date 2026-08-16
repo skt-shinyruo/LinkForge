@@ -22,8 +22,8 @@ import java.util.List;
  * 扫描到期记录并重复执行删除，成功后才标记完成。因此处理语义至少一次，缓存删除必须保持幂等。</p>
  *
  * <p>ShedLock 用于避免多个应用实例同时跑批；查询本身不领取或锁定行，绕过调度锁并发调用时仍可能重复处理。
- * 单次调度限制批次数和每批行数，失败记录采用指数退避且不设最大尝试次数，避免暂时性 Redis/域名查询故障
- * 丢失最终失效机会。</p>
+ * 完成和失败更新都会用读取到的 generation CAS，因此重复 worker 可以重复驱逐，却不能覆盖期间重新入队的
+ * 新一代 durable intent。单次调度限制批次数和每批行数，失败记录采用指数退避且不设最大尝试次数。</p>
  */
 @Component
 public class RedirectCacheInvalidationOutboxJob {
@@ -99,16 +99,25 @@ public class RedirectCacheInvalidationOutboxJob {
             }
             try {
                 redirectCacheSync.evict(row.tenantId(), row.domainId(), row.code());
-                outbox.markProcessed(row.id(), nowUtc());
-                metrics.increment("linkforge.outbox.events", "outbox", "redirect_cache_invalidation", "result", "success");
+                boolean completed = outbox.markProcessed(row.id(), row.generation(), nowUtc());
+                metrics.increment(
+                        "linkforge.outbox.events",
+                        "outbox", "redirect_cache_invalidation",
+                        "result", completed ? "success" : "stale_generation"
+                );
             } catch (RuntimeException ex) {
-                metrics.increment("linkforge.outbox.events", "outbox", "redirect_cache_invalidation", "result", "retry");
                 int attempts = row.attempts() + 1;
-                outbox.markFailed(
+                boolean retryScheduled = outbox.markFailed(
                         row.id(),
+                        row.generation(),
                         attempts,
                         truncate(errorMessage(ex), MAX_ERROR_LENGTH),
                         nextAttemptAt(attempts)
+                );
+                metrics.increment(
+                        "linkforge.outbox.events",
+                        "outbox", "redirect_cache_invalidation",
+                        "result", retryScheduled ? "retry" : "stale_generation"
                 );
             }
             handled++;

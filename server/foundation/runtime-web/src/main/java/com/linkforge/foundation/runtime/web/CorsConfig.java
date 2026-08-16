@@ -21,7 +21,7 @@ public class CorsConfig {
     /**
      * 构造供 Spring MVC 和安全过滤链共用的 CORS 规则。
      *
-     * <p>响应只暴露 {@code X-Request-Id}，使浏览器客户端能够将失败响应与服务端日志关联。</p>
+     * <p>响应暴露 request id 和游标分页元数据，供浏览器控制台关联日志并继续有界列表查询。</p>
      */
     @Bean
     public CorsConfigurationSource corsConfigurationSource(CorsProperties properties) {
@@ -48,7 +48,11 @@ public class CorsConfig {
 
         cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         cfg.setAllowedHeaders(List.of("*"));
-        cfg.setExposedHeaders(List.of(RequestIdFilter.HEADER_REQUEST_ID));
+        cfg.setExposedHeaders(List.of(
+                RequestIdFilter.HEADER_REQUEST_ID,
+                CursorPaginationHeaders.HAS_MORE,
+                CursorPaginationHeaders.NEXT_CURSOR
+        ));
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", cfg);

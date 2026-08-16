@@ -2,7 +2,9 @@ package com.linkforge.analytics.infrastructure.job;
 
 import com.linkforge.analytics.infrastructure.persistence.mapper.LinkStatsDimDailyMapper;
 import com.linkforge.analytics.infrastructure.persistence.mapper.LinkStatsDimDailyUpsertRow;
+import com.linkforge.contract.analytics.AnalyticsKeys;
 import com.linkforge.foundation.config.AnalyticsProperties;
+import com.linkforge.foundation.observability.OperationalMetrics;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
@@ -19,6 +21,7 @@ import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.StreamOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
+import org.springframework.data.redis.core.script.RedisScript;
 
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -28,6 +31,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
@@ -39,14 +43,55 @@ import static org.mockito.Mockito.when;
 class AnalyticsDimensionFlushJobTest {
 
     @Test
-    void flush_should_consume_dimension_dirty_members_from_its_own_stream_and_ack_after_successful_write() {
+    void flush_shouldCompleteClaimedV2DimensionGenerationAfterSnapshotUpsert() {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         LinkStatsDimDailyMapper mapper = mock(LinkStatsDimDailyMapper.class);
         AnalyticsProperties properties = new AnalyticsProperties();
         properties.setFlushBackfillDays(1);
         properties.getDimensions().setEnabled(true);
         properties.getDimensions().setTypes(List.of("referer_domain"));
+        properties.getDirtyMarker().setLegacyReadEnabled(false);
+        LocalDate day = LocalDate.now(ZoneOffset.UTC);
+
+        @SuppressWarnings("unchecked")
+        HashOperations<String, Object, Object> hashes = mock(HashOperations.class);
+        @SuppressWarnings("unchecked")
+        Cursor<Map.Entry<Object, Object>> dimensions = mock(Cursor.class);
+        when(redis.opsForHash()).thenReturn(hashes);
+        when(redis.execute(any(RedisScript.class), anyList(), any(Object[].class)))
+                .thenReturn(List.of("1:10", "5"), List.of(1L, 0L), List.of());
+        when(hashes.multiGet(
+                AnalyticsKeys.dimDirtyMarkerV2FirstSeenKey(day),
+                List.of((Object) "1:10")
+        )).thenReturn(List.of(1_710_000_000_000L));
+        when(hashes.scan(eq(AnalyticsKeys.dimPvHashKey(1L, 10L, day, "referer_domain")), any()))
+                .thenReturn(dimensions);
+        when(dimensions.hasNext()).thenReturn(true, false);
+        when(dimensions.next()).thenReturn(Map.entry("example.com", "7"));
+
+        when(redis.getStringSerializer()).thenReturn(new StringRedisSerializer());
+        when(redis.executePipelined(any(RedisCallback.class))).thenReturn(List.of(3L));
+
+        AnalyticsDimensionFlushJob job = new AnalyticsDimensionFlushJob(redis, mapper, properties);
+
+        job.flush();
+
+        InOrder inOrder = inOrder(mapper, redis);
+        inOrder.verify(mapper).batchUpsert(any());
+        inOrder.verify(redis).execute(any(RedisScript.class), anyList(), any(Object[].class));
+    }
+
+    @Test
+    void flush_should_consume_dimension_dirty_members_from_its_own_stream_and_ack_after_successful_write() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        LinkStatsDimDailyMapper mapper = mock(LinkStatsDimDailyMapper.class);
+        OperationalMetrics metrics = mock(OperationalMetrics.class);
+        AnalyticsProperties properties = new AnalyticsProperties();
+        properties.setFlushBackfillDays(1);
+        properties.getDimensions().setEnabled(true);
+        properties.getDimensions().setTypes(List.of("referer_domain"));
         properties.getEvents().setPendingReclaimEnabled(false);
+        LocalDate day = LocalDate.now(ZoneOffset.UTC);
 
         @SuppressWarnings("unchecked")
         StreamOperations<String, Object, Object> streamOps = mock(StreamOperations.class);
@@ -81,13 +126,17 @@ class AnalyticsDimensionFlushJobTest {
 
         @SuppressWarnings("unchecked")
         Cursor<Map.Entry<Object, Object>> hashCursor = mock(Cursor.class);
-        when(hashOps.scan(anyString(), any())).thenReturn(hashCursor);
+        @SuppressWarnings("unchecked")
+        Cursor<Map.Entry<Object, Object>> markerCursor = mock(Cursor.class);
+        when(markerCursor.hasNext()).thenReturn(false);
+        when(hashOps.scan(eq(AnalyticsKeys.dimDirtyMarkerV2Key(day)), any())).thenReturn(markerCursor);
+        when(hashOps.scan(eq(AnalyticsKeys.dimPvHashKey(1L, 10L, day, "referer_domain")), any()))
+                .thenReturn(hashCursor);
         when(hashCursor.hasNext()).thenReturn(true, false);
         when(hashCursor.next()).thenReturn(Map.entry("example.com", "5"));
 
-        AnalyticsDimensionFlushJob job = new AnalyticsDimensionFlushJob(redis, mapper, properties);
+        AnalyticsDimensionFlushJob job = new AnalyticsDimensionFlushJob(redis, mapper, properties, metrics);
 
-        LocalDate day = LocalDate.now(ZoneOffset.UTC);
         String streamKey = "stats:dirty:dim:" + day.format(DateTimeFormatter.BASIC_ISO_DATE);
 
         job.flush();
@@ -114,6 +163,8 @@ class AnalyticsDimensionFlushJobTest {
         assertThat(row.getUv()).isEqualTo(3L);
         assertThat(java.util.Arrays.stream(ackCaptor.getValue()).map(RecordId::toString).toList())
                 .containsExactly("1-0");
+        verify(metrics).add("linkforge.analytics.dirty.legacy.drained", 1L,
+                "marker", "dimension");
     }
 
     @Test
@@ -124,6 +175,7 @@ class AnalyticsDimensionFlushJobTest {
         properties.setFlushBackfillDays(1);
         properties.getDimensions().setEnabled(true);
         properties.getDimensions().setTypes(List.of("referer_domain"));
+        LocalDate day = LocalDate.now(ZoneOffset.UTC);
 
         @SuppressWarnings("unchecked")
         StreamOperations<String, Object, Object> streamOps = mock(StreamOperations.class);
@@ -143,7 +195,12 @@ class AnalyticsDimensionFlushJobTest {
         @SuppressWarnings("unchecked")
         HashOperations<String, Object, Object> hashOps = mock(HashOperations.class);
         when(redis.opsForHash()).thenReturn(hashOps);
-        when(hashOps.scan(anyString(), any())).thenThrow(new RuntimeException("redis scan failed"));
+        @SuppressWarnings("unchecked")
+        Cursor<Map.Entry<Object, Object>> markerCursor = mock(Cursor.class);
+        when(markerCursor.hasNext()).thenReturn(false);
+        when(hashOps.scan(eq(AnalyticsKeys.dimDirtyMarkerV2Key(day)), any())).thenReturn(markerCursor);
+        when(hashOps.scan(eq(AnalyticsKeys.dimPvHashKey(1L, 10L, day, "referer_domain")), any()))
+                .thenThrow(new RuntimeException("redis scan failed"));
 
         AnalyticsDimensionFlushJob job = new AnalyticsDimensionFlushJob(redis, mapper, properties);
 

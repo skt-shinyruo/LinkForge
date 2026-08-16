@@ -7,6 +7,7 @@ import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.shortlink.infrastructure.persistence.repository.MybatisShortLinkRepository;
 import com.linkforge.shortlink.infrastructure.persistence.mapper.ShortLinkQueryMapper;
+import com.linkforge.testsupport.SharedIntegrationTestSupport;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,15 +20,9 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Callable;
@@ -42,42 +37,18 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.reset;
 
-@Testcontainers
 @SpringBootTest(
         classes = LinkForgeApplication.class,
         webEnvironment = SpringBootTest.WebEnvironment.MOCK,
         properties = "app.scheduling.enabled=false"
 )
-class ShortLinkOptimisticLockIntegrationTest {
-
-    @Container
-    static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.0.36")
-            .withDatabaseName("linkforge")
-            .withUsername("linkforge")
-            .withPassword("linkforge");
-
-    @Container
-    static final GenericContainer<?> REDIS = new GenericContainer<>("redis:8.6.2-alpine")
-            .withExposedPorts(6379)
-            .waitingFor(Wait.forLogMessage(".*Ready to accept connections.*\\n", 1)
-                    .withStartupTimeout(Duration.ofSeconds(120)))
-            .withStartupAttempts(3);
+class ShortLinkOptimisticLockIntegrationTest extends SharedIntegrationTestSupport {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry r) {
-        r.add("spring.datasource.url", MYSQL::getJdbcUrl);
-        r.add("spring.datasource.username", MYSQL::getUsername);
-        r.add("spring.datasource.password", MYSQL::getPassword);
-
-        r.add("spring.data.redis.host", REDIS::getHost);
-        r.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
-
-        r.add("app.security.jwt.secret", () -> "test-secret-please-change-but-long-enough-32-bytes");
-        r.add("app.analytics.salt", () -> "test-analytics-salt");
         r.add("app.analytics.dimensions.enabled", () -> "false");
         r.add("app.analytics.events.enabled", () -> "false");
         r.add("app.analytics.events.sample-rate", () -> "1");
@@ -208,7 +179,7 @@ class ShortLinkOptimisticLockIntegrationTest {
     void stale_delete_should_fail_as_business_conflict() throws Exception {
         LinkDto archived = archive(createLink("delete-start").id());
         WriteGate gate = new WriteGate();
-        doAnswer(gate.aroundRealMethod()).when(shortLinkRepository).deleteByTenantIdAndId(anyLong(), anyLong(), anyLong());
+        doAnswer(gate.aroundRealMethod()).when(shortLinkRepository).delete(any());
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {

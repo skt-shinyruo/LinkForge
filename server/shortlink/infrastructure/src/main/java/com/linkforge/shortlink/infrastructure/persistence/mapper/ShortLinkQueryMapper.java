@@ -25,8 +25,6 @@ public interface ShortLinkQueryMapper {
 
     ShortLinkEntity findByDomainIdAndCode(@Param("domainId") long domainId, @Param("code") String code);
 
-    ShortLinkEntity findActiveByCode(String code);
-
     ShortLinkEntity findActiveUnscopedByCode(String code);
 
     ShortLinkEntity findActiveByHostnameAndCode(@Param("hostname") String hostname, @Param("code") String code);

@@ -31,9 +31,9 @@ import java.util.regex.Pattern;
  * 的 pending、可接管的闲置 pending、再到新消息。</p>
  *
  * <p>批量插入以 {@code requestId} 的数据库唯一性配合 {@code INSERT ... ON DUPLICATE KEY} 实现
- * 幂等写入；ACK 与数据库提交不在同一事务中，ACK 失败会导致安全的重放。普通数据库失败保留 pending；
- * 数据完整性失败时逐条隔离，坏记录写入 DLQ 后 ACK。DLQ 写入是 best-effort，故 DLQ 故障不会阻塞
- * 原消息，也可能导致诊断记录缺失。</p>
+     * 幂等写入；ACK 与数据库提交不在同一事务中，ACK 失败会导致安全的重放。普通数据库失败保留 pending；
+     * 数据完整性失败时逐条隔离，只有坏记录成功写入 DLQ 后才 ACK，写入失败时原消息继续留在 pending。
+     * DLQ 写入后的近似裁剪与容量采样允许 best-effort；DLQ 本身不是事务审计日志。</p>
  */
 @Component
 public class AnalyticsEventIngestJob {
@@ -95,20 +95,25 @@ public class AnalyticsEventIngestJob {
             return;
         }
 
-        List<MapRecord<String, Object, Object>> records = streamConsumer.readNext(
-                streamKey,
-                200,
-                Duration.ofMillis(200),
-                cfg.isPendingReclaimEnabled(),
-                Duration.ofMillis(Math.max(cfg.getPendingReclaimMinIdleMs(), 0L)),
-                Math.max(cfg.getPendingReclaimCount(), 1)
-        );
+        long budgetNanos = Duration.ofMillis(cfg.getIngestTimeBudgetMs()).toNanos();
+        long startedAt = System.nanoTime();
+        for (int batch = 0; batch < cfg.getIngestMaxBatches(); batch++) {
+            if (batch > 0 && System.nanoTime() - startedAt >= budgetNanos) {
+                return;
+            }
+            List<MapRecord<String, Object, Object>> records = streamConsumer.readNext(
+                    streamKey,
+                    cfg.getIngestBatchSize(),
+                    batch == 0 ? Duration.ofMillis(Math.min(cfg.getIngestTimeBudgetMs(), 200L)) : Duration.ZERO,
+                    cfg.isPendingReclaimEnabled(),
+                    Duration.ofMillis(Math.max(cfg.getPendingReclaimMinIdleMs(), 0L)),
+                    Math.max(cfg.getPendingReclaimCount(), 1)
+            );
 
-        if (records == null || records.isEmpty()) {
-            return;
+            if (records == null || records.isEmpty() || !ingestRecords(streamKey, records)) {
+                return;
+            }
         }
-
-        ingestRecords(streamKey, records);
     }
 
     /**
@@ -117,9 +122,9 @@ public class AnalyticsEventIngestJob {
      * <p>结构非法、缺失 requestId 或被采样丢弃的记录会 ACK，不会因为不可持久化数据永久占用 pending。
      * 可恢复的数据访问错误不 ACK 有效项，以便下一轮重试。</p>
      */
-    void ingestRecords(String streamKey, List<MapRecord<String, Object, Object>> records) {
+    boolean ingestRecords(String streamKey, List<MapRecord<String, Object, Object>> records) {
         if (records == null || records.isEmpty()) {
-            return;
+            return true;
         }
 
         VisitEventBatchAssembler.Batch batch = applyDetailSampling(batchAssembler.assemble(records));
@@ -127,8 +132,7 @@ public class AnalyticsEventIngestJob {
         List<RecordId> ackAlways = batch.ackAlways();
 
         if (items.isEmpty()) {
-            streamConsumer.acknowledge(streamKey, ackAlways);
-            return;
+            return acknowledgeAll(streamKey, ackAlways);
         }
 
         long startedAt = System.nanoTime();
@@ -140,21 +144,23 @@ public class AnalyticsEventIngestJob {
             metrics.increment("linkforge.job.failures", "job", "analytics_visit_ingest", "stage", "data_integrity");
             metrics.record("linkforge.job.db_batch", Duration.ofNanos(System.nanoTime() - startedAt), "job", "analytics_visit_ingest", "result", "failure");
             log.warn("ingest visit events failed (data integrity): size={}, err={}", items.size(), e.getMessage());
-            streamConsumer.acknowledge(streamKey, ackAlways);
-            isolatePoisonAndAck(streamKey, items);
-            return;
+            boolean ackedAlways = acknowledgeAll(streamKey, ackAlways);
+            boolean isolated = isolatePoisonAndAck(streamKey, items);
+            return ackedAlways && isolated;
         } catch (DataAccessException e) {
             metrics.increment("linkforge.job.failures", "job", "analytics_visit_ingest", "stage", "database");
             metrics.record("linkforge.job.db_batch", Duration.ofNanos(System.nanoTime() - startedAt), "job", "analytics_visit_ingest", "result", "failure");
             log.warn("ingest visit events failed: size={}, err={}", items.size(), e.getMessage());
-            streamConsumer.acknowledge(streamKey, ackAlways);
-            return;
+            acknowledgeAll(streamKey, ackAlways);
+            return false;
         }
 
-        if (!ackAlways.isEmpty()) {
-            streamConsumer.acknowledge(streamKey, ackAlways);
-        }
-        streamConsumer.acknowledge(streamKey, items.stream().map(VisitEventBatchAssembler.IngestItem::recordId).toList());
+        boolean ackedAlways = acknowledgeAll(streamKey, ackAlways);
+        boolean ackedItems = acknowledgeAll(
+                streamKey,
+                items.stream().map(VisitEventBatchAssembler.IngestItem::recordId).toList()
+        );
+        return ackedAlways && ackedItems;
     }
 
     private VisitEventBatchAssembler.Batch applyDetailSampling(VisitEventBatchAssembler.Batch batch) {
@@ -197,15 +203,16 @@ public class AnalyticsEventIngestJob {
     /**
      * 批量完整性错误后的逐条隔离。
      *
-     * <p>单条完整性错误视为 poison record：尽力写 DLQ 后确认原消息，防止整个组永久卡住。普通数据访问
-     * 错误被视为暂态或基础设施故障，停止隔离并保留余下消息 pending。</p>
+     * <p>单条完整性错误视为 poison record：成功写入 DLQ 后才确认原消息。DLQ 或普通数据访问错误被视为
+     * 可恢复的基础设施故障，停止隔离并保留当前及余下消息 pending。</p>
      */
-    private void isolatePoisonAndAck(String streamKey, List<VisitEventBatchAssembler.IngestItem> items) {
+    private boolean isolatePoisonAndAck(String streamKey, List<VisitEventBatchAssembler.IngestItem> items) {
         if (items == null || items.isEmpty()) {
-            return;
+            return true;
         }
 
         List<RecordId> ackIds = new ArrayList<>(items.size());
+        boolean completed = true;
         for (VisitEventBatchAssembler.IngestItem item : items) {
             if (item == null || item.recordId() == null || item.row() == null) {
                 continue;
@@ -215,19 +222,29 @@ public class AnalyticsEventIngestJob {
                 visitEventMapper.batchInsertIgnore(List.of(item.row()));
                 ackIds.add(item.recordId());
             } catch (DataIntegrityViolationException e) {
-                deadLetterWriter.write(streamKey, item.recordId(), item.row(), e);
-                ackIds.add(item.recordId());
+                if (deadLetterWriter.write(streamKey, item.recordId(), item.row(), e)) {
+                    ackIds.add(item.recordId());
+                } else {
+                    completed = false;
+                    break;
+                }
             } catch (DataAccessException e) {
                 metrics.increment("linkforge.job.failures", "job", "analytics_visit_ingest", "stage", "poison_isolation");
                 // Likely DB transient/fatal issue: keep pending for retry and avoid tight per-row loop.
                 log.debug("ingest visit event row failed: streamId={}, err={}", item.recordId(), e.getMessage());
+                completed = false;
                 break;
             }
         }
 
         if (!ackIds.isEmpty()) {
-            streamConsumer.acknowledge(streamKey, ackIds);
+            completed = acknowledgeAll(streamKey, ackIds) && completed;
         }
+        return completed;
+    }
+
+    private boolean acknowledgeAll(String streamKey, List<RecordId> ids) {
+        return ids == null || ids.isEmpty() || streamConsumer.acknowledge(streamKey, ids) == ids.size();
     }
 
     private static String resolveConsumerName(AnalyticsProperties analyticsProperties, IdProperties idProperties) {

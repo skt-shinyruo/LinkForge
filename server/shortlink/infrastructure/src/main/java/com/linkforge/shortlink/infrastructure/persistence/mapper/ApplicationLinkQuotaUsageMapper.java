@@ -58,4 +58,17 @@ public interface ApplicationLinkQuotaUsageMapper {
             @Param("monthStartUtc") LocalDate monthStartUtc,
             @Param("monthlyLinkLimit") long monthlyLinkLimit
     );
+
+    /**
+     * 对已经存在的月份用量行无上限递增一次。
+     *
+     * <p>只供 ownership reconciliation 在持有同一月份 named lock 且成功完成短链 CAS 后调用。</p>
+     *
+     * @return 更新一行时为 {@code 1}；目标行不存在时为 {@code 0}
+     */
+    int incrementMonthlyLinkUsageUnbounded(
+            @Param("tenantId") long tenantId,
+            @Param("applicationId") long applicationId,
+            @Param("monthStartUtc") LocalDate monthStartUtc
+    );
 }

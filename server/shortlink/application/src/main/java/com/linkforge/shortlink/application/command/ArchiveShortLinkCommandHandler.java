@@ -88,7 +88,6 @@ public class ArchiveShortLinkCommandHandler {
             if (!shortLinkRepository.update(link)) {
                 throw new BusinessException(ShortLinkErrorCode.LINK_STALE_WRITE);
             }
-            link.incrementVersion();
             domainEventDispatcher.publish(link, nowUtc.toInstant(ZoneOffset.UTC));
             RedirectCacheInvalidations.enqueueAndRunAfterCommit(
                     redirectCacheInvalidationOutbox,

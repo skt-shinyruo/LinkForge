@@ -149,6 +149,53 @@ class LinkDestinationChangeApprovalExecutorTest {
         verify(redirectCacheSync).evict(1L, 3001L, "governed2");
     }
 
+    @Test
+    void execute_shouldReturnWithoutWritesWhenApprovedDestinationAlreadyMatches() {
+        ShortLinkRepository shortLinkRepository = mock(ShortLinkRepository.class);
+        ShortLinkDomainEventDispatcher domainEventDispatcher = mock(ShortLinkDomainEventDispatcher.class);
+        LinkDestinationChangeApprovalExecutor executor = new LinkDestinationChangeApprovalExecutor(
+                shortLinkRepository,
+                domainEventDispatcher,
+                mock(RedirectCacheSyncPort.class),
+                mock(RedirectCacheInvalidationOutboxPort.class),
+                mock(PostCommitHookPort.class)
+        );
+        ShortLink link = ShortLink.create(
+                103L,
+                1L,
+                2001L,
+                3001L,
+                ShortCode.of("governed3"),
+                ShortLinkLifecycleState.ACTIVE,
+                HttpUrl.of("https://example.com/current"),
+                null,
+                true,
+                null,
+                null,
+                false,
+                null,
+                null,
+                null,
+                CreatedByType.USER,
+                9L
+        );
+        ApprovalExecutionRequest request = new ApprovalExecutionRequest(
+                503L,
+                1L,
+                SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE,
+                2001L,
+                linkDestinationPayload(103L, "https://example.com/current"),
+                linkDestinationPayload(103L, "https://example.com/current")
+        );
+        when(shortLinkRepository.findByTenantIdAndId(1L, 103L)).thenReturn(Optional.of(link));
+
+        executor.execute(request, LocalDateTime.parse("2026-04-01T01:02:03"));
+
+        assertThat(link.version()).isZero();
+        verify(shortLinkRepository, never()).update(link);
+        verify(domainEventDispatcher, never()).publish(any(), any());
+    }
+
     private static String linkDestinationPayload(long linkId, String originalUrl) {
         return ApprovalPayloadCodec.write(LinkDestinationChangeApprovalPayload.v1(linkId, originalUrl));
     }

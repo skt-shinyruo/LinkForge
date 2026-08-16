@@ -8,5 +8,7 @@ public interface ApplicationQuotaMapper {
 
     int insert(ApplicationQuotaEntity entity);
 
+    int upsert(ApplicationQuotaEntity entity);
+
     ApplicationQuotaEntity findByApplicationId(long applicationId);
 }

@@ -20,7 +20,9 @@ public class ShortLinkDomainException extends RuntimeException {
         INVALID_QUERY_FORWARD_ALLOWLIST_ITEM,
         INVALID_QUERY_FORWARD_ALLOWLIST_TOO_LONG,
         UPDATE_NOT_ALLOWED_WHEN_ARCHIVED,
-        DELETE_REQUIRES_ARCHIVE
+        DELETE_REQUIRES_ARCHIVE,
+        APPROVAL_REQUIRES_ACTIVE_SCOPED_LINK,
+        INVALID_OWNERSHIP_SCOPE
     }
 
     private final Reason reason;

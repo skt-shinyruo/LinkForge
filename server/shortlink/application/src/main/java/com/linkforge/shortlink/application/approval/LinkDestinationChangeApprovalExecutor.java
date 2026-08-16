@@ -19,7 +19,6 @@ import com.linkforge.shortlink.application.support.ShortLinkDomainExceptions;
 import com.linkforge.shortlink.domain.HttpUrl;
 import com.linkforge.shortlink.domain.ShortLink;
 import com.linkforge.shortlink.domain.ShortLinkDomainException;
-import com.linkforge.shortlink.domain.ShortLinkLifecycleState;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -34,9 +33,9 @@ import java.util.Objects;
  * {@code linkDestinationChange/v1} JSON payload，且携带相同的正数 {@code linkId}。旧文本格式、未知类型或
  * 未支持版本会稳定作为参数错误拒绝，不能降级解析。</p>
  *
- * <p>执行前会按请求租户读取短链，并检查目标应用、已绑定域名、{@code ACTIVE} 发布阶段、未归档状态以及
- * 当前目标地址与 before 快照一致。最后一项是审批期间发生变更的陈旧快照保护；持久化更新还带聚合版本条件，
- * 因而快照校验之后的并发写入也会以 {@code LINK_STALE_WRITE} 失败，而不会覆盖新数据。</p>
+ * <p>执行前会按请求租户读取短链，并检查目标应用与当前目标地址仍匹配审批快照。聚合命名行为负责已绑定域名、
+ * {@code ACTIVE} 发布阶段和未归档守卫；持久化更新还带聚合版本条件，因而快照校验之后的并发写入也会以
+ * {@code LINK_STALE_WRITE} 失败，而不会覆盖新数据。</p>
  *
  * <p>短链更新、集成事件 durable append 和缓存失效 outbox 登记参与调用方事务，任一步失败都向上传播。
  * 事务提交后还会尝试一次 best-effort 缓存驱逐；该快路径失败不会撤销业务提交，最终收敛由 outbox worker
@@ -92,17 +91,19 @@ public class LinkDestinationChangeApprovalExecutor implements ApprovalExecutionP
                 .orElseThrow(() -> new BusinessException(ShortLinkErrorCode.LINK_NOT_FOUND));
         validateApprovalStillMatchesLink(request, before, link);
 
+        boolean changed;
         try {
-            link.changeOriginalUrl(HttpUrl.of(after.originalUrl()));
+            changed = link.approveDestinationChange(HttpUrl.of(after.originalUrl()), executedAt);
         } catch (ShortLinkDomainException ex) {
             throw ShortLinkDomainExceptions.translate(ex);
+        }
+        if (!changed) {
+            return;
         }
         if (!shortLinkRepository.update(link)) {
             throw new BusinessException(ShortLinkErrorCode.LINK_STALE_WRITE);
         }
-        link.incrementVersion();
 
-        link.markUpdated(executedAt);
         domainEventDispatcher.publish(link, executedAt.toInstant(ZoneOffset.UTC));
         RedirectCacheInvalidations.enqueueAndRunAfterCommit(
                 redirectCacheInvalidationOutbox,
@@ -124,14 +125,6 @@ public class LinkDestinationChangeApprovalExecutor implements ApprovalExecutionP
     ) {
         if (!Objects.equals(request.targetApplicationId(), link.applicationId())) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "审批目标应用与短链不匹配");
-        }
-        if (link.domainId() == null || link.lifecycleState() != ShortLinkLifecycleState.ACTIVE) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "审批目标短链状态已变化，请重新提交审批");
-        }
-        try {
-            link.requireNotArchivedForUpdate();
-        } catch (ShortLinkDomainException ex) {
-            throw ShortLinkDomainExceptions.translate(ex);
         }
         if (!Objects.equals(link.originalUrl().value(), before.originalUrl())) {
             throw new BusinessException(ShortLinkErrorCode.LINK_STALE_WRITE, "短链目标地址已变化，请重新提交审批");

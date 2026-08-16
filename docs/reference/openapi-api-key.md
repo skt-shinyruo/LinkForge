@@ -73,7 +73,7 @@ OpenAPI 链路让内部系统通过 API Key 创建和查询短链。它和控制
 - 启用：`PUT /api/v1/api-keys/{id}/enable`
 - 轮换：`POST /api/v1/api-keys/{id}/rotate`
 
-创建 API Key 必须提供 `applicationId`，Accounts 会通过 Platform 的 `ApplicationScopePort.requireApplicationExists()` 确认应用属于当前租户。返回给客户端的明文 key 格式为 `lfk_{id}_{secret}`，数据库只保存 secret 的密码哈希。明文 key 只在创建和轮换响应中出现。
+创建 API Key 必须提供 `applicationId`，Accounts 会通过 Platform 的 `ApplicationScopePort.requireApplicationExists()` 确认应用属于当前租户且为 ACTIVE。返回给客户端的明文 key 格式为 `lfk_{id}_{secret}`，数据库只保存 HMAC 摘要及其 pepper key id。明文 key 只在创建和轮换响应中出现。
 
 ## OpenAPI 入口
 
@@ -86,7 +86,8 @@ OpenAPI 链路让内部系统通过 API Key 创建和查询短链。它和控制
 
 ## 关键业务规则
 
-- API Key 认证成功后只验证租户状态；用户状态不参与，因为 API Key 表自身管理启用/禁用。
+- API Key secret 和绑定字段通过校验后，Accounts 必须调用 Platform 发布的 `ApplicationScopePort.requireApplicationExists()` 再次验证应用属于该租户且为 ACTIVE；该校验不依赖 HTTP path 是否携带 applicationId。
+- API Key 认证仍验证租户状态；用户状态不参与，因为 API Key 表自身管理启用/禁用。
 - API Key 的 `applicationId` 不放入 `AuthPrincipal`，而是放入 `Authentication.details`。
 - 控制器用 `PrincipalActorMapper.requireApiKey()` 把 principal + details 转成 `ApiKeyActor`。
 - API Key 必须绑定应用，且只能访问该应用。
@@ -94,15 +95,26 @@ OpenAPI 链路让内部系统通过 API Key 创建和查询短链。它和控制
 - 禁用的 API Key 会写短 TTL 认证缓存，重新启用或轮换后在事务提交后驱逐缓存。
 - `lastUsedAt` 更新带节流，优先用 Redis token 控制写库频率，避免每次 OpenAPI 请求都更新数据库。
 
-缓存只保存 disabled 负结果，不能把 active key 缓存在 Redis 后跳过数据库或 secret 摘要校验。新 Key 使用独立服务端
-pepper 的 HMAC-SHA-256 和常量时间比较；历史 BCrypt 摘要在首次成功认证后通过 CAS 升级。缓存坏值、miss 或 Redis
+缓存只保存 disabled 负结果，不能把 active key 缓存在 Redis 后跳过数据库或 secret 摘要校验。新 Key 只使用 current key id 对应的独立 pepper 做 HMAC-SHA-256 和常量时间比较；验证按持久化 key id 选择 current 或 previous pepper。无 key id 历史记录只走显式 legacy pepper/兼容开关，并在成功后通过 CAS 升级到 current；历史 BCrypt 摘要也沿用这条升级路径。缓存坏值、miss 或 Redis
 故障都会回源；禁用写入和启用/轮换驱逐都在事务提交后执行，因而允许很短的陈旧窗口。
+
+生产严格配置要求 `API_KEY_CURRENT_KEY_ID` 和独立的 `API_KEY_CURRENT_PEPPER`，必须关闭 legacy JWT fallback；current、previous、legacy 以及旧 `hmac-pepper` 兼容配置都不能等于 JWT signing secret。previous key id/pepper 必须成对配置，用于明确的轮换窗口。非生产环境可以显式启用 legacy fallback 读取旧记录，但该默认不能进入 strict/prod 启动。
+
+`API_KEY_CURRENT_KEY_ID` 与 `API_KEY_PREVIOUS_KEY_ID` 均不得超过 64 个字符，以匹配 `api_keys.key_id VARCHAR(64)`；该存储约束在 strict 和非 strict 启动中都会执行。
+
+V26 的 `key_id` 是 additive schema。第一阶段滚动部署仍使用升级前的单 pepper：V26 把它同时视为 current 和
+legacy，写出带 `v1` key id 但 digest 与旧实例兼容的摘要。此阶段不能切换 pepper，否则旧实例只能识别一个 pepper，
+必然在“历史 key”和“新 key”之间失去一侧验证能力。所有旧实例停止且旧二进制回滚窗口结束后，才把原 pepper 配成
+previous 与 legacy，并启用新的 current key id/pepper。移除 previous/legacy 前必须盘点仍引用旧 key id 或无 key id
+HMAC 的数据库行；仅等待时间或观察认证流量不足以证明不活跃 key 已迁移。可执行变量顺序见
+[部署 runbook](../../deploy/README.md#api-key-pepper-滚动升级)。
 
 | 状态/输入 | 认证结果 | 说明 |
 | --- | --- | --- |
 | 格式、prefix、id、secret hash 不合法 | invalid | 不区分细节，避免凭据枚举 |
 | key disabled | disabled/拒绝 | 可由短 TTL disabled 缓存短路 |
-| key active 且 applicationId 已绑定 | 成功 | 随后仍校验租户 ACTIVE |
+| key active 且 applicationId 绑定 ACTIVE 应用 | 成功 | 同时校验应用租户归属和租户 ACTIVE |
+| application 缺失、跨租户或 DISABLED | invalid/拒绝 | 无 path applicationId 的入口也不能绕过 |
 | 历史 key 未绑定 applicationId | invalid/拒绝 | 不允许用路径或 request body 临时扩大 scope |
 | Redis 节流或缓存不可用 | 回源或跳过 lastUsed 写回 | 不改变 API Key 本身的校验规则 |
 
@@ -114,8 +126,8 @@ pepper 的 HMAC-SHA-256 和常量时间比较；历史 BCrypt 摘要在首次成
   - API Key 管理 HTTP 入口。
   - 创建、列表、启用、禁用、轮换都要求租户管理员。
 - `server/accounts/application/src/main/java/com/linkforge/accounts/application/ApiKeyService.java`
-  - `create()`：校验应用存在，生成 secret，保存 hash。
-  - `authenticate()`：解析 `lfk_{id}_{secret}`，校验长度、prefix、id、secret hash 和状态。
+  - `create()`：校验应用 ACTIVE，生成 secret，使用 current pepper 保存 hash 和 key id。
+  - `authenticate()`：解析 `lfk_{id}_{secret}`，按 key id 选择 current/previous/legacy pepper，校验状态和绑定应用 ACTIVE，并把成功的旧摘要 CAS 升级到 current。
   - `disable()`、`enable()`、`rotate()`：更新状态或 secret，并处理认证缓存驱逐。
   - 旧的 `create(tenantId, name)` 重载刻意拒绝缺少 `applicationId` 的调用，防止创建无 scope 新 key。
 

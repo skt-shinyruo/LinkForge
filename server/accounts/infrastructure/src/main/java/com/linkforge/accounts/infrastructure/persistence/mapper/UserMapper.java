@@ -17,4 +17,12 @@ public interface UserMapper {
     List<UserEntity> findAllByTenantIdOrderByCreatedAtDesc(Long tenantId);
 
     int update(UserEntity user);
+
+    int incrementTokenVersion(Long userId);
+
+    int updatePasswordHashAndIncrementTokenVersion(Long tenantId, Long userId, String passwordHash);
+
+    int updateStatus(Long tenantId, Long userId, String status);
+
+    Long lockTenantForUserAdministration(Long tenantId);
 }

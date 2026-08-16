@@ -88,12 +88,29 @@ class AnalyticsLinkEventsServiceTest {
         assertThatThrownBy(() -> service.listLinkEvents(
                 new UserActor(1L, 9L, "tenant-admin@example.com", Set.of("TENANT_ADMIN")),
                 101L,
-                LocalDateTime.parse("2026-03-01T00:00:00"),
-                LocalDateTime.parse("2026-03-10T00:00:00"),
+                LocalDateTime.parse("2024-01-01T00:00:00"),
+                LocalDateTime.parse("2025-01-01T00:00:00"),
                 50
         ))
                 .isInstanceOf(BusinessException.class)
                 .extracting(ex -> ((BusinessException) ex).getErrorCode())
                 .isEqualTo(ErrorCode.BAD_REQUEST);
+    }
+
+    @Test
+    void listLinkEvents_shouldAllowAFullLeapYearOfUtcDays() {
+        AnalyticsQueryService queryService = mock(AnalyticsQueryService.class);
+        AnalyticsLinkEventsService service = new AnalyticsLinkEventsService(
+                queryService,
+                Clock.fixed(Instant.parse("2026-04-06T12:00:00Z"), ZoneOffset.UTC)
+        );
+        UserActor actor = new UserActor(1L, 9L, "tenant-admin@example.com", Set.of("TENANT_ADMIN"));
+        LocalDateTime from = LocalDateTime.parse("2024-01-01T23:00:00");
+        LocalDateTime to = LocalDateTime.parse("2024-12-31T01:00:00");
+        when(queryService.linkEvents(1L, 101L, from, to, 50)).thenReturn(List.of());
+
+        assertThat(service.listLinkEvents(actor, 101L, from, to, 50)).isEmpty();
+
+        verify(queryService).linkEvents(1L, 101L, from, to, 50);
     }
 }

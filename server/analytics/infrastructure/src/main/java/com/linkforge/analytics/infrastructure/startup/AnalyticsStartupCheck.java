@@ -33,6 +33,8 @@ public class AnalyticsStartupCheck implements StartupCheck {
         try {
             StartupValidation.validateAnalyticsTrackingAllowlist(analyticsProperties, errors);
             StartupValidation.validateAnalyticsDimensionsTypes(analyticsProperties, errors);
+            StartupValidation.validateAnalyticsVisitStream(analyticsProperties, errors);
+            StartupValidation.validateAnalyticsDirtyMarker(analyticsProperties, errors);
             StartupValidation.validateAnalyticsEvents(analyticsProperties, errors);
         } catch (Exception e) {
             errors.add("analytics 配置校验异常: " + e.getMessage());

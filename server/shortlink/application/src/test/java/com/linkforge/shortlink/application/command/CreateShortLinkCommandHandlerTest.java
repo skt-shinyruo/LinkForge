@@ -470,7 +470,7 @@ class CreateShortLinkCommandHandlerTest {
         }
 
         @Override
-        public boolean deleteByTenantIdAndId(long tenantId, long linkId, long version) {
+        public boolean delete(ShortLink link) {
             return false;
         }
 

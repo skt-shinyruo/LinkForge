@@ -5,6 +5,10 @@ const LineChart = defineAsyncComponent(() => import("../LineChart.vue"));
 
 defineProps<{
   links: { id: number; code: string; originalUrl: string }[];
+  linkSearch: string;
+  linkOptionsLoading: boolean;
+  linkOptionsHasMore: boolean;
+  linkOptionsError: string | null;
   selectedLinkId: number | null;
   selectedLink: { id: number; code: string; originalUrl: string } | null;
   linkStats: { day: string; pv: number; uv: number }[];
@@ -15,6 +19,9 @@ defineProps<{
 
 defineEmits<{
   toggle: [];
+  searchLinks: [];
+  loadMoreLinks: [];
+  updateLinkSearch: [value: string];
   selectLink: [value: number | null];
 }>();
 </script>
@@ -27,17 +34,38 @@ defineEmits<{
         {{ showLinkChart ? "收起图表" : "显示图表" }}
       </button>
     </div>
+    <form class="linkSearch" @submit.prevent="$emit('searchLinks')">
+      <input
+        type="search"
+        :value="linkSearch"
+        placeholder="短码或原始链接"
+        @input="$emit('updateLinkSearch', ($event.target as HTMLInputElement).value)"
+      />
+      <button class="btn small secondary stateButton searchButton" type="submit" :disabled="linkOptionsLoading">
+        {{ linkOptionsLoading ? "搜索中..." : "搜索" }}
+      </button>
+    </form>
+    <div v-if="linkOptionsError" class="error">{{ linkOptionsError }}</div>
     <label class="field">
       选择短链
       <select :value="selectedLinkId ?? ''" @change="$emit('selectLink', Number(($event.target as HTMLSelectElement).value) || null)">
+        <option v-if="links.length === 0" value="" disabled>暂无匹配短链</option>
         <option v-for="link in links" :key="link.id" :value="link.id">{{ link.code }} - {{ link.originalUrl }}</option>
       </select>
     </label>
-    <div v-if="!selectedLinkId" class="sub">请先选择短链。</div>
-    <div v-else-if="linkStats.length === 0" class="sub">暂无数据（请先访问该短链，并等待/触发聚合落库）。</div>
+    <button
+      v-if="linkOptionsHasMore"
+      class="btn small secondary stateButton loadMore"
+      type="button"
+      :disabled="linkOptionsLoading"
+      @click="$emit('loadMoreLinks')"
+    >
+      {{ linkOptionsLoading ? "加载中..." : "加载更多" }}
+    </button>
+    <div v-if="!selectedLinkId" class="sub">未选择短链</div>
+    <div v-else-if="linkStats.length === 0" class="sub">暂无统计数据</div>
     <div v-else-if="!showLinkChart" class="sub">
       当前短链：<span class="mono">{{ selectedLink?.code || selectedLinkId }}</span>
-      图表已拆分为按需加载，点击“显示图表”后再加载图表组件。
     </div>
     <Suspense v-else>
       <template #default>
@@ -101,7 +129,42 @@ defineEmits<{
   margin-bottom: 12px;
 }
 
+.linkSearch {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 5rem;
+  gap: 8px;
+  margin-bottom: 12px;
+  max-width: 720px;
+}
+
+.linkSearch input {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+}
+
+.loadMore {
+  margin: 0 0 12px;
+}
+
+.stateButton {
+  box-sizing: border-box;
+  inline-size: 5rem;
+  min-inline-size: 5rem;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.error {
+  color: #c00;
+  margin-bottom: 8px;
+}
+
 select {
+  inline-size: 100%;
+  min-inline-size: 0;
+  max-inline-size: 100%;
   padding: 10px 12px;
   border: 1px solid #ddd;
   border-radius: 8px;

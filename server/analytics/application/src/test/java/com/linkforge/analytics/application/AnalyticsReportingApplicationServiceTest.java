@@ -1,6 +1,8 @@
 package com.linkforge.analytics.application;
 
 import com.linkforge.contract.shortlink.ShortLinkReadPort;
+import com.linkforge.contract.api.BusinessException;
+import com.linkforge.contract.api.ErrorCode;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
@@ -8,11 +10,35 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class AnalyticsReportingApplicationServiceTest {
+
+    @Test
+    void topLinks_shouldRejectMoreThan366UtcDaysBeforeReadingModels() {
+        AnalyticsQueryService queryService = mock(AnalyticsQueryService.class);
+        ShortLinkReadPort shortLinkReadPort = mock(ShortLinkReadPort.class);
+        AnalyticsReportingService service = new AnalyticsReportingApplicationService(
+                queryService,
+                new AnalyticsLinkSummaryEnricher(shortLinkReadPort)
+        );
+
+        assertThatThrownBy(() -> service.topLinks(
+                1L,
+                LocalDate.parse("2024-01-01"),
+                LocalDate.parse("2025-01-01"),
+                10,
+                AnalyticsQueryService.TopSortBy.PV
+        ))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getErrorCode())
+                        .isEqualTo(ErrorCode.BAD_REQUEST));
+        verifyNoInteractions(queryService, shortLinkReadPort);
+    }
 
     @Test
     void topLinks_shouldEnrichRawRowsWithShortlinkSummaries() {

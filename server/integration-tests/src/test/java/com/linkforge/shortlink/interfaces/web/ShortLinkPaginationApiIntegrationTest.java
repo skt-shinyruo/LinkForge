@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.foundation.persistence.PageQuery;
 import com.linkforge.shortlink.application.*;
+import com.linkforge.testsupport.SharedIntegrationTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -14,14 +15,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
-import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.lang.reflect.Method;
-import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 
@@ -30,39 +25,16 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@Testcontainers
 @SpringBootTest(
         classes = LinkForgeApplication.class,
         webEnvironment = SpringBootTest.WebEnvironment.MOCK,
         properties = "app.scheduling.enabled=false"
 )
 @AutoConfigureMockMvc
-class ShortLinkPaginationApiIntegrationTest {
-
-    @Container
-    static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.0.36")
-            .withDatabaseName("linkforge")
-            .withUsername("linkforge")
-            .withPassword("linkforge");
-
-    @Container
-    static final GenericContainer<?> REDIS = new GenericContainer<>("redis:8.6.2-alpine")
-            .withExposedPorts(6379)
-            .waitingFor(Wait.forLogMessage(".*Ready to accept connections.*\\n", 1)
-                    .withStartupTimeout(Duration.ofSeconds(120)))
-            .withStartupAttempts(3);
+class ShortLinkPaginationApiIntegrationTest extends SharedIntegrationTestSupport {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", MYSQL::getJdbcUrl);
-        registry.add("spring.datasource.username", MYSQL::getUsername);
-        registry.add("spring.datasource.password", MYSQL::getPassword);
-
-        registry.add("spring.data.redis.host", REDIS::getHost);
-        registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
-
-        registry.add("app.security.jwt.secret", () -> "test-secret-please-change-but-long-enough-32-bytes");
-        registry.add("app.analytics.salt", () -> "test-analytics-salt");
         registry.add("app.analytics.dimensions.enabled", () -> "false");
         registry.add("app.analytics.events.enabled", () -> "false");
         registry.add("app.analytics.events.sample-rate", () -> "1");

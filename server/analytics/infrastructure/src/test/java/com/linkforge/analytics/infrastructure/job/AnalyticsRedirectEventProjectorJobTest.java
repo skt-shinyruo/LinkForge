@@ -39,6 +39,34 @@ import static org.mockito.Mockito.when;
 class AnalyticsRedirectEventProjectorJobTest {
 
     @Test
+    void projectRecords_shouldStopCurrentDrainWhenAckIsPartial() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        AnalyticsRedisAggregateWriter aggregateWriter = mock(AnalyticsRedisAggregateWriter.class);
+        @SuppressWarnings("unchecked")
+        StreamOperations<String, Object, Object> streams = mock(StreamOperations.class);
+        when(redis.opsForStream()).thenReturn(streams);
+        when(streams.acknowledge(anyString(), anyString(), any(RecordId[].class))).thenReturn(1L);
+        AnalyticsRedirectEventProjectorJob job = new AnalyticsRedirectEventProjectorJob(
+                redis,
+                new AnalyticsProperties(),
+                aggregateWriter
+        );
+        Map<String, String> values = Map.of(
+                "tenantId", "1",
+                "linkId", "10",
+                "visitorKey", "visitor-1"
+        );
+
+        boolean completed = job.projectRecords(
+                AnalyticsKeys.visitEventStreamKey(),
+                List.of(visitRecord("1-0", values), visitRecord("2-0", values))
+        );
+
+        assertThat(completed).isFalse();
+        verify(aggregateWriter, times(2)).write(values);
+    }
+
+    @Test
     void aggregateWriter_should_route_replayed_requestId_through_the_same_atomic_dedup_script() {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         AnalyticsProperties properties = new AnalyticsProperties();
@@ -68,11 +96,61 @@ class AnalyticsRedirectEventProjectorJobTest {
         assertThat(keysCaptor.getAllValues()).hasSize(2);
         assertThat(keysCaptor.getAllValues().get(0))
                 .isEqualTo(keysCaptor.getAllValues().get(1))
-                .contains(AnalyticsKeys.projectionDedupKey("request-123"));
+                .contains(
+                        AnalyticsKeys.projectionDedupKey("request-123"),
+                        AnalyticsKeys.statsDirtyMarkerV2Key(LocalDate.of(2026, 4, 24)),
+                        AnalyticsKeys.statsDirtyMarkerV2FirstSeenKey(LocalDate.of(2026, 4, 24)),
+                        AnalyticsKeys.scopeDirtyMarkerV2Key(LocalDate.of(2026, 4, 24)),
+                        AnalyticsKeys.scopeDirtyMarkerV2FirstSeenKey(LocalDate.of(2026, 4, 24)),
+                        AnalyticsKeys.dimDirtyMarkerV2Key(LocalDate.of(2026, 4, 24)),
+                        AnalyticsKeys.dimDirtyMarkerV2FirstSeenKey(LocalDate.of(2026, 4, 24))
+                )
+                .doesNotContain(
+                        AnalyticsKeys.statsDirtyStreamKey(LocalDate.of(2026, 4, 24)),
+                        AnalyticsKeys.scopeDirtyStreamKey(LocalDate.of(2026, 4, 24)),
+                        AnalyticsKeys.dimDirtyStreamKey(LocalDate.of(2026, 4, 24))
+                );
         verify(redis, never()).opsForValue();
         verify(redis, never()).opsForHash();
         verify(redis, never()).opsForHyperLogLog();
         verify(redis, never()).opsForStream();
+    }
+
+    @Test
+    void aggregateWriter_shouldKeepV2AndAddLegacyStreamsOnlyWhenRollbackFlagEnabled() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        AnalyticsProperties properties = new AnalyticsProperties();
+        properties.setRedisKeyTtlDays(7);
+        properties.getDimensions().setEnabled(true);
+        properties.getDimensions().setTypes(List.of("referer_domain"));
+        properties.getDirtyMarker().setLegacyWriteEnabled(true);
+        when(redis.execute(any(RedisScript.class), anyList(), any(Object[].class))).thenReturn(1L);
+
+        new AnalyticsRedisAggregateWriter(redis, properties).write(Map.of(
+                "requestId", "rollback-request-1",
+                "ts", String.valueOf(Instant.parse("2026-04-24T10:15:30Z").toEpochMilli()),
+                "tenantId", "1",
+                "linkId", "10",
+                "applicationId", "100",
+                "domainId", "200",
+                "visitorKey", "visitor-1",
+                "refererDomain", "example.com"
+        ));
+
+        @SuppressWarnings("rawtypes")
+        ArgumentCaptor<List> keysCaptor = ArgumentCaptor.forClass(List.class);
+        ArgumentCaptor<Object[]> argsCaptor = ArgumentCaptor.forClass(Object[].class);
+        verify(redis).execute(any(RedisScript.class), keysCaptor.capture(), argsCaptor.capture());
+        LocalDate day = LocalDate.of(2026, 4, 24);
+        assertThat(keysCaptor.getValue()).contains(
+                AnalyticsKeys.statsDirtyMarkerV2Key(day),
+                AnalyticsKeys.scopeDirtyMarkerV2Key(day),
+                AnalyticsKeys.dimDirtyMarkerV2Key(day),
+                AnalyticsKeys.statsDirtyStreamKey(day),
+                AnalyticsKeys.scopeDirtyStreamKey(day),
+                AnalyticsKeys.dimDirtyStreamKey(day)
+        );
+        assertThat(argsCaptor.getValue()[5]).isEqualTo("1");
     }
 
     @Test
@@ -106,7 +184,6 @@ class AnalyticsRedirectEventProjectorJobTest {
         when(hashOps.increment(anyString(), any(), eq(1L))).thenReturn(1L);
 
         when(redis.expireAt(anyString(), any(Date.class))).thenReturn(true);
-        when(streamOps.add(any())).thenReturn(RecordId.of("dirty-1"), RecordId.of("dirty-2"));
         MapRecord<String, Object, Object> record = visitRecord("1-0", Map.of(
                 "ts", String.valueOf(Instant.parse("2026-04-24T10:15:30Z").toEpochMilli()),
                 "tenantId", "1",
@@ -118,7 +195,7 @@ class AnalyticsRedirectEventProjectorJobTest {
         ));
         when(streamOps.read(any(org.springframework.data.redis.connection.stream.Consumer.class), any(StreamReadOptions.class), any(StreamOffset.class)))
                 .thenReturn((List) List.of(record), List.of());
-        when(streamOps.acknowledge(anyString(), anyString(), any(RecordId[].class))).thenReturn(1L);
+        acknowledgeAll(streamOps);
 
         AnalyticsRedirectEventProjectorJob job = new AnalyticsRedirectEventProjectorJob(
                 redis,
@@ -139,32 +216,12 @@ class AnalyticsRedirectEventProjectorJobTest {
         inOrder.verify(streamOps).acknowledge(eq(AnalyticsKeys.visitEventStreamKey()), eq("lf-visit-projector"), any(RecordId[].class));
         verify(redis, never()).opsForSet();
 
-        @SuppressWarnings({"rawtypes", "unchecked"})
-        ArgumentCaptor<MapRecord> streamAddCaptor = ArgumentCaptor.forClass(MapRecord.class);
-        verify(streamOps, org.mockito.Mockito.times(5)).add(streamAddCaptor.capture());
-
-        assertThat(streamAddCaptor.getAllValues())
-                .extracting(MapRecord::getStream)
-                .containsExactly(
-                        AnalyticsKeys.scopeDirtyStreamKey(day),
-                        AnalyticsKeys.scopeDirtyStreamKey(day),
-                        AnalyticsKeys.scopeDirtyStreamKey(day),
-                        AnalyticsKeys.statsDirtyStreamKey(day),
-                        AnalyticsKeys.dimDirtyStreamKey(day)
-                );
-        assertThat(streamAddCaptor.getAllValues())
-                .filteredOn(dirtyRecord -> AnalyticsKeys.statsDirtyStreamKey(day).equals(dirtyRecord.getStream()))
-                .singleElement()
-                .extracting(MapRecord::getValue)
-                .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.MAP)
-                .containsEntry("member", "1:10")
-                .containsKey("ts");
-        assertThat(streamAddCaptor.getAllValues())
-                .filteredOn(dirtyRecord -> AnalyticsKeys.dimDirtyStreamKey(day).equals(dirtyRecord.getStream()))
-                .singleElement()
-                .extracting(MapRecord::getValue)
-                .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.MAP)
-                .containsEntry("member", "1:10");
+        verify(hashOps).increment(AnalyticsKeys.statsDirtyMarkerV2Key(day), "1:10", 1L);
+        verify(hashOps).increment(AnalyticsKeys.scopeDirtyMarkerV2Key(day), "tenant:1:0", 1L);
+        verify(hashOps).increment(AnalyticsKeys.scopeDirtyMarkerV2Key(day), "application:1:100", 1L);
+        verify(hashOps).increment(AnalyticsKeys.scopeDirtyMarkerV2Key(day), "domain:1:200", 1L);
+        verify(hashOps).increment(AnalyticsKeys.dimDirtyMarkerV2Key(day), "1:10", 1L);
+        verify(streamOps, never()).add(any());
     }
 
     @Test
@@ -186,7 +243,7 @@ class AnalyticsRedirectEventProjectorJobTest {
         ));
         when(streamOps.read(any(org.springframework.data.redis.connection.stream.Consumer.class), any(StreamReadOptions.class), any(StreamOffset.class)))
                 .thenReturn((List) List.of(record), List.of());
-        when(streamOps.acknowledge(anyString(), anyString(), any(RecordId[].class))).thenReturn(1L);
+        acknowledgeAll(streamOps);
 
         AnalyticsRedirectEventProjectorJob job = new AnalyticsRedirectEventProjectorJob(
                 redis,
@@ -221,7 +278,7 @@ class AnalyticsRedirectEventProjectorJobTest {
         ));
         when(streamOps.read(any(org.springframework.data.redis.connection.stream.Consumer.class), any(StreamReadOptions.class), any(StreamOffset.class)))
                 .thenReturn((List) List.of(record), List.of());
-        when(streamOps.acknowledge(anyString(), anyString(), any(RecordId[].class))).thenReturn(1L);
+        acknowledgeAll(streamOps);
 
         AnalyticsRedirectEventProjectorJob job = new AnalyticsRedirectEventProjectorJob(
                 redis,
@@ -261,7 +318,7 @@ class AnalyticsRedirectEventProjectorJobTest {
         ));
         when(streamOps.read(any(org.springframework.data.redis.connection.stream.Consumer.class), any(StreamReadOptions.class), any(StreamOffset.class)))
                 .thenReturn((List) List.of(record), List.of());
-        when(streamOps.acknowledge(anyString(), anyString(), any(RecordId[].class))).thenReturn(1L);
+        acknowledgeAll(streamOps);
 
         AnalyticsRedirectEventProjectorJob job = new AnalyticsRedirectEventProjectorJob(
                 redis,
@@ -285,5 +342,10 @@ class AnalyticsRedirectEventProjectorJobTest {
         when(record.getId()).thenReturn(RecordId.of(id));
         when(record.getValue()).thenReturn((Map) values);
         return record;
+    }
+
+    private static void acknowledgeAll(StreamOperations<String, Object, Object> streamOps) {
+        when(streamOps.acknowledge(anyString(), anyString(), any(RecordId[].class)))
+                .thenAnswer(invocation -> (long) ((RecordId[]) invocation.getRawArguments()[2]).length);
     }
 }

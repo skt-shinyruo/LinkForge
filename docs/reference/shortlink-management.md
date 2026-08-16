@@ -110,7 +110,7 @@ OpenAPI 入口见 [OpenAPI 与 API Key 链路](openapi-api-key.md)。
 
 ### 普通更新
 
-`UpdateShortLinkCommandHandler.handle()` 先按 `tenantId + linkId` 读聚合，不存在返回 `LINK_NOT_FOUND`。归档短链调用 `link.requireNotArchivedForUpdate()` 拒绝更新。局部更新支持：
+`UpdateShortLinkCommandHandler.handle()` 先按 `tenantId + linkId` 读聚合，不存在返回 `LINK_NOT_FOUND`。普通更新统一调用 `link.applyUpdate(...)`；聚合在一个命名行为中完成归档守卫、字段校验、版本推进、更新时间和单条更新事件。局部更新支持：
 
 - lifecycleState
 - originalUrl
@@ -134,7 +134,7 @@ clear 字段是显式协议，而不是“空字符串自动清除”：
 | redirect status | `redirectStatusCode` | `clearRedirectStatusCode` | 参数错误 |
 | query mode | `queryForwardMode` | `clearQueryForwardMode` | 参数错误 |
 
-冲突会在产生审批、标签、事件或 outbox 副作用前拒绝。空 `unavailableLandingUrl` 清空该字段，空 allowlist 清空当前覆盖值，`note` 的空字符串是有效业务值；即使没有有效字段改变，当前实现仍可能执行乐观锁更新、发 UPDATED 事件并触发缓存失效。
+冲突会在产生审批、标签、事件或 outbox 副作用前拒绝。空 `unavailableLandingUrl` 清空该字段，空 allowlist 清空当前覆盖值，`note` 的空字符串是有效业务值；字段和标签都没有实际变化时幂等返回，不写库、不发事件，也不登记缓存失效。
 
 ### 目标地址变更审批
 
@@ -150,9 +150,23 @@ clear 字段是显式协议，而不是“空字符串自动清除”：
 
 ### 生命周期命令
 
-- 归档：`ArchiveShortLinkCommandHandler` 设置 `archivedAtUtc`；重复归档是幂等返回。
-- 恢复：`RestoreShortLinkCommandHandler` 清空 `archivedAtUtc`；未归档时幂等返回。
-- 删除：`DeleteShortLinkCommandHandler` 要求短链已归档，先删除标签关系，再按版本删除短链。
+- 归档：聚合 `archive()` 设置 `archivedAtUtc`、推进一次版本并产生 `ShortLinkArchived`；重复归档幂等返回。
+- 恢复：聚合 `restore()` 清空 `archivedAtUtc`、推进一次版本并产生 `ShortLinkRestored`；未归档时幂等返回。
+- 删除：聚合 `delete()` 要求短链已归档，记录删除意图、推进一次版本并产生 `ShortLinkDeleted`；应用层再删除标签关系并按变化前版本 CAS 删除短链。
+
+审批执行调用 `approveDestinationChange()`，由聚合校验未归档、已绑定 domain 且发布阶段为 `ACTIVE`。ownership reconciliation 使用 `reconcileOwnership()`，只允许把 application/domain 双空的 legacy link 绑定到一对正数 ID，不允许清空或换绑，并在事件中同时保留变化前后 scope。聚合不再公开 guard、字段 setter、`applyPatch()`、`markUpdated()`、`markDeleted()` 或直接版本推进；所有生产写入只能通过命名 mutation。
+
+所有持久化更新都接收已经由一个命名行为推进一次的新版本，SQL 使用 `newVersion - 1` 做乐观锁条件并保存 `newVersion`。单个用例不得在一次 repository write 前连续执行多个命名 mutation。
+
+### 历史所有权对账
+
+`ShortLinkOwnershipReconciliationService.reconcile()` 是单链接 ownership 迁移的唯一公共写入口。它先调用 `ApplicationScopePort.requireApplicationAndDomainAuthorized()` 校验 ACTIVE 应用、ACTIVE 域名、租户归属和授权，再按 `tenantId + linkId` 读取聚合并调用 `reconcileOwnership()`。成功的仓储更新在同一条 CAS SQL 中保存 application/domain 和新版本；版本竞争返回 `RETRYABLE_CONFLICT`，相同目标返回 `ALREADY_RECONCILED`，已有其他 ownership 和不存在记录分别返回可观察终态。
+
+CAS 成功后的当月 quota 校准、`ShortLinkUpdated` 集成事件、legacy unscoped identity 与新 domain identity 的缓存失效 outbox 都加入同一事务。quota 校准与创建路径使用同一个 MySQL 月度 named lock：月份基线首次建立时已包含刚迁移的链接，已有基线时才递增一次。只有一个版本 CAS 可以成功，因此并发、重试或事务回滚不会重复 quota、事件和 outbox；after-commit 驱逐仍只是降低旧缓存可见窗口的快速路径。
+
+`LegacyShortLinkBackfillService.reconcileNextBatch()` 只负责有界调度：先通过 `LegacyApplicationProvisioningPort` 获取稳定 legacy binding，再在 `shortlink_ownership_backfill_checkpoints` 上锁定租户 checkpoint，以 `id` keyset 把最多 `batchSize` 条双空 ownership 记录写入 `shortlink_ownership_backfill_items`。每条 work item 都调用上述公共 reconciliation 用例，不存在 bulk ownership SQL。checkpoint、单链接事务和结果记录分别提交；若进程在单链接提交后、结果记录前崩溃，work item 仍为 `PENDING`，重启会得到 `ALREADY_RECONCILED` 并补记终态，不重复业务副作用。
+
+work item 状态区分 `PENDING`、`RETRYABLE`、`PERMANENT_FAILURE`、`RECONCILED`、`ALREADY_RECONCILED` 和 `NOT_FOUND`。新 PENDING 项优先，重复失败项按更新时间轮转，避免单条重试阻塞后续发现；`progress().converged()` 表示本轮扫描已耗尽且没有自动重试项，永久失败仍保留在计数和 `last_error` 中供人工处理。扫描耗尽时会从零检查尚未入队的双空记录，覆盖并发提交但 ID 落在旧 cursor 之前的记录。
 
 ### 权限和作用域
 
@@ -172,6 +186,7 @@ clear 字段是显式协议，而不是“空字符串自动清除”：
 - 应用级导入必须提供 `domainId`，也支持 CSV 行里通过 hostname 找域名。
 - `expiresAt` 支持 ISO-8601 Instant/OffsetDateTime，也兼容 legacy `LocalDateTime` 并按 UTC 处理。
 - 导出由 `ExportShortLinksCsvQueryHandler` 复用搜索逻辑，输出 linkId、applicationId、domainId、hostname、code、originalUrl、note、enabled、expiresAt、tags。
+- 所有用户可控文本列统一经过 `CsvFormulaNeutralizer`。保留原始空白和 UTF-8 内容做输出，但若第一个非空白/BOM 字符是 `=`、`+`、`-` 或 `@`，会在原单元格前添加单引号；数值、布尔和时间字段不改写。随后仍由 Commons CSV 处理逗号、双引号和 CR/LF quoting。
 
 标签和 query allowlist 的上限是规范化行为：标签最多 20，allowlist 最多 50；超出项会被截断而不是稳定拒绝。allowlist 逗号序列化上限 1024，匹配大小写敏感。`HttpUrl` 的验证只是 URI/http(s)/host/2048 长度校验，不意味着 DNS 可达、目标非私网或跳转目标已通过安全审查。
 
@@ -206,6 +221,10 @@ clear 字段是显式协议，而不是“空字符串自动清除”：
   - 调 `SetLinkTagsCommandHandler`，发布领域事件，在同一事务写缓存失效 outbox，并在提交后快速驱逐缓存。
 - `server/shortlink/application/src/main/java/com/linkforge/shortlink/application/command/UpdateShortLinkCommandHandler.java`
   - 处理审批分支、局部更新、乐观锁、事件和缓存驱逐。
+- `server/shortlink/application/src/main/java/com/linkforge/shortlink/application/migration/ShortLinkOwnershipReconciliationService.java`
+  - 单链接 ownership 权威写用例，协调 Platform scope、聚合 CAS、quota、事件和双 identity 缓存失效。
+- `server/shortlink/application/src/main/java/com/linkforge/shortlink/application/migration/LegacyShortLinkBackfillService.java`
+  - 有界取得 durable work item，每条只委派公共 reconciliation 用例，并返回可恢复进度。
 - `server/shortlink/application/src/main/java/com/linkforge/shortlink/application/query/SearchShortLinksQueryHandler.java`
   - 支持 archived、enabled、keyword、tag、applicationId 过滤。
   - 限制 offset 最大 100000。
@@ -232,6 +251,8 @@ clear 字段是显式协议，而不是“空字符串自动清除”：
   - 短链写侧 repository。
 - `server/shortlink/infrastructure/src/main/java/com/linkforge/shortlink/infrastructure/quota/MybatisApplicationLinkQuotaReservationPort.java`
   - 使用 MySQL named lock 保护月发链额度预留。
+- `server/shortlink/infrastructure/src/main/java/com/linkforge/shortlink/infrastructure/persistence/repository/MybatisLegacyShortLinkBackfillStore.java`
+  - 在租户 checkpoint 行锁内做 keyset 发现、持久化 work item 和聚合状态计数；每批至少推进一次发现，避免持续 RETRYABLE 项阻塞后续 legacy link。
 - `server/shortlink/infrastructure/src/main/java/com/linkforge/shortlink/infrastructure/redirect/RedirectCacheSyncAdapter.java`
   - 调 Redirect 缓存端口执行驱逐。
 - `server/shortlink/infrastructure/src/main/java/com/linkforge/shortlink/infrastructure/eventing/ShortLinkEventAppender.java`
@@ -239,6 +260,6 @@ clear 字段是显式协议，而不是“空字符串自动清除”：
 
 ## 一致性设计
 
-Shortlink 的写操作在业务事务内追加集成事件和缓存失效 outbox。提交后 `PostCommitHookPort` 会尝试 `redirectCacheSync.evict(...)` 快速路径；该动作失败不回滚已提交业务，outbox worker 负责后续重试。驱逐允许重复，事务回滚不会留下 outbox 或运行 after-commit。Redirect 缓存不是事实来源，缓存未命中时总会回源 `ShortLinkReadPort`。
+Shortlink 的写操作在业务事务内追加集成事件和缓存失效 outbox。提交后 `PostCommitHookPort` 会尝试 `redirectCacheSync.evict(...)` 快速路径；该动作失败不回滚已提交业务，outbox worker 负责后续重试。同一缓存 identity 重复入队会推进 generation，worker 只按自己读取到的 generation CAS 完成或保存失败，因此持有旧 generation 的 worker 不能覆盖并发产生的新失效意图。驱逐允许重复，事务回滚不会留下 outbox 或运行 after-commit。Redirect 缓存不是事实来源，缓存未命中时总会回源 `ShortLinkReadPort`。
 
 发链额度预留与插入短链处于同一事务，后续标签/事件失败会一起回滚；MySQL named lock 获取失败和真正额度耗尽都返回未获得名额。领域事件 dispatcher 会 destructive pull 聚合事件并马上发布，因此一个聚合不应积累多轮状态变化后再延迟 dispatch；事件消费者必须接受重放，不存在 exactly-once 承诺。

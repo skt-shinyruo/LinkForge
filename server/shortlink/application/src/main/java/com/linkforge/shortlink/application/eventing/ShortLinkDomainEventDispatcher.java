@@ -6,6 +6,7 @@ import com.linkforge.shortlink.domain.event.ShortLinkArchived;
 import com.linkforge.shortlink.domain.event.ShortLinkCreated;
 import com.linkforge.shortlink.domain.event.ShortLinkDeleted;
 import com.linkforge.shortlink.domain.event.ShortLinkDomainEvent;
+import com.linkforge.shortlink.domain.event.ShortLinkOwnershipChanged;
 import com.linkforge.shortlink.domain.event.ShortLinkRestored;
 import com.linkforge.shortlink.domain.event.ShortLinkUpdated;
 import org.springframework.stereotype.Component;
@@ -39,8 +40,8 @@ public class ShortLinkDomainEventDispatcher {
     /**
      * 取出并按顺序发布聚合当前积累的全部领域事件。
      *
-     * <p>更新、归档和删除事件携带的 {@link LocalDateTime} 按 UTC 解释；事件时间为空，或创建、恢复事件
-     * 本身没有时间时，使用 {@code fallbackOccurredAtUtc}。fallback 为空则以调用瞬间的系统时间兜底。
+     * <p>更新、ownership、归档和删除事件携带的 {@link LocalDateTime} 按 UTC 解释；事件时间为空，或创建、
+     * 恢复事件本身没有时间时，使用 {@code fallbackOccurredAtUtc}。fallback 为空则以调用瞬间的系统时间兜底。
      * 聚合没有待发布事件时不调用 publisher。</p>
      *
      * @param link 非空的、已经完成持久化写入准备的短链聚合
@@ -63,6 +64,10 @@ public class ShortLinkDomainEventDispatcher {
         }
         if (event instanceof ShortLinkUpdated updated) {
             publisher.updated(link, toInstant(updated.updatedAtUtc(), fallback));
+            return;
+        }
+        if (event instanceof ShortLinkOwnershipChanged ownershipChanged) {
+            publisher.updated(link, toInstant(ownershipChanged.changedAtUtc(), fallback));
             return;
         }
         if (event instanceof ShortLinkArchived archived) {

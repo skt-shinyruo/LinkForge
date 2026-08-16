@@ -91,10 +91,21 @@ JWT 用户主体携带 `tokenVersion`，每次受保护请求由 Accounts 复核
 | `app.security.jwt.cookie-name` | `JWT_COOKIE_NAME` | `lf_token` | Cookie 名；启用 cookie 时不能为空 |
 | `app.security.jwt.cookie-secure` | `JWT_COOKIE_SECURE` | `false` | strict cookie 模式必须为 `true` |
 | `app.security.jwt.cookie-same-site` | `JWT_COOKIE_SAMESITE` | `Lax` | 仅 `Lax/Strict/None`；`None` 要求 Secure |
+| `app.security.api-key.current-key-id` | `API_KEY_CURRENT_KEY_ID` | `default`（Compose 为 `v1`） | 新摘要写入的稳定 key id；最多 64 个字符；strict 要求非空且不能等于 previous key id |
+| `app.security.api-key.current-pepper` | `API_KEY_CURRENT_PEPPER` | 旧 `API_KEY_HMAC_PEPPER`，否则空 | 新摘要的 HMAC pepper；strict 要求非空且独立于 JWT secret |
+| `app.security.api-key.previous-key-id` | `API_KEY_PREVIOUS_KEY_ID` | 空 | 轮换窗口的上一代 key id，最多 64 个字符，必须与 previous pepper 成对配置 |
+| `app.security.api-key.previous-pepper` | `API_KEY_PREVIOUS_PEPPER` | 空 | 只验证 previous key id，不用于新写入 |
+| `app.security.api-key.legacy-pepper` | `API_KEY_LEGACY_PEPPER` | 旧 `API_KEY_HMAC_PEPPER`，否则空 | 只验证 `key_id IS NULL` 的历史 HMAC 摘要 |
+| `app.security.api-key.hmac-pepper` | `API_KEY_HMAC_PEPPER` | 空 | V26 前单 pepper 兼容名；第一阶段滚动部署仍须保留 |
+| `app.security.api-key.legacy-jwt-fallback-enabled` | `API_KEY_LEGACY_JWT_FALLBACK_ENABLED` | `true`（Compose 为 `false`） | 非 strict 本地兼容；strict 必须关闭 |
 | `app.security.api-key.last-used-update-interval-seconds` | `API_KEY_LAST_USED_UPDATE_INTERVAL_SECONDS` | `300` | 秒；`0` 关闭 `lastUsedAt` 写回，负值按实现的非正分支处理 |
 | `app.security.api-key.auth-cache-ttl-seconds` | `API_KEY_AUTH_CACHE_TTL_SECONDS` | `60` | 秒；只缓存 disabled 短路状态，`0` 关闭 |
 
-API Key active 请求仍会回库并校验 secret hash；缓存不是 active 凭据的授权事实源。
+API Key active 请求仍会回库并校验 secret hash；缓存不是 active 凭据的授权事实源。Compose 会把旧
+`API_KEY_HMAC_PEPPER` additive 地映射到缺省的 current/legacy slot，使只带旧环境变量的部署在 V26 strict
+模式下仍能启动并验证 `key_id=NULL` 的历史行。这个桥接不允许 API Key pepper 等于 JWT signing secret。
+真正切换到新 current pepper 前必须先排空旧版本实例；完整步骤以
+[部署 runbook](../../deploy/README.md#api-key-pepper-滚动升级) 为准。
 
 ## Redirect 与 Edge 配置
 
@@ -136,6 +147,15 @@ API Key active 请求仍会回库并校验 secret hash；缓存不是 active 凭
 | `app.analytics.flush-backfill-days` | `ANALYTICS_FLUSH_BACKFILL_DAYS` | `7` | 含今天的回补天数，非正值运行时收敛为 1，并受 TTL 截断 |
 | `app.analytics.tracking-param-allowlist` | `ANALYTICS_TRACKING_PARAM_ALLOWLIST` | 空 | 仅控制统计采集，不改变 Redirect query 透传；空值回退安全集合 `utm_*`,`gclid`,`fbclid`，避免把任意 query 送入统计链路 |
 | `app.analytics.visit-stream.max-len` | `ANALYTICS_VISIT_STREAM_MAX_LEN` | 空 | 空时回退 events stream max len；`<=0` 不 trim |
+| `app.analytics.visit-stream.peak-events-per-second` | `ANALYTICS_VISIT_STREAM_PEAK_EVENTS_PER_SECOND` | `1000` | 声明峰值；与恢复窗口、安全余量共同计算最低容量 |
+| `app.analytics.visit-stream.recovery-window-seconds` | `ANALYTICS_VISIT_STREAM_RECOVERY_WINDOW_SECONDS` | `180` | 消费中断后必须保留的峰值恢复窗口 |
+| `app.analytics.visit-stream.safety-margin-percent` | `ANALYTICS_VISIT_STREAM_SAFETY_MARGIN_PERCENT` | `10` | 容量预算的额外百分比，必须 `>=0` |
+| `app.analytics.dirty-marker.legacy-write-enabled` | `ANALYTICS_DIRTY_MARKER_LEGACY_WRITE_ENABLED` | `false` | 仅回滚窗口临时启用；V2 始终写，legacy 写是 additive |
+| `app.analytics.dirty-marker.legacy-read-enabled` | `ANALYTICS_DIRTY_MARKER_LEGACY_READ_ENABLED` | `true` | 兼容期 V2/legacy 双读；关闭受退役门禁保护 |
+| `app.analytics.dirty-marker.legacy-retirement-confirmed` | `ANALYTICS_DIRTY_MARKER_LEGACY_RETIREMENT_CONFIRMED` | `false` | 运维确认项，不能代替停写/排空时间和 TTL |
+| `app.analytics.dirty-marker.compatibility-ttl-days` | `ANALYTICS_DIRTY_MARKER_COMPATIBILITY_TTL_DAYS` | `45` | legacy 停写与排空后仍需等待的完整天数，必须 `>0` |
+| `app.analytics.dirty-marker.legacy-write-stopped-at` | `ANALYTICS_DIRTY_MARKER_LEGACY_WRITE_STOPPED_AT` | 空 | 全量旧 producer 停写的 UTC ISO-8601 审计时间 |
+| `app.analytics.dirty-marker.legacy-drained-at` | `ANALYTICS_DIRTY_MARKER_LEGACY_DRAINED_AT` | 空 | legacy Stream 全部排空的 UTC ISO-8601 审计时间 |
 | `app.analytics.dimensions.enabled` | `ANALYTICS_DIMENSIONS_ENABLED` | `false` | 维度 Redis 写入和落库开关 |
 | `app.analytics.dimensions.types` | `ANALYTICS_DIMENSIONS_TYPES` | 空 | 空时使用实现内推荐集合 |
 | `app.analytics.events.enabled` | `ANALYTICS_EVENTS_ENABLED` | `false` | 仅控制访问明细落库，不关闭基础 visit stream/PV/UV/额度 |
@@ -146,13 +166,20 @@ API Key active 请求仍会回库并校验 secret hash；缓存不是 active 凭
 | `app.analytics.events.pending-reclaim-enabled` | `ANALYTICS_EVENTS_PENDING_RECLAIM_ENABLED` | `true` | 是否接管闲置 pending |
 | `app.analytics.events.pending-reclaim-min-idle-ms` | `ANALYTICS_EVENTS_PENDING_RECLAIM_MIN_IDLE_MS` | `60000` | reclaim 最小闲置毫秒 |
 | `app.analytics.events.pending-reclaim-count` | `ANALYTICS_EVENTS_PENDING_RECLAIM_COUNT` | `200` | 单批接管上限 |
+| `app.analytics.events.ingest-batch-size` | `ANALYTICS_EVENTS_INGEST_BATCH_SIZE` | `200` | 单次 Redis 读取上限 |
+| `app.analytics.events.ingest-max-batches` | `ANALYTICS_EVENTS_INGEST_MAX_BATCHES` | `10` | 单次调度最多恢复批数，限制线程独占 |
+| `app.analytics.events.ingest-time-budget-ms` | `ANALYTICS_EVENTS_INGEST_TIME_BUDGET_MS` | `1000` | 单次调度恢复 backlog 的时间预算 |
 | `app.analytics.events.max-user-agent-length` | `APP_ANALYTICS_EVENTS_MAX_USER_AGENT_LENGTH` | `512` | UA 写入 Stream/明细前截断；非正值回退 `512`，最大强制收敛为 `2048` |
 | `app.analytics.events.max-tracking-value-length` | `APP_ANALYTICS_EVENTS_MAX_TRACKING_VALUE_LENGTH` | `128` | 单个已允许 tracking 值写入前截断；非正值回退 `128`，最大强制收敛为 `512` |
-| `app.analytics.events.fail-open` | 无 YAML 显式项 | `true` | 明细写入异常是否向访问链路外抛 |
+| `app.analytics.events.fail-open` | `ANALYTICS_EVENTS_FAIL_OPEN` | `true` | 基础访问流追加异常是否向 Redirect 外抛；放行会增加 `linkforge.analytics.fail_open` |
 | `app.analytics.quota.fail-open` | `ANALYTICS_QUOTA_FAIL_OPEN` | `false` | Redirect 外层在 quota 查询/调用异常时是否放行 |
 | `app.analytics.quota.lookup-cache-ttl-seconds` | 无 YAML 显式项 | `30` | Platform quota 查询缓存秒数 |
 
 点击额度 Redis adapter 内部基础设施故障固定 fail-open；`quota.fail-open` 只影响 adapter 之外仍被抛出的 Platform 查询或调用异常，不能把它理解为控制所有 Redis 错误。
+
+dirty marker 的默认兼容状态是 V2-only write + V2/legacy dual-read。关闭 legacy read 前，启动门禁要求：legacy
+write 已关闭、retirement confirmed 已确认、停写和排空时间都有审计记录，而且两者都已超过完整 compatibility TTL。
+仓库配置不虚构外部时间证据，因此默认保持 dual-read。
 
 ## 调度间隔
 

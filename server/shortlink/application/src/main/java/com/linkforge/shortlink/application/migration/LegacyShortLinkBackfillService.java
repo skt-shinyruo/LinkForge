@@ -2,46 +2,129 @@ package com.linkforge.shortlink.application.migration;
 
 import com.linkforge.contract.platform.LegacyApplicationBindingView;
 import com.linkforge.contract.platform.LegacyApplicationProvisioningPort;
-import com.linkforge.shortlink.application.port.ShortLinkOwnershipBackfillRepository;
+import com.linkforge.shortlink.application.port.LegacyShortLinkBackfillStore;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
 
 /**
  * 将历史上没有应用和域名归属的短链回填到租户的兼容默认绑定。
  *
- * <p>服务先通过 Platform 发布契约获取或创建租户默认应用与专属域名，再用同一组 ID 批量更新该租户中
- * {@code application_id IS NULL AND domain_id IS NULL} 的短链。已有任一 scope 的行不会被覆盖；相同租户
- * 重复执行时，默认绑定会被复用，回填 SQL 自然收敛为零行更新，因此串行重跑是幂等的。</p>
+ * <p>服务先通过 Platform 发布契约取得稳定默认应用与专属域名，再由 durable checkpoint 以 keyset 分批发现
+ * legacy link。每条 work item 只调用 {@link ShortLinkOwnershipReconciliationService}，因此作用域授权、聚合
+ * CAS、quota、事件和缓存失效与在线单链路拥有完全相同的正确性规则。</p>
  *
- * <p>当前默认事务传播下，兼容绑定开通与批量回填加入本方法事务，任一持久化失败都会向上传播并回滚本地写入。
- * 默认资源的首次开通采用先查后插入，并发调用可能由唯一约束淘汰其中一方；失败方不会在本次调用内自动重试，
- * 应在新事务中重跑。回填直接执行批量 SQL，不逐个加载聚合，也不产生短链领域事件或缓存失效任务。</p>
+ * <p>批次本身没有大事务：checkpoint、每条 reconciliation、每条结果分别提交。崩溃最多留下 PENDING work
+ * item；重启后的幂等 reconciliation 会补记终态，不会跳过失败项，也不会重复业务副作用。</p>
  */
 @Service
 public class LegacyShortLinkBackfillService {
 
     private final LegacyApplicationProvisioningPort legacyApplicationProvisioningPort;
-    private final ShortLinkOwnershipBackfillRepository backfillRepository;
+    private final LegacyShortLinkBackfillStore backfillStore;
+    private final ShortLinkOwnershipReconciliationService reconciliationService;
 
     public LegacyShortLinkBackfillService(
             LegacyApplicationProvisioningPort legacyApplicationProvisioningPort,
-            ShortLinkOwnershipBackfillRepository backfillRepository
+            LegacyShortLinkBackfillStore backfillStore,
+            ShortLinkOwnershipReconciliationService reconciliationService
     ) {
         this.legacyApplicationProvisioningPort = legacyApplicationProvisioningPort;
-        this.backfillRepository = backfillRepository;
+        this.backfillStore = backfillStore;
+        this.reconciliationService = reconciliationService;
     }
 
     /**
-     * 为单个租户确保兼容默认绑定，并回填所有仍为双空 scope 的历史短链。
+     * 为一个租户发现并 reconcile 最多 {@code batchSize} 条 legacy link。
      *
-     * @param tenantId 待迁移租户；租户合法性和存在性由下游 Platform/持久化约束判定
-     * @return 本次使用的稳定绑定 ID 以及实际受影响的短链行数
-     * @throws RuntimeException 默认绑定开通或批量更新失败时原样向上传播
+     * <p>Checkpoint 发现、每条 link reconciliation 和每次结果写入分别提交。若进程在 reconciliation 后、
+     * 记录结果前崩溃，会留下 durable PENDING 项；重试会观察到目标 ownership 并记录 ALREADY_RECONCILED，
+     * 不重复 quota、事件或缓存失效副作用。</p>
      */
-    @Transactional
-    public BackfillResult backfillTenant(long tenantId) {
+    public LegacyShortLinkBackfillBatchResult reconcileNextBatch(long tenantId, int batchSize) {
+        if (batchSize < 1 || batchSize > 1_000) {
+            throw new IllegalArgumentException("batchSize must be between 1 and 1000");
+        }
         LegacyApplicationBindingView binding = legacyApplicationProvisioningPort.ensureLegacyDefaultBinding(tenantId);
-        int updated = backfillRepository.backfillTenant(tenantId, binding.applicationId(), binding.domainId());
-        return new BackfillResult(tenantId, binding.applicationId(), binding.domainId(), updated);
+        List<LegacyShortLinkBackfillStore.WorkItem> workItems = backfillStore.takeBatch(
+                tenantId,
+                binding.applicationId(),
+                binding.domainId(),
+                batchSize
+        );
+
+        int reconciled = 0;
+        int alreadyReconciled = 0;
+        int retryable = 0;
+        int permanentFailure = 0;
+        int notFound = 0;
+        for (LegacyShortLinkBackfillStore.WorkItem item : workItems) {
+            ShortLinkOwnershipReconciliationResult result;
+            try {
+                result = reconciliationService.reconcile(
+                        item.tenantId(),
+                        item.linkId(),
+                        item.applicationId(),
+                        item.domainId()
+                );
+            } catch (RuntimeException ex) {
+                retryable++;
+                backfillStore.recordOutcome(
+                        item.tenantId(),
+                        item.linkId(),
+                        LegacyShortLinkBackfillStore.Outcome.RETRYABLE,
+                        describe(ex)
+                );
+                continue;
+            }
+
+            LegacyShortLinkBackfillStore.Outcome outcome;
+            String detail = null;
+            switch (result.status()) {
+                case RECONCILED -> {
+                    outcome = LegacyShortLinkBackfillStore.Outcome.RECONCILED;
+                    reconciled++;
+                }
+                case ALREADY_RECONCILED -> {
+                    outcome = LegacyShortLinkBackfillStore.Outcome.ALREADY_RECONCILED;
+                    alreadyReconciled++;
+                }
+                case RETRYABLE_CONFLICT -> {
+                    outcome = LegacyShortLinkBackfillStore.Outcome.RETRYABLE;
+                    detail = "optimistic ownership conflict";
+                    retryable++;
+                }
+                case OWNERSHIP_CONFLICT -> {
+                    outcome = LegacyShortLinkBackfillStore.Outcome.PERMANENT_FAILURE;
+                    detail = "link is already owned by another scope";
+                    permanentFailure++;
+                }
+                case NOT_FOUND -> {
+                    outcome = LegacyShortLinkBackfillStore.Outcome.NOT_FOUND;
+                    notFound++;
+                }
+                default -> throw new IllegalStateException("unsupported ownership reconciliation result");
+            }
+            backfillStore.recordOutcome(item.tenantId(), item.linkId(), outcome, detail);
+        }
+
+        LegacyShortLinkBackfillProgress progress = backfillStore.progress(tenantId);
+        return new LegacyShortLinkBackfillBatchResult(
+                tenantId,
+                binding.applicationId(),
+                binding.domainId(),
+                workItems.size(),
+                reconciled,
+                alreadyReconciled,
+                retryable,
+                permanentFailure,
+                notFound,
+                progress
+        );
+    }
+
+    private static String describe(RuntimeException ex) {
+        String message = ex.getMessage();
+        return ex.getClass().getSimpleName() + (message == null || message.isBlank() ? "" : ": " + message);
     }
 }

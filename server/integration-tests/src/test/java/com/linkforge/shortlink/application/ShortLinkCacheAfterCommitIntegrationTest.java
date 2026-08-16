@@ -11,6 +11,7 @@ import com.linkforge.redirect.application.ResolveRedirectRequest;
 import com.linkforge.redirect.application.error.RedirectBusinessException;
 import com.linkforge.redirect.application.error.RedirectErrorCode;
 import com.linkforge.shortlink.application.csv.ShortLinkCsvImportRow;
+import com.linkforge.testsupport.SharedIntegrationTestSupport;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,13 +26,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -40,40 +35,15 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@Testcontainers
 @SpringBootTest(
         classes = LinkForgeApplication.class,
         webEnvironment = SpringBootTest.WebEnvironment.MOCK,
         properties = "app.scheduling.enabled=false"
 )
-class ShortLinkCacheAfterCommitIntegrationTest {
-
-    @Container
-    static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.0.36")
-            .withDatabaseName("linkforge")
-            .withUsername("linkforge")
-            .withPassword("linkforge");
-
-    @Container
-    static final GenericContainer<?> REDIS = new GenericContainer<>("redis:8.6.2-alpine")
-            .withExposedPorts(6379)
-            .waitingFor(Wait.forLogMessage(".*Ready to accept connections.*\\n", 1)
-                    .withStartupTimeout(Duration.ofSeconds(120)))
-            .withStartupAttempts(3);
+class ShortLinkCacheAfterCommitIntegrationTest extends SharedIntegrationTestSupport {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry r) {
-        r.add("spring.datasource.url", MYSQL::getJdbcUrl);
-        r.add("spring.datasource.username", MYSQL::getUsername);
-        r.add("spring.datasource.password", MYSQL::getPassword);
-
-        r.add("spring.data.redis.host", REDIS::getHost);
-        r.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
-
-        // 测试环境固定密钥，避免启动失败
-        r.add("app.security.jwt.secret", () -> "test-secret-please-change-but-long-enough-32-bytes");
-        r.add("app.analytics.salt", () -> "test-analytics-salt");
-
         // 访问明细 + 维度聚合测试开关（避免调度影响测试稳定性）
         r.add("app.analytics.dimensions.enabled", () -> "false");
         r.add("app.analytics.events.enabled", () -> "false");

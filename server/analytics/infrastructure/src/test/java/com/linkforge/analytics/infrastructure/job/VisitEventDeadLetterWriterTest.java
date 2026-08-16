@@ -7,6 +7,7 @@ import org.springframework.data.redis.connection.stream.RecordId;
 import org.springframework.data.redis.core.StreamOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -33,9 +34,33 @@ class VisitEventDeadLetterWriterTest {
         row.setLinkId(10L);
         row.setRequestId("req-bad");
 
-        writer.write("stats:visit:events", RecordId.of("2-0"), row, new DataIntegrityViolationException("row failed"));
+        boolean written = writer.write(
+                "stats:visit:events", RecordId.of("2-0"), row, new DataIntegrityViolationException("row failed")
+        );
 
+        assertThat(written).isTrue();
         verify(streamOps).add(any());
         verify(streamOps).trim(eq("stats:visit:events:dlq"), eq(10_000L), eq(true));
+    }
+
+    @Test
+    void write_shouldReturnFalseWhenDlqPersistenceFails() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        @SuppressWarnings("unchecked")
+        StreamOperations<String, Object, Object> streamOps = mock(StreamOperations.class);
+        when(redis.opsForStream()).thenReturn(streamOps);
+        when(streamOps.add(any())).thenThrow(new IllegalStateException("redis unavailable"));
+
+        VisitEventDeadLetterWriter writer = new VisitEventDeadLetterWriter(redis);
+        LinkVisitEventInsertRow row = new LinkVisitEventInsertRow();
+        row.setTenantId(1L);
+        row.setLinkId(10L);
+        row.setRequestId("req-bad");
+
+        boolean written = writer.write(
+                "stats:visit:events", RecordId.of("2-0"), row, new DataIntegrityViolationException("row failed")
+        );
+
+        assertThat(written).isFalse();
     }
 }

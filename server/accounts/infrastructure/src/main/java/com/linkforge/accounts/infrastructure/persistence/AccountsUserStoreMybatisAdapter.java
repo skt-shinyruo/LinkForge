@@ -58,6 +58,34 @@ public class AccountsUserStoreMybatisAdapter implements AccountsUserStore {
         userMapper.update(toEntity(user));
     }
 
+    @Override
+    public boolean incrementTokenVersion(Long userId) {
+        return userId != null && userMapper.incrementTokenVersion(userId) > 0;
+    }
+
+    @Override
+    public boolean updatePasswordHashAndIncrementTokenVersion(Long tenantId, Long userId, String passwordHash) {
+        return tenantId != null
+                && userId != null
+                && passwordHash != null
+                && userMapper.updatePasswordHashAndIncrementTokenVersion(tenantId, userId, passwordHash) > 0;
+    }
+
+    @Override
+    public boolean updateStatus(Long tenantId, Long userId, String status) {
+        return tenantId != null
+                && userId != null
+                && status != null
+                && userMapper.updateStatus(tenantId, userId, status) > 0;
+    }
+
+    @Override
+    public void lockTenantForUserAdministration(Long tenantId) {
+        if (tenantId != null) {
+            userMapper.lockTenantForUserAdministration(tenantId);
+        }
+    }
+
     private static UserEntity toEntity(UserData user) {
         UserEntity entity = new UserEntity();
         entity.setId(user.id());

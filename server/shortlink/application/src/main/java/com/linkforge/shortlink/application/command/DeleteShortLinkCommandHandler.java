@@ -74,13 +74,13 @@ public class DeleteShortLinkCommandHandler {
         Instant occurredAtUtc = clock.instant();
         LocalDateTime nowUtc = LocalDateTime.ofInstant(occurredAtUtc, ZoneOffset.UTC);
         try {
-            link.markDeleted(nowUtc);
+            link.delete(nowUtc);
         } catch (ShortLinkDomainException ex) {
             throw ShortLinkDomainExceptions.translate(ex);
         }
 
         linkTagRepository.deleteAllByLinkId(linkId);
-        if (!shortLinkRepository.deleteByTenantIdAndId(tenantId, linkId, link.version())) {
+        if (!shortLinkRepository.delete(link)) {
             throw new BusinessException(ShortLinkErrorCode.LINK_STALE_WRITE);
         }
         domainEventDispatcher.publish(link, occurredAtUtc);

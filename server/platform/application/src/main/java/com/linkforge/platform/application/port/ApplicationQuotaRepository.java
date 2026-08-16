@@ -17,6 +17,9 @@ public interface ApplicationQuotaRepository {
      */
     void insert(ApplicationQuota quota);
 
+    /** 插入或覆盖为调用方给出的当前额度，用于修复历史缺失或过期配置。 */
+    void upsert(ApplicationQuota quota);
+
     /**
      * 查询应用显式额度；缺失时返回空值，不在仓储层合成默认额度。
      */

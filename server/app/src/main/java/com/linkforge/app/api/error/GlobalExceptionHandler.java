@@ -15,6 +15,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 /**
  * 管理 API 的统一异常到 {@link ApiResponse} 映射。
@@ -70,6 +71,17 @@ public class GlobalExceptionHandler {
         String msg = parameterName == null || parameterName.isBlank()
                 ? ErrorCode.BAD_REQUEST.getDefaultMessage()
                 : "缺少必填参数: " + parameterName;
+        ApiResponse<Void> body = ApiResponse.error(ErrorCode.BAD_REQUEST.getCode(), msg, RequestId.get());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    /** 映射 query/path 参数的类型或日期格式错误为 400，不回显原始参数值。 */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleArgumentTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        String parameterName = ex == null ? null : ex.getName();
+        String msg = parameterName == null || parameterName.isBlank()
+                ? ErrorCode.BAD_REQUEST.getDefaultMessage()
+                : "参数格式错误: " + parameterName;
         ApiResponse<Void> body = ApiResponse.error(ErrorCode.BAD_REQUEST.getCode(), msg, RequestId.get());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }

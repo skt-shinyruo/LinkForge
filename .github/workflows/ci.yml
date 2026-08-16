@@ -15,14 +15,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Java 21
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "17"
           cache: maven
 
-      - name: Unit tests (server)
+      - name: Unit tests and critical behavior coverage gate (server)
         working-directory: server
         run: mvn -B verify
 
@@ -40,11 +40,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Java 21
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "17"
           cache: maven
 
       - name: Integration tests (server)
@@ -83,3 +83,40 @@ jobs:
           name: frontend-coverage
           path: web/coverage/
           if-no-files-found: error
+
+  java-21-compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Verify server compatibility
+        working-directory: server
+        run: mvn -B verify
+
+  compose-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [backend-unit, frontend]
+    env:
+      SMOKE_PROJECT_NAME: linkforge-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+      JWT_SECRET: ci-smoke-jwt-secret-that-is-longer-than-thirty-two-bytes
+      API_KEY_CURRENT_KEY_ID: ci-smoke-v1
+      API_KEY_CURRENT_PEPPER: ci-smoke-api-key-pepper-that-is-independent-and-long
+      API_KEY_LEGACY_JWT_FALLBACK_ENABLED: "false"
+      ANALYTICS_SALT: ci-smoke-analytics-salt-that-is-not-a-production-secret
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build and smoke actual Compose images
+        run: bash deploy/smoke.sh

@@ -83,7 +83,7 @@ public class PlatformApplicationScopeAdapter implements ApplicationScopePort, Do
     }
 
     /**
-     * 获取或创建旧接口默认绑定；并发首次创建的限制由 {@link LegacyApplicationBindingService} 定义。
+     * 获取并 reconcile 旧接口默认绑定；同租户并发和不完整状态由服务在事务内收敛。
      */
     @Override
     public LegacyApplicationBindingView ensureLegacyDefaultBinding(long tenantId) {

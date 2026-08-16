@@ -25,6 +25,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -106,5 +107,44 @@ class AnalyticsEventIngestJobPoisonIsolationTest {
 
         verify(streamOps).add(any());
         verify(streamOps).trim(eq(streamKey + ":dlq"), eq(10_000L), eq(true));
+    }
+
+    @Test
+    void ingestRecords_shouldKeepPoisonRecordPendingWhenDlqWriteFails() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        LinkVisitEventMapper mapper = mock(LinkVisitEventMapper.class);
+        AnalyticsProperties analyticsProperties = new AnalyticsProperties();
+        analyticsProperties.getEvents().setEnabled(true);
+        analyticsProperties.getEvents().setSampleRate(1);
+
+        @SuppressWarnings("unchecked")
+        StreamOperations<String, Object, Object> streamOps = mock(StreamOperations.class);
+        when(redis.opsForStream()).thenReturn(streamOps);
+        when(streamOps.add(any())).thenThrow(new IllegalStateException("redis unavailable"));
+        when(mapper.batchInsertIgnore(anyList()))
+                .thenThrow(new DataIntegrityViolationException("poison row"));
+
+        AnalyticsEventIngestJob job = new AnalyticsEventIngestJob(
+                redis,
+                mapper,
+                analyticsProperties,
+                new IdProperties(),
+                new SnowflakeIdGenerator(1L, 1L)
+        );
+
+        @SuppressWarnings("unchecked")
+        MapRecord<String, Object, Object> poison = mock(MapRecord.class);
+        when(poison.getId()).thenReturn(RecordId.of("2-0"));
+        when(poison.getValue()).thenReturn((Map) Map.of(
+                "tenantId", "1",
+                "linkId", "11",
+                "requestId", "req-bad",
+                "ts", "1710000000000"
+        ));
+
+        boolean completed = job.ingestRecords("stats:visit:events", List.of(poison));
+
+        assertThat(completed).isFalse();
+        verify(streamOps, never()).acknowledge(anyString(), anyString(), any(RecordId[].class));
     }
 }

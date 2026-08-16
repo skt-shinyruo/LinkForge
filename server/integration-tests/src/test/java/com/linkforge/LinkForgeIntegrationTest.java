@@ -12,6 +12,7 @@ import com.linkforge.governance.interfaces.web.ApprovalController;
 import com.linkforge.governance.interfaces.web.AuditController;
 import com.linkforge.platform.interfaces.web.TenantAdminApplicationController;
 import com.linkforge.platform.interfaces.web.TenantAdminDomainController;
+import com.linkforge.testsupport.SharedIntegrationTestSupport;
 import org.mybatis.spring.annotation.MapperScan;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,13 +27,7 @@ import org.springframework.core.annotation.AnnotationUtils;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
-import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -44,34 +39,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-abstract class LinkForgeIntegrationTestSupport {
-
-    @Container
-    static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.0.36")
-            .withDatabaseName("linkforge")
-            .withUsername("linkforge")
-            .withPassword("linkforge");
-
-    @Container
-    static final GenericContainer<?> REDIS = new GenericContainer<>("redis:8.6.2-alpine")
-            .withExposedPorts(6379)
-            .waitingFor(Wait.forLogMessage(".*Ready to accept connections.*\\n", 1)
-                    .withStartupTimeout(Duration.ofSeconds(120)))
-            .withStartupAttempts(3);
+abstract class LinkForgeIntegrationTestSupport extends SharedIntegrationTestSupport {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry r) {
-        r.add("spring.datasource.url", MYSQL::getJdbcUrl);
-        r.add("spring.datasource.username", MYSQL::getUsername);
-        r.add("spring.datasource.password", MYSQL::getPassword);
-
-        r.add("spring.data.redis.host", REDIS::getHost);
-        r.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
-
-        // 测试环境固定密钥，避免启动失败
-        r.add("app.security.jwt.secret", () -> "test-secret-please-change-but-long-enough-32-bytes");
-        r.add("app.analytics.salt", () -> "test-analytics-salt");
-
         // 访问明细 + 维度聚合测试开关（避免调度影响测试稳定性）
         r.add("app.analytics.dimensions.enabled", () -> "true");
         r.add("app.analytics.events.enabled", () -> "true");
@@ -85,7 +56,6 @@ abstract class LinkForgeIntegrationTestSupport {
     }
 }
 
-@Testcontainers
 @SpringBootTest(classes = LinkForgeApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureMockMvc
 class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
@@ -1262,7 +1232,7 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
                 )
                 .andExpect(status().isOk());
 
-        // 禁用后不可登录
+        // 禁用后不可登录，且与未知账号/错误密码使用同一响应，避免账号枚举。
         mockMvc.perform(
                         put("/api/v1/users/" + userId + "/disable")
                                 .header("Authorization", "Bearer " + token)
@@ -1274,12 +1244,12 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(objectMapper.writeValueAsString(loginBody))
                 )
-                .andExpect(status().isForbidden())
+                .andExpect(status().isUnauthorized())
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
         JsonNode loginDisabledJson = objectMapper.readTree(loginDisabledResp);
-        assertThat(loginDisabledJson.get("code").asInt()).isEqualTo(AccountsErrorCode.USER_DISABLED.getCode());
+        assertThat(loginDisabledJson.get("code").asInt()).isEqualTo(AccountsErrorCode.INVALID_CREDENTIALS.getCode());
 
         // 启用 + 重置密码
         mockMvc.perform(

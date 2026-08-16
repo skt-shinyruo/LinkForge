@@ -14,6 +14,8 @@ public class ApiKeyEntity {
 
     private String keyHash;
 
+    private String keyId;
+
     private String status;
 
     private LocalDateTime lastUsedAt;
@@ -58,6 +60,14 @@ public class ApiKeyEntity {
 
     public void setKeyHash(String keyHash) {
         this.keyHash = keyHash;
+    }
+
+    public String getKeyId() {
+        return keyId;
+    }
+
+    public void setKeyId(String keyId) {
+        this.keyId = keyId;
     }
 
     public String getStatus() {

@@ -57,7 +57,15 @@ app:
       cookie-secure: ${JWT_COOKIE_SECURE:false}
       cookie-same-site: ${JWT_COOKIE_SAMESITE:Lax}
     api-key:
-      hmac-pepper: ${API_KEY_HMAC_PEPPER:${JWT_SECRET:dev-change-me-please-set-env-and-long-enough-32-bytes}}
+      # 非生产默认允许回退 JWT secret；prod/strict 必须显式配置独立 current pepper 并关闭回退。
+      current-key-id: ${API_KEY_CURRENT_KEY_ID:default}
+      current-pepper: ${API_KEY_CURRENT_PEPPER:${API_KEY_HMAC_PEPPER:}}
+      previous-key-id: ${API_KEY_PREVIOUS_KEY_ID:}
+      previous-pepper: ${API_KEY_PREVIOUS_PEPPER:}
+      legacy-pepper: ${API_KEY_LEGACY_PEPPER:${API_KEY_HMAC_PEPPER:}}
+      legacy-jwt-fallback-enabled: ${API_KEY_LEGACY_JWT_FALLBACK_ENABLED:true}
+      # 旧版配置名仅供无 key id 历史摘要迁移。
+      hmac-pepper: ${API_KEY_HMAC_PEPPER:}
       last-used-update-interval-seconds: ${API_KEY_LAST_USED_UPDATE_INTERVAL_SECONDS:300}
       auth-cache-ttl-seconds: ${API_KEY_AUTH_CACHE_TTL_SECONDS:60}
   shortlink:
@@ -84,8 +92,20 @@ app:
     tracking-param-allowlist: ${ANALYTICS_TRACKING_PARAM_ALLOWLIST:}
     # 核心访问流（Redirect -> Redis Stream -> 异步 PV/UV 聚合），默认启用；不受 events.enabled/sample-rate 影响
     visit-stream:
-      # 空值时兼容回退到 events.stream-max-len；<=0 表示不 trim
+      # 空值时兼容回退到 events.stream-max-len；启动校验要求容量覆盖峰值恢复预算。
       max-len: ${ANALYTICS_VISIT_STREAM_MAX_LEN:}
+      peak-events-per-second: ${ANALYTICS_VISIT_STREAM_PEAK_EVENTS_PER_SECOND:1000}
+      recovery-window-seconds: ${ANALYTICS_VISIT_STREAM_RECOVERY_WINDOW_SECONDS:180}
+      safety-margin-percent: ${ANALYTICS_VISIT_STREAM_SAFETY_MARGIN_PERCENT:10}
+    dirty-marker:
+      # 新 producer 默认仅推进 V2 generation marker；回滚窗口可临时恢复 additive legacy 写入。
+      legacy-write-enabled: ${ANALYTICS_DIRTY_MARKER_LEGACY_WRITE_ENABLED:false}
+      # 完成全量旧实例停写、排空和 compatibility TTL 之前必须保持开启。
+      legacy-read-enabled: ${ANALYTICS_DIRTY_MARKER_LEGACY_READ_ENABLED:true}
+      legacy-retirement-confirmed: ${ANALYTICS_DIRTY_MARKER_LEGACY_RETIREMENT_CONFIRMED:false}
+      compatibility-ttl-days: ${ANALYTICS_DIRTY_MARKER_COMPATIBILITY_TTL_DAYS:45}
+      legacy-write-stopped-at: ${ANALYTICS_DIRTY_MARKER_LEGACY_WRITE_STOPPED_AT:}
+      legacy-drained-at: ${ANALYTICS_DIRTY_MARKER_LEGACY_DRAINED_AT:}
     dimensions:
       enabled: ${ANALYTICS_DIMENSIONS_ENABLED:false}
       types: ${ANALYTICS_DIMENSIONS_TYPES:}
@@ -103,6 +123,10 @@ app:
       pending-reclaim-enabled: ${ANALYTICS_EVENTS_PENDING_RECLAIM_ENABLED:true}
       pending-reclaim-min-idle-ms: ${ANALYTICS_EVENTS_PENDING_RECLAIM_MIN_IDLE_MS:60000}
       pending-reclaim-count: ${ANALYTICS_EVENTS_PENDING_RECLAIM_COUNT:200}
+      ingest-batch-size: ${ANALYTICS_EVENTS_INGEST_BATCH_SIZE:200}
+      ingest-max-batches: ${ANALYTICS_EVENTS_INGEST_MAX_BATCHES:10}
+      ingest-time-budget-ms: ${ANALYTICS_EVENTS_INGEST_TIME_BUDGET_MS:1000}
+      fail-open: ${ANALYTICS_EVENTS_FAIL_OPEN:true}
   edge:
     # 可信代理链（CIDR 列表）：仅当 remoteAddr 命中该列表时，才采信 X-Real-IP / X-Forwarded-For 等头部
     trusted-proxies: ${EDGE_TRUSTED_PROXIES:}

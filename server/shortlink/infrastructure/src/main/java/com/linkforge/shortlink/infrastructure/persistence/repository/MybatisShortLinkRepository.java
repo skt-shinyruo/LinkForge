@@ -101,9 +101,9 @@ public class MybatisShortLinkRepository implements ShortLinkRepository {
     }
 
     /**
-     * 按聚合携带的版本号更新短链，并由 SQL 原子地将版本加一。
+     * 保存聚合已经推进的新版本，并用其前一版本执行 CAS。
      *
-     * @return 命中租户、ID 和当前版本时返回 {@code true}；不存在或并发版本冲突时返回 {@code false}
+     * @return 命中租户、ID 和变化前版本时返回 {@code true}；不存在或并发版本冲突时返回 {@code false}
      */
     @Override
     public boolean update(ShortLink link) {
@@ -117,8 +117,15 @@ public class MybatisShortLinkRepository implements ShortLinkRepository {
      * 返回 {@code false} 时由上层区分不存在与乐观锁冲突。</p>
      */
     @Override
-    public boolean deleteByTenantIdAndId(long tenantId, long linkId, long version) {
-        return commandMapper.deleteByTenantIdAndIdAndVersion(tenantId, linkId, version) > 0;
+    public boolean delete(ShortLink link) {
+        if (link == null || link.version() <= 0) {
+            return false;
+        }
+        return commandMapper.deleteByTenantIdAndIdAndVersion(
+                link.tenantId(),
+                link.id(),
+                link.version() - 1
+        ) > 0;
     }
 
     /**

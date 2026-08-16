@@ -5,11 +5,13 @@ import com.linkforge.contract.analytics.RedirectVisitRecord;
 import com.linkforge.contract.analytics.VisitContext;
 import com.linkforge.contract.analytics.VisitRecorderPort;
 import com.linkforge.foundation.config.AnalyticsProperties;
+import com.linkforge.foundation.observability.OperationalMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -28,15 +30,25 @@ public class AnalyticsVisitEventService implements VisitRecorderPort {
 
     private final AnalyticsVisitEventAppender appender;
     private final AnalyticsProperties analyticsProperties;
+    private final OperationalMetrics metrics;
 
     public AnalyticsVisitEventService(AnalyticsVisitEventAppender appender) {
-        this(appender, null);
+        this(appender, null, OperationalMetrics.noop());
+    }
+
+    public AnalyticsVisitEventService(AnalyticsVisitEventAppender appender, AnalyticsProperties analyticsProperties) {
+        this(appender, analyticsProperties, OperationalMetrics.noop());
     }
 
     @Autowired
-    public AnalyticsVisitEventService(AnalyticsVisitEventAppender appender, AnalyticsProperties analyticsProperties) {
+    public AnalyticsVisitEventService(
+            AnalyticsVisitEventAppender appender,
+            AnalyticsProperties analyticsProperties,
+            OperationalMetrics metrics
+    ) {
         this.appender = appender;
         this.analyticsProperties = analyticsProperties;
+        this.metrics = metrics == null ? OperationalMetrics.noop() : metrics;
     }
 
     /**
@@ -81,10 +93,22 @@ public class AnalyticsVisitEventService implements VisitRecorderPort {
         }
         try {
             appender.append(event);
+            metrics.increment("linkforge.analytics.visit.append", "result", "success");
         } catch (RuntimeException e) {
+            String reason = stableFailureReason(e);
             if (!isFailOpen()) {
+                metrics.increment(
+                        "linkforge.analytics.degraded",
+                        "component", "visit_appender",
+                        "reason", reason
+                );
                 throw e;
             }
+            metrics.increment(
+                    "linkforge.analytics.fail_open",
+                    "component", "visit_appender",
+                    "reason", reason
+            );
             log.debug(
                     "append analytics visit event failed: tenantId={}, linkId={}, code={}, err={}",
                     event.tenantId(),
@@ -98,6 +122,35 @@ public class AnalyticsVisitEventService implements VisitRecorderPort {
     private boolean isFailOpen() {
         AnalyticsProperties.Events cfg = analyticsProperties == null ? null : analyticsProperties.getEvents();
         return cfg == null || cfg.isFailOpen();
+    }
+
+    private static String stableFailureReason(Throwable failure) {
+        Throwable current = failure;
+        boolean serialization = false;
+        boolean redis = false;
+        for (int depth = 0; current != null && depth < 16; depth++) {
+            String type = current.getClass().getName().toLowerCase(Locale.ROOT);
+            String message = current.getMessage() == null
+                    ? ""
+                    : current.getMessage().toLowerCase(Locale.ROOT);
+            if (type.contains("capacity") || message.contains("maxmemory") || message.contains("oom command")) {
+                return "capacity";
+            }
+            if (type.contains("serializ") || type.contains("codec") || type.contains("json")) {
+                serialization = true;
+            }
+            if (type.contains("redis") || type.contains("connection") || type.contains("timeout")) {
+                redis = true;
+            }
+            current = current.getCause();
+        }
+        if (serialization) {
+            return "serialization";
+        }
+        if (redis) {
+            return "redis";
+        }
+        return "appender";
     }
 
     /**

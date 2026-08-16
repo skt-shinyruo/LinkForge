@@ -3,6 +3,7 @@ package com.linkforge.analytics.interfaces.web;
 import com.linkforge.analytics.application.AnalyticsExportRequestService;
 import com.linkforge.analytics.application.AnalyticsLinkEventsService;
 import com.linkforge.analytics.application.AnalyticsQueryService;
+import com.linkforge.analytics.application.ReportRange;
 import com.linkforge.analytics.application.AnalyticsReportingService;
 import com.linkforge.contract.api.ApiResponse;
 import com.linkforge.contract.api.BusinessException;
@@ -93,9 +94,7 @@ public class StatsController {
             @RequestParam("from") @NotNull LocalDate from,
             @RequestParam("to") @NotNull LocalDate to
     ) {
-        if (from.isAfter(to)) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "from 不能晚于 to");
-        }
+        validateDateRange(from, to);
         AuthPrincipal p = AuthContext.requirePrincipal();
         List<DailyStatHttpResponse> r = queryService.linkDaily(p.getTenantId(), linkId, from, to).stream()
                 .map(AnalyticsHttpMapper::toDailyStatResponse)
@@ -119,9 +118,7 @@ public class StatsController {
             @RequestParam("from") @NotNull LocalDate from,
             @RequestParam("to") @NotNull LocalDate to
     ) {
-        if (from.isAfter(to)) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "from 不能晚于 to");
-        }
+        validateDateRange(from, to);
         AuthPrincipal p = AuthContext.requirePrincipal();
         return ApiResponse.ok(queryService.tenantDaily(p.getTenantId(), from, to).stream()
                 .map(AnalyticsHttpMapper::toDailyStatResponse)
@@ -146,9 +143,7 @@ public class StatsController {
             @RequestParam("from") @NotNull LocalDate from,
             @RequestParam("to") @NotNull LocalDate to
     ) {
-        if (from.isAfter(to)) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "from 不能晚于 to");
-        }
+        validateDateRange(from, to);
         AuthPrincipal p = AuthContext.requirePrincipal();
         return ApiResponse.ok(queryService.applicationDaily(p.getTenantId(), applicationId, from, to).stream()
                 .map(AnalyticsHttpMapper::toDailyStatResponse)
@@ -195,9 +190,7 @@ public class StatsController {
             @RequestParam("from") @NotNull LocalDate from,
             @RequestParam("to") @NotNull LocalDate to
     ) {
-        if (from.isAfter(to)) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "from 不能晚于 to");
-        }
+        validateDateRange(from, to);
         AuthPrincipal p = AuthContext.requirePrincipal();
         return ApiResponse.ok(queryService.domainDaily(p.getTenantId(), domainId, from, to).stream()
                 .map(AnalyticsHttpMapper::toDailyStatResponse)
@@ -225,9 +218,7 @@ public class StatsController {
             @RequestParam(value = "limit", required = false) Integer limit,
             @RequestParam(value = "sortBy", required = false) String sortBy
     ) {
-        if (from.isAfter(to)) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "from 不能晚于 to");
-        }
+        validateDateRange(from, to);
         int l = (limit == null ? 10 : limit);
         if (l < 1) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "limit 必须 >= 1");
@@ -367,9 +358,7 @@ public class StatsController {
             @RequestParam("type") String type,
             @RequestParam(value = "limit", required = false) Integer limit
     ) {
-        if (from.isAfter(to)) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "from 不能晚于 to");
-        }
+        validateDateRange(from, to);
         String t = type == null ? null : type.trim().toLowerCase();
         if (t == null || t.isBlank() || !DIM_TYPES.contains(t)) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "type 不合法（支持: " + String.join(",", DIM_TYPES) + "）");
@@ -394,7 +383,8 @@ public class StatsController {
      *
      * <p>路由为 {@code GET /api/v1/stats/links/{id}/events}。该接口将主体映射为
      * {@link UserActor}，应用服务要求租户管理员或平台管理员；普通已认证用户会得到
-     * {@code FORBIDDEN}。时间值按 UTC 解释，缺省范围为当前 UTC 时刻往前一天，最长 7 天；
+     * {@code FORBIDDEN}。时间值按 UTC 解释，缺省范围为当前 UTC 时刻往前一天，首尾所处 UTC 自然日均计入，
+     * 最多 366 个自然日；
      * {@code limit} 缺省为 50，范围为 1 到 200。
      *
      * <p>结果含 IP 哈希、原始 User-Agent 和 UTM 等可能具有关联性的字段，只应在受控管理
@@ -503,9 +493,7 @@ public class StatsController {
     }
 
     private static void validateDateRange(LocalDate from, LocalDate to) {
-        if (from.isAfter(to)) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "from 不能晚于 to");
-        }
+        ReportRange.of(from, to);
     }
 
 }

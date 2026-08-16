@@ -13,7 +13,8 @@ import java.util.Set;
  * Accounts 上下文的启动安全门禁。
  *
  * <p>该检查由应用启动器统一收集错误后一次性中止启动，不在此处直接抛异常。无论是否为严格模式，
- * JWT 密钥缺失、Cookie 属性组合非法，以及携带凭证的 CORS 配置使用通配来源都会被拒绝；
+ * JWT 密钥缺失、API Key key id 超过持久化字段上限、Cookie 属性组合非法，以及携带凭证的 CORS 配置使用
+ * 通配来源都会被拒绝；
  * {@code prod} profile 或 {@code app.strict-config=true} 启用严格模式后，还会拒绝开发示例密钥和
  * 未启用 Secure 的认证 Cookie，防止可启动但不适合生产的配置进入服务流量。</p>
  *
@@ -22,6 +23,7 @@ import java.util.Set;
 @Component
 public class AccountsStartupCheck implements StartupCheck {
 
+    private static final int MAX_API_KEY_ID_LENGTH = 64;
     private static final Set<String> SAME_SITE = Set.of("Lax", "Strict", "None");
 
     private final SecurityProperties securityProperties;
@@ -41,7 +43,65 @@ public class AccountsStartupCheck implements StartupCheck {
     @Override
     public void validate(boolean strict, List<String> errors) {
         validateJwt(strict, errors);
+        validateApiKey(strict, errors);
         validateCors(errors);
+    }
+
+    private void validateApiKey(boolean strict, List<String> errors) {
+        SecurityProperties.ApiKey apiKey = securityProperties == null ? null : securityProperties.getApiKey();
+        if (apiKey == null) {
+            if (strict) {
+                errors.add("生产环境必须配置 app.security.api-key.current-pepper");
+            }
+            return;
+        }
+
+        String currentKeyId = StartupValidation.trimToNull(apiKey.getCurrentKeyId());
+        String currentPepper = StartupValidation.trimToNull(apiKey.getCurrentPepper());
+        String previousKeyId = StartupValidation.trimToNull(apiKey.getPreviousKeyId());
+        String previousPepper = StartupValidation.trimToNull(apiKey.getPreviousPepper());
+        if (currentKeyId != null && currentKeyId.length() > MAX_API_KEY_ID_LENGTH) {
+            errors.add("app.security.api-key.current-key-id 长度不能超过 64");
+        }
+        if (previousKeyId != null && previousKeyId.length() > MAX_API_KEY_ID_LENGTH) {
+            errors.add("app.security.api-key.previous-key-id 长度不能超过 64");
+        }
+        if ((previousKeyId == null) != (previousPepper == null)) {
+            errors.add("app.security.api-key.previous-key-id 与 previous-pepper 必须成对配置");
+        }
+        if (currentKeyId != null && currentKeyId.equals(previousKeyId)) {
+            errors.add("API Key current/previous key id 不能相同");
+        }
+        if (!strict) {
+            return;
+        }
+
+        if (currentKeyId == null) {
+            errors.add("生产环境必须配置 app.security.api-key.current-key-id");
+        }
+        if (currentPepper == null) {
+            errors.add("生产环境必须配置 app.security.api-key.current-pepper");
+        }
+        if (apiKey.isLegacyJwtFallbackEnabled()) {
+            errors.add("生产环境必须关闭 API Key JWT fallback");
+        }
+        String jwtSecret = securityProperties.getJwt() == null
+                ? null
+                : StartupValidation.trimToNull(securityProperties.getJwt().getSecret());
+        if (currentPepper != null && currentPepper.equals(jwtSecret)) {
+            errors.add("API Key current pepper 必须独立于 JWT secret");
+        }
+        if (previousPepper != null && previousPepper.equals(jwtSecret)) {
+            errors.add("API Key previous pepper 必须独立于 JWT secret");
+        }
+        String legacyPepper = StartupValidation.trimToNull(apiKey.getLegacyPepper());
+        if (legacyPepper != null && legacyPepper.equals(jwtSecret)) {
+            errors.add("API Key legacy pepper 必须独立于 JWT secret");
+        }
+        String compatibilityPepper = StartupValidation.trimToNull(apiKey.getHmacPepper());
+        if (compatibilityPepper != null && compatibilityPepper.equals(jwtSecret)) {
+            errors.add("API Key hmac-pepper 必须独立于 JWT secret");
+        }
     }
 
     private void validateJwt(boolean strict, List<String> errors) {

@@ -14,4 +14,7 @@ public interface ApplicationPolicyRepository {
      * 插入应用策略；同一应用重复插入时传播唯一约束异常。
      */
     void insert(ApplicationPolicy policy);
+
+    /** 插入或覆盖为调用方给出的当前策略，用于修复历史缺失或过期配置。 */
+    void upsert(ApplicationPolicy policy);
 }

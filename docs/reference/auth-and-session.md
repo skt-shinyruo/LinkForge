@@ -97,12 +97,16 @@
 
 - 自助注册受配置控制。`AuthController.register()` 会先检查 `securityProperties.registrationEnabled`，关闭时直接返回业务错误。
 - 注册会创建租户、首个用户和 `TENANT_ADMIN` 角色。`AuthService.register()` 先查邮箱唯一性，再生成 tenantId、userId，保存 active 租户和 active 用户。
-- 登录必须同时满足租户 active、用户 active、密码匹配。角色为空时降级为 `USER`。
+- 登录在 primary-only 只读事务内读取用户、租户、角色和 tokenVersion，必须同时满足租户 active、用户 active、密码匹配。不存在用户、禁用用户和错误密码都执行当前 BCrypt cost 的密码比较并返回同一凭据错误；角色为空时降级为 `USER`。
 - JWT 中包含 `tenantId`、`email`、`roles`、`tokenVersion`。注销和重置密码都会递增 `tokenVersion`，让旧 JWT 失效。
-- 禁用用户会把状态变为非 ACTIVE 并驱逐状态缓存，因此后续请求立即被认证链拒绝；它**不**递增 `tokenVersion`。重新启用后，禁用前未过期的 JWT 可能再次可用，这是当前兼容语义。
+- 注销使用数据库原子自增 tokenVersion；重置密码只更新 hash 并原子自增 tokenVersion；启用/禁用只更新 status。它们不会以旧整行快照覆盖彼此的安全字段。
+- 所有安全状态缓存驱逐都注册为 after-commit：回滚不驱逐；提交会用 Redis Lua 原子推进持久 generation 并删除旧值。cache miss 在回源前读取 generation，只有 generation 未变化才可回填，因此即使旧数据库快照晚于提交完成，也不能重新写回旧 ACTIVE 或旧 tokenVersion。Redis 驱逐失败会记录 warning，但不回滚已提交事实，并由短 TTL 最终收敛。
+- 禁用用户会把状态变为非 ACTIVE；它**不**递增 `tokenVersion`。重新启用后，禁用前未过期的 JWT 可能再次可用，这是当前兼容语义。
+- 禁用租户管理员前会锁定 tenant 行，在同一事务内检查 ACTIVE 管理员数量并更新状态；两个管理员并发互相禁用时至多一个成功。
 - Bearer token 无效时按认证失败处理；Cookie token 无效或超长时清 cookie 后继续，避免公开登录接口被错误 cookie 阻断。
 - Cookie 会话下写请求使用双提交 CSRF：前端先拿 `XSRF-TOKEN` cookie，再带 `X-XSRF-TOKEN` header。
 - `/api/v1/open/**` 只接受 API Key，不接受 JWT/Cookie；普通 `/api/v1/**` 不接受 `X-API-Key`。
+- API Key HMAC pepper 必须独立于 JWT signing secret；V26 只在滚动兼容期保留旧单 pepper 变量，不能借兼容路径重新启用生产 JWT fallback。摘要 keyring 与 rollout 细节见 [OpenAPI 与 API Key](openapi-api-key.md)。
 
 ## 源码分析
 
@@ -122,17 +126,17 @@
 
 - `server/accounts/application/src/main/java/com/linkforge/accounts/application/AuthService.java`
   - `register()`：检查邮箱、创建租户、创建用户、写 `TENANT_ADMIN` 角色、签发 JWT。
-  - `login()`：按邮箱查用户和租户，校验状态和密码，读取角色，签发 JWT。
-  - `logout()`：递增用户 `tokenVersion`，驱逐账号状态缓存。
+  - `login()`：在 primary-only 只读事务中按邮箱查用户和租户，所有失败路径执行密码比较，读取角色后签发 JWT。
+  - `logout()`：原子递增用户 `tokenVersion`，提交后驱逐账号状态缓存。
 - `server/accounts/application/src/main/java/com/linkforge/accounts/application/AccountStatusService.java`
   - 实现 `AccountStatusVerifier`，给安全过滤器复用。
   - `requireActiveTenant()`：只校验租户。
   - `requireActiveUserAndTenant()`：校验租户、用户归属、用户状态和可选 tokenVersion。
-  - 使用短 TTL Redis 状态缓存；Redis 不可用时降级查 DB。
+  - 使用短 TTL Redis 状态缓存和 generation-fenced 回填；Redis 不可用时降级查 DB 且跳过缓存填充。
 - `server/accounts/application/src/main/java/com/linkforge/accounts/application/UserAdminService.java`
   - 创建用户时角色只允许 `TENANT_ADMIN` 和 `USER`。
-  - 禁用用户时禁止禁用自己，并要求至少保留一个启用中的租户管理员。
-  - 重置密码会递增 `tokenVersion`。
+  - 禁用用户时禁止禁用自己，并在 tenant 行锁串行化范围内要求至少保留一个启用中的租户管理员。
+  - 启用/禁用使用窄 status 命令；重置密码使用 hash + tokenVersion 原子命令；缓存只在事务提交后驱逐。
 
 ### 用户管理 HTTP 契约
 
@@ -176,4 +180,4 @@
 - 认证失败由 `RestAuthenticationEntryPoint` 和 `RestAccessDeniedHandler` 返回统一 API 错误形状。
 - 业务错误进入 `GlobalExceptionHandler`，响应体包含 `ApiResponse.requestId`。
 - `RequestIdFilter` 会把请求 ID 放到 MDC、响应头和 API 响应中，便于串联认证失败和后续业务日志。
-- 注销和重置密码通过 `tokenVersion` 加状态缓存驱逐实现会话失效；禁用依赖 ACTIVE 状态拒绝和缓存驱逐。启用不会撤销或新建 tokenVersion，这是需要在管理员操作中知晓的当前限制。
+- 注销和重置密码通过原子 `tokenVersion` 命令加 after-commit 状态缓存驱逐实现会话失效；禁用依赖窄 status 命令、ACTIVE 状态拒绝和相同的提交后驱逐。启用不会撤销或新建 tokenVersion，这是需要在管理员操作中知晓的当前限制。

@@ -46,11 +46,34 @@
         <result property="createdAt" column="created_at"/>
     </resultMap>
 
-    <select id="listByTenantId" resultMap="AuditLogResultMap">
+    <resultMap id="AuditLogSummaryResultMap" type="com.linkforge.governance.infrastructure.persistence.entity.AuditLogEntity">
+        <id property="id" column="id"/>
+        <result property="tenantId" column="tenant_id"/>
+        <result property="actorUserId" column="actor_user_id"/>
+        <result property="actorEmail" column="actor_email"/>
+        <result property="actionType" column="action_type"/>
+        <result property="resourceType" column="resource_type"/>
+        <result property="resourceId" column="resource_id"/>
+        <result property="requestId" column="request_id"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <select id="listSummaries" resultMap="AuditLogSummaryResultMap">
         SELECT id, tenant_id, actor_user_id, actor_email, action_type, resource_type, resource_id, request_id,
-               before_snapshot, after_snapshot, created_at
+               created_at
         FROM audit_logs
         WHERE tenant_id = #{tenantId}
+        <if test="actionType != null">
+          AND action_type = #{actionType}
+        </if>
+        <if test="resourceType != null">
+          AND resource_type = #{resourceType}
+        </if>
+        <if test="cursorCreatedAt != null and cursorId != null">
+          AND (created_at &lt; #{cursorCreatedAt}
+            OR (created_at = #{cursorCreatedAt} AND id &lt; #{cursorId}))
+        </if>
         ORDER BY created_at DESC, id DESC
+        LIMIT #{limit}
     </select>
 </mapper>

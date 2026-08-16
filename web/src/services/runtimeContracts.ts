@@ -6,6 +6,7 @@ import type {
   AuditLogDto,
   AuthResponse,
   CreateApiKeyResponse,
+  CursorPageResponse,
   DailyStat,
   DomainDto,
   LinkDto,
@@ -73,6 +74,16 @@ export function pageOf<T>(validator: RuntimeValidator<T>): RuntimeValidator<Page
     optionalString(value, "nextCursor");
 }
 
+export function cursorPageOf<T>(validator: RuntimeValidator<T>): RuntimeValidator<CursorPageResponse<T>> {
+  return (value: unknown): value is CursorPageResponse<T> =>
+    record(value) &&
+    Array.isArray(value.items) &&
+    value.items.every(validator) &&
+    booleanField(value, "hasMore") &&
+    (value.nextCursor === null || stringField(value, "nextCursor")) &&
+    (!value.hasMore || stringField(value, "nextCursor"));
+}
+
 export const isApplicationDto: RuntimeValidator<ApplicationDto> = (value): value is ApplicationDto =>
   record(value) && numberField(value, "id") && numberField(value, "tenantId") &&
   stringField(value, "applicationKey") && stringField(value, "displayName");
@@ -115,7 +126,6 @@ export const isAuditLogDto: RuntimeValidator<AuditLogDto> = (value): value is Au
   numberField(value, "actorUserId") && stringField(value, "actorEmail") &&
   stringField(value, "actionType") && stringField(value, "resourceType") &&
   stringField(value, "resourceId") && optionalNumber(value, "requestId") &&
-  optionalString(value, "beforeSnapshot") && optionalString(value, "afterSnapshot") &&
   stringField(value, "createdAt");
 
 export const isLinkImportResult: RuntimeValidator<LinkImportResult> =

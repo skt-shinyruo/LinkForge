@@ -2,6 +2,8 @@ package com.linkforge.foundation.config;
 
 import org.slf4j.Logger;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 /**
@@ -155,6 +157,76 @@ public final class StartupValidation {
         }
     }
 
+    /** 校验核心访问流能够覆盖声明的峰值恢复预算。 */
+    public static void validateAnalyticsVisitStream(AnalyticsProperties properties, List<String> errors) {
+        if (properties == null || properties.getVisitStream() == null) {
+            errors.add("app.analytics.visit-stream 配置缺失");
+            return;
+        }
+        AnalyticsProperties.VisitStream stream = properties.getVisitStream();
+        if (stream.getPeakEventsPerSecond() <= 0) {
+            errors.add("app.analytics.visit-stream.peak-events-per-second 必须 > 0");
+        }
+        if (stream.getRecoveryWindowSeconds() <= 0) {
+            errors.add("app.analytics.visit-stream.recovery-window-seconds 必须 > 0");
+        }
+        if (stream.getSafetyMarginPercent() < 0) {
+            errors.add("app.analytics.visit-stream.safety-margin-percent 必须 >= 0");
+        }
+        if (stream.getPeakEventsPerSecond() <= 0
+                || stream.getRecoveryWindowSeconds() <= 0
+                || stream.getSafetyMarginPercent() < 0) {
+            return;
+        }
+
+        long configured = properties.resolveVisitStreamMaxLen();
+        long required = properties.resolveVisitStreamRequiredCapacity();
+        if (configured < required) {
+            errors.add("app.analytics.visit-stream.max-len 必须 >= 恢复容量预算 " + required);
+        }
+    }
+
+    /** 校验 legacy dirty Stream 退役证据；默认 dual-read 不要求伪造外部 rollout 时间。 */
+    public static void validateAnalyticsDirtyMarker(AnalyticsProperties properties, List<String> errors) {
+        validateAnalyticsDirtyMarker(properties, Instant.now(), errors);
+    }
+
+    /** 允许测试固定当前时间的 dirty marker 退役门禁。 */
+    public static void validateAnalyticsDirtyMarker(
+            AnalyticsProperties properties,
+            Instant now,
+            List<String> errors
+    ) {
+        AnalyticsProperties.DirtyMarker cfg = properties == null ? null : properties.getDirtyMarker();
+        if (cfg == null) {
+            errors.add("app.analytics.dirty-marker 配置缺失");
+            return;
+        }
+        if (cfg.getCompatibilityTtlDays() <= 0) {
+            errors.add("app.analytics.dirty-marker.compatibility-ttl-days 必须 > 0");
+            return;
+        }
+        if (cfg.isLegacyReadEnabled()) {
+            return;
+        }
+        if (cfg.isLegacyWriteEnabled()) {
+            errors.add("app.analytics.dirty-marker 关闭 legacy read 前必须停止 legacy write");
+        }
+        if (!cfg.isLegacyRetirementConfirmed()
+                || cfg.getLegacyWriteStoppedAt() == null
+                || cfg.getLegacyDrainedAt() == null) {
+            errors.add("app.analytics.dirty-marker legacy retirement proof 不完整，必须确认写停与排空时间");
+            return;
+        }
+
+        Instant effectiveNow = now == null ? Instant.now() : now;
+        Instant compatibilityCutoff = effectiveNow.minus(cfg.getCompatibilityTtlDays(), ChronoUnit.DAYS);
+        if (cfg.getLegacyWriteStoppedAt().isAfter(compatibilityCutoff)
+                || cfg.getLegacyDrainedAt().isAfter(compatibilityCutoff)) {
+            errors.add("app.analytics.dirty-marker legacy retirement proof 尚未经过完整 compatibility TTL");
+        }
+    }
+
     /**
      * 在访问明细消费已启用时校验采样、截断和保留边界。
      *
@@ -181,6 +253,15 @@ public final class StartupValidation {
         }
         if (ev.getRetentionDays() < 0) {
             errors.add("app.analytics.events.retention-days 必须 >= 0");
+        }
+        if (ev.getIngestBatchSize() <= 0) {
+            errors.add("app.analytics.events.ingest-batch-size 必须 > 0");
+        }
+        if (ev.getIngestMaxBatches() <= 0) {
+            errors.add("app.analytics.events.ingest-max-batches 必须 > 0");
+        }
+        if (ev.getIngestTimeBudgetMs() <= 0) {
+            errors.add("app.analytics.events.ingest-time-budget-ms 必须 > 0");
         }
     }
 

@@ -120,7 +120,7 @@
 - 401 会清 token，并调用 `main.ts` 注册的 unauthorized handler 跳回登录页。
 - `apiFetch()` 统一解析后端 `ApiResponse`，非 2xx 抛异常并保留后端 message。
 
-Cookie 写请求的 CSRF 初始化由一个共享 Promise 收敛，并发首写只请求一次 `/api/v1/auth/csrf`。初始化网络失败不会永久缓存失败，后续请求可以重试；当前请求仍会发给服务端，由服务端 CSRF 规则拒绝，前端不会把缺 token 当作成功降级。
+Cookie 写请求的 CSRF 初始化只由一个共享的在途 Promise 收敛，并发首写只请求一次 `/api/v1/auth/csrf`。Promise 必须确认响应成功且浏览器确实持有 `XSRF-TOKEN` 后才算初始化成功，并在完成后释放；非 2xx、缺 cookie 或之后 cookie 被清除时，下一次写请求会重新初始化。初始化失败的当前请求仍会发给服务端，由服务端 CSRF 规则拒绝，前端不会把缺 token 当作成功降级。服务端对 unsafe 请求返回 403 时，transport 只把现有 token 标记为过期，让下一次写请求重新初始化；它不会自动重放这次可能已产生副作用的请求。
 
 401 回调在同一 microtask 内去重，避免一个页面的并发请求触发多次登录跳转。`auth.logout()` 通知服务端是 best-effort：即使网络失败也会清本地状态，但不能据此宣称旧 bearer token 已在服务端撤销。
 
@@ -145,8 +145,8 @@ services 只负责 HTTP transport，不持有页面状态，也不在各文件�
 - `web/src/services/domains.ts`：域名列表、应用可用域名、共享域名创建、应用专属域名创建、共享域名授权。
 - `web/src/services/apiKeys.ts`：API Key 列表、创建、启用、禁用、轮换。
 - `web/src/services/stats.ts`：概览、Top 链接、单链接日统计。应用级查询使用应用路径。
-- `web/src/services/approvals.ts`：审批列表和审批动作。
-- `web/src/services/audit.ts`：审计日志列表。
+- `web/src/services/approvals.ts`：审批摘要游标分页和审批动作；wire body 保持数组，service 从响应头组装分页元数据。
+- `web/src/services/audit.ts`：不含前后快照的审计摘要游标分页。
 - `web/src/services/tags.ts`：标签列表和创建。
 
 ## 页面 composables
@@ -171,7 +171,8 @@ services 只负责 HTTP transport，不持有页面状态，也不在各文件�
 - `web/src/composables/useStatsPage.ts`
   - 默认 7 天，也支持 30 天。
   - 租户管理员可选应用范围。
-  - 先按后端分页完整拉取链接选项，再并行加载概览、Top 链接、单链接日统计。
+  - 链接选项使用 `cursor`、`includeTotal=false` 和有界页按需搜索；加载更多只追加当前搜索结果。
+  - 概览、Top 链接和单链接日统计使用独立刷新路径；切换短链只刷新该短链趋势，切换排序只刷新 Top 链接。
   - 日期范围按 UTC 自然日构造，不把分日 HLL UV 求和成精确区间 UV。
 - `web/src/composables/useApplicationsPage.ts`
   - 应用列表和创建。
@@ -183,9 +184,9 @@ services 只负责 HTTP transport，不持有页面状态，也不在各文件�
 - `web/src/composables/useApiKeysPage.ts`
   - API Key 创建、启用、禁用、轮换；明文 key 只在响应时展示。
 - `web/src/composables/useApprovalsPage.ts`
-  - 审批列表、审批原因、审批成功后刷新。
+  - 审批列表、审批原因、审批成功后刷新；下一页按不透明 cursor 追加，不回退到全量加载。
 - `web/src/composables/useAuditPage.ts`
-  - 审计日志列表。
+  - 审计日志首屏和按 cursor 继续加载。
 - `web/src/composables/useAppSessionNavigation.ts`
   - 页面 shell 的登出和导航状态。
 
@@ -206,11 +207,12 @@ services 只负责 HTTP transport，不持有页面状态，也不在各文件�
 
 1. `useStatsPage` 初始化日期范围。
 2. 管理员可选择应用范围。
-3. 并行请求概览、Top 链接、单链接日统计。
-4. Top 链接支持按 PV/UV 切换。
-5. 复制 shortUrl 失败时静默，不影响主要页面。
+3. 按需搜索一页链接选项，使用 cursor 继续加载；不为选择器计算全量 total。
+4. 日期范围变化并行请求概览、Top 链接和当前单链接日统计。
+5. Top 排序和当前短链选择分别只刷新其对应报表。
+6. 复制 shortUrl 失败时静默，不影响主要页面。
 
-页面加载有意使用 `Promise.all` 缩短等待时间，但当前 composables 没有统一的 AbortController 或请求序号。用户快速连续切换应用、日期或链接时，较旧请求可能晚于新请求写回状态；这是当前限制，后端权限与数据正确性不受影响，但 UI 可能短暂展示旧筛选结果。
+页面的可替代读取使用 `useLatestRequest` 的 AbortController 与 generation；用户快速连续搜索、切换应用、日期或链接时，旧响应不能提交到当前页面快照。独立报表刷新器允许短链选择不触发无关的概览和 Top 请求。
 
 ## 源码边界
 

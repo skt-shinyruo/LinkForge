@@ -31,6 +31,18 @@
 
 `ErrorCode`、`AccountsErrorCode`、`OpenApiErrorCode` 和 `ShortLinkErrorCode` 是稳定的业务分支语言。枚举名便于代码阅读，客户端契约以数字 code 和 HTTP 状态组合为准。
 
+## API Key 摘要兼容契约
+
+`api_keys.key_hash` 的稳定 HMAC wire format 是 `{hmac-sha256}` 加无 padding 的 Base64URL digest；
+`api_keys.key_id` 指明选择 current 或 previous pepper。V26 前写入的行没有 key id，只能使用显式 legacy pepper
+验证；历史 BCrypt 行仍由密码摘要兼容路径验证。成功验证的非 current 行由 Accounts 以旧 hash/key id 为条件 CAS
+升级，因此并发认证允许某次升级失败但不能覆盖更新后的凭据。
+
+第一阶段混部必须让旧 `API_KEY_HMAC_PEPPER`、V26 current pepper 和 legacy pepper 指向同一份独立 API Key
+secret，使旧实例能验证新写、V26 实例能验证无 key id 旧写。这个兼容 alias 只能在 API Key keyring 内复用，不能等于
+JWT signing secret。切换到不同的 current pepper 会结束旧二进制的安全回滚窗口，必须在所有旧实例停止后进行。
+任何日志、异常、审计和 HTTP 响应都不得包含 pepper、完整 `key_hash` 或原始 API Key。
+
 ## Platform 发布端口
 
 ### `ApplicationScopePort`
@@ -46,7 +58,7 @@
 
 ### `LegacyApplicationProvisioningPort`
 
-为历史未分应用数据返回默认 application/domain 绑定。实现目标是幂等，但并发唯一键冲突仍可能以业务异常暴露；新业务流程不应依赖 legacy provisioning。
+为历史未分应用数据返回默认 application/domain 绑定。实现必须按租户幂等串行化：只有 ACTIVE application、同租户且正确授权的 ACTIVE domain，以及当前 policy/quota 都满足契约时才能返回。缺失或过期的可修复配置在同一事务内 reconcile；停用、跨租户或错误绑定返回业务错误。并发首次调用收敛到同一逻辑配对。新业务流程不应依赖 legacy provisioning。
 
 ## Shortlink 发布端口
 
@@ -94,9 +106,15 @@
 
 | 用途 | 格式 |
 | --- | --- |
-| 基础 dirty stream | `stats:dirty:flush:{yyyyMMdd}` |
-| 维度 dirty stream | `stats:dirty:dim:{yyyyMMdd}` |
-| scope dirty stream | `stats:dirty:scope:{yyyyMMdd}` |
+| V2 基础 generation marker Hash | `stats:dirty:v2:link:{yyyyMMdd}` |
+| V2 维度 generation marker Hash | `stats:dirty:v2:dim:{yyyyMMdd}` |
+| V2 scope generation marker Hash | `stats:dirty:v2:scope:{yyyyMMdd}` |
+| V2 first-seen Hash | `stats:dirty:v2:{link|dim|scope}:first-seen:{yyyyMMdd}` |
+| V2 claim cursor state | `stats:dirty:v2:{link|dim|scope}:{yyyyMMdd}:claim:cursor` |
+| V2 claim overflow queue | `stats:dirty:v2:{link|dim|scope}:{yyyyMMdd}:claim:overflow` |
+| legacy 基础 dirty Stream | `stats:dirty:flush:{yyyyMMdd}` |
+| legacy 维度 dirty Stream | `stats:dirty:dim:{yyyyMMdd}` |
+| legacy scope dirty Stream | `stats:dirty:scope:{yyyyMMdd}` |
 | dirty link member | `{tenantId}:{linkId}` |
 | link PV | `stats:pv:{tenantId}:{linkId}:{yyyyMMdd}` |
 | link UV HLL | `stats:uv:{tenantId}:{linkId}:{yyyyMMdd}` |
@@ -106,9 +124,15 @@
 | 点击额度 | `quota:click:application:{tenantId}:{applicationId}:{yyyyMM}` |
 | 访问流 | `stats:visit:events` |
 
-dirty member 的 `{tenantId}:{linkId}` wire shape 保持不变；它现在只表示“需要刷新”，不表示 active set membership。
-flush 消费当前累计 PV/HLL 值，所以重复 dirty 消息只重复 upsert。标准访问事件以 requestId 幂等投影，同一 Stream
-记录重放不会重复增加 PV；历史无 requestId 消息和调用方生成多个 requestId 的重复访问不在该保证内。
+dirty member 的 `{tenantId}:{linkId}` wire shape 保持不变；它只表示“需要刷新”，不表示 active set membership。
+当前 producer 在聚合 Lua 内推进 V2 generation，flush 写入当前累计 PV/HLL 后仅在 generation 未变化时删除 field；
+并发新写会产生 CAS 冲突并保留 marker。legacy Stream 仅供滚动升级 dual-read 和显式回滚写，未经停写、排空和完整
+compatibility TTL 的退役证据不得关闭兼容读。标准访问事件以 requestId 幂等投影，同一 visit Stream 记录重放不会
+重复增加 PV；历史无 requestId 消息和调用方生成多个 requestId 的重复访问不在该保证内。
+
+V2 claim cursor 和 overflow queue 是由 `AnalyticsKeys` 生成、跟随 marker TTL 的内部扫描状态；它们只保存公平
+轮转进度，不改变 marker/member 语义。marker 清空或过期时状态必须一并删除，旧实例不识别这些键也不影响 legacy
+Stream 回滚窗口。
 
 ## Shortlink 集成事件
 

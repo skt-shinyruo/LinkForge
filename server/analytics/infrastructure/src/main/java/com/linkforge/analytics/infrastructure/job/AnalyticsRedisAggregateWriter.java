@@ -25,8 +25,9 @@ import java.util.Map;
  * 将一条访问流事件投影到 Redis 的 PV、UV 与维度聚合。
  *
  * <p>链接 PV 使用计数器，UV 使用 HyperLogLog，因此 UV 是近似值而不是可用于精确结算的去重数。
- * 每个首次投影的事件都会追加 dirty stream 消息，成员 wire format 固定为 {@code tenantId:linkId}；落库作业
- * 读取该成员对应的当前累计值，而不是把消息本身当作增量。</p>
+ * 每个首次投影的事件都会原子推进 V2 dirty generation marker，成员 wire format 固定为
+ * {@code tenantId:linkId}；落库作业读取该成员对应的当前累计值，而不是把 marker 当作增量。滚动升级默认
+ * 继续读取 legacy dirty Stream，但新 producer 只有显式开启回滚开关时才 additive 写旧 Stream。</p>
  *
  * <p>标准访问事件携带 {@code requestId}，并通过单个 Lua 脚本原子完成去重、聚合和 dirty signal 写入；
  * ACK 失败后的同一事件重放不会重复增加 PV。历史上没有 requestId 的消息仍走兼容路径，因此只对标准
@@ -54,6 +55,7 @@ public class AnalyticsRedisAggregateWriter {
             local visitor = ARGV[3] or ''
             local scopeCount = tonumber(ARGV[4]) or 0
             local dimCount = tonumber(ARGV[5]) or 0
+            local legacyWrite = tonumber(ARGV[6]) or 0
 
             if redis.call('SETNX', KEYS[1], '1') == 0 then
                 return 0
@@ -62,7 +64,7 @@ public class AnalyticsRedisAggregateWriter {
                 redis.call('EXPIRE', KEYS[1], markerTtl)
             end
 
-            local argIndex = 6
+            local argIndex = 7
             local scopeMembers = {}
             for i = 1, scopeCount do
                 scopeMembers[i] = ARGV[argIndex]
@@ -98,18 +100,41 @@ public class AnalyticsRedisAggregateWriter {
                 keyIndex = keyIndex + 1
             end
 
-            local statsDirtyStream = KEYS[keyIndex]
+            local statsMarker = KEYS[keyIndex]
             keyIndex = keyIndex + 1
-            local scopeDirtyStream = KEYS[keyIndex]
+            local statsFirstSeen = KEYS[keyIndex]
             keyIndex = keyIndex + 1
-            local dimDirtyStream = KEYS[keyIndex]
+            local scopeMarker = KEYS[keyIndex]
+            keyIndex = keyIndex + 1
+            local scopeFirstSeen = KEYS[keyIndex]
+            keyIndex = keyIndex + 1
+            local dimMarker = KEYS[keyIndex]
+            keyIndex = keyIndex + 1
+            local dimFirstSeen = KEYS[keyIndex]
+            keyIndex = keyIndex + 1
 
-            redis.call('XADD', statsDirtyStream, '*', 'member', dirtyMember, 'ts', eventTs)
+            redis.call('HINCRBY', statsMarker, dirtyMember, 1)
+            redis.call('HSETNX', statsFirstSeen, dirtyMember, eventTs)
             for i = 1, scopeCount do
-                redis.call('XADD', scopeDirtyStream, '*', 'member', scopeMembers[i], 'ts', eventTs)
+                redis.call('HINCRBY', scopeMarker, scopeMembers[i], 1)
+                redis.call('HSETNX', scopeFirstSeen, scopeMembers[i], eventTs)
             end
             if dimCount > 0 then
-                redis.call('XADD', dimDirtyStream, '*', 'member', dirtyMember, 'ts', eventTs)
+                redis.call('HINCRBY', dimMarker, dirtyMember, 1)
+                redis.call('HSETNX', dimFirstSeen, dirtyMember, eventTs)
+            end
+
+            if legacyWrite == 1 then
+                local statsDirtyStream = KEYS[keyIndex]
+                local scopeDirtyStream = KEYS[keyIndex + 1]
+                local dimDirtyStream = KEYS[keyIndex + 2]
+                redis.call('XADD', statsDirtyStream, '*', 'member', dirtyMember, 'ts', eventTs)
+                for i = 1, scopeCount do
+                    redis.call('XADD', scopeDirtyStream, '*', 'member', scopeMembers[i], 'ts', eventTs)
+                end
+                if dimCount > 0 then
+                    redis.call('XADD', dimDirtyStream, '*', 'member', dirtyMember, 'ts', eventTs)
+                end
             end
 
             if aggregateTtl > 0 then
@@ -170,6 +195,12 @@ public class AnalyticsRedisAggregateWriter {
         String statsDirtyStreamKey = AnalyticsKeys.statsDirtyStreamKey(day);
         String scopeDirtyStreamKey = AnalyticsKeys.scopeDirtyStreamKey(day);
         String dimDirtyStreamKey = AnalyticsKeys.dimDirtyStreamKey(day);
+        String statsMarkerKey = AnalyticsKeys.statsDirtyMarkerV2Key(day);
+        String statsFirstSeenKey = AnalyticsKeys.statsDirtyMarkerV2FirstSeenKey(day);
+        String scopeMarkerKey = AnalyticsKeys.scopeDirtyMarkerV2Key(day);
+        String scopeFirstSeenKey = AnalyticsKeys.scopeDirtyMarkerV2FirstSeenKey(day);
+        String dimMarkerKey = AnalyticsKeys.dimDirtyMarkerV2Key(day);
+        String dimFirstSeenKey = AnalyticsKeys.dimDirtyMarkerV2FirstSeenKey(day);
         Date expireAt = resolveDayExpireAtUtc(day);
 
         String requestId = trimToNull(values.get("requestId"));
@@ -184,9 +215,6 @@ public class AnalyticsRedisAggregateWriter {
                     day,
                     visitorKey,
                     dirtyLinkMember,
-                    statsDirtyStreamKey,
-                    scopeDirtyStreamKey,
-                    dimDirtyStreamKey,
                     expireAt
             );
             return;
@@ -195,19 +223,18 @@ public class AnalyticsRedisAggregateWriter {
         redis.opsForValue().increment(pvKey);
         if (visitorKey != null) {
             redis.opsForHyperLogLog().add(uvKey, visitorKey);
-            writeScopeUv(AnalyticsKeys.tenantScopeUvKey(tenantId, day), scopeDirtyStreamKey,
+            writeScopeUv(AnalyticsKeys.tenantScopeUvKey(tenantId, day), scopeMarkerKey, scopeFirstSeenKey, scopeDirtyStreamKey,
                     AnalyticsKeys.tenantScopeMember(tenantId), visitorKey, expireAt);
             if (applicationId > 0) {
-                writeScopeUv(AnalyticsKeys.applicationScopeUvKey(tenantId, applicationId, day), scopeDirtyStreamKey,
+                writeScopeUv(AnalyticsKeys.applicationScopeUvKey(tenantId, applicationId, day), scopeMarkerKey, scopeFirstSeenKey, scopeDirtyStreamKey,
                         AnalyticsKeys.applicationScopeMember(tenantId, applicationId), visitorKey, expireAt);
             }
             if (domainId > 0) {
-                writeScopeUv(AnalyticsKeys.domainScopeUvKey(tenantId, domainId, day), scopeDirtyStreamKey,
+                writeScopeUv(AnalyticsKeys.domainScopeUvKey(tenantId, domainId, day), scopeMarkerKey, scopeFirstSeenKey, scopeDirtyStreamKey,
                         AnalyticsKeys.domainScopeMember(tenantId, domainId), visitorKey, expireAt);
             }
         }
-        // 不维护无界 active set；每次变更以 dirty stream 驱动后续持久化。
-        enqueueDirtyMember(statsDirtyStreamKey, dirtyLinkMember, expireAt);
+        advanceDirtyMarker(statsMarkerKey, statsFirstSeenKey, statsDirtyStreamKey, dirtyLinkMember, expireAt);
 
         expireAtQuietly(pvKey, expireAt);
         expireAtQuietly(uvKey, expireAt);
@@ -217,7 +244,7 @@ public class AnalyticsRedisAggregateWriter {
             return;
         }
 
-        enqueueDirtyMember(dimDirtyStreamKey, dirtyLinkMember, expireAt);
+        advanceDirtyMarker(dimMarkerKey, dimFirstSeenKey, dimDirtyStreamKey, dirtyLinkMember, expireAt);
         for (DimensionProjection dimension : dimensions) {
             String dimPvKey = AnalyticsKeys.dimPvHashKey(tenantId, linkId, day, dimension.type());
             String dimUvKey = AnalyticsKeys.dimUvHllKey(tenantId, linkId, day, dimension.type(), dimension.value());
@@ -242,9 +269,6 @@ public class AnalyticsRedisAggregateWriter {
             LocalDate day,
             String visitorKey,
             String dirtyLinkMember,
-            String statsDirtyStreamKey,
-            String scopeDirtyStreamKey,
-            String dimDirtyStreamKey,
             Date expireAt
     ) {
         List<ScopeProjection> scopes = new ArrayList<>(3);
@@ -268,7 +292,7 @@ public class AnalyticsRedisAggregateWriter {
         }
         List<DimensionProjection> dimensions = resolveDimensions(values);
 
-        List<String> keys = new ArrayList<>(8 + scopes.size() + dimensions.size() * 2);
+        List<String> keys = new ArrayList<>(14 + scopes.size() + dimensions.size() * 2);
         keys.add(AnalyticsKeys.projectionDedupKey(requestId));
         keys.add(AnalyticsKeys.pvKey(tenantId, linkId, day));
         if (visitorKey != null) {
@@ -279,9 +303,17 @@ public class AnalyticsRedisAggregateWriter {
             keys.add(AnalyticsKeys.dimPvHashKey(tenantId, linkId, day, dimension.type()));
             keys.add(AnalyticsKeys.dimUvHllKey(tenantId, linkId, day, dimension.type(), dimension.value()));
         }
-        keys.add(statsDirtyStreamKey);
-        keys.add(scopeDirtyStreamKey);
-        keys.add(dimDirtyStreamKey);
+        keys.add(AnalyticsKeys.statsDirtyMarkerV2Key(day));
+        keys.add(AnalyticsKeys.statsDirtyMarkerV2FirstSeenKey(day));
+        keys.add(AnalyticsKeys.scopeDirtyMarkerV2Key(day));
+        keys.add(AnalyticsKeys.scopeDirtyMarkerV2FirstSeenKey(day));
+        keys.add(AnalyticsKeys.dimDirtyMarkerV2Key(day));
+        keys.add(AnalyticsKeys.dimDirtyMarkerV2FirstSeenKey(day));
+        if (legacyWriteEnabled()) {
+            keys.add(AnalyticsKeys.statsDirtyStreamKey(day));
+            keys.add(AnalyticsKeys.scopeDirtyStreamKey(day));
+            keys.add(AnalyticsKeys.dimDirtyStreamKey(day));
+        }
 
         long nowMillis = System.currentTimeMillis();
         List<String> args = new ArrayList<>(7 + scopes.size() + dimensions.size());
@@ -290,6 +322,7 @@ public class AnalyticsRedisAggregateWriter {
         args.add(visitorKey == null ? "" : visitorKey);
         args.add(String.valueOf(scopes.size()));
         args.add(String.valueOf(dimensions.size()));
+        args.add(legacyWriteEnabled() ? "1" : "0");
         scopes.stream().map(ScopeProjection::dirtyMember).forEach(args::add);
         dimensions.stream().map(DimensionProjection::value).forEach(args::add);
         args.add(dirtyLinkMember);
@@ -363,13 +396,40 @@ public class AnalyticsRedisAggregateWriter {
         return Math.max((remainingMillis + 999L) / 1000L, 1L);
     }
 
-    private void writeScopeUv(String uvKey, String dirtyStreamKey, String dirtyMember, String visitorKey, Date expireAt) {
+    private void writeScopeUv(
+            String uvKey,
+            String markerKey,
+            String firstSeenKey,
+            String legacyStreamKey,
+            String dirtyMember,
+            String visitorKey,
+            Date expireAt
+    ) {
         if (uvKey == null || uvKey.isBlank() || dirtyMember == null || dirtyMember.isBlank() || visitorKey == null) {
             return;
         }
         redis.opsForHyperLogLog().add(uvKey, visitorKey);
         expireAtQuietly(uvKey, expireAt);
-        enqueueDirtyMember(dirtyStreamKey, dirtyMember, expireAt);
+        advanceDirtyMarker(markerKey, firstSeenKey, legacyStreamKey, dirtyMember, expireAt);
+    }
+
+    private void advanceDirtyMarker(
+            String markerKey,
+            String firstSeenKey,
+            String legacyStreamKey,
+            String member,
+            Date expireAt
+    ) {
+        if (markerKey == null || markerKey.isBlank() || member == null || member.isBlank()) {
+            return;
+        }
+        redis.opsForHash().increment(markerKey, member, 1L);
+        redis.opsForHash().putIfAbsent(firstSeenKey, member, String.valueOf(System.currentTimeMillis()));
+        expireAtQuietly(markerKey, expireAt);
+        expireAtQuietly(firstSeenKey, expireAt);
+        if (legacyWriteEnabled()) {
+            enqueueDirtyMember(legacyStreamKey, member, expireAt);
+        }
     }
 
     private void enqueueDirtyMember(String streamKey, String member, Date expireAt) {
@@ -381,6 +441,11 @@ public class AnalyticsRedisAggregateWriter {
         fields.put("ts", String.valueOf(System.currentTimeMillis()));
         redis.opsForStream().add(StreamRecords.newRecord().in(streamKey).ofStrings(fields));
         expireAtQuietly(streamKey, expireAt);
+    }
+
+    private boolean legacyWriteEnabled() {
+        AnalyticsProperties.DirtyMarker cfg = analyticsProperties == null ? null : analyticsProperties.getDirtyMarker();
+        return cfg != null && cfg.isLegacyWriteEnabled();
     }
 
     private void expireAtQuietly(String key, Date expireAt) {

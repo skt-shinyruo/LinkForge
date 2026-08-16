@@ -23,44 +23,103 @@ final class ApiKeySecretCodec {
     private static final String HMAC_SHA256 = "HmacSHA256";
 
     private final AccountsPasswordHasher legacyPasswordHasher;
-    private final byte[] pepper;
+    private final PepperKey current;
+    private final PepperKey previous;
+    private final byte[] legacyPepper;
 
     ApiKeySecretCodec(AccountsPasswordHasher legacyPasswordHasher, SecurityProperties securityProperties) {
         this.legacyPasswordHasher = Objects.requireNonNull(legacyPasswordHasher, "legacyPasswordHasher");
-        this.pepper = resolvePepper(securityProperties);
+        SecurityProperties.ApiKey apiKey = securityProperties == null ? null : securityProperties.getApiKey();
+        String compatibilityPepper = apiKey == null ? null : trimToNull(apiKey.getHmacPepper());
+        boolean allowJwtFallback = apiKey == null || apiKey.isLegacyJwtFallbackEnabled();
+        String jwtPepper = allowJwtFallback && securityProperties != null && securityProperties.getJwt() != null
+                ? trimToNull(securityProperties.getJwt().getSecret())
+                : null;
+        String currentPepper = firstNonNull(
+                apiKey == null ? null : trimToNull(apiKey.getCurrentPepper()),
+                compatibilityPepper,
+                jwtPepper
+        );
+        String currentKeyId = apiKey == null ? null : trimToNull(apiKey.getCurrentKeyId());
+        this.current = currentPepper == null
+                ? null
+                : new PepperKey(currentKeyId == null ? "default" : currentKeyId, bytes(currentPepper));
+
+        String previousKeyId = apiKey == null ? null : trimToNull(apiKey.getPreviousKeyId());
+        String previousPepper = apiKey == null ? null : trimToNull(apiKey.getPreviousPepper());
+        this.previous = previousKeyId == null || previousPepper == null
+                ? null
+                : new PepperKey(previousKeyId, bytes(previousPepper));
+
+        String configuredLegacy = apiKey == null ? null : trimToNull(apiKey.getLegacyPepper());
+        String legacy = firstNonNull(configuredLegacy, compatibilityPepper, jwtPepper);
+        this.legacyPepper = legacy == null ? new byte[0] : bytes(legacy);
     }
 
     String encode(String secret) {
+        return encodeCurrent(secret).hash();
+    }
+
+    EncodedSecret encodeCurrent(String secret) {
         Objects.requireNonNull(secret, "secret");
-        if (pepper.length == 0) {
-            return legacyPasswordHasher.encode(secret);
+        if (current == null) {
+            return new EncodedSecret(null, legacyPasswordHasher.encode(secret));
         }
-        return HMAC_SHA256_PREFIX + Base64.getUrlEncoder().withoutPadding().encodeToString(hmac(secret));
+        return new EncodedSecret(
+                current.id(),
+                HMAC_SHA256_PREFIX + Base64.getUrlEncoder().withoutPadding()
+                        .encodeToString(hmac(secret, current.pepper()))
+        );
     }
 
     boolean matches(String secret, String encoded) {
+        return matches(secret, encoded, null);
+    }
+
+    boolean matches(String secret, String encoded, String keyId) {
         if (secret == null || encoded == null) {
             return false;
         }
         if (!encoded.startsWith(HMAC_SHA256_PREFIX)) {
             return legacyPasswordHasher.matches(secret, encoded);
         }
-        if (pepper.length == 0) {
+        byte[] selectedPepper = selectPepper(keyId);
+        if (selectedPepper.length == 0) {
             return false;
         }
         try {
             byte[] expected = Base64.getUrlDecoder().decode(encoded.substring(HMAC_SHA256_PREFIX.length()));
-            return MessageDigest.isEqual(hmac(secret), expected);
+            return MessageDigest.isEqual(hmac(secret, selectedPepper), expected);
         } catch (IllegalArgumentException ex) {
             return false;
         }
     }
 
     boolean needsUpgrade(String encoded) {
-        return pepper.length > 0 && encoded != null && !encoded.startsWith(HMAC_SHA256_PREFIX);
+        return current != null && encoded != null && !encoded.startsWith(HMAC_SHA256_PREFIX);
     }
 
-    private byte[] hmac(String secret) {
+    boolean needsUpgrade(String encoded, String keyId) {
+        return current != null
+                && encoded != null
+                && (!encoded.startsWith(HMAC_SHA256_PREFIX) || !current.id().equals(trimToNull(keyId)));
+    }
+
+    private byte[] selectPepper(String keyId) {
+        String normalizedKeyId = trimToNull(keyId);
+        if (normalizedKeyId == null) {
+            return legacyPepper;
+        }
+        if (current != null && current.id().equals(normalizedKeyId)) {
+            return current.pepper();
+        }
+        if (previous != null && previous.id().equals(normalizedKeyId)) {
+            return previous.pepper();
+        }
+        return new byte[0];
+    }
+
+    private static byte[] hmac(String secret, byte[] pepper) {
         try {
             Mac mac = Mac.getInstance(HMAC_SHA256);
             mac.init(new SecretKeySpec(pepper, HMAC_SHA256));
@@ -70,15 +129,17 @@ final class ApiKeySecretCodec {
         }
     }
 
-    private static byte[] resolvePepper(SecurityProperties properties) {
-        String configured = null;
-        if (properties != null && properties.getApiKey() != null) {
-            configured = trimToNull(properties.getApiKey().getHmacPepper());
+    private static byte[] bytes(String value) {
+        return value.getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static String firstNonNull(String... values) {
+        for (String value : values) {
+            if (value != null) {
+                return value;
+            }
         }
-        if (configured == null && properties != null && properties.getJwt() != null) {
-            configured = trimToNull(properties.getJwt().getSecret());
-        }
-        return configured == null ? new byte[0] : configured.getBytes(StandardCharsets.UTF_8);
+        return null;
     }
 
     private static String trimToNull(String value) {
@@ -87,5 +148,11 @@ final class ApiKeySecretCodec {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    record EncodedSecret(String keyId, String hash) {
+    }
+
+    private record PepperKey(String id, byte[] pepper) {
     }
 }

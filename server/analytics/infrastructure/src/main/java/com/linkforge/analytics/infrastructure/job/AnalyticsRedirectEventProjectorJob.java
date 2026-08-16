@@ -128,13 +128,16 @@ public class AnalyticsRedirectEventProjectorJob {
             } catch (Exception e) {
                 metrics.increment("linkforge.job.failures", "job", "analytics_visit_projector", "stage", "redis_projection");
                 log.warn("project analytics visit event failed: streamId={}, err={}", record.getId(), e.getMessage());
-                streamConsumer.acknowledge(streamKey, ackIds);
+                acknowledgeAll(streamKey, ackIds);
                 return false;
             }
         }
 
-        streamConsumer.acknowledge(streamKey, ackIds);
-        return true;
+        return acknowledgeAll(streamKey, ackIds);
+    }
+
+    private boolean acknowledgeAll(String streamKey, List<RecordId> ids) {
+        return ids == null || ids.isEmpty() || streamConsumer.acknowledge(streamKey, ids) == ids.size();
     }
 
     private static Map<String, String> normalize(Map<Object, Object> raw) {

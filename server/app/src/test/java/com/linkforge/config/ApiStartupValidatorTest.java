@@ -69,6 +69,35 @@ class ApiStartupValidatorTest {
     }
 
     @Test
+    void strictConfig_shouldFailWhenApiKeyCurrentPepperIsMissingOrJwtFallbackIsEnabled() {
+        contextRunner
+                .withPropertyValues(
+                        "app.strict-config=true",
+                        "test.jwt-secret=independent-jwt-signing-secret-at-least-32-bytes"
+                )
+                .run(context -> assertThatThrownBy(() -> context.getBean(AppStartupValidator.class).run(null))
+                        .isInstanceOf(IllegalStateException.class)
+                        .hasMessageContaining("current-pepper")
+                        .hasMessageContaining("JWT fallback"));
+    }
+
+    @Test
+    void strictConfig_shouldAcceptIndependentCurrentAndPreviousApiKeyKeyring() {
+        contextRunner
+                .withPropertyValues(
+                        "app.strict-config=true",
+                        "test.jwt-secret=independent-jwt-signing-secret-at-least-32-bytes",
+                        "test.analytics-salt=independent-analytics-salt-at-least-32-bytes",
+                        "test.api-key.current-key-id=pepper-v2",
+                        "test.api-key.current-pepper=independent-current-api-key-pepper-at-least-32-bytes",
+                        "test.api-key.previous-key-id=pepper-v1",
+                        "test.api-key.previous-pepper=independent-previous-api-key-pepper-at-least-32-bytes",
+                        "test.api-key.legacy-jwt-fallback-enabled=false"
+                )
+                .run(context -> context.getBean(AppStartupValidator.class).run(null));
+    }
+
+    @Test
     void app_checks_should_still_run_alongside_aggregated_startup_checks() {
         contextRunner
                 .withPropertyValues("test.base-url=")
@@ -118,6 +147,13 @@ class ApiStartupValidatorTest {
             security.getJwt().setCookieName(env.getProperty("test.jwt.cookie-name"));
             security.getJwt().setCookieSameSite(env.getProperty("test.jwt.cookie-same-site"));
             security.getJwt().setCookieSecure(env.getProperty("test.jwt.cookie-secure", Boolean.class, false));
+            security.getApiKey().setCurrentKeyId(env.getProperty("test.api-key.current-key-id", "default"));
+            security.getApiKey().setCurrentPepper(env.getProperty("test.api-key.current-pepper"));
+            security.getApiKey().setPreviousKeyId(env.getProperty("test.api-key.previous-key-id"));
+            security.getApiKey().setPreviousPepper(env.getProperty("test.api-key.previous-pepper"));
+            security.getApiKey().setLegacyJwtFallbackEnabled(
+                    env.getProperty("test.api-key.legacy-jwt-fallback-enabled", Boolean.class, true)
+            );
             return security;
         }
 

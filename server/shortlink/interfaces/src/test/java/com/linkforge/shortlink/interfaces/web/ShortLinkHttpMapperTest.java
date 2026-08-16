@@ -15,8 +15,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.mock.web.MockMultipartFile;
+import org.apache.commons.csv.CSVFormat;
 
 import java.time.Instant;
+import java.io.StringReader;
 import java.util.List;
 import java.util.Set;
 
@@ -350,5 +352,54 @@ class ShortLinkHttpMapperTest {
         assertThat(response.getHeader("Content-Disposition")).isEqualTo("attachment; filename=\"links.csv\"");
         assertThat(response.getContentAsString()).contains("id,applicationId,domainId,hostname,code,originalUrl,note,enabled,expiresAt,tags");
         assertThat(response.getContentAsString()).contains("42,2001,3001,go.example.test,launch,https://example.com/source,launch note,true,2026-03-18T09:10:11Z,\"marketing,spring\"");
+    }
+
+    @Test
+    void writeExport_shouldNeutralizeSpreadsheetFormulaPrefixes_andRemainValidCsv() throws Exception {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        ShortLinkCsvExport export = new ShortLinkCsvExport(List.of(
+                new ShortLinkCsvExportRow(
+                        42L,
+                        2001L,
+                        3001L,
+                        "\t=HOST()",
+                        "+SUM(A1:A2)",
+                        "\n@evil",
+                        "  -2+3, \"quoted\"",
+                        true,
+                        Instant.parse("2026-03-18T09:10:11Z"),
+                        List.of("@cmd", "safe")
+                ),
+                new ShortLinkCsvExportRow(
+                        43L,
+                        2001L,
+                        3001L,
+                        "go.example.test",
+                        "campaign-code",
+                        "https://example.com/source",
+                        "normal - hyphen",
+                        false,
+                        null,
+                        List.of("normal")
+                )
+        ));
+
+        csvHttpMapper.write(export, response);
+
+        List<org.apache.commons.csv.CSVRecord> records = CSVFormat.DEFAULT.builder()
+                .setHeader()
+                .setSkipHeaderRecord(true)
+                .build()
+                .parse(new StringReader(response.getContentAsString()))
+                .getRecords();
+        assertThat(records).hasSize(2);
+        assertThat(records.get(0).get("hostname")).isEqualTo("'\t=HOST()");
+        assertThat(records.get(0).get("code")).isEqualTo("'+SUM(A1:A2)");
+        assertThat(records.get(0).get("originalUrl")).isEqualTo("'\n@evil");
+        assertThat(records.get(0).get("note")).isEqualTo("'  -2+3, \"quoted\"");
+        assertThat(records.get(0).get("tags")).isEqualTo("'@cmd,safe");
+        assertThat(records.get(1).get("code")).isEqualTo("campaign-code");
+        assertThat(records.get(1).get("note")).isEqualTo("normal - hyphen");
+        assertThat(records.get(1).get("enabled")).isEqualTo("false");
     }
 }

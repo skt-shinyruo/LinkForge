@@ -136,4 +136,29 @@ class AnalyticsExportRequestServiceTest {
                 )
         );
     }
+
+    @Test
+    void requestLinkEventExport_shouldRejectMoreThan366UtcDaysBeforeApproval() {
+        ApprovalSubmissionPort approvalSubmissionPort = mock(ApprovalSubmissionPort.class);
+        ShortLinkReadPort shortLinkReadPort = mock(ShortLinkReadPort.class);
+        AnalyticsExportRequestService service = new AnalyticsExportRequestService(
+                approvalSubmissionPort,
+                shortLinkReadPort,
+                FIXED_CLOCK
+        );
+        when(shortLinkReadPort.findOwnership(1L, 101L))
+                .thenReturn(Optional.of(new ShortLinkReadPort.ShortLinkOwnership(2001L, null)));
+
+        assertThatThrownBy(() -> service.requestLinkEventExport(
+                new UserActor(1L, 9L, "tenant-admin@example.com", Set.of("TENANT_ADMIN")),
+                101L,
+                2001L,
+                LocalDateTime.parse("2024-01-01T00:00:00"),
+                LocalDateTime.parse("2025-01-01T00:00:00")
+        ))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getErrorCode())
+                        .isEqualTo(ErrorCode.BAD_REQUEST));
+        verifyNoInteractions(approvalSubmissionPort);
+    }
 }

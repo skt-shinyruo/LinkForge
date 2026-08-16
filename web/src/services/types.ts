@@ -53,6 +53,12 @@ export type PageResponse<T> = {
   nextCursor?: string | null;
 };
 
+export type CursorPageResponse<T> = {
+  items: T[];
+  hasMore: boolean;
+  nextCursor: string | null;
+};
+
 export type LinkListQuery = {
   applicationId?: number;
   archived?: boolean;
@@ -222,6 +228,12 @@ export type ApproveRequest = {
   reason?: string;
 };
 
+export type ApprovalListQuery = {
+  status?: string;
+  limit?: number;
+  cursor?: string;
+};
+
 export type AuditLogDto = {
   id: number;
   tenantId: number;
@@ -231,7 +243,12 @@ export type AuditLogDto = {
   resourceType: string;
   resourceId: string;
   requestId?: number | null;
-  beforeSnapshot?: string | null;
-  afterSnapshot?: string | null;
   createdAt: string;
+};
+
+export type AuditLogListQuery = {
+  actionType?: string;
+  resourceType?: string;
+  limit?: number;
+  cursor?: string;
 };

@@ -31,6 +31,8 @@ class RedirectCacheInvalidationOutboxJobTest {
                 1L,
                 3001L,
                 "abc123",
+                "PENDING",
+                7L,
                 0
         );
         when(outbox.listDue(nowUtc, RedirectCacheInvalidationOutboxJob.BATCH_LIMIT)).thenReturn(List.of(row));
@@ -39,8 +41,9 @@ class RedirectCacheInvalidationOutboxJobTest {
 
         assertThat(processed).isEqualTo(1);
         verify(redirectCacheSync).evict(1L, 3001L, "abc123");
-        verify(outbox).markProcessed(11L, nowUtc);
+        verify(outbox).markProcessed(11L, 7L, nowUtc);
         verify(outbox, never()).markFailed(
+                org.mockito.ArgumentMatchers.anyLong(),
                 org.mockito.ArgumentMatchers.anyLong(),
                 org.mockito.ArgumentMatchers.anyInt(),
                 org.mockito.ArgumentMatchers.anyString(),
@@ -60,6 +63,8 @@ class RedirectCacheInvalidationOutboxJobTest {
                 1L,
                 null,
                 "legacy",
+                "PENDING",
+                3L,
                 2
         );
         when(outbox.listDue(nowUtc, RedirectCacheInvalidationOutboxJob.BATCH_LIMIT)).thenReturn(List.of(row));
@@ -70,10 +75,15 @@ class RedirectCacheInvalidationOutboxJobTest {
 
         assertThat(processed).isEqualTo(1);
         verify(redirectCacheSync).evict(1L, null, "legacy");
-        verify(outbox, never()).markProcessed(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any());
+        verify(outbox, never()).markProcessed(
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.any()
+        );
         ArgumentCaptor<LocalDateTime> nextAttemptAt = ArgumentCaptor.forClass(LocalDateTime.class);
         verify(outbox).markFailed(
                 org.mockito.ArgumentMatchers.eq(12L),
+                org.mockito.ArgumentMatchers.eq(3L),
                 org.mockito.ArgumentMatchers.eq(3),
                 org.mockito.ArgumentMatchers.eq("redis unavailable"),
                 nextAttemptAt.capture()

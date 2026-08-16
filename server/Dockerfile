@@ -20,7 +20,6 @@ COPY analytics /app/analytics
 COPY platform /app/platform
 COPY governance /app/governance
 COPY app /app/app
-COPY integration-tests /app/integration-tests
 
 # Build executable jar from the Spring Boot module only.
 # BuildKit cache keeps Maven artifacts across image rebuilds and reduces first-run network flakiness.
@@ -36,7 +35,7 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 ENV SERVER_PORT=8080
-EXPOSE 8080
+EXPOSE 8080 8081
 
 COPY --from=build /app/app.jar /app/app.jar
 

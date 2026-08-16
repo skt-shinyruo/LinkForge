@@ -22,8 +22,9 @@ import java.time.Duration;
  *
  * <p>状态缓存使用 30 秒 TTL，并以 {@code null} 同时表示未命中、无效缓存值或缓存不可用，随后安全
  * 地回源数据库。未知用户状态统一收敛为 disabled；不存在的租户/用户、归属不符和版本不符统一返回
- * unauthorized，避免泄漏账号信息。持久化记录是权威来源，但命中的状态快照会在 30 秒 TTL 内直接
- * 参与认证判断，因此禁用、启用和令牌撤销允许存在有界的缓存陈旧窗口。</p>
+     * unauthorized，避免泄漏账号信息。持久化记录是权威来源；回源前读取 generation，回填时仅在它
+     * 未变化时写入，因此事务提交前读到、提交后才完成的旧快照不能越过提交后失效重新污染缓存。若
+     * Redis 失效本身失败，既有命中快照仍可能在 30 秒 TTL 内陈旧，并通过 warning 暴露。</p>
  */
 @Service
 public class AccountStatusService implements AccountStatusVerifier {
@@ -63,16 +64,17 @@ public class AccountStatusService implements AccountStatusVerifier {
             }
         }
 
+        Long generation = statusCache.readTenantGeneration(tenantId);
         AccountsTenantStore.TenantData tenant = tenantStore.findById(tenantId);
         if (tenant == null || tenant.id() == null) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED);
         }
         String status = tenant.status();
         if (!AccountsConstants.STATUS_ACTIVE.equals(status)) {
-            statusCache.writeTenantStatus(tenantId, AccountsConstants.STATUS_DISABLED, CACHE_TTL);
+            writeTenantStatus(tenantId, generation, AccountsConstants.STATUS_DISABLED);
             throw new BusinessException(AccountsErrorCode.TENANT_DISABLED);
         }
-        statusCache.writeTenantStatus(tenantId, AccountsConstants.STATUS_ACTIVE, CACHE_TTL);
+        writeTenantStatus(tenantId, generation, AccountsConstants.STATUS_ACTIVE);
     }
 
     /**
@@ -96,6 +98,8 @@ public class AccountStatusService implements AccountStatusVerifier {
             throw unauthorized();
         }
 
+        // 必须早于任何数据库读取，避免同一事务的旧快照携带提交后的新 generation 写回缓存。
+        Long userGeneration = statusCache.readUserGeneration(userId);
         requireActiveTenant(tenantId);
 
         AccountStatusCache.UserAuthState cached = statusCache.readUserAuthState(userId);
@@ -113,7 +117,16 @@ public class AccountStatusService implements AccountStatusVerifier {
         }
         String status = normalizeUserStatus(user.status());
         int currentTokenVersion = user.tokenVersion() == null ? 0 : user.tokenVersion();
-        statusCache.writeUserAuthState(userId, tenantId, status, currentTokenVersion, CACHE_TTL);
+        if (userGeneration != null) {
+            statusCache.writeUserAuthStateIfGenerationMatches(
+                    userId,
+                    userGeneration,
+                    tenantId,
+                    status,
+                    currentTokenVersion,
+                    CACHE_TTL
+            );
+        }
 
         if (!AccountsConstants.STATUS_ACTIVE.equals(status)) {
             throw new BusinessException(AccountsErrorCode.USER_DISABLED);
@@ -132,6 +145,12 @@ public class AccountStatusService implements AccountStatusVerifier {
         }
         if (tokenVersion != SKIP_TOKEN_VERSION_CHECK && authState.tokenVersion() != tokenVersion) {
             throw unauthorized();
+        }
+    }
+
+    private void writeTenantStatus(long tenantId, Long generation, String status) {
+        if (generation != null) {
+            statusCache.writeTenantStatusIfGenerationMatches(tenantId, generation, status, CACHE_TTL);
         }
     }
 

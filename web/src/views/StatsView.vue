@@ -61,6 +61,10 @@ const page = useStatsPage();
 
     <LinkTrendPanel
       :links="page.links.value"
+      :link-search="page.linkSearch.value"
+      :link-options-loading="page.linkOptionsLoading.value"
+      :link-options-has-more="page.linkOptionsHasMore.value"
+      :link-options-error="page.linkOptionsError.value"
       :selected-link-id="page.selectedLinkId.value"
       :selected-link="page.selectedLink.value"
       :link-stats="page.linkStats.value"
@@ -68,6 +72,9 @@ const page = useStatsPage();
       :link-chart-labels="page.linkChartLabels.value"
       :link-chart-series="page.linkChartSeries.value"
       @toggle="page.showLinkChart.value = !page.showLinkChart.value"
+      @search-links="page.searchLinks"
+      @load-more-links="page.loadMoreLinks"
+      @update-link-search="page.linkSearch.value = $event"
       @select-link="page.onSelectedLinkChange"
     />
   </AppPageShell>

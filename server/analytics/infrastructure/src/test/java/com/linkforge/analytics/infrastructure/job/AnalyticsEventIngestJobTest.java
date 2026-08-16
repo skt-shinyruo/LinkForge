@@ -9,6 +9,8 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.RecordId;
+import org.springframework.data.redis.connection.stream.StreamOffset;
+import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.StreamOperations;
 
@@ -23,6 +25,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -44,6 +47,49 @@ class AnalyticsEventIngestJobTest {
     }
 
     @Test
+    void ingest_shouldDrainSeveralBatchesButStopAtConfiguredFairnessLimit() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        LinkVisitEventMapper mapper = mock(LinkVisitEventMapper.class);
+        AnalyticsProperties properties = new AnalyticsProperties();
+        properties.getEvents().setEnabled(true);
+        properties.getEvents().setSampleRate(1);
+        properties.getEvents().setPendingReclaimEnabled(false);
+        properties.getEvents().setIngestBatchSize(2);
+        properties.getEvents().setIngestMaxBatches(2);
+        properties.getEvents().setIngestTimeBudgetMs(5_000);
+
+        @SuppressWarnings("unchecked")
+        StreamOperations<String, Object, Object> streamOps = mock(StreamOperations.class);
+        when(redis.hasKey("stats:visit:events")).thenReturn(true);
+        when(redis.opsForStream()).thenReturn(streamOps);
+        acknowledgeAll(streamOps);
+        List<MapRecord<String, Object, Object>> firstBatch = List.of(
+                record("1-0", "1", "10", "req-1"), record("2-0", "1", "10", "req-2")
+        );
+        List<MapRecord<String, Object, Object>> secondBatch = List.of(
+                record("3-0", "1", "10", "req-3"), record("4-0", "1", "10", "req-4")
+        );
+        when(streamOps.read(
+                any(org.springframework.data.redis.connection.stream.Consumer.class),
+                any(StreamReadOptions.class),
+                any(StreamOffset.class)
+        )).thenReturn(
+                List.of(),
+                firstBatch,
+                List.of(),
+                secondBatch
+        );
+        when(streamOps.acknowledge(anyString(), anyString(), any(RecordId[].class))).thenReturn(2L);
+        when(mapper.batchInsertIgnore(anyList())).thenReturn(2);
+
+        AnalyticsEventIngestJob job = job(redis, mapper, properties);
+
+        job.ingest();
+
+        verify(mapper, times(2)).batchInsertIgnore(anyList());
+    }
+
+    @Test
     void ingestRecords_shouldInsertAllValidRowsWhenSampleRateIsOne() {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         LinkVisitEventMapper mapper = mock(LinkVisitEventMapper.class);
@@ -54,7 +100,7 @@ class AnalyticsEventIngestJobTest {
         @SuppressWarnings("unchecked")
         StreamOperations<String, Object, Object> streamOps = mock(StreamOperations.class);
         when(redis.opsForStream()).thenReturn(streamOps);
-        when(streamOps.acknowledge(anyString(), anyString(), any(RecordId[].class))).thenReturn(1L);
+        acknowledgeAll(streamOps);
         when(mapper.batchInsertIgnore(anyList())).thenReturn(2);
 
         AnalyticsEventIngestJob job = job(redis, mapper, properties);
@@ -74,6 +120,27 @@ class AnalyticsEventIngestJobTest {
     }
 
     @Test
+    void ingestRecords_shouldStopCurrentDrainWhenAckIsPartial() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        LinkVisitEventMapper mapper = mock(LinkVisitEventMapper.class);
+        AnalyticsProperties properties = new AnalyticsProperties();
+        properties.getEvents().setEnabled(true);
+        properties.getEvents().setSampleRate(1);
+        @SuppressWarnings("unchecked")
+        StreamOperations<String, Object, Object> streamOps = mock(StreamOperations.class);
+        when(redis.opsForStream()).thenReturn(streamOps);
+        when(streamOps.acknowledge(anyString(), anyString(), any(RecordId[].class))).thenReturn(1L);
+        AnalyticsEventIngestJob job = job(redis, mapper, properties);
+
+        boolean completed = job.ingestRecords("stats:visit:events", List.of(
+                record("1-0", "1", "10", "req-1"),
+                record("2-0", "1", "11", "req-2")
+        ));
+
+        assertThat(completed).isFalse();
+    }
+
+    @Test
     void ingestRecords_shouldAckValidRowsWithoutInsertWhenSampleRateIsZero() {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         LinkVisitEventMapper mapper = mock(LinkVisitEventMapper.class);
@@ -84,7 +151,7 @@ class AnalyticsEventIngestJobTest {
         @SuppressWarnings("unchecked")
         StreamOperations<String, Object, Object> streamOps = mock(StreamOperations.class);
         when(redis.opsForStream()).thenReturn(streamOps);
-        when(streamOps.acknowledge(anyString(), anyString(), any(RecordId[].class))).thenReturn(1L);
+        acknowledgeAll(streamOps);
 
         AnalyticsEventIngestJob job = job(redis, mapper, properties);
 
@@ -108,7 +175,7 @@ class AnalyticsEventIngestJobTest {
         @SuppressWarnings("unchecked")
         StreamOperations<String, Object, Object> streamOps = mock(StreamOperations.class);
         when(redis.opsForStream()).thenReturn(streamOps);
-        when(streamOps.acknowledge(anyString(), anyString(), any(RecordId[].class))).thenReturn(1L);
+        acknowledgeAll(streamOps);
 
         AnalyticsEventIngestJob job = job(redis, mapper, properties);
 
@@ -160,5 +227,10 @@ class AnalyticsEventIngestJobTest {
                 .map(RecordId::toString)
                 .toList();
         assertThat(actual).containsExactlyInAnyOrder(expectedIds);
+    }
+
+    private static void acknowledgeAll(StreamOperations<String, Object, Object> streamOps) {
+        when(streamOps.acknowledge(anyString(), anyString(), any(RecordId[].class)))
+                .thenAnswer(invocation -> (long) ((RecordId[]) invocation.getRawArguments()[2]).length);
     }
 }

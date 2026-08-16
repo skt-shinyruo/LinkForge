@@ -5,6 +5,7 @@ import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.shortlink.application.csv.ShortLinkCsvExport;
 import com.linkforge.shortlink.application.csv.ShortLinkCsvExportRow;
 import com.linkforge.shortlink.application.csv.ShortLinkCsvImportRow;
+import com.linkforge.foundation.util.CsvFormulaNeutralizer;
 import jakarta.servlet.http.HttpServletResponse;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
@@ -75,13 +76,15 @@ public class ShortLinkCsvHttpMapper {
                         row.id(),
                         row.applicationId(),
                         row.domainId(),
-                        row.hostname(),
-                        row.code(),
-                        row.originalUrl(),
-                        row.note(),
+                        CsvFormulaNeutralizer.neutralizeUserText(row.hostname()),
+                        CsvFormulaNeutralizer.neutralizeUserText(row.code()),
+                        CsvFormulaNeutralizer.neutralizeUserText(row.originalUrl()),
+                        CsvFormulaNeutralizer.neutralizeUserText(row.note()),
                         row.enabled(),
                         row.expiresAt() == null ? "" : row.expiresAt().toString(),
-                        String.join(",", row.tags() == null ? List.of() : row.tags())
+                        CsvFormulaNeutralizer.neutralizeUserText(
+                                String.join(",", row.tags() == null ? List.of() : row.tags())
+                        )
                 );
             }
         } catch (IOException e) {

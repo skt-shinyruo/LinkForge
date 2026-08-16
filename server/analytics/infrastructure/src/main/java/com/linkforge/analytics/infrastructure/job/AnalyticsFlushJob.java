@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.connection.stream.MapRecord;
+import org.springframework.data.redis.connection.stream.RecordId;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.serializer.RedisSerializer;
@@ -30,13 +31,17 @@ import java.util.Map;
 /**
  * 将 Redis 中的链接和范围日聚合快照持久化到 MySQL。
  *
- * <p>dirty stream 的链接成员格式为 {@code tenantId:linkId}，消息只表示“该聚合可能变更”；作业读取
- * Redis 当前 PV 与 HyperLogLog 估算的 UV 后批量写库。SQL 使用 {@code GREATEST} 保持日表单调递增，
- * 因此重复 dirty 消息与重放不会回退已落库数据。</p>
+ * <p>当前刷新信号是以 {@code tenantId:linkId} 为 field 的 V2 generation marker。作业读取 Redis 当前 PV 与
+ * HyperLogLog 估算的 UV 后批量写库，并只在 generation 未变化时删除 marker；写库期间的新访问会推进
+ * generation 并保留下一轮刷新。兼容期开启时还会排空 legacy dirty Stream。SQL 使用 {@code GREATEST}
+ * 保持日表单调递增，因此重放不会回退已落库数据。</p>
  *
  * <p>数据库或 Redis 读取失败时不 ACK 当前批次，使 consumer group pending 负责重试。ACK 失败仍可能
  * 造成后续重放，故这里不宣称 exactly-once。统计日和回填窗口均按 UTC 计算，且窗口被 Redis key TTL
  * 上限截断，过期 key 无法被该作业补算。</p>
+ *
+ * <p>legacy Stream 的 {@code XLEN} 仅作为 retained entries；实际剩余量按全部回填日期的 group lag 与
+ * pending 汇总，并在 job 层合并 link 与 scope。排空计数只使用 Redis 实际 ACK 数。</p>
  */
 @Component
 public class AnalyticsFlushJob {
@@ -45,12 +50,15 @@ public class AnalyticsFlushJob {
     private static final String GROUP = "lf-stats-flush";
     private static final String CONSUMER = "lf-stats-flush-consumer";
     private static final int BATCH_SIZE = 500;
+    private static final int MAX_MARKER_BATCHES_PER_DAY = 10;
 
     private final StringRedisTemplate redis;
     private final LinkStatsDailyMapper linkStatsDailyMapper;
     private final AnalyticsScopeStatsDailyMapper scopeStatsDailyMapper;
     private final AnalyticsProperties analyticsProperties;
     private final RedisStreamBatchConsumer streamConsumer;
+    private final LegacyDirtyStreamMetrics legacyStreamMetrics;
+    private final VersionedDirtyMarkerStore markerStore;
     private final OperationalMetrics metrics;
 
     public AnalyticsFlushJob(StringRedisTemplate redis, LinkStatsDailyMapper linkStatsDailyMapper, AnalyticsProperties analyticsProperties) {
@@ -79,11 +87,14 @@ public class AnalyticsFlushJob {
         this.scopeStatsDailyMapper = scopeStatsDailyMapper;
         this.analyticsProperties = analyticsProperties;
         this.metrics = metrics == null ? OperationalMetrics.noop() : metrics;
-        this.streamConsumer = new RedisStreamBatchConsumer(redis, GROUP, CONSUMER, "analytics_stats_flush", this.metrics);
+        this.streamConsumer = new RedisStreamBatchConsumer(
+                redis, GROUP, CONSUMER, "analytics_stats_flush", this.metrics, false);
+        this.legacyStreamMetrics = new LegacyDirtyStreamMetrics(redis, streamConsumer, this.metrics);
+        this.markerStore = new VersionedDirtyMarkerStore(redis);
     }
 
     /**
-     * 依次处理 UTC 当日及有限回填窗口内的链接、范围 dirty streams。
+     * 依次处理 UTC 当日及有限回填窗口内的链接、范围 V2 marker，并按配置兼容读取 legacy Streams。
      *
      * <p>ShedLock 只降低多实例重复调度概率；幂等性仍依赖 Redis 快照和 MySQL 的单调 upsert。</p>
      */
@@ -92,64 +103,192 @@ public class AnalyticsFlushJob {
     public void flush() {
         LocalDate todayUtc = LocalDate.now(ZoneOffset.UTC);
         int backfillDays = resolveBackfillDays();
+        LegacyDirtyStreamMetrics.Aggregate linkLegacy = legacyReadEnabled()
+                ? legacyStreamMetrics.start("link") : null;
+        LegacyDirtyStreamMetrics.Aggregate scopeLegacy = legacyReadEnabled() && scopeStatsDailyMapper != null
+                ? legacyStreamMetrics.start("scope") : null;
         for (int i = 0; i < backfillDays; i++) {
-            flushDay(todayUtc.minusDays(i));
+            flushDay(todayUtc.minusDays(i), linkLegacy, scopeLegacy);
+        }
+        RedisStreamBatchConsumer.StreamState legacyState = null;
+        if (linkLegacy != null) {
+            legacyState = linkLegacy.publish();
+        }
+        if (scopeLegacy != null) {
+            legacyState = RedisStreamBatchConsumer.StreamState.combine(legacyState, scopeLegacy.publish());
+        }
+        if (legacyState != null) {
+            streamConsumer.publishStreamState(legacyState);
         }
     }
 
-    private void flushDay(LocalDate day) {
-        flushLinkStatsDay(day);
-        flushScopeStatsDay(day);
+    private void flushDay(
+            LocalDate day,
+            LegacyDirtyStreamMetrics.Aggregate linkLegacy,
+            LegacyDirtyStreamMetrics.Aggregate scopeLegacy
+    ) {
+        flushLinkStatsDay(day, linkLegacy);
+        flushScopeStatsDay(day, scopeLegacy);
     }
 
-    private void flushLinkStatsDay(LocalDate day) {
-        String streamKey = AnalyticsKeys.statsDirtyStreamKey(day);
-        if (!streamConsumer.ensureGroup(streamKey)) {
+    private void flushLinkStatsDay(LocalDate day, LegacyDirtyStreamMetrics.Aggregate legacy) {
+        flushVersionedLinkStatsDay(day);
+        if (!legacyReadEnabled()) {
             return;
         }
-
-        while (true) {
-            List<MapRecord<String, Object, Object>> records = readNext(streamKey);
-            if (records == null || records.isEmpty()) {
+        String streamKey = AnalyticsKeys.statsDirtyStreamKey(day);
+        try {
+            if (!streamConsumer.ensureGroup(streamKey)) {
                 return;
             }
 
-            List<String> members = extractMembers(records);
-            if (members.isEmpty()) {
-                streamConsumer.acknowledge(streamKey, records.stream().map(MapRecord::getId).toList());
-                continue;
+            while (true) {
+                List<MapRecord<String, Object, Object>> records = readNext(streamKey);
+                if (records == null || records.isEmpty()) {
+                    return;
+                }
+                List<String> members = extractMembers(records);
+                if (!members.isEmpty() && !flushDirtyMembers(day, members)) {
+                    return;
+                }
+                if (!acknowledgeLegacy(streamKey, records, "link")) {
+                    return;
+                }
             }
-            if (!flushDirtyMembers(day, members)) {
-                return;
-            }
-            streamConsumer.acknowledge(streamKey, records.stream().map(MapRecord::getId).toList());
+        } finally {
+            legacy.observe(streamKey);
         }
     }
 
-    private void flushScopeStatsDay(LocalDate day) {
+    private void flushScopeStatsDay(LocalDate day, LegacyDirtyStreamMetrics.Aggregate legacy) {
         if (scopeStatsDailyMapper == null) {
             return;
         }
-        String streamKey = AnalyticsKeys.scopeDirtyStreamKey(day);
-        if (!streamConsumer.ensureGroup(streamKey)) {
+        flushVersionedScopeStatsDay(day);
+        if (!legacyReadEnabled()) {
             return;
         }
-
-        while (true) {
-            List<MapRecord<String, Object, Object>> records = readNext(streamKey);
-            if (records == null || records.isEmpty()) {
+        String streamKey = AnalyticsKeys.scopeDirtyStreamKey(day);
+        try {
+            if (!streamConsumer.ensureGroup(streamKey)) {
                 return;
             }
 
-            List<String> members = extractMembers(records);
-            if (members.isEmpty()) {
-                streamConsumer.acknowledge(streamKey, records.stream().map(MapRecord::getId).toList());
-                continue;
+            while (true) {
+                List<MapRecord<String, Object, Object>> records = readNext(streamKey);
+                if (records == null || records.isEmpty()) {
+                    return;
+                }
+                List<String> members = extractMembers(records);
+                if (!members.isEmpty() && !flushDirtyScopeMembers(day, members)) {
+                    return;
+                }
+                if (!acknowledgeLegacy(streamKey, records, "scope")) {
+                    return;
+                }
             }
-            if (!flushDirtyScopeMembers(day, members)) {
+        } finally {
+            legacy.observe(streamKey);
+        }
+    }
+
+    private void flushVersionedLinkStatsDay(LocalDate day) {
+        String markerKey = AnalyticsKeys.statsDirtyMarkerV2Key(day);
+        String firstSeenKey = AnalyticsKeys.statsDirtyMarkerV2FirstSeenKey(day);
+        for (int batch = 0; batch < MAX_MARKER_BATCHES_PER_DAY; batch++) {
+            List<VersionedDirtyMarkerStore.Claim> claims = claimMarkers(markerKey, firstSeenKey, "link");
+            if (claims.isEmpty()) {
                 return;
             }
-            streamConsumer.acknowledge(streamKey, records.stream().map(MapRecord::getId).toList());
+            if (!flushDirtyMembers(day, claims.stream().map(VersionedDirtyMarkerStore.Claim::member).toList())) {
+                return;
+            }
+            if (!completeMarkers(markerKey, firstSeenKey, "link", claims)) {
+                return;
+            }
+        }
+    }
+
+    private void flushVersionedScopeStatsDay(LocalDate day) {
+        String markerKey = AnalyticsKeys.scopeDirtyMarkerV2Key(day);
+        String firstSeenKey = AnalyticsKeys.scopeDirtyMarkerV2FirstSeenKey(day);
+        for (int batch = 0; batch < MAX_MARKER_BATCHES_PER_DAY; batch++) {
+            List<VersionedDirtyMarkerStore.Claim> claims = claimMarkers(markerKey, firstSeenKey, "scope");
+            if (claims.isEmpty()) {
+                return;
+            }
+            if (!flushDirtyScopeMembers(day, claims.stream().map(VersionedDirtyMarkerStore.Claim::member).toList())) {
+                return;
+            }
+            if (!completeMarkers(markerKey, firstSeenKey, "scope", claims)) {
+                return;
+            }
+        }
+    }
+
+    private List<VersionedDirtyMarkerStore.Claim> claimMarkers(
+            String markerKey,
+            String firstSeenKey,
+            String markerType
+    ) {
+        try {
+            Long cardinality = redis.opsForHash().size(markerKey);
+            metrics.set("linkforge.analytics.dirty.marker.cardinality",
+                    cardinality == null ? 0L : Math.max(cardinality, 0L), "marker", markerType);
+            List<VersionedDirtyMarkerStore.Claim> claims = markerStore.claim(markerKey, firstSeenKey, BATCH_SIZE);
+            long oldest = claims.stream()
+                    .mapToLong(VersionedDirtyMarkerStore.Claim::firstSeenEpochMillis)
+                    .filter(value -> value > 0)
+                    .min()
+                    .orElse(0L);
+            long age = oldest == 0L ? 0L : Math.max(System.currentTimeMillis() - oldest, 0L);
+            metrics.set("linkforge.analytics.dirty.marker.oldest_age_millis", age, "marker", markerType);
+            return claims;
+        } catch (RuntimeException ex) {
+            metrics.increment("linkforge.job.failures", "job", "analytics_stats_flush", "stage", "marker_claim");
+            log.debug("claim versioned dirty markers failed: marker={}, err={}", markerType, ex.getMessage());
+            return List.of();
+        }
+    }
+
+    private boolean completeMarkers(
+            String markerKey,
+            String firstSeenKey,
+            String markerType,
+            List<VersionedDirtyMarkerStore.Claim> claims
+    ) {
+        try {
+            VersionedDirtyMarkerStore.Completion completion = markerStore.complete(markerKey, firstSeenKey, claims);
+            metrics.add("linkforge.analytics.dirty.marker.completed", completion.completed(), "marker", markerType);
+            metrics.add("linkforge.analytics.dirty.marker.generation_conflicts",
+                    completion.generationConflicts(), "marker", markerType);
+            return true;
+        } catch (RuntimeException ex) {
+            metrics.increment("linkforge.job.failures", "job", "analytics_stats_flush", "stage", "marker_complete");
+            log.debug("complete versioned dirty markers failed: marker={}, err={}", markerType, ex.getMessage());
+            return false;
+        }
+    }
+
+    private boolean legacyReadEnabled() {
+        AnalyticsProperties.DirtyMarker cfg = analyticsProperties == null ? null : analyticsProperties.getDirtyMarker();
+        return cfg == null || cfg.isLegacyReadEnabled();
+    }
+
+    private boolean acknowledgeLegacy(
+            String streamKey,
+            List<MapRecord<String, Object, Object>> records,
+            String markerType
+    ) {
+        List<RecordId> ids = records.stream().map(MapRecord::getId).toList();
+        long acknowledged = streamConsumer.acknowledge(streamKey, ids);
+        reportLegacyDrained(markerType, acknowledged);
+        return acknowledged == ids.size();
+    }
+
+    private void reportLegacyDrained(String markerType, long records) {
+        if (records > 0) {
+            metrics.add("linkforge.analytics.dirty.legacy.drained", records, "marker", markerType);
         }
     }
 
@@ -182,7 +321,7 @@ public class AnalyticsFlushJob {
     }
 
     /**
-     * 将 dirty stream 交付的“链接-日期”成员当前累计值写入 MySQL。
+     * 将 V2 marker 或 legacy Stream 指定的“链接-日期”成员当前累计值写入 MySQL。
      *
      * @return {@code true} 表示本批消息可以 ACK；数据库写入失败时返回 {@code false}，保留 pending
      *         消息供后续调度重试
@@ -267,7 +406,7 @@ public class AnalyticsFlushJob {
     }
 
     /**
-     * 将范围 dirty stream 中的租户、应用和域成员写入范围 UV 日表。
+     * 将范围 V2 marker 或 legacy Stream 中的租户、应用和域成员写入范围 UV 日表。
      *
      * <p>范围成员格式分别为 {@code tenant:tenantId:0}、
      * {@code application:tenantId:applicationId} 和 {@code domain:tenantId:domainId}。同一批重复成员

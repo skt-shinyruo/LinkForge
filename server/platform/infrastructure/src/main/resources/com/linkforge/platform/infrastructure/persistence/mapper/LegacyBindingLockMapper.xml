@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.linkforge.platform.infrastructure.persistence.mapper.LegacyBindingLockMapper">
+
+    <!-- The unique-key write lock is held until the caller's transaction completes. -->
+    <insert id="lockTenant">
+        INSERT INTO platform_legacy_binding_locks (tenant_id)
+        VALUES (#{tenantId})
+        ON DUPLICATE KEY UPDATE tenant_id = #{tenantId}
+    </insert>
+</mapper>

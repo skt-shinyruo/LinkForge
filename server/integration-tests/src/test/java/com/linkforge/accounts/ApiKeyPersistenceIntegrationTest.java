@@ -16,14 +16,12 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = LinkForgeApplication.class, webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 class ApiKeyPersistenceIntegrationTest extends AccountsPersistenceIntegrationTestSupport {
@@ -102,6 +100,11 @@ class ApiKeyPersistenceIntegrationTest extends AccountsPersistenceIntegrationTes
         long applicationId = provisionApplication(registered.principal().getTenantId(), "accounts-api-key-app");
 
         CreatedApiKeyResult firstKey = apiKeyService.create(registered.principal().getTenantId(), applicationId, "first");
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT key_id FROM api_keys WHERE id = ?",
+                String.class,
+                firstKey.id()
+        )).isEqualTo("default");
         pauseForCreatedAtOrdering();
         CreatedApiKeyResult secondKey = apiKeyService.create(registered.principal().getTenantId(), applicationId, "second");
 
@@ -147,6 +150,23 @@ class ApiKeyPersistenceIntegrationTest extends AccountsPersistenceIntegrationTes
                 .singleElement()
                 .satisfies(info -> assertThat(info.lastUsedAt()).isNotNull());
         assertThat(registered.principal().getRoles()).containsExactlyInAnyOrder(StandardRoles.TENANT_ADMIN);
+    }
+
+    @Test
+    void authenticate_shouldRejectKeyImmediatelyAfterBoundApplicationIsDisabled() {
+        AuthResult registered = authService.register(uniqueTenantName(), uniqueEmail("disabled-app-owner"), "password123");
+        long tenantId = registered.principal().getTenantId();
+        long applicationId = provisionApplication(tenantId, "disabled-api-key-app-" + tenantId);
+        CreatedApiKeyResult created = apiKeyService.create(tenantId, applicationId, "disabled-app-key");
+
+        assertThat(apiKeyService.authenticate(created.apiKey()).applicationId()).isEqualTo(applicationId);
+
+        jdbcTemplate.update("UPDATE applications SET status = 'DISABLED' WHERE id = ?", applicationId);
+
+        assertThatThrownBy(() -> apiKeyService.authenticate(created.apiKey()))
+                .isInstanceOf(ApiKeyService.ApiKeyAuthException.class)
+                .extracting(throwable -> ((ApiKeyService.ApiKeyAuthException) throwable).errorCode())
+                .isEqualTo(com.linkforge.contract.openapi.OpenApiErrorCode.API_KEY_INVALID);
     }
 
     private long provisionApplication(long tenantId, String applicationKey) {

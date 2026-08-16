@@ -128,13 +128,15 @@ public class ApiKeyService implements ApiKeyAuthenticator {
         long id = idGenerator.nextId();
         String secret = randomSecret();
         String key = API_KEY_PREFIX + "_" + id + "_" + secret;
+        ApiKeySecretCodec.EncodedSecret encodedSecret = secretCodec.encodeCurrent(secret);
 
         AccountsApiKeyStore.ApiKey apiKey = new AccountsApiKeyStore.ApiKey(
                 id,
                 tenantId,
                 applicationId,
                 name,
-                secretCodec.encode(secret),
+                encodedSecret.hash(),
+                encodedSecret.keyId(),
                 AccountsConstants.STATUS_ACTIVE,
                 null,
                 null
@@ -232,10 +234,16 @@ public class ApiKeyService implements ApiKeyAuthenticator {
             }
             throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_DISABLED);
         }
-        if (!secretCodec.matches(parsed.secret, apiKeyRecord.keyHash())) {
+        if (!secretCodec.matches(parsed.secret, apiKeyRecord.keyHash(), apiKeyRecord.keyId())) {
             throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_INVALID);
         }
         if (apiKeyRecord.applicationId() == null) {
+            throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_INVALID);
+        }
+
+        try {
+            applicationScopePort.requireApplicationExists(apiKeyRecord.tenantId(), apiKeyRecord.applicationId());
+        } catch (BusinessException ex) {
             throw new ApiKeyAuthException(OpenApiErrorCode.API_KEY_INVALID);
         }
 
@@ -351,7 +359,13 @@ public class ApiKeyService implements ApiKeyAuthenticator {
 
         String secret = randomSecret();
         String key = API_KEY_PREFIX + "_" + apiKey.id() + "_" + secret;
-        apiKeyStore.update(withKeyHashAndStatus(apiKey, secretCodec.encode(secret), AccountsConstants.STATUS_ACTIVE));
+        ApiKeySecretCodec.EncodedSecret encodedSecret = secretCodec.encodeCurrent(secret);
+        apiKeyStore.update(withKeyHashAndStatus(
+                apiKey,
+                encodedSecret.hash(),
+                encodedSecret.keyId(),
+                AccountsConstants.STATUS_ACTIVE
+        ));
 
         evictAfterCommit(apiKeyId);
 
@@ -479,11 +493,18 @@ public class ApiKeyService implements ApiKeyAuthenticator {
     }
 
     private void upgradeLegacySecretHash(AccountsApiKeyStore.ApiKey apiKey, String secret) {
-        if (!secretCodec.needsUpgrade(apiKey.keyHash())) {
+        if (!secretCodec.needsUpgrade(apiKey.keyHash(), apiKey.keyId())) {
             return;
         }
         try {
-            apiKeyStore.updateKeyHashIfCurrent(apiKey.id(), apiKey.keyHash(), secretCodec.encode(secret));
+            ApiKeySecretCodec.EncodedSecret encodedSecret = secretCodec.encodeCurrent(secret);
+            apiKeyStore.updateKeyHashIfCurrent(
+                    apiKey.id(),
+                    apiKey.keyHash(),
+                    apiKey.keyId(),
+                    encodedSecret.hash(),
+                    encodedSecret.keyId()
+            );
         } catch (Exception ex) {
             // 兼容升级不参与认证正确性；后续成功请求会再次尝试。
             log.debug("upgrade legacy api_key hash failed: id={}, err={}", apiKey.id(), ex.getMessage());
@@ -497,6 +518,7 @@ public class ApiKeyService implements ApiKeyAuthenticator {
                 apiKey.applicationId(),
                 apiKey.name(),
                 apiKey.keyHash(),
+                apiKey.keyId(),
                 status,
                 apiKey.lastUsedAt(),
                 apiKey.createdAt()
@@ -506,6 +528,7 @@ public class ApiKeyService implements ApiKeyAuthenticator {
     private static AccountsApiKeyStore.ApiKey withKeyHashAndStatus(
             AccountsApiKeyStore.ApiKey apiKey,
             String keyHash,
+            String keyId,
             String status
     ) {
         return new AccountsApiKeyStore.ApiKey(
@@ -514,6 +537,7 @@ public class ApiKeyService implements ApiKeyAuthenticator {
                 apiKey.applicationId(),
                 apiKey.name(),
                 keyHash,
+                keyId,
                 status,
                 apiKey.lastUsedAt(),
                 apiKey.createdAt()

@@ -5,6 +5,7 @@ import com.linkforge.accounts.application.port.AccountsPasswordHasher;
 import com.linkforge.accounts.application.port.ApiKeyAuthCache;
 import com.linkforge.accounts.domain.AccountsConstants;
 import com.linkforge.contract.api.BusinessException;
+import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.contract.openapi.OpenApiErrorCode;
 import com.linkforge.foundation.config.SecurityProperties;
@@ -34,6 +35,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -342,7 +344,9 @@ class ApiKeyServiceTest {
         verify(store).updateKeyHashIfCurrent(
                 eq(123L),
                 eq("$2a$legacy"),
-                argThat(hash -> hash.startsWith(ApiKeySecretCodec.HMAC_SHA256_PREFIX))
+                eq(null),
+                argThat(hash -> hash.startsWith(ApiKeySecretCodec.HMAC_SHA256_PREFIX)),
+                eq("default")
         );
     }
 
@@ -525,6 +529,35 @@ class ApiKeyServiceTest {
 
         String keyWithHugeSecret = "lfk_123_" + "a".repeat(129);
         assertThatThrownBy(() -> service.authenticate(keyWithHugeSecret))
+                .isInstanceOf(ApiKeyService.ApiKeyAuthException.class)
+                .extracting(ex -> ((ApiKeyService.ApiKeyAuthException) ex).errorCode())
+                .isEqualTo(OpenApiErrorCode.API_KEY_INVALID);
+    }
+
+    @Test
+    void authenticate_shouldRequireBoundApplicationToRemainActive() {
+        AccountsApiKeyStore store = mock(AccountsApiKeyStore.class);
+        AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
+        ApiKeyAuthCache authCache = mock(ApiKeyAuthCache.class);
+        ApplicationScopePort applicationScopePort = mock(ApplicationScopePort.class);
+        SecurityProperties props = new SecurityProperties();
+        props.getApiKey().setAuthCacheTtlSeconds(0);
+        props.getApiKey().setLastUsedUpdateIntervalSeconds(0);
+        ApiKeyService service = newService(store, passwordHasher, props, authCache, applicationScopePort);
+        when(store.findById(123L)).thenReturn(new AccountsApiKeyStore.ApiKey(
+                123L, 1L, 2001L, "test-key", "legacy-hash", AccountsConstants.STATUS_ACTIVE, null, null
+        ));
+        when(passwordHasher.matches("secret", "legacy-hash")).thenReturn(true);
+
+        ApiKeyAuthResult result = service.authenticate("lfk_123_secret");
+
+        assertThat(result.applicationId()).isEqualTo(2001L);
+        verify(applicationScopePort).requireApplicationExists(1L, 2001L);
+
+        doThrow(new BusinessException(ErrorCode.NOT_FOUND, "应用不存在"))
+                .when(applicationScopePort).requireApplicationExists(1L, 2001L);
+
+        assertThatThrownBy(() -> service.authenticate("lfk_123_secret"))
                 .isInstanceOf(ApiKeyService.ApiKeyAuthException.class)
                 .extracting(ex -> ((ApiKeyService.ApiKeyAuthException) ex).errorCode())
                 .isEqualTo(OpenApiErrorCode.API_KEY_INVALID);

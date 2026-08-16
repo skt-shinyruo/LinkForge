@@ -38,4 +38,14 @@ class AnalyticsPropertiesTest {
 
         assertThat(properties.resolveVisitStreamMaxLen()).isZero();
     }
+
+    @Test
+    void resolveVisitStreamRequiredCapacity_shouldIncludeRecoverySafetyMargin() {
+        AnalyticsProperties properties = new AnalyticsProperties();
+        properties.getVisitStream().setPeakEventsPerSecond(1_000L);
+        properties.getVisitStream().setRecoveryWindowSeconds(180L);
+        properties.getVisitStream().setSafetyMarginPercent(10);
+
+        assertThat(properties.resolveVisitStreamRequiredCapacity()).isEqualTo(198_000L);
+    }
 }

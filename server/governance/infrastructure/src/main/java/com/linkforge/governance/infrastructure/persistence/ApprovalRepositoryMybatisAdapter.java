@@ -1,5 +1,6 @@
 package com.linkforge.governance.infrastructure.persistence;
 
+import com.linkforge.governance.application.ApprovalRequestSummaryResult;
 import com.linkforge.governance.application.port.ApprovalRepository;
 import com.linkforge.governance.domain.ApprovalRequest;
 import com.linkforge.governance.domain.ApprovalStatus;
@@ -42,8 +43,34 @@ public class ApprovalRepositoryMybatisAdapter implements ApprovalRepository {
     }
 
     @Override
-    public List<ApprovalRequest> listByTenantId(long tenantId) {
-        return mapper.listByTenantId(tenantId).stream().map(this::toDomain).toList();
+    public List<ApprovalRequestSummaryResult> listSummaries(
+            long tenantId,
+            ApprovalStatus status,
+            LocalDateTime cursorCreatedAt,
+            Long cursorId,
+            int limit
+    ) {
+        return mapper.listSummaries(
+                        tenantId,
+                        status == null ? null : status.name(),
+                        cursorCreatedAt,
+                        cursorId,
+                        limit
+                ).stream()
+                .map(entity -> new ApprovalRequestSummaryResult(
+                        entity.getId(),
+                        entity.getTenantId(),
+                        SensitiveOperationType.valueOf(entity.getOperationType()),
+                        entity.getTargetApplicationId(),
+                        entity.getRequestedByUserId(),
+                        entity.getRequestedByEmail(),
+                        ApprovalStatus.valueOf(entity.getStatus()),
+                        entity.getApproverUserId(),
+                        entity.getApproverEmail(),
+                        entity.getDecisionReason(),
+                        entity.getCreatedAt()
+                ))
+                .toList();
     }
 
     /**

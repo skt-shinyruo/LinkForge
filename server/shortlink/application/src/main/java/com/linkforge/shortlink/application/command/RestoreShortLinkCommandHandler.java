@@ -80,7 +80,6 @@ public class RestoreShortLinkCommandHandler {
             if (!shortLinkRepository.update(link)) {
                 throw new BusinessException(ShortLinkErrorCode.LINK_STALE_WRITE);
             }
-            link.incrementVersion();
             domainEventDispatcher.publish(link, occurredAtUtc);
             RedirectCacheInvalidations.enqueueAndRunAfterCommit(
                     redirectCacheInvalidationOutbox,

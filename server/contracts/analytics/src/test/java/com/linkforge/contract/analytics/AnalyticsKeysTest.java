@@ -15,6 +15,20 @@ class AnalyticsKeysTest {
         assertThat(AnalyticsKeys.pvKey(12L, 34L, day)).isEqualTo("stats:pv:12:34:20260219");
         assertThat(AnalyticsKeys.uvKey(12L, 34L, day)).isEqualTo("stats:uv:12:34:20260219");
         assertThat(AnalyticsKeys.scopeDirtyStreamKey(day)).isEqualTo("stats:dirty:scope:20260219");
+        assertThat(AnalyticsKeys.DIRTY_MARKER_WIRE_VERSION).isEqualTo("v2");
+        assertThat(AnalyticsKeys.statsDirtyMarkerV2Key(day)).isEqualTo("stats:dirty:v2:link:20260219");
+        assertThat(AnalyticsKeys.statsDirtyMarkerV2FirstSeenKey(day))
+                .isEqualTo("stats:dirty:v2:link:first-seen:20260219");
+        assertThat(AnalyticsKeys.scopeDirtyMarkerV2Key(day)).isEqualTo("stats:dirty:v2:scope:20260219");
+        assertThat(AnalyticsKeys.scopeDirtyMarkerV2FirstSeenKey(day))
+                .isEqualTo("stats:dirty:v2:scope:first-seen:20260219");
+        assertThat(AnalyticsKeys.dimDirtyMarkerV2Key(day)).isEqualTo("stats:dirty:v2:dim:20260219");
+        assertThat(AnalyticsKeys.dimDirtyMarkerV2FirstSeenKey(day))
+                .isEqualTo("stats:dirty:v2:dim:first-seen:20260219");
+        assertThat(AnalyticsKeys.dirtyMarkerClaimCursorKey(AnalyticsKeys.statsDirtyMarkerV2Key(day)))
+                .isEqualTo("stats:dirty:v2:link:20260219:claim:cursor");
+        assertThat(AnalyticsKeys.dirtyMarkerClaimOverflowKey(AnalyticsKeys.statsDirtyMarkerV2Key(day)))
+                .isEqualTo("stats:dirty:v2:link:20260219:claim:overflow");
         assertThat(AnalyticsKeys.tenantScopeUvKey(12L, day)).isEqualTo("stats:scope:uv:tenant:12:20260219");
         assertThat(AnalyticsKeys.applicationScopeUvKey(12L, 56L, day)).isEqualTo("stats:scope:uv:application:12:56:20260219");
         assertThat(AnalyticsKeys.domainScopeUvKey(12L, 78L, day)).isEqualTo("stats:scope:uv:domain:12:78:20260219");

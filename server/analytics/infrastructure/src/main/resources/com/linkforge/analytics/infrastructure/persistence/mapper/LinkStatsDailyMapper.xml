@@ -5,7 +5,7 @@
 <mapper namespace="com.linkforge.analytics.infrastructure.persistence.mapper.LinkStatsDailyMapper">
 
     <insert id="batchUpsert">
-        <!-- Redis 读取的是累计快照；GREATEST 允许 dirty stream 重放而不会把日统计倒退。 -->
+        <!-- Redis 读取的是累计快照；GREATEST 允许 V2 marker 或 legacy 兼容消息重复刷新而不会把日统计倒退。 -->
         INSERT INTO link_stats_daily (link_id, tenant_id, day, pv, uv, updated_at)
         VALUES
         <foreach collection="list" item="r" separator=",">

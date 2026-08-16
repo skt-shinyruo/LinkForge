@@ -33,8 +33,8 @@ export function useTenantOverviewPage() {
       ]);
       applications.value = nextApplications;
       domains.value = nextDomains;
-      approvals.value = nextApprovals;
-      auditLogs.value = nextAuditLogs;
+      approvals.value = nextApprovals.items;
+      auditLogs.value = nextAuditLogs.items;
     } catch (caught) {
       error.value = getErrorMessage(caught, "加载概览失败");
     } finally {

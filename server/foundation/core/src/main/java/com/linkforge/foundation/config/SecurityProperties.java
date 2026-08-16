@@ -132,8 +132,20 @@ public class SecurityProperties {
      * active 缓存视为凭据授权事实。新凭据使用带服务端 pepper 的 HMAC-SHA256，历史 BCrypt 会在成功认证时升级。</p>
      */
     public static class ApiKey {
-        /** API Key HMAC pepper；为空时兼容使用 JWT secret，生产环境建议配置独立随机值。 */
+        /** 旧版单 pepper 配置；新部署应使用 current/previous keyring。 */
         private String hmacPepper;
+        /** 当前写入摘要使用的稳定 key id。 */
+        private String currentKeyId = "default";
+        /** 当前写入摘要使用的独立 pepper。 */
+        private String currentPepper;
+        /** 轮换窗口内仍允许验证的上一代 key id。 */
+        private String previousKeyId;
+        /** 轮换窗口内仍允许验证的上一代 pepper。 */
+        private String previousPepper;
+        /** 无 key id 历史 HMAC 摘要的显式兼容 pepper。 */
+        private String legacyPepper;
+        /** 非生产兼容开关；允许缺少独立 pepper 时回退 JWT secret。strict 模式禁止开启。 */
+        private boolean legacyJwtFallbackEnabled = true;
         /**
          * 认证成功后写回 last_used_at 的最小间隔（秒）。
          *
@@ -157,6 +169,54 @@ public class SecurityProperties {
 
         public void setHmacPepper(String hmacPepper) {
             this.hmacPepper = hmacPepper;
+        }
+
+        public String getCurrentKeyId() {
+            return currentKeyId;
+        }
+
+        public void setCurrentKeyId(String currentKeyId) {
+            this.currentKeyId = currentKeyId;
+        }
+
+        public String getCurrentPepper() {
+            return currentPepper;
+        }
+
+        public void setCurrentPepper(String currentPepper) {
+            this.currentPepper = currentPepper;
+        }
+
+        public String getPreviousKeyId() {
+            return previousKeyId;
+        }
+
+        public void setPreviousKeyId(String previousKeyId) {
+            this.previousKeyId = previousKeyId;
+        }
+
+        public String getPreviousPepper() {
+            return previousPepper;
+        }
+
+        public void setPreviousPepper(String previousPepper) {
+            this.previousPepper = previousPepper;
+        }
+
+        public String getLegacyPepper() {
+            return legacyPepper;
+        }
+
+        public void setLegacyPepper(String legacyPepper) {
+            this.legacyPepper = legacyPepper;
+        }
+
+        public boolean isLegacyJwtFallbackEnabled() {
+            return legacyJwtFallbackEnabled;
+        }
+
+        public void setLegacyJwtFallbackEnabled(boolean legacyJwtFallbackEnabled) {
+            this.legacyJwtFallbackEnabled = legacyJwtFallbackEnabled;
         }
 
         public long getLastUsedUpdateIntervalSeconds() {

@@ -17,8 +17,9 @@ import java.util.Map;
  * 将不可写入的访问明细复制到同源 Stream 的诊断 DLQ。
  *
  * <p>DLQ key 固定为 {@code {visitStream}:dlq}，仅保留定位所需的 streamId、租户、链接、requestId、
- * 分类原因和截断后的错误文本，不复制原始 UA/IP 等敏感字段。写入和裁剪均为 best-effort：失败只记日志，
- * 上游仍会 ACK 已确认的 poison record，以避免一个诊断设施故障阻塞消费组。</p>
+ * 分类原因和截断后的错误文本，不复制原始 UA/IP 等敏感字段。只有 DLQ 记录成功写入后，上游才能 ACK
+ * poison record；写入失败返回 {@code false}，让原消息留在 pending 等待重试。裁剪与容量指标是写入后的
+ * best-effort 维护，不影响已持久化记录的成功结果。</p>
  */
 @Component
 public class VisitEventDeadLetterWriter {
@@ -43,11 +44,13 @@ public class VisitEventDeadLetterWriter {
     }
 
     /**
-     * 尽力记录一条数据完整性错误，不向调用方传播 Redis 异常。
+     * 记录一条数据完整性错误，不向调用方传播 Redis 异常。
+     *
+     * @return DLQ 记录已经写入时返回 {@code true}；参数无效或写入失败时返回 {@code false}
      */
-    public void write(String streamKey, RecordId recordId, LinkVisitEventInsertRow row, Exception error) {
+    public boolean write(String streamKey, RecordId recordId, LinkVisitEventInsertRow row, Exception error) {
         if (redis == null || streamKey == null || streamKey.isBlank() || row == null) {
-            return;
+            return false;
         }
         String dlqKey = streamKey + DLQ_SUFFIX;
 
@@ -61,17 +64,29 @@ public class VisitEventDeadLetterWriter {
         fields.put("err", truncate(error == null ? null : error.getMessage(), 200));
 
         try {
-            redis.opsForStream().add(StreamRecords.newRecord().in(dlqKey).ofStrings(fields));
+            RecordId written = redis.opsForStream().add(StreamRecords.newRecord().in(dlqKey).ofStrings(fields));
+            if (written == null) {
+                metrics.increment("linkforge.dead_letter.events", "source", "analytics_visit_ingest", "result", "failure");
+                return false;
+            }
+        } catch (Exception ex) {
+            metrics.increment("linkforge.dead_letter.events", "source", "analytics_visit_ingest", "result", "failure");
+            log.warn("dead-letter write failed: streamId={}, err={}", recordId, ex.getMessage());
+            return false;
+        }
+
+        metrics.increment("linkforge.dead_letter.events", "source", "analytics_visit_ingest", "result", "written");
+        try {
             redis.opsForStream().trim(dlqKey, DLQ_MAX_LEN, true);
-            metrics.increment("linkforge.dead_letter.events", "source", "analytics_visit_ingest", "result", "written");
             Long size = redis.opsForStream().size(dlqKey);
             if (size != null) {
                 metrics.set("linkforge.dead_letter.size", size, "source", "analytics_visit_ingest");
             }
         } catch (Exception ex) {
-            metrics.increment("linkforge.dead_letter.events", "source", "analytics_visit_ingest", "result", "failure");
-            log.debug("dead-letter write failed: streamId={}, err={}", recordId, ex.getMessage());
+            metrics.increment("linkforge.dead_letter.maintenance_failures", "source", "analytics_visit_ingest");
+            log.debug("dead-letter maintenance failed: streamId={}, err={}", recordId, ex.getMessage());
         }
+        return true;
     }
 
     private static String truncate(String value, int maxLen) {

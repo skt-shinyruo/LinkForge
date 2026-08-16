@@ -43,6 +43,15 @@
       "heading": "事务后动作"
     },
     {
+      "id": "foundation.csv-formula-neutralization",
+      "context": "foundation",
+      "sources": [
+        "server/foundation/core/src/main/java/com/linkforge/foundation/util/CsvFormulaNeutralizer.java"
+      ],
+      "document": "docs/reference/shortlink-management.md",
+      "heading": "CSV 导入导出"
+    },
+    {
       "id": "accounts.auth-and-session",
       "context": "accounts",
       "sources": [
@@ -58,6 +67,7 @@
       "context": "accounts",
       "sources": [
         "server/accounts/application/src/main/java/com/linkforge/accounts/application/ApiKeyService.java",
+        "server/accounts/application/src/main/java/com/linkforge/accounts/application/ApiKeySecretCodec.java",
         "server/accounts/infrastructure/src/main/java/com/linkforge/accounts/infrastructure/cache/RedisApiKeyAuthCache.java"
       ],
       "document": "docs/reference/openapi-api-key.md",
@@ -69,6 +79,7 @@
       "sources": [
         "server/platform/application/src/main/java/com/linkforge/platform/application/ApplicationProvisioningService.java",
         "server/platform/application/src/main/java/com/linkforge/platform/application/PlatformControlPlaneService.java",
+        "server/platform/application/src/main/java/com/linkforge/platform/application/LegacyApplicationBindingService.java",
         "server/platform/domain/src/main/java/com/linkforge/platform/domain/Hostname.java"
       ],
       "document": "docs/reference/platform-control-plane.md",
@@ -95,6 +106,18 @@
       ],
       "document": "docs/reference/shortlink-management.md",
       "heading": "更新、审批、归档和删除"
+    },
+    {
+      "id": "shortlink.ownership-reconciliation",
+      "context": "shortlink",
+      "sources": [
+        "server/shortlink/application/src/main/java/com/linkforge/shortlink/application/migration/ShortLinkOwnershipReconciliationService.java",
+        "server/shortlink/application/src/main/java/com/linkforge/shortlink/application/migration/LegacyShortLinkBackfillService.java",
+        "server/shortlink/infrastructure/src/main/java/com/linkforge/shortlink/infrastructure/persistence/repository/MybatisLegacyShortLinkBackfillStore.java",
+        "server/app/src/main/resources/db/migration/V29__shortlink_ownership_backfill_progress.sql"
+      ],
+      "document": "docs/reference/shortlink-management.md",
+      "heading": "历史所有权对账"
     },
     {
       "id": "shortlink.cache-outbox",
@@ -132,6 +155,7 @@
       "context": "analytics",
       "sources": [
         "server/analytics/application/src/main/java/com/linkforge/analytics/application/AnalyticsVisitEventService.java",
+        "server/analytics/infrastructure/src/main/java/com/linkforge/analytics/infrastructure/RedisAnalyticsVisitEventAppender.java",
         "server/analytics/infrastructure/src/main/java/com/linkforge/analytics/infrastructure/job/AnalyticsRedirectEventProjectorJob.java",
         "server/analytics/infrastructure/src/main/java/com/linkforge/analytics/infrastructure/job/AnalyticsRedisAggregateWriter.java"
       ],
@@ -144,7 +168,11 @@
       "sources": [
         "server/analytics/infrastructure/src/main/java/com/linkforge/analytics/infrastructure/job/AnalyticsFlushJob.java",
         "server/analytics/infrastructure/src/main/java/com/linkforge/analytics/infrastructure/job/AnalyticsDimensionFlushJob.java",
-        "server/analytics/infrastructure/src/main/java/com/linkforge/analytics/infrastructure/job/AnalyticsEventIngestJob.java"
+        "server/analytics/infrastructure/src/main/java/com/linkforge/analytics/infrastructure/job/AnalyticsEventIngestJob.java",
+        "server/analytics/infrastructure/src/main/java/com/linkforge/analytics/infrastructure/job/VisitEventDeadLetterWriter.java",
+        "server/analytics/infrastructure/src/main/java/com/linkforge/analytics/infrastructure/job/VersionedDirtyMarkerStore.java",
+        "server/analytics/infrastructure/src/main/java/com/linkforge/analytics/infrastructure/job/RedisStreamBatchConsumer.java",
+        "server/analytics/infrastructure/src/main/java/com/linkforge/analytics/infrastructure/job/LegacyDirtyStreamMetrics.java"
       ],
       "document": "docs/reference/analytics-ingestion-and-reporting.md",
       "heading": "落库与明细"
@@ -154,7 +182,8 @@
       "context": "analytics",
       "sources": [
         "server/analytics/application/src/main/java/com/linkforge/analytics/application/AnalyticsReportingApplicationService.java",
-        "server/analytics/application/src/main/java/com/linkforge/analytics/application/AnalyticsExportRequestService.java"
+        "server/analytics/application/src/main/java/com/linkforge/analytics/application/AnalyticsExportRequestService.java",
+        "server/analytics/application/src/main/java/com/linkforge/analytics/application/ReportRange.java"
       ],
       "document": "docs/reference/analytics-ingestion-and-reporting.md",
       "heading": "报表查询"
@@ -168,6 +197,15 @@
       ],
       "document": "docs/reference/governance-approval-audit.md",
       "heading": "审批执行"
+    },
+    {
+      "id": "governance.keyset-pagination",
+      "context": "governance",
+      "sources": [
+        "server/governance/application/src/main/java/com/linkforge/governance/application/GovernanceCursorCodec.java"
+      ],
+      "document": "docs/reference/governance-approval-audit.md",
+      "heading": "审批与审计列表分页"
     },
     {
       "id": "frontend.session-and-transport",
@@ -197,7 +235,8 @@
       "context": "frontend",
       "sources": [
         "web/src/composables/useStatsPage.ts",
-        "web/src/composables/useApplicationDetailPage.ts"
+        "web/src/composables/useApplicationDetailPage.ts",
+        "web/src/components/stats/LinkTrendPanel.vue"
       ],
       "document": "docs/reference/frontend-console.md",
       "heading": "统计页"

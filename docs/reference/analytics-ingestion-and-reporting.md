@@ -40,12 +40,12 @@ Analytics 接收 Redirect 的访问事件，异步构建 PV、UV、维度统计�
   <text class="text" x="875" y="65" text-anchor="middle">AnalyticsRedirectEventProjectorJob</text>
   <text class="small" x="875" y="88" text-anchor="middle">消费访问 stream</text>
   <text class="small" x="875" y="108" text-anchor="middle">写 Redis PV / UV / 维度</text>
-  <text class="small" x="875" y="128" text-anchor="middle">写 dirty stream</text>
+  <text class="small" x="875" y="128" text-anchor="middle">推进 V2 marker</text>
   <text class="small" x="875" y="148" text-anchor="middle">成功 ack</text>
 
   <rect class="job" x="250" y="245" width="180" height="100"/>
   <text class="text" x="340" y="275" text-anchor="middle">AnalyticsFlushJob</text>
-  <text class="small" x="340" y="298" text-anchor="middle">消费 dirty stream</text>
+  <text class="small" x="340" y="298" text-anchor="middle">刷新 V2 + 兼容读</text>
   <text class="small" x="340" y="318" text-anchor="middle">PV/HLL UV upsert</text>
 
   <rect class="job" x="500" y="245" width="190" height="100"/>
@@ -94,7 +94,10 @@ Redirect 只在真实跳转前调用 `VisitRecorderPort.recordVisit()`。preview
 - 规范化 Referer、语言、User-Agent、设备、UTM。
 - 计算 `visitorKey = sha256(day|ip|ua|salt)`，用于日 UV；同一访客跨 UTC 日会产生不同 key。
 - 计算 `ipHash = sha256(ip|salt)`，用于明细排障关联，不落明文 IP。
-- 对 stream 做近似 trim，限制长度。
+- 用单条 `XADD MAXLEN ~` 原子追加并近似 trim，避免 `XADD` 与独立 `XTRIM` 之间的竞态。
+
+访问流最低容量按 `peak-events-per-second * recovery-window-seconds * (1 + safety-margin-percent/100)`
+向上取整。`visit-stream.max-len` 为空时兼容回退到 `events.stream-max-len`；启动校验拒绝低于容量预算的配置。
 
 `ipHash` 不包含日期，能跨日关联相同 IP，因此属于假名化标识而不是匿名数据。salt 必须在生产覆盖并限制访问；更换 salt 会切断新旧指纹连续性。User-Agent、tracking value 和维度值会截断，但仍可能包含隐私信息。
 
@@ -117,26 +120,39 @@ Redirect 只在真实跳转前调用 `VisitRecorderPort.recordVisit()`。preview
 - link 日 PV：Redis string `INCR`。
 - link 日 UV：Redis HyperLogLog。
 - tenant/application/domain scope UV。
-- link、scope 和可选维度 dirty stream，供 flush job 找到需要落库的统计键。
+- link、scope 和可选维度 V2 generation marker Hash，以及同 field 的 first-seen Hash，供 flush job 找到需要落库的统计键。
 - 可选维度统计：维度 PV hash 和维度 UV HLL。
 
-不存在 active set。dirty link member 固定为 `{tenantId}:{linkId}`，只表达“该累计值需要刷新”；删除这条消息不会删除 Redis PV/HLL。
+不存在 active set。dirty link member 固定为 `{tenantId}:{linkId}`，只表达“该累计值需要刷新”；删除 marker
+不会删除 Redis PV/HLL。每次聚合变化都在同一 Lua 脚本中 `HINCRBY` generation，首次变脏时间用
+`HSETNX` 保持，因此高频点击不会无限增加 marker cardinality，也不会刷新最老等待年龄。
+
+新 producer 默认只写 V2。`dirty-marker.legacy-write-enabled=true` 仅在回滚窗口 additive 追加旧 Stream，不能
+代替 V2；consumer 默认同时刷新 V2 marker 和 legacy Stream，以支持滚动升级中的旧实例与历史消息。
+
+flush 的 V2 扫描使用 `AnalyticsKeys` 生成的 `:claim:cursor` 和 `:claim:overflow` 状态键。两者只保存跨调度、
+跨实例的公平轮转进度，并跟随 marker TTL；marker 清空或过期时一并清理，不改变已发布的 marker/member wire shape。
 
 ## 落库与明细
 
 `AnalyticsFlushJob`：
 
 - 定时回刷最近 N 天。
-- 通过 consumer group 消费 link stats dirty stream，把 Redis 当前 PV 和 HLL UV upsert 到 `link_stats_daily`。
-- 消费 scope dirty stream，把租户、应用、域名统计 upsert 到 scope stats 表。
+- 扫描 link V2 marker，把 Redis 当前 PV 和 HLL UV upsert 到 `link_stats_daily`，随后按 claimed generation 做 compare-and-delete。
+- 扫描 scope V2 marker，把租户、应用、域名当前统计 upsert 到 scope stats 表，再完成相同的 generation CAS。
+- V2 marker 使用 Redis 持久化的 HSCAN cursor；紧凑 Hash 一次返回但超过批次上限的成员进入同 marker 的有界 overflow 队列。
+  cursor、overflow 都跟随 marker TTL，供多实例和重启共享轮转进度；每次 claim 返回严格不超过 `BATCH_SIZE`，避免持续
+  generation 冲突的前部成员让冷尾成员饥饿。实现只使用有界 HSCAN，不使用 `KEYS` 或 `HGETALL`。
+- 兼容读开启时继续通过 consumer group 排空 link/scope legacy dirty Stream。
 - 使用 ShedLock 防止多实例重复执行。
-- MySQL 写入成功后才 ACK；失败记录留在 pending。重复 dirty 消息只会重复读取当前累计值和 upsert，不会由 flush 自身增加 PV。
+- MySQL 写入成功后才完成 V2 CAS 或 ACK legacy 消息。写库期间 generation 前进时 CAS 冲突会保留 marker；
+  legacy 失败记录留在 pending。两者重放都只读取当前累计值和 upsert，不会由 flush 自身增加 PV。
 
 `AnalyticsDimensionFlushJob`：
 
 - 仅在 dimensions enabled 时运行。
-- 消费维度 dirty stream。
-- 按维度 dirty stream 指定的 link member 扫描配置维度 Hash/HLL，写入 `link_stats_dim_daily`，不扫描 active set。
+- 扫描维度 V2 marker；兼容读开启时继续排空 legacy 维度 Stream。
+- 按 marker 指定的 link member 扫描配置维度 Hash/HLL，写入 `link_stats_dim_daily`，不扫描 active set。
 
 `AnalyticsEventIngestJob`：
 
@@ -144,11 +160,14 @@ Redirect 只在真实跳转前调用 `VisitRecorderPort.recordVisit()`。preview
 - 创建并消费 Redis Stream consumer group。
 - 优先处理本 consumer pending，再接管闲置 pending，最后读取新消息。
 - 按 sampleRate 决定是否保存访问明细。
-- insert ignore 成功后 ack。
-- 数据完整性异常时逐条隔离 poison record，best-effort 写 dead letter 后 ack poison。
-- 普通 DB 异常保留 pending，等待重试。
+- 在 `ingest-batch-size`、`ingest-max-batches` 和 `ingest-time-budget-ms` 三重边界内连续恢复 backlog。
+- insert ignore 成功后 ack；普通数据库失败会停止本轮，避免在同一次调度内紧循环重试。
+- 数据完整性异常时逐条隔离 poison record；只有 dead letter 已写入后才 ACK poison。
+- 普通 DB 异常或 DLQ 写入失败都保留当前消息 pending，等待重试。
 
-DLQ writer 自己吞 Redis 异常。极端情况下 poison 已被判定并 ACK，但 `:dlq` 写入失败，因此 DLQ 不是无损审计日志。采样未命中的消息直接 ACK，不会进入明细表或 DLQ。
+DLQ writer 不向调度线程传播 Redis 异常，但会返回持久化结果并记录有界失败指标。DLQ 写入失败时原消息不 ACK；
+写入成功后的近似裁剪和容量采样是 best-effort 维护，不会改变已持久化结果。采样未命中的消息直接 ACK，
+不会进入明细表或 DLQ。
 
 ## 报表查询
 
@@ -170,6 +189,9 @@ DLQ writer 自己吞 Redis 异常。极端情况下 poison 已被判定并 ACK�
 
 `AnalyticsReportingApplicationService` 会通过 `AnalyticsLinkSummaryEnricher` 调 Shortlink 读端口补齐 Top 链接的 code、shortUrl、originalUrl。如果短链已删除，返回 `deleted=true`。
 
+所有报表、访问明细和导出申请共用 `ReportRange`：日期按 UTC 自然日解释、首尾都包含，单日为 1 天，最多
+366 天。`from > to`、367 天及更长范围在查询或审批副作用之前返回 `BAD_REQUEST`；闰年完整 366 天合法。
+
 统计口径限制：
 
 - 日 UV 是 HLL 近似值。
@@ -184,7 +206,7 @@ DLQ writer 自己吞 Redis 异常。极端情况下 poison 已被判定并 ACK�
 1. 调 `ShortLinkReadPort.findOwnership()` 校验短链属于当前租户。
 2. 如果路径带 applicationId，校验短链属于该应用。
 3. 默认时间范围是最近 1 天。
-4. 校验 `from <= to`。
+4. 用统一 `ReportRange` 校验 `from <= to` 且最多包含 366 个 UTC 自然日。
 5. 调 `ApprovalSubmissionPort.requestAnalyticsDetailExportApproval()` 提交审批。
 
 当前代码只完成审批请求创建和审计，尚未实现审批通过后的文件生成执行器。
@@ -218,14 +240,34 @@ DLQ writer 自己吞 Redis 异常。极端情况下 poison 已被判定并 ACK�
 
 统计链路是最终一致的，不宣称端到端 exactly-once。标准事件的 Stream 重投由 requestId 幂等投影保护，但调用端重复
 生成事件、历史无 requestId 消息以及跨 Redis/MySQL 的异步延迟仍需单独处理。基础 PV/UV 依赖 projector 和
-dirty-stream flush；访问明细还受 `events.enabled` 和 `sampleRate` 影响。
+V2 marker flush；兼容期还会排空 legacy dirty Stream。访问明细还受 `events.enabled` 和 `sampleRate` 影响。
+
+legacy 读退役必须经过外部 rollout 证据，而不是由一次本地测试推断：确认所有旧 producer 停写并记录
+`legacy-write-stopped-at`，持续观察 legacy remaining、last-write age 和 drained 指标确认排空并记录
+`legacy-drained-at`，再从两个时间中的较晚者起等待完整 `compatibility-ttl-days`。只有同时关闭 legacy write、
+设置 retirement confirmed 且两个时间均已越过 TTL，启动门禁才允许关闭 legacy read。默认配置保持 dual-read。
+
+legacy dirty Stream 的 `XLEN` 包含已经 ACK、但尚未被裁剪的历史记录，不能作为剩余工作量。
+`linkforge.analytics.dirty.legacy.retained_entries` 明确只表示保留记录；实际剩余工作由同一 consumer group 的
+`lag + pending` 组成，分别通过 `.lag`、`.pending` 和汇总的 `.remaining` 暴露。link、scope、dimension 各用固定
+`marker` 标签，并在一次调度内汇总全部回填日期；stats job 的健康状态再合并 link 与 scope，避免日期或 stream key
+形成高基数标签。任一 consumer-group 观测不完整时 remaining 为 `-1`；retained、last-write 或 group 任一观测
+不完整都会令 `.observation_degraded=1`。`.drained` 只累计 Redis 实际 ACK 的数量，ACK 异常或部分成功不会把
+请求批量误报为已排空；ingest、projector 和 legacy flush 都会在 ACK 不完整时停止本轮，让剩余 pending 留待重试。
 
 排障按层定位：
 
-1. visit stream 长度、projector group lag/pending 和失败消息。
-2. Redis PV/HLL 当前值以及 link/scope/dimension dirty stream pending。
+1. visit stream 的 lag、pending、reclaim、最老未处理年龄、DLQ 和 job health 四态。
+2. Redis PV/HLL 当前值、V2 marker cardinality/最老年龄/generation 冲突，以及 legacy retained entries、remaining、last-write age。
 3. flush 日志、ShedLock 和 MySQL upsert 时间。
 4. 明细 consumer name、pending reclaim、采样率与 `stats:visit:events:dlq`。
 5. catalog checkpoint 与 Shortlink 摘要补全。
+
+关键有界指标包括 `linkforge.analytics.fail_open` / `linkforge.analytics.degraded`（component、稳定 reason），
+`linkforge.stream.lag` / `pending` / `remaining` / `oldest_unprocessed_age_millis`，以及
+`linkforge.analytics.dirty.marker.cardinality` / `oldest_age_millis` / `generation_conflicts`。job health 固定使用
+`no_traffic`、`draining`、`backlog`、`degraded` 四个有界 state：已 ACK 但仍被 Stream 保留的历史长度不算
+backlog；已知剩余量为零是 no traffic，首次非零或持平/下降是 draining，连续观测增长才是 backlog，pending 或
+XINFO 无法观测时是 degraded。观测恢复后的首个非零样本重新从 draining 开始，避免用故障前陈旧基线误报增长。
 
 点击额度另有故障分层：Redis reservation adapter 的 Redis、返回 null、baseline 查询和 seed 异常全部固定 fail-open；`app.analytics.quota.fail-open` 只控制 Redirect 外层仍收到的 Platform quota 查询或端口异常。额度 key 首次建立以已落库 PV 为 baseline，因此尚未 flush 的访问和 fail-open 窗口可能造成低估。

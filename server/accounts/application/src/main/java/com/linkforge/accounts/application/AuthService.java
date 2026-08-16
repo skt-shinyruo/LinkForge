@@ -13,7 +13,11 @@ import com.linkforge.contract.accounts.AccountsErrorCode;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.security.StandardRoles;
+import com.linkforge.foundation.tx.PostCommitHookPort;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +38,9 @@ import java.util.stream.Collectors;
 @Service
 public class AuthService {
 
+    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
+    private static final String DUMMY_PASSWORD = "linkforge-dummy-password-verification";
+
     private final SnowflakeIdGenerator idGenerator;
     private final AccountsTenantStore tenantStore;
     private final AccountsUserStore userStore;
@@ -41,6 +48,8 @@ public class AuthService {
     private final AccountsPasswordHasher passwordHasher;
     private final AccountsTokenIssuer tokenIssuer;
     private final AccountStatusCache statusCache;
+    private final PostCommitHookPort postCommitHookPort;
+    private final String dummyPasswordHash;
 
     public AuthService(
             SnowflakeIdGenerator idGenerator,
@@ -51,6 +60,29 @@ public class AuthService {
             AccountsTokenIssuer tokenIssuer,
             AccountStatusCache statusCache
     ) {
+        this(
+                idGenerator,
+                tenantStore,
+                userStore,
+                userRoleStore,
+                passwordHasher,
+                tokenIssuer,
+                statusCache,
+                Runnable::run
+        );
+    }
+
+    @Autowired
+    public AuthService(
+            SnowflakeIdGenerator idGenerator,
+            AccountsTenantStore tenantStore,
+            AccountsUserStore userStore,
+            AccountsUserRoleStore userRoleStore,
+            AccountsPasswordHasher passwordHasher,
+            AccountsTokenIssuer tokenIssuer,
+            AccountStatusCache statusCache,
+            PostCommitHookPort postCommitHookPort
+    ) {
         this.idGenerator = idGenerator;
         this.tenantStore = tenantStore;
         this.userStore = userStore;
@@ -58,6 +90,8 @@ public class AuthService {
         this.passwordHasher = passwordHasher;
         this.tokenIssuer = tokenIssuer;
         this.statusCache = statusCache;
+        this.postCommitHookPort = postCommitHookPort;
+        this.dummyPasswordHash = passwordHasher.encode(DUMMY_PASSWORD);
     }
 
     /**
@@ -110,24 +144,27 @@ public class AuthService {
      * <p>只有租户与用户均为 {@code active} 且密码匹配时才签发令牌。为避免暴露账号是否存在，
      * 用户不存在与密码错误统一返回无效凭据；存量用户没有角色记录时按普通 {@code USER} 处理。</p>
      */
+    @Transactional(readOnly = true)
     public AuthResult login(String email, String rawPassword) {
         AccountsUserStore.UserData user = userStore.findFirstByEmail(email);
+        String passwordHash = user == null ? dummyPasswordHash : user.passwordHash();
+        boolean passwordMatches = passwordHasher.matches(rawPassword, passwordHash);
         if (user == null) {
             throw new BusinessException(AccountsErrorCode.INVALID_CREDENTIALS);
         }
 
         AccountsTenantStore.TenantData tenant = tenantStore.findById(user.tenantId());
         if (tenant == null) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "租户不存在");
+            throw new BusinessException(AccountsErrorCode.INVALID_CREDENTIALS);
         }
 
         if (!AccountsConstants.STATUS_ACTIVE.equals(tenant.status())) {
-            throw new BusinessException(AccountsErrorCode.TENANT_DISABLED);
+            throw new BusinessException(AccountsErrorCode.INVALID_CREDENTIALS);
         }
         if (!AccountsConstants.STATUS_ACTIVE.equals(user.status())) {
-            throw new BusinessException(AccountsErrorCode.USER_DISABLED);
+            throw new BusinessException(AccountsErrorCode.INVALID_CREDENTIALS);
         }
-        if (!passwordHasher.matches(rawPassword, user.passwordHash())) {
+        if (!passwordMatches) {
             throw new BusinessException(AccountsErrorCode.INVALID_CREDENTIALS);
         }
 
@@ -148,8 +185,8 @@ public class AuthService {
     /**
      * 使用户当前及更早版本的 JWT 失效。
      *
-     * <p>无效 ID 或已不存在的用户按幂等成功处理。版本写入后在同一事务内尽力驱逐状态缓存；驱逐
-     * 失败或提交窗口内的并发请求仍可能保留旧快照，最迟由状态缓存的短 TTL 重新校准。</p>
+     * <p>无效 ID 或已不存在的用户按幂等成功处理。版本写入成功后注册 after-commit 缓存驱逐；
+     * 回滚不会驱逐，提交后的驱逐失败会记录告警且不改变已提交的撤销事实。</p>
      */
     @Transactional
     public void logout(long userId) {
@@ -160,23 +197,29 @@ public class AuthService {
         if (user == null) {
             return;
         }
-        userStore.update(withIncrementedTokenVersion(user));
-        statusCache.evictUserStatus(userId);
-        statusCache.evictTenantStatus(user.tenantId());  // 立即驱逐租户缓存，缩小一致性窗口
+        if (!userStore.incrementTokenVersion(userId)) {
+            return;
+        }
+        evictAccountStatusAfterCommit(userId, user.tenantId());
     }
 
-    private static AccountsUserStore.UserData withIncrementedTokenVersion(AccountsUserStore.UserData user) {
-        int tokenVersion = user.tokenVersion() == null ? 0 : user.tokenVersion();
-        return new AccountsUserStore.UserData(
-                user.id(),
-                user.tenantId(),
-                user.email(),
-                user.passwordHash(),
-                user.status(),
-                tokenVersion + 1,
-                user.createdAt(),
-                user.updatedAt()
-        );
+    private void evictAccountStatusAfterCommit(long userId, Long tenantId) {
+        postCommitHookPort.run(() -> {
+            try {
+                boolean userEvicted = statusCache.evictUserStatus(userId);
+                boolean tenantEvicted = true;
+                if (tenantId != null && tenantId > 0) {
+                    tenantEvicted = statusCache.evictTenantStatus(tenantId);
+                }
+                if (!userEvicted || !tenantEvicted) {
+                    log.warn("account status cache eviction incomplete after commit: userId={}, tenantId={}, userEvicted={}, tenantEvicted={}",
+                            userId, tenantId, userEvicted, tenantEvicted);
+                }
+            } catch (RuntimeException ex) {
+                log.warn("account status cache eviction failed after commit: userId={}, tenantId={}, err={}",
+                        userId, tenantId, ex.getMessage());
+            }
+        });
     }
 
 }

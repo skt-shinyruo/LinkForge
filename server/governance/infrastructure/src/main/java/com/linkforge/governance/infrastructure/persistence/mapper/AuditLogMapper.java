@@ -4,6 +4,7 @@ import com.linkforge.governance.infrastructure.persistence.entity.AuditLogEntity
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -17,6 +18,13 @@ public interface AuditLogMapper {
     /** 插入一条审计记录；返回受影响行数，约束或数据库错误直接上抛。 */
     int insert(AuditLogEntity entity);
 
-    /** 返回租户全部审计记录，按创建时间和 ID 倒序；当前接口不分页。 */
-    List<AuditLogEntity> listByTenantId(@Param("tenantId") long tenantId);
+    /** 返回不包含前后快照的有界审计摘要。 */
+    List<AuditLogEntity> listSummaries(
+            @Param("tenantId") long tenantId,
+            @Param("actionType") String actionType,
+            @Param("resourceType") String resourceType,
+            @Param("cursorCreatedAt") LocalDateTime cursorCreatedAt,
+            @Param("cursorId") Long cursorId,
+            @Param("limit") int limit
+    );
 }

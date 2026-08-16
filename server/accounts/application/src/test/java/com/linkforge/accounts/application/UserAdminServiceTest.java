@@ -9,6 +9,7 @@ import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.security.StandardRoles;
+import com.linkforge.foundation.tx.PostCommitHookPort;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -16,6 +17,7 @@ import java.lang.reflect.Constructor;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -73,19 +75,21 @@ class UserAdminServiceTest {
     }
 
     @Test
-    void resetPassword_shouldIncrementTokenVersion() {
+    void resetPassword_shouldUseNarrowAtomicCommand_andEvictOnlyAfterCommit() {
         SnowflakeIdGenerator idGenerator = mock(SnowflakeIdGenerator.class);
         AccountsUserStore userStore = mock(AccountsUserStore.class);
         AccountsUserRoleStore userRoleStore = mock(AccountsUserRoleStore.class);
         AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
         AccountStatusCache statusCache = mock(AccountStatusCache.class);
+        CapturingPostCommitHook postCommitHook = new CapturingPostCommitHook();
 
         UserAdminService service = new UserAdminService(
                 idGenerator,
                 userStore,
                 userRoleStore,
                 passwordHasher,
-                statusCache
+                statusCache,
+                postCommitHook
         );
 
         AccountsUserStore.UserData existing = new AccountsUserStore.UserData(
@@ -101,15 +105,18 @@ class UserAdminServiceTest {
         when(userStore.findById(100L)).thenReturn(existing);
         when(userRoleStore.findAllByUserId(100L)).thenReturn(List.of(new AccountsUserRoleStore.UserRoleData(100L, StandardRoles.USER)));
         when(passwordHasher.encode("new-password123")).thenReturn("new-hash");
+        when(userStore.updatePasswordHashAndIncrementTokenVersion(200L, 100L, "new-hash")).thenReturn(true);
 
         UserResult result = service.resetPassword(200L, 100L, "new-password123");
 
         assertThat(result.id()).isEqualTo(100L);
 
-        ArgumentCaptor<AccountsUserStore.UserData> captor = ArgumentCaptor.forClass(AccountsUserStore.UserData.class);
-        verify(userStore).update(captor.capture());
-        assertThat(captor.getValue().passwordHash()).isEqualTo("new-hash");
-        assertThat(captor.getValue().tokenVersion()).isEqualTo(8);
+        verify(userStore).updatePasswordHashAndIncrementTokenVersion(200L, 100L, "new-hash");
+        verify(userStore, never()).update(any());
+        verify(statusCache, never()).evictUserStatus(100L);
+
+        postCommitHook.runCaptured();
+
         verify(statusCache).evictUserStatus(100L);
     }
 
@@ -210,5 +217,65 @@ class UserAdminServiceTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.BAD_REQUEST));
 
         verify(userStore, never()).update(any());
+    }
+
+    @Test
+    void disableAndEnable_shouldUseNarrowStatusCommands() {
+        SnowflakeIdGenerator idGenerator = mock(SnowflakeIdGenerator.class);
+        AccountsUserStore userStore = mock(AccountsUserStore.class);
+        AccountsUserRoleStore userRoleStore = mock(AccountsUserRoleStore.class);
+        AccountsPasswordHasher passwordHasher = mock(AccountsPasswordHasher.class);
+        AccountStatusCache statusCache = mock(AccountStatusCache.class);
+        CapturingPostCommitHook postCommitHook = new CapturingPostCommitHook();
+        UserAdminService service = new UserAdminService(
+                idGenerator, userStore, userRoleStore, passwordHasher, statusCache, postCommitHook
+        );
+        AccountsUserStore.UserData activeMember = new AccountsUserStore.UserData(
+                100L, 200L, "member@example.com", "hash", AccountsConstants.STATUS_ACTIVE, 9, null, null
+        );
+        AccountsUserStore.UserData disabledMember = new AccountsUserStore.UserData(
+                100L, 200L, "member@example.com", "hash", AccountsConstants.STATUS_DISABLED, 9, null, null
+        );
+        when(userStore.findById(100L)).thenReturn(activeMember, disabledMember);
+        when(userRoleStore.findAllByUserId(100L)).thenReturn(
+                List.of(new AccountsUserRoleStore.UserRoleData(100L, StandardRoles.USER))
+        );
+        when(userStore.updateStatus(200L, 100L, AccountsConstants.STATUS_DISABLED)).thenReturn(true);
+        when(userStore.updateStatus(200L, 100L, AccountsConstants.STATUS_ACTIVE)).thenReturn(true);
+
+        service.disable(200L, 999L, 100L);
+
+        verify(userStore).lockTenantForUserAdministration(200L);
+        verify(userStore).updateStatus(200L, 100L, AccountsConstants.STATUS_DISABLED);
+        verify(userStore, never()).update(any());
+        verify(statusCache, never()).evictUserStatus(100L);
+        postCommitHook.runCaptured();
+        verify(statusCache).evictUserStatus(100L);
+
+        postCommitHook.clear();
+        service.enable(200L, 100L);
+        verify(userStore).updateStatus(200L, 100L, AccountsConstants.STATUS_ACTIVE);
+        postCommitHook.runCaptured();
+    }
+
+    private static final class CapturingPostCommitHook implements PostCommitHookPort {
+        private final AtomicReference<Runnable> action = new AtomicReference<>();
+
+        @Override
+        public void run(Runnable action) {
+            this.action.set(action);
+        }
+
+        void runCaptured() {
+            Runnable captured = action.get();
+            if (captured == null) {
+                throw new AssertionError("expected a post-commit callback");
+            }
+            captured.run();
+        }
+
+        void clear() {
+            action.set(null);
+        }
     }
 }

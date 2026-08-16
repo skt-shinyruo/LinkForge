@@ -1,5 +1,9 @@
 **/target
-target
+integration-tests
+.git
 **/.idea
 **/*.iml
 **/.DS_Store
+.env
+.env.*
+*.log

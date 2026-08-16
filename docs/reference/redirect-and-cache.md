@@ -107,6 +107,8 @@ Redirect 是流量面，负责把 `/r/{code}` 请求解析成最终跳转响应�
 13. 真正跳转前调用 `VisitRecorderPort.recordVisit()`。
 14. `RedirectHttpResponseWriter` 返回 preview、not found、unavailable 或 redirect 响应。
 
+Shortlink 对 `findRedirectMetaByHostAndCode()` 的发布实现使用只读事务；生产 ShardingSphere 配置把事务内读取路由到 primary，避免副本延迟产生错误负缓存或旧目标正缓存。该边界只覆盖跳转元数据，ownership、summary 等可容忍延迟的控制面查询仍保持普通读路由。Redirect 继续只依赖 `ShortLinkReadPort`，不维护第二份链接事实。
+
 ### 输入归一化与内容协商
 
 - HTTP 入口只有 `GET /r/{code}`。短码会先 `trim`，随后要求长度为 1-32 且只包含 ASCII 字母数字；短码大小写敏感。非法短码在读缓存前即归为 `NOT_FOUND`。

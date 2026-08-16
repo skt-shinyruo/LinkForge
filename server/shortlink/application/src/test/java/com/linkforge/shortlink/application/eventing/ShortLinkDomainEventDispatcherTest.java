@@ -3,8 +3,10 @@ package com.linkforge.shortlink.application.eventing;
 import com.linkforge.shortlink.application.port.ShortLinkEventPublisher;
 import com.linkforge.shortlink.domain.CreatedByType;
 import com.linkforge.shortlink.domain.HttpUrl;
+import com.linkforge.shortlink.domain.PatchValue;
 import com.linkforge.shortlink.domain.ShortCode;
 import com.linkforge.shortlink.domain.ShortLink;
+import com.linkforge.shortlink.domain.ShortLinkPatch;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -37,11 +39,32 @@ class ShortLinkDomainEventDispatcherTest {
         ShortLinkEventPublisher publisher = mock(ShortLinkEventPublisher.class);
         ShortLinkDomainEventDispatcher dispatcher = new ShortLinkDomainEventDispatcher(publisher);
         ShortLink link = activeLink();
-        link.markUpdated(LocalDateTime.parse("2026-04-28T04:05:06"));
+        link.applyUpdate(
+                new ShortLinkPatch(
+                        PatchValue.set(HttpUrl.of("https://example.com/updated")),
+                        null, null, null, null, null, null, null, null, null
+                ),
+                false,
+                LocalDateTime.parse("2026-04-28T04:05:06")
+        );
 
         dispatcher.publish(link, Instant.parse("2026-04-28T00:00:00Z"));
 
         verify(publisher).updated(link, Instant.parse("2026-04-28T04:05:06Z"));
+        verifyNoMoreInteractions(publisher);
+        assertThat(link.pullDomainEvents()).isEmpty();
+    }
+
+    @Test
+    void publish_shouldTranslateOwnershipChangeAsUpdatedEventUsingEventTime() {
+        ShortLinkEventPublisher publisher = mock(ShortLinkEventPublisher.class);
+        ShortLinkDomainEventDispatcher dispatcher = new ShortLinkDomainEventDispatcher(publisher);
+        ShortLink link = activeLink();
+        link.reconcileOwnership(2001L, 3001L, LocalDateTime.parse("2026-04-28T05:06:07"));
+
+        dispatcher.publish(link, Instant.parse("2026-04-28T00:00:00Z"));
+
+        verify(publisher).updated(link, Instant.parse("2026-04-28T05:06:07Z"));
         verifyNoMoreInteractions(publisher);
         assertThat(link.pullDomainEvents()).isEmpty();
     }
@@ -55,7 +78,7 @@ class ShortLinkDomainEventDispatcherTest {
         link.archive(LocalDateTime.parse("2026-04-28T01:02:03"));
         link.restore();
         link.archive(LocalDateTime.parse("2026-04-28T02:03:04"));
-        link.markDeleted(LocalDateTime.parse("2026-04-28T03:04:05"));
+        link.delete(LocalDateTime.parse("2026-04-28T03:04:05"));
 
         dispatcher.publish(link, Instant.parse("2026-04-28T09:00:00Z"));
 

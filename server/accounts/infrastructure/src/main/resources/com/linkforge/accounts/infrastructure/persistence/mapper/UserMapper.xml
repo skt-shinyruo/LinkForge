@@ -69,4 +69,32 @@
             token_version = #{tokenVersion}
         WHERE id = #{id}
     </update>
+
+    <update id="incrementTokenVersion">
+        UPDATE users
+        SET token_version = COALESCE(token_version, 0) + 1
+        WHERE id = #{param1}
+    </update>
+
+    <update id="updatePasswordHashAndIncrementTokenVersion">
+        UPDATE users
+        SET password_hash = #{param3},
+            token_version = COALESCE(token_version, 0) + 1
+        WHERE tenant_id = #{param1}
+          AND id = #{param2}
+    </update>
+
+    <update id="updateStatus">
+        UPDATE users
+        SET status = #{param3}
+        WHERE tenant_id = #{param1}
+          AND id = #{param2}
+    </update>
+
+    <select id="lockTenantForUserAdministration" resultType="long">
+        SELECT id
+        FROM tenants
+        WHERE id = #{param1}
+        FOR UPDATE
+    </select>
 </mapper>

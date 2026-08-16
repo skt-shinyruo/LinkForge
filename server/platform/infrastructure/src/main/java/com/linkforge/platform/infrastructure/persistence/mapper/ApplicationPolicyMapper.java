@@ -7,4 +7,6 @@ import org.apache.ibatis.annotations.Mapper;
 public interface ApplicationPolicyMapper {
 
     int insert(ApplicationPolicyEntity entity);
+
+    int upsert(ApplicationPolicyEntity entity);
 }

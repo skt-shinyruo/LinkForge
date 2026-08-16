@@ -61,9 +61,9 @@ LinkForge 是模块化单体。`server/app` 是 Spring Boot 组合根，各限�
 ### 统计
 
 1. Redirect 把真实访问追加到 Redis visit stream；基础流不受访问明细开关影响。
-2. projector 增加 PV、HLL UV、可选维度和 scope 统计，并写 dirty streams。
-3. flush consumer 按 dirty member 读取当前累计值并 upsert MySQL；不扫描 active set。
-4. 明细 consumer 根据配置采样入库；poison message 的 DLQ 写入是 best-effort。
+2. projector 增加 PV、HLL UV、可选维度和 scope 统计，并原子推进 V2 generation marker。
+3. flush consumer 按 marker member 读取当前累计值、upsert MySQL 后做 generation CAS；兼容期双读 legacy Stream，不扫描 active set。
+4. 明细 consumer 根据配置采样入库；poison message 只有在 DLQ 持久化成功后才 ACK，写入后的近似裁剪和容量采样是 best-effort。
 5. 报表读取 MySQL，并通过 Shortlink 发布读端口补全链接摘要。
 
 统计是最终一致链路：标准访问事件的 Stream 重放由 requestId 幂等投影保护，历史无 requestId 消息和调用方重复生成
@@ -129,7 +129,7 @@ LinkForge 是模块化单体。`server/app` 是 Spring Boot 组合根，各限�
 - 点击额度 Redis adapter 内部故障固定 fail-open；外围 `quota.fail-open` 只覆盖仍外抛的查询/调用错误。
 - 标准事件的 stream 重放不会重复 PV；历史无 requestId 或调用方重复生成事件仍可能重复，HLL UV 是近似值且跨日不能直接求和。
 - scope UV 在历史/缺失 scope 数据上存在 fallback，不能当作精确审计口径。
-- 访问明细 DLQ 是 best-effort，极端故障可能出现消息已 ACK 但 DLQ 未写入。
+- 访问明细 poison message 只有在 DLQ 写入成功后才 ACK；DLQ 写入失败会保留 pending，ACK 失败则允许安全重放。DLQ 的近似裁剪和容量采样是 best-effort，且 DLQ 与原 Stream 的 ACK 不在同一事务中，因此它不是事务审计日志。
 - legacy provisioning、统计采样和部分审批终态语义为兼容行为，本轮只记录，不做高风险改写。
 
 ## 维护入口

@@ -26,6 +26,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.function.ToLongFunction;
 
 /**
  * Governance 上下文的审批、执行与审计编排服务。
@@ -46,6 +48,8 @@ import java.util.Set;
 public class GovernanceService {
 
     private static final long TENANT_ADMIN_MONTHLY_LINK_LIMIT_CEILING = 100_000L;
+    private static final int DEFAULT_LIST_LIMIT = 50;
+    private static final int MAX_LIST_LIMIT = 200;
 
     private final SnowflakeIdGenerator idGenerator;
     private final ApprovalRepository approvalRepository;
@@ -233,34 +237,90 @@ public class GovernanceService {
         return approvalStateChanged();
     }
 
-    /**
-     * 查询租户内审批请求。调用人必须是该租户的有效主体，结果按创建时间和 ID 倒序排列。
-     */
-    public List<ApprovalRequestResult> listRequests(long tenantId, UserActor actor) {
+    /** 查询租户内审批摘要；完整 payload 只由审批决策的权威 ID 读取路径加载。 */
+    @Transactional(readOnly = true)
+    public GovernancePageResult<ApprovalRequestSummaryResult> listRequests(
+            long tenantId,
+            UserActor actor,
+            ApprovalStatus status,
+            Integer limit,
+            String cursor
+    ) {
         requireActor(tenantId, actor);
-        return approvalRepository.listByTenantId(tenantId).stream().map(this::toResult).toList();
+        int effectiveLimit = requireListLimit(limit);
+        GovernanceCursorCodec.Cursor decoded = GovernanceCursorCodec.decode(cursor);
+        List<ApprovalRequestSummaryResult> fetched = approvalRepository.listSummaries(
+                tenantId,
+                status,
+                decoded == null ? null : decoded.createdAtUtc(),
+                decoded == null ? null : decoded.id(),
+                effectiveLimit + 1
+        );
+        return toPage(
+                fetched,
+                effectiveLimit,
+                ApprovalRequestSummaryResult::createdAt,
+                ApprovalRequestSummaryResult::id
+        );
     }
 
-    /**
-     * 查询租户内追加写审计事实。调用人必须是该租户的有效主体，结果按创建时间和 ID 倒序排列。
-     */
-    public List<AuditLogResult> listAuditLogs(long tenantId, UserActor actor) {
+    /** 查询租户内审计摘要；列表不加载或返回 before/after snapshot。 */
+    @Transactional(readOnly = true)
+    public GovernancePageResult<AuditLogSummaryResult> listAuditLogs(
+            long tenantId,
+            UserActor actor,
+            String actionType,
+            String resourceType,
+            Integer limit,
+            String cursor
+    ) {
         requireActor(tenantId, actor);
-        return auditLogRepository.listByTenantId(tenantId).stream()
-                .map(log -> new AuditLogResult(
-                        log.id(),
-                        log.tenantId(),
-                        log.actorUserId(),
-                        log.actorEmail(),
-                        log.actionType(),
-                        log.resourceType(),
-                        log.resourceId(),
-                        log.requestId(),
-                        log.beforeSnapshot(),
-                        log.afterSnapshot(),
-                        log.createdAt()
-                ))
-                .toList();
+        int effectiveLimit = requireListLimit(limit);
+        GovernanceCursorCodec.Cursor decoded = GovernanceCursorCodec.decode(cursor);
+        List<AuditLogSummaryResult> fetched = auditLogRepository.listSummaries(
+                tenantId,
+                normalizeFilter(actionType),
+                normalizeFilter(resourceType),
+                decoded == null ? null : decoded.createdAtUtc(),
+                decoded == null ? null : decoded.id(),
+                effectiveLimit + 1
+        );
+        return toPage(
+                fetched,
+                effectiveLimit,
+                AuditLogSummaryResult::createdAt,
+                AuditLogSummaryResult::id
+        );
+    }
+
+    private static int requireListLimit(Integer limit) {
+        int normalized = limit == null ? DEFAULT_LIST_LIMIT : limit;
+        if (normalized < 1 || normalized > MAX_LIST_LIMIT) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "分页大小必须在 1 到 200 之间");
+        }
+        return normalized;
+    }
+
+    private static String normalizeFilter(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
+    }
+
+    private static <T> GovernancePageResult<T> toPage(
+            List<T> fetched,
+            int limit,
+            Function<T, LocalDateTime> createdAt,
+            ToLongFunction<T> id
+    ) {
+        boolean hasMore = fetched.size() > limit;
+        List<T> items = hasMore ? List.copyOf(fetched.subList(0, limit)) : List.copyOf(fetched);
+        T last = items.isEmpty() ? null : items.get(items.size() - 1);
+        String nextCursor = hasMore && last != null
+                ? GovernanceCursorCodec.encode(createdAt.apply(last), id.applyAsLong(last))
+                : null;
+        return new GovernancePageResult<>(items, hasMore, nextCursor);
     }
 
     /**

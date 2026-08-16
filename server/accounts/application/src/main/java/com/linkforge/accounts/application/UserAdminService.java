@@ -10,6 +10,10 @@ import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.contract.accounts.AccountsErrorCode;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.security.StandardRoles;
+import com.linkforge.foundation.tx.PostCommitHookPort;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,13 +30,14 @@ import java.util.Set;
  * 仅限 {@code TENANT_ADMIN} 和 {@code USER}，空角色集合默认普通用户。邮箱唯一性由预查询提供友好
  * 错误，并由数据库约束处理并发竞争。</p>
  *
- * <p>禁用操作拒绝管理员禁用自己，并在当前快照上保证至少保留一个启用的租户管理员；该计数未加
- * 悲观锁，因此它是应用层保护而非并发事务下的严格全局约束。用户状态或凭据变化后会尽力驱逐认证
- * 状态缓存。驱逐与数据库更新位于同一事务；驱逐失败或提交窗口内并发请求重建旧快照时，权限变化
- * 最迟由状态缓存的短 TTL 重新校准。</p>
+ * <p>禁用操作拒绝管理员禁用自己，并通过租户协调行锁串行化“至少保留一个启用中的租户管理员”
+ * 检查与状态写入。用户状态或凭据成功提交后驱逐认证状态缓存；回滚不会驱逐，提交后的驱逐失败会
+ * 记录告警且不改变已提交事实。</p>
  */
 @Service
 public class UserAdminService {
+
+    private static final Logger log = LoggerFactory.getLogger(UserAdminService.class);
 
     private static final Set<String> USER_ROLE_WHITELIST = Set.of(
             StandardRoles.TENANT_ADMIN,
@@ -44,6 +49,7 @@ public class UserAdminService {
     private final AccountsUserRoleStore userRoleStore;
     private final AccountsPasswordHasher passwordHasher;
     private final AccountStatusCache statusCache;
+    private final PostCommitHookPort postCommitHookPort;
 
     public UserAdminService(
             SnowflakeIdGenerator idGenerator,
@@ -52,11 +58,24 @@ public class UserAdminService {
             AccountsPasswordHasher passwordHasher,
             AccountStatusCache statusCache
     ) {
+        this(idGenerator, userStore, userRoleStore, passwordHasher, statusCache, Runnable::run);
+    }
+
+    @Autowired
+    public UserAdminService(
+            SnowflakeIdGenerator idGenerator,
+            AccountsUserStore userStore,
+            AccountsUserRoleStore userRoleStore,
+            AccountsPasswordHasher passwordHasher,
+            AccountStatusCache statusCache,
+            PostCommitHookPort postCommitHookPort
+    ) {
         this.idGenerator = idGenerator;
         this.userStore = userStore;
         this.userRoleStore = userRoleStore;
         this.passwordHasher = passwordHasher;
         this.statusCache = statusCache;
+        this.postCommitHookPort = postCommitHookPort;
     }
 
     /**
@@ -134,13 +153,14 @@ public class UserAdminService {
      */
     @Transactional
     public UserResult disable(long tenantId, long actorUserId, long userId) {
+        userStore.lockTenantForUserAdministration(tenantId);
         AccountsUserStore.UserData user = requireUserInTenant(tenantId, userId);
         Set<String> roles = loadRolesByUserId(userId);
         requireDisableAllowed(tenantId, actorUserId, user, roles);
         if (!AccountsConstants.STATUS_DISABLED.equals(user.status())) {
-            userStore.update(withStatus(user, AccountsConstants.STATUS_DISABLED));
+            requireStatusUpdate(userStore.updateStatus(tenantId, userId, AccountsConstants.STATUS_DISABLED));
         }
-        statusCache.evictUserStatus(userId);
+        evictUserStatusAfterCommit(userId);
         return new UserResult(user.id(), tenantId, user.email(), AccountsConstants.STATUS_DISABLED, roles);
     }
 
@@ -154,9 +174,9 @@ public class UserAdminService {
     public UserResult enable(long tenantId, long userId) {
         AccountsUserStore.UserData user = requireUserInTenant(tenantId, userId);
         if (!AccountsConstants.STATUS_ACTIVE.equals(user.status())) {
-            userStore.update(withStatus(user, AccountsConstants.STATUS_ACTIVE));
+            requireStatusUpdate(userStore.updateStatus(tenantId, userId, AccountsConstants.STATUS_ACTIVE));
         }
-        statusCache.evictUserStatus(userId);
+        evictUserStatusAfterCommit(userId);
         Set<String> roles = loadRolesByUserId(userId);
         return new UserResult(user.id(), tenantId, user.email(), AccountsConstants.STATUS_ACTIVE, roles);
     }
@@ -177,18 +197,9 @@ public class UserAdminService {
         }
 
         AccountsUserStore.UserData user = requireUserInTenant(tenantId, userId);
-        AccountsUserStore.UserData updated = new AccountsUserStore.UserData(
-                user.id(),
-                user.tenantId(),
-                user.email(),
-                passwordHasher.encode(newPassword),
-                user.status(),
-                nextTokenVersion(user),
-                user.createdAt(),
-                user.updatedAt()
-        );
-        userStore.update(updated);
-        statusCache.evictUserStatus(userId);
+        String passwordHash = passwordHasher.encode(newPassword);
+        requireStatusUpdate(userStore.updatePasswordHashAndIncrementTokenVersion(tenantId, userId, passwordHash));
+        evictUserStatusAfterCommit(userId);
 
         Set<String> roles = loadRolesByUserId(userId);
         return new UserResult(user.id(), tenantId, user.email(), user.status(), roles);
@@ -219,19 +230,6 @@ public class UserAdminService {
             throw new BusinessException(ErrorCode.NOT_FOUND, "用户不存在");
         }
         return user;
-    }
-
-    private static AccountsUserStore.UserData withStatus(AccountsUserStore.UserData user, String status) {
-        return new AccountsUserStore.UserData(
-                user.id(),
-                user.tenantId(),
-                user.email(),
-                user.passwordHash(),
-                status,
-                user.tokenVersion(),
-                user.createdAt(),
-                user.updatedAt()
-        );
     }
 
     private void requireDisableAllowed(
@@ -268,11 +266,23 @@ public class UserAdminService {
         }
     }
 
-    private static int nextTokenVersion(AccountsUserStore.UserData user) {
-        if (user == null || user.tokenVersion() == null) {
-            return 1;
+    private static void requireStatusUpdate(boolean updated) {
+        if (!updated) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "用户不存在");
         }
-        return user.tokenVersion() + 1;
+    }
+
+    private void evictUserStatusAfterCommit(long userId) {
+        postCommitHookPort.run(() -> {
+            try {
+                if (!statusCache.evictUserStatus(userId)) {
+                    log.warn("account status cache eviction incomplete after commit: userId={}", userId);
+                }
+            } catch (RuntimeException ex) {
+                log.warn("account status cache eviction failed after commit: userId={}, err={}",
+                        userId, ex.getMessage());
+            }
+        });
     }
 
     private static boolean tenantIdEquals(Long actualTenantId, long expectedTenantId) {

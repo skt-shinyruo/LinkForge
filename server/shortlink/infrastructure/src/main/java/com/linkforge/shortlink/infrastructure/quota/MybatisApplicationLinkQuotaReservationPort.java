@@ -82,7 +82,7 @@ public class MybatisApplicationLinkQuotaReservationPort implements ApplicationLi
         }
     }
 
-    private static String monthlyUsageLockName(long tenantId, long applicationId, LocalDate monthStartUtc) {
+    static String monthlyUsageLockName(long tenantId, long applicationId, LocalDate monthStartUtc) {
         return "lf:ql:" + tenantId + ":" + applicationId + ":" + monthStartUtc;
     }
 }

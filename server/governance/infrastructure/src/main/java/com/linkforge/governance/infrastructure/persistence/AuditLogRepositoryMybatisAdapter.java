@@ -1,11 +1,13 @@
 package com.linkforge.governance.infrastructure.persistence;
 
+import com.linkforge.governance.application.AuditLogSummaryResult;
 import com.linkforge.governance.application.port.AuditLogRepository;
 import com.linkforge.governance.domain.AuditLog;
 import com.linkforge.governance.infrastructure.persistence.entity.AuditLogEntity;
 import com.linkforge.governance.infrastructure.persistence.mapper.AuditLogMapper;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -48,9 +50,23 @@ public class AuditLogRepositoryMybatisAdapter implements AuditLogRepository {
     }
 
     @Override
-    public List<AuditLog> listByTenantId(long tenantId) {
-        return mapper.listByTenantId(tenantId).stream()
-                .map(entity -> new AuditLog(
+    public List<AuditLogSummaryResult> listSummaries(
+            long tenantId,
+            String actionType,
+            String resourceType,
+            LocalDateTime cursorCreatedAt,
+            Long cursorId,
+            int limit
+    ) {
+        return mapper.listSummaries(
+                        tenantId,
+                        actionType,
+                        resourceType,
+                        cursorCreatedAt,
+                        cursorId,
+                        limit
+                ).stream()
+                .map(entity -> new AuditLogSummaryResult(
                         entity.getId(),
                         entity.getTenantId(),
                         entity.getActorUserId(),
@@ -59,8 +75,6 @@ public class AuditLogRepositoryMybatisAdapter implements AuditLogRepository {
                         entity.getResourceType(),
                         entity.getResourceId(),
                         entity.getRequestId(),
-                        entity.getBeforeSnapshot(),
-                        entity.getAfterSnapshot(),
                         entity.getCreatedAt()
                 ))
                 .toList();

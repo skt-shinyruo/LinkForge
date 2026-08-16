@@ -15,6 +15,4 @@ public interface ApplicationPolicyRepository {
      */
     void insert(ApplicationPolicy policy);
 
-    /** 插入或覆盖为调用方给出的当前策略，用于修复历史缺失或过期配置。 */
-    void upsert(ApplicationPolicy policy);
 }

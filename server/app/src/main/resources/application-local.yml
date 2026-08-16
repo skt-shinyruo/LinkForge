@@ -1,8 +1,4 @@
 spring:
-  flyway:
-    url: jdbc:mysql://localhost:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
-    user: linkforge
-    password: linkforge
   data:
     redis:
       host: localhost

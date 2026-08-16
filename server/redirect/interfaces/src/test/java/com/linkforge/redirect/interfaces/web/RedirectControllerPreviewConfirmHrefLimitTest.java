@@ -49,7 +49,10 @@ class RedirectControllerPreviewConfirmHrefLimitTest {
                 null,
                 "ALL",
                 null,
-                null
+                null,
+                null,
+                null,
+                LinkMeta.ACTIVE_LIFECYCLE_STATE
         );
         when(redirectService.resolve(any(ResolveRedirectRequest.class))).thenReturn(
                 RedirectResolution.preview("abc123", true, meta)

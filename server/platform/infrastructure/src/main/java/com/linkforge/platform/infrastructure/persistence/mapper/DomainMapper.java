@@ -15,8 +15,6 @@ public interface DomainMapper {
 
     DomainEntity findByTenantIdAndHostname(@Param("tenantId") long tenantId, @Param("hostname") String hostname);
 
-    DomainEntity findByHostname(@Param("hostname") String hostname);
-
     int insertAuthorization(@Param("applicationId") long applicationId, @Param("domainId") long domainId);
 
     int countAuthorization(@Param("applicationId") long applicationId, @Param("domainId") long domainId);

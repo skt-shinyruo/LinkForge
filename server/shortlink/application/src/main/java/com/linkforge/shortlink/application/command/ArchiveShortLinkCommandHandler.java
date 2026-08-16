@@ -4,11 +4,11 @@ import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.shortlink.ShortLinkErrorCode;
 import com.linkforge.foundation.tx.PostCommitHookPort;
 import com.linkforge.shortlink.application.LinkDto;
-import com.linkforge.shortlink.application.eventing.ShortLinkDomainEventDispatcher;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
 import com.linkforge.shortlink.application.port.RedirectCacheInvalidationOutboxPort;
 import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
+import com.linkforge.shortlink.application.port.ShortLinkEventPublisher;
 import com.linkforge.shortlink.application.port.ShortLinkRepository;
 import com.linkforge.shortlink.application.support.RedirectCacheInvalidations;
 import com.linkforge.shortlink.application.support.ShortLinkDomainExceptions;
@@ -25,7 +25,7 @@ import java.util.List;
 /**
  * 将短链转换为归档状态。
  *
- * <p>归档状态变更、领域事件和缓存失效 outbox 位于同一事务，仓储更新使用聚合版本做乐观锁。
+ * <p>归档状态变更、集成事件和缓存失效 outbox 位于同一事务，仓储更新使用聚合版本做乐观锁。
  * 提交后会立即尝试清理跳转缓存，失败时由 outbox 后台重试。该处理器只按租户隔离数据，
  * 不接收用户主体，调用方必须在进入命令前完成操作权限校验。</p>
  */
@@ -33,7 +33,7 @@ import java.util.List;
 public class ArchiveShortLinkCommandHandler {
 
     private final ShortLinkRepository shortLinkRepository;
-    private final ShortLinkDomainEventDispatcher domainEventDispatcher;
+    private final ShortLinkEventPublisher eventPublisher;
     private final LinkTagRepository linkTagRepository;
     private final RedirectCacheSyncPort redirectCacheSync;
     private final RedirectCacheInvalidationOutboxPort redirectCacheInvalidationOutbox;
@@ -43,7 +43,7 @@ public class ArchiveShortLinkCommandHandler {
 
     public ArchiveShortLinkCommandHandler(
             ShortLinkRepository shortLinkRepository,
-            ShortLinkDomainEventDispatcher domainEventDispatcher,
+            ShortLinkEventPublisher eventPublisher,
             LinkTagRepository linkTagRepository,
             RedirectCacheSyncPort redirectCacheSync,
             RedirectCacheInvalidationOutboxPort redirectCacheInvalidationOutbox,
@@ -52,7 +52,7 @@ public class ArchiveShortLinkCommandHandler {
             Clock clock
     ) {
         this.shortLinkRepository = shortLinkRepository;
-        this.domainEventDispatcher = domainEventDispatcher;
+        this.eventPublisher = eventPublisher;
         this.linkTagRepository = linkTagRepository;
         this.redirectCacheSync = redirectCacheSync;
         this.redirectCacheInvalidationOutbox = redirectCacheInvalidationOutbox;
@@ -88,7 +88,7 @@ public class ArchiveShortLinkCommandHandler {
             if (!shortLinkRepository.update(link)) {
                 throw new BusinessException(ShortLinkErrorCode.LINK_STALE_WRITE);
             }
-            domainEventDispatcher.publish(link, nowUtc.toInstant(ZoneOffset.UTC));
+            eventPublisher.archived(link, nowUtc.toInstant(ZoneOffset.UTC));
             RedirectCacheInvalidations.enqueueAndRunAfterCommit(
                     redirectCacheInvalidationOutbox,
                     postCommitHookPort,

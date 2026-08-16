@@ -8,5 +8,4 @@ public interface ApplicationPolicyMapper {
 
     int insert(ApplicationPolicyEntity entity);
 
-    int upsert(ApplicationPolicyEntity entity);
 }

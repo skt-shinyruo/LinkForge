@@ -111,7 +111,7 @@ class GovernanceKeysetPaginationIntegrationTest extends GovernancePersistenceInt
     }
 
     @Test
-    void migrations_shouldInstallBoundedKeysetIndexes() {
+    void schema_shouldInstallBoundedKeysetIndexes() {
         assertThat(indexExists("approval_requests", "idx_approval_requests_tenant_created_id")).isTrue();
         assertThat(indexExists("approval_requests", "idx_approval_requests_tenant_status_created_id")).isTrue();
         assertThat(indexExists("audit_logs", "idx_audit_logs_tenant_created_id")).isTrue();

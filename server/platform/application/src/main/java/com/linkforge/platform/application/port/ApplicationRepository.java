@@ -25,11 +25,6 @@ public interface ApplicationRepository {
     Optional<Application> findByTenantIdAndId(long tenantId, long applicationId);
 
     /**
-     * 在租户边界内按稳定的 {@code applicationKey} 查询应用。
-     */
-    Optional<Application> findByTenantIdAndApplicationKey(long tenantId, String applicationKey);
-
-    /**
      * 列出租户全部应用，不隐式过滤状态。
      */
     List<Application> listByTenantId(long tenantId);

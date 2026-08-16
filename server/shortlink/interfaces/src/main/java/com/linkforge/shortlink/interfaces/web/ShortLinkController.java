@@ -14,10 +14,7 @@ import com.linkforge.shortlink.application.ScopedCreateLinkRequest;
 import com.linkforge.shortlink.application.ScopedImportCsvRequest;
 import com.linkforge.shortlink.application.ShortLinkApplicationService;
 import com.linkforge.shortlink.application.csv.ShortLinkCsvExport;
-import com.linkforge.shortlink.interfaces.web.dto.ImportHttpResponse;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkCreateHttpRequest;
-import com.linkforge.shortlink.interfaces.web.dto.ShortLinkHttpResponse;
-import com.linkforge.shortlink.interfaces.web.dto.ShortLinkPageHttpResponse;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkUpdateHttpRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
@@ -59,19 +56,19 @@ public class ShortLinkController {
     }
 
     @PostMapping("/links")
-    public ApiResponse<ShortLinkHttpResponse> create(@Valid @RequestBody ShortLinkCreateHttpRequest req) {
+    public ApiResponse<LinkDto> create(@Valid @RequestBody ShortLinkCreateHttpRequest req) {
         writeGuard.requireWriteEnabled();
         UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
         LinkDto dto = shortLinkService.createForUser(
                 actor,
                 new ScopedCreateLinkRequest(ShortLinkHttpMapper.toCreateRequest(req), null)
         );
-        return ApiResponse.ok(ShortLinkHttpMapper.toLinkResponse(dto), RequestId.get());
+        return ApiResponse.ok(dto, RequestId.get());
     }
 
     @PostMapping("/applications/{applicationId}/links")
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<ShortLinkHttpResponse> createForApplication(
+    public ApiResponse<LinkDto> createForApplication(
             @PathVariable("applicationId") long applicationId,
             @Valid @RequestBody ShortLinkCreateHttpRequest req
     ) {
@@ -81,11 +78,11 @@ public class ShortLinkController {
                 actor,
                 new ScopedCreateLinkRequest(ShortLinkHttpMapper.toCreateRequest(req), applicationId)
         );
-        return ApiResponse.ok(ShortLinkHttpMapper.toLinkResponse(dto), RequestId.get());
+        return ApiResponse.ok(dto, RequestId.get());
     }
 
     @GetMapping("/links")
-    public ApiResponse<ShortLinkPageHttpResponse<ShortLinkHttpResponse>> list(
+    public ApiResponse<PageResult<LinkDto>> list(
             @RequestParam(required = false) Boolean archived,
             @RequestParam(required = false) Boolean enabled,
             @RequestParam(required = false) String keyword,
@@ -103,12 +100,12 @@ public class ShortLinkController {
                         archived, enabled, keyword, tag, applicationId, null, page, size, 100, cursor, includeTotal
                 )
         );
-        return ApiResponse.ok(ShortLinkHttpMapper.toPageResponse(result), RequestId.get());
+        return ApiResponse.ok(result, RequestId.get());
     }
 
     @GetMapping("/applications/{applicationId}/links")
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<ShortLinkPageHttpResponse<ShortLinkHttpResponse>> listByApplication(
+    public ApiResponse<PageResult<LinkDto>> listByApplication(
             @PathVariable("applicationId") long applicationId,
             @RequestParam(required = false) Boolean archived,
             @RequestParam(required = false) Boolean enabled,
@@ -126,31 +123,29 @@ public class ShortLinkController {
                         archived, enabled, keyword, tag, null, applicationId, page, size, 100, cursor, includeTotal
                 )
         );
-        return ApiResponse.ok(ShortLinkHttpMapper.toPageResponse(result), RequestId.get());
+        return ApiResponse.ok(result, RequestId.get());
     }
 
     @GetMapping("/links/{id}")
-    public ApiResponse<ShortLinkHttpResponse> detail(@PathVariable("id") long id) {
+    public ApiResponse<LinkDto> detail(@PathVariable("id") long id) {
         UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
         return ApiResponse.ok(
-                ShortLinkHttpMapper.toLinkResponse(shortLinkService.detailForUser(actor, id)),
+                shortLinkService.detailForUser(actor, id),
                 RequestId.get()
         );
     }
 
     @PutMapping("/links/{id}")
-    public ApiResponse<ShortLinkHttpResponse> update(@PathVariable("id") long id, @Valid @RequestBody ShortLinkUpdateHttpRequest req) {
+    public ApiResponse<LinkDto> update(@PathVariable("id") long id, @Valid @RequestBody ShortLinkUpdateHttpRequest req) {
         writeGuard.requireWriteEnabled();
         UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
         return ApiResponse.ok(
-                ShortLinkHttpMapper.toLinkResponse(
-                        shortLinkService.update(
-                                actor.tenantId(),
-                                id,
-                                ShortLinkHttpMapper.toUpdateRequest(req),
-                                actor,
-                                LocalDateTime.now(ZoneOffset.UTC)
-                        )
+                shortLinkService.update(
+                        actor.tenantId(),
+                        id,
+                        ShortLinkHttpMapper.toUpdateRequest(req),
+                        actor,
+                        LocalDateTime.now(ZoneOffset.UTC)
                 ),
                 RequestId.get()
         );
@@ -158,22 +153,22 @@ public class ShortLinkController {
 
     @PostMapping("/links/{id}/archive")
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<ShortLinkHttpResponse> archive(@PathVariable("id") long id) {
+    public ApiResponse<LinkDto> archive(@PathVariable("id") long id) {
         writeGuard.requireWriteEnabled();
         AuthPrincipal p = AuthContext.requirePrincipal();
         return ApiResponse.ok(
-                ShortLinkHttpMapper.toLinkResponse(shortLinkService.archive(p.getTenantId(), id)),
+                shortLinkService.archive(p.getTenantId(), id),
                 RequestId.get()
         );
     }
 
     @PostMapping("/links/{id}/restore")
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<ShortLinkHttpResponse> restore(@PathVariable("id") long id) {
+    public ApiResponse<LinkDto> restore(@PathVariable("id") long id) {
         writeGuard.requireWriteEnabled();
         AuthPrincipal p = AuthContext.requirePrincipal();
         return ApiResponse.ok(
-                ShortLinkHttpMapper.toLinkResponse(shortLinkService.restore(p.getTenantId(), id)),
+                shortLinkService.restore(p.getTenantId(), id),
                 RequestId.get()
         );
     }
@@ -189,16 +184,16 @@ public class ShortLinkController {
 
     @PostMapping(value = "/links/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<ImportHttpResponse> importCsv(@RequestParam("file") MultipartFile file) {
+    public ApiResponse<ImportResult> importCsv(@RequestParam("file") MultipartFile file) {
         writeGuard.requireWriteEnabled();
         UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
         ImportResult result = shortLinkService.importCsv(actor, shortLinkCsvHttpMapper.parse(file));
-        return ApiResponse.ok(ShortLinkHttpMapper.toImportResponse(result), RequestId.get());
+        return ApiResponse.ok(result, RequestId.get());
     }
 
     @PostMapping(value = "/applications/{applicationId}/links/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<ImportHttpResponse> importCsvByApplication(
+    public ApiResponse<ImportResult> importCsvByApplication(
             @PathVariable("applicationId") long applicationId,
             @RequestParam("domainId") long domainId,
             @RequestParam("file") MultipartFile file
@@ -209,7 +204,7 @@ public class ShortLinkController {
                 actor,
                 new ScopedImportCsvRequest(shortLinkCsvHttpMapper.parse(file), applicationId, domainId)
         );
-        return ApiResponse.ok(ShortLinkHttpMapper.toImportResponse(result), RequestId.get());
+        return ApiResponse.ok(result, RequestId.get());
     }
 
     @GetMapping("/links/export")

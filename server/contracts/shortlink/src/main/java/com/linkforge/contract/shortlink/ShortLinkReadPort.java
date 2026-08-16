@@ -1,6 +1,7 @@
 package com.linkforge.contract.shortlink;
 
-import java.time.Instant;
+import com.linkforge.contract.redirect.LinkMeta;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -28,7 +29,7 @@ public interface ShortLinkReadPort {
      * @return 非 {@code null} 的权威事实视图；未找到、已归档或输入无效时为 {@link Optional#empty()}
      * @throws RuntimeException 数据源或网络失败；实现不得将此类失败伪装成空结果
      */
-    Optional<RedirectLinkView> findRedirectMetaByHostAndCode(String host, String code);
+    Optional<LinkMeta> findRedirectMetaByHostAndCode(String host, String code);
 
     /**
      * 在租户边界内查询链接的应用/域名归属。
@@ -56,117 +57,6 @@ public interface ShortLinkReadPort {
      * @throws RuntimeException 数据源或网络失败；实现不得返回部分结果并吞掉失败
      */
     Map<Long, ShortLinkSummary> listSummaries(long tenantId, List<Long> linkIds);
-
-    /**
-     * Redirect 回源使用的权威视图。
-     *
-     * <p>{@code expiresAtUtc} 是 UTC Instant，null 表示未设置；nullable policy 字段表示使用 Redirect
-     * 全局默认。{@code queryForwardAllowlist} 是逗号序列化字符串而非 List。null/空白 lifecycle 会兼容
-     * 归一为 ACTIVE，非 ACTIVE 不应跳转；本记录本身不验证 enabled 或过期状态。record component 名不是
-     * 集成事件 JSON 契约，跨进程事件应使用 {@link ShortLinkPublicSnapshot}。</p>
-     *
-     * @param tenantId 所属租户 ID
-     * @param linkId 全局短链 ID
-     * @param code 大小写敏感短码
-     * @param hostname 规范化 host；legacy/unscoped 查询结果可为空
-     * @param originalUrl 目标 URL 事实
-     * @param enabled 管理开关；不是最终可跳转结论
-     * @param expiresAtUtc UTC 到期时间；{@code null} 表示未设置
-     * @param redirectStatusCode 单链重定向状态覆盖；{@code null} 表示使用 Redirect 默认值
-     * @param previewEnabled 单链预览开关
-     * @param unavailableLandingUrl 不可用落地页覆盖；{@code null} 表示使用 Redirect 默认值
-     * @param queryForwardMode 查询参数透传模式覆盖；{@code null} 表示使用 Redirect 默认值
-     * @param queryForwardAllowlist 逗号分隔的单链白名单；{@code null} 表示没有单链覆盖
-     * @param applicationId 所属应用；legacy 数据可为空
-     * @param domainId 所属域名；legacy 数据可为空
-     * @param lifecycleState 当前生命周期；{@code null}/空白兼容归一为 {@code ACTIVE}
-     */
-    record RedirectLinkView(
-            long tenantId,
-            long linkId,
-            String code,
-            String hostname,
-            String originalUrl,
-            boolean enabled,
-            Instant expiresAtUtc,
-            Integer redirectStatusCode,
-            boolean previewEnabled,
-            String unavailableLandingUrl,
-            String queryForwardMode,
-            String queryForwardAllowlist,
-            Long applicationId,
-            Long domainId,
-            String lifecycleState
-    ) {
-        private static final String ACTIVE_LIFECYCLE_STATE = "ACTIVE";
-
-        public RedirectLinkView {
-            lifecycleState = normalizeLifecycleState(lifecycleState);
-        }
-
-        /**
-         * 使用 {@code ACTIVE} lifecycle 构造兼容视图。
-         *
-         * <p>仅为尚未传递生命周期字段的 Java 调用方保留；它不表示持久化记录显式存储了 {@code ACTIVE}，也不
-         * 绕过 Redirect 对 enabled、过期和额度的判断。</p>
-         *
-         * @param tenantId 所属租户 ID
-         * @param linkId 全局短链 ID
-         * @param code 大小写敏感短码
-         * @param hostname 规范化 host；legacy 数据可为空
-         * @param originalUrl 目标 URL 事实
-         * @param enabled 管理开关
-         * @param expiresAtUtc UTC 到期时间；{@code null} 表示未设置
-         * @param redirectStatusCode 单链重定向状态覆盖；{@code null} 表示使用默认值
-         * @param previewEnabled 单链预览开关
-         * @param unavailableLandingUrl 不可用落地页覆盖；{@code null} 表示使用默认值
-         * @param queryForwardMode 查询参数透传模式覆盖；{@code null} 表示使用默认值
-         * @param queryForwardAllowlist 逗号分隔的单链白名单；{@code null} 表示没有单链覆盖
-         * @param applicationId 所属应用；legacy 数据可为空
-         * @param domainId 所属域名；legacy 数据可为空
-         */
-        public RedirectLinkView(
-                long tenantId,
-                long linkId,
-                String code,
-                String hostname,
-                String originalUrl,
-                boolean enabled,
-                Instant expiresAtUtc,
-                Integer redirectStatusCode,
-                boolean previewEnabled,
-                String unavailableLandingUrl,
-                String queryForwardMode,
-                String queryForwardAllowlist,
-                Long applicationId,
-                Long domainId
-        ) {
-            this(
-                    tenantId,
-                    linkId,
-                    code,
-                    hostname,
-                    originalUrl,
-                    enabled,
-                    expiresAtUtc,
-                    redirectStatusCode,
-                    previewEnabled,
-                    unavailableLandingUrl,
-                    queryForwardMode,
-                    queryForwardAllowlist,
-                    applicationId,
-                    domainId,
-                    ACTIVE_LIFECYCLE_STATE
-            );
-        }
-
-        private static String normalizeLifecycleState(String raw) {
-            if (raw == null || raw.trim().isBlank()) {
-                return ACTIVE_LIFECYCLE_STATE;
-            }
-            return raw.trim().toUpperCase();
-        }
-    }
 
     /**
      * Analytics/Governance 使用的最小归属视图。

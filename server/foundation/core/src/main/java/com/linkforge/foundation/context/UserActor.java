@@ -9,5 +9,5 @@ import java.util.Set;
  * {@code tokenVersion} 和账户状态校验完成。email 可为空以兼容最小 JWT claim，但不能据此绕过用户 ID
  * 与租户边界。</p>
  */
-public record UserActor(long tenantId, long userId, String email, Set<String> roles) implements ApplicationActor {
+public record UserActor(long tenantId, long userId, String email, Set<String> roles) {
 }

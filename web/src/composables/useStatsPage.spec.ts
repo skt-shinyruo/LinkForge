@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createPinia, setActivePinia } from "pinia";
 import type { ApplicationDto, DailyStat, LinkDto, PageResponse, TopLinkStat } from "../services/types";
 
 const listApplicationsMock = vi.hoisted(() => vi.fn());
@@ -77,7 +76,6 @@ describe("useStatsPage", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.restoreAllMocks();
-    setActivePinia(createPinia());
     listApplicationsMock.mockReset();
     listLinksMock.mockReset();
     fetchLinkDailyStatsMock.mockReset();
@@ -223,7 +221,6 @@ describe("useStatsPage", () => {
     expect(fetchLinkDailyStatsMock).not.toHaveBeenCalled();
     expect(page.links.value).toEqual([]);
     expect(page.selectedLinkId.value).toBeNull();
-    expect(page.selectedLink.value).toBeNull();
     expect(page.linkStats.value).toEqual([]);
     expect(page.linkOptionsError.value).toBe("Application B links unavailable");
     expect(page.overviewStats.value).toEqual(applicationBOverview);

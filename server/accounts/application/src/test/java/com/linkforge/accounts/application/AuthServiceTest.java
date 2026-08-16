@@ -42,7 +42,8 @@ class AuthServiceTest {
                 userRoleStore,
                 passwordHasher,
                 tokenIssuer,
-                statusCache
+                statusCache,
+                Runnable::run
         );
 
         when(idGenerator.nextId()).thenReturn(200L, 100L);
@@ -74,7 +75,8 @@ class AuthServiceTest {
                 userRoleStore,
                 passwordHasher,
                 tokenIssuer,
-                statusCache
+                statusCache,
+                Runnable::run
         );
 
         AccountsUserStore.UserData user = new AccountsUserStore.UserData(
@@ -164,7 +166,8 @@ class AuthServiceTest {
                 userRoleStore,
                 passwordHasher,
                 tokenIssuer,
-                statusCache
+                statusCache,
+                Runnable::run
         );
 
         assertThatThrownBy(() -> service.login("missing@example.com", "password123"))

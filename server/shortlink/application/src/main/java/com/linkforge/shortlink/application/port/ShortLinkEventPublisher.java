@@ -11,9 +11,8 @@ import java.time.Instant;
  * 序列化或追加失败必须向上抛出并回滚业务事务，不能直接进行无法参与事务的外部发布，也不能 fail-open。
  * </p>
  *
- * <p>调用方在进入本端口前已经从聚合中破坏性取出领域事件。该端口不承诺以聚合和事件类型自动去重，
- * 同一方法被重复调用可能生成不同事件 ID；调用方必须保证每个已取出的事件只调用一次，消费方则在公开
- * 事件 ID 边界实现幂等。</p>
+ * <p>该端口不承诺以聚合和事件类型自动去重；同一方法被重复调用可能生成不同事件 ID。调用方必须只在
+ * 对应持久化操作成功后调用一次，消费方则在公开事件 ID 边界实现幂等。</p>
  */
 public interface ShortLinkEventPublisher {
 
@@ -29,7 +28,7 @@ public interface ShortLinkEventPublisher {
      * 追加短链更新事件。
      *
      * @param link 非空的更新后完整聚合快照
-     * @param occurredAtUtc 非空 UTC 时间，优先来自领域事件自身
+     * @param occurredAtUtc 非空 UTC 时间
      */
     void updated(ShortLink link, Instant occurredAtUtc);
 

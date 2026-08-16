@@ -37,14 +37,6 @@
           AND id = #{param2}
     </select>
 
-    <select id="findByTenantIdAndApplicationKey" resultMap="ApplicationResultMap">
-        SELECT id, tenant_id, application_key, display_name, status, created_at, updated_at
-        FROM applications
-        WHERE tenant_id = #{param1}
-          AND application_key = #{param2}
-        LIMIT 1
-    </select>
-
     <select id="listByTenantId" resultMap="ApplicationResultMap">
         SELECT id, tenant_id, application_key, display_name, status, created_at, updated_at
         FROM applications

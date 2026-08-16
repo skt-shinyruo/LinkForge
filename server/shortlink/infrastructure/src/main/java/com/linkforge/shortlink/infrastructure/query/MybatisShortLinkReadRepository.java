@@ -1,16 +1,15 @@
 package com.linkforge.shortlink.infrastructure.query;
 
+import com.linkforge.contract.redirect.LinkMeta;
 import com.linkforge.contract.shortlink.ShortLinkReadPort;
 import com.linkforge.foundation.config.CoreProperties;
 import com.linkforge.shortlink.application.port.ShortLinkReadRepository;
 import com.linkforge.shortlink.infrastructure.persistence.entity.ShortLinkEntity;
 import com.linkforge.shortlink.infrastructure.persistence.mapper.ShortLinkQueryMapper;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.net.URI;
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,7 +20,7 @@ import java.util.Optional;
  *
  * <p>该适配器集中处理 redirect 查询的 host scope、旧数据兼容回退，以及控制面批量摘要所需的
  * URL 拼装。它只读取事实数据，不判断过期、禁用、生命周期等最终可跳转性；这些状态会完整映射到
- * {@link ShortLinkReadPort.RedirectLinkView}，由 redirect 上下文统一决策。</p>
+ * {@link LinkMeta}，由 redirect 上下文统一决策。</p>
  */
 @Repository
 public class MybatisShortLinkReadRepository implements ShortLinkReadRepository {
@@ -49,14 +48,15 @@ public class MybatisShortLinkReadRepository implements ShortLinkReadRepository {
      * 旧记录没有 hostname 时用当前基础 host 补全返回视图，但不回写数据库。</p>
      */
     @Override
-    public Optional<ShortLinkReadPort.RedirectLinkView> findRedirectMetaByHostAndCode(String host, String code) {
+    @Transactional(readOnly = true)
+    public Optional<LinkMeta> findRedirectMetaByHostAndCode(String host, String code) {
         String normalizedCode = normalizeNullable(code);
         String normalizedHost = normalizeHost(host);
         if (normalizedCode == null) {
             return Optional.empty();
         }
         if (normalizedHost == null) {
-            return Optional.ofNullable(toRedirectLinkMeta(queryMapper.findActiveUnscopedByCode(normalizedCode)));
+            return Optional.ofNullable(toLinkMeta(queryMapper.findActiveUnscopedByCode(normalizedCode)));
         }
 
         ShortLinkEntity row = queryMapper.findActiveByHostnameAndCode(normalizedHost, normalizedCode);
@@ -75,7 +75,7 @@ public class MybatisShortLinkReadRepository implements ShortLinkReadRepository {
         if (row.getHostname() == null || row.getHostname().isBlank()) {
             row.setHostname(normalizedHost);
         }
-        return Optional.of(toRedirectLinkMeta(row));
+        return Optional.of(toLinkMeta(row));
     }
 
     /**
@@ -237,34 +237,27 @@ public class MybatisShortLinkReadRepository implements ShortLinkReadRepository {
         return normalized.isBlank() ? null : normalized;
     }
 
-    private static ShortLinkReadPort.RedirectLinkView toRedirectLinkMeta(ShortLinkEntity row) {
+    private static LinkMeta toLinkMeta(ShortLinkEntity row) {
         if (row == null) {
             return null;
         }
-        return new ShortLinkReadPort.RedirectLinkView(
-                row.getTenantId() == null ? 0L : row.getTenantId(),
+        return new LinkMeta(
                 row.getId() == null ? 0L : row.getId(),
+                row.getTenantId() == null ? 0L : row.getTenantId(),
                 row.getCode(),
-                normalizeHost(row.getHostname()),
                 row.getOriginalUrl(),
                 Boolean.TRUE.equals(row.getEnabled()),
-                toInstant(row.getExpiresAt()),
+                row.getExpiresAt(),
                 row.getRedirectStatusCode(),
                 Boolean.TRUE.equals(row.getPreviewEnabled()),
                 row.getUnavailableLandingUrl(),
                 row.getQueryForwardMode(),
                 row.getQueryForwardAllowlist(),
+                normalizeHost(row.getHostname()),
                 row.getApplicationId(),
                 row.getDomainId(),
                 row.getLifecycleState()
         );
-    }
-
-    private static Instant toInstant(LocalDateTime value) {
-        if (value == null) {
-            return null;
-        }
-        return value.toInstant(ZoneOffset.UTC);
     }
 
     private static <T> List<T> safeList(List<T> rows) {

@@ -5,7 +5,7 @@ import com.linkforge.foundation.runtime.security.AuthContext;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.web.RequestId;
 import com.linkforge.shortlink.application.ShortLinkApplicationService;
-import com.linkforge.shortlink.interfaces.web.dto.TagHttpResponse;
+import com.linkforge.shortlink.application.TagDto;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -30,22 +30,17 @@ public class TagController {
     }
 
     @GetMapping
-    public ApiResponse<List<TagHttpResponse>> list() {
+    public ApiResponse<List<TagDto>> list() {
         AuthPrincipal p = AuthContext.requirePrincipal();
-        return ApiResponse.ok(
-                shortLinkService.listTags(p.getTenantId()).stream()
-                        .map(ShortLinkHttpMapper::toTagResponse)
-                        .toList(),
-                RequestId.get()
-        );
+        return ApiResponse.ok(shortLinkService.listTags(p.getTenantId()), RequestId.get());
     }
 
     @PostMapping
-    public ApiResponse<TagHttpResponse> create(@Valid @RequestBody CreateTagRequest req) {
+    public ApiResponse<TagDto> create(@Valid @RequestBody CreateTagRequest req) {
         writeGuard.requireWriteEnabled();
         AuthPrincipal p = AuthContext.requirePrincipal();
         return ApiResponse.ok(
-                ShortLinkHttpMapper.toTagResponse(shortLinkService.createTag(p.getTenantId(), req.name())),
+                shortLinkService.createTag(p.getTenantId(), req.name()),
                 RequestId.get()
         );
     }

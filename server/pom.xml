@@ -44,6 +44,7 @@
         <archunit.version>1.3.0</archunit.version>
         <mybatis-spring-boot.version>3.0.4</mybatis-spring-boot.version>
         <shardingsphere.version>5.5.3</shardingsphere.version>
+        <!-- ShardingSphere 5.5.3 uses org.apache.commons.lang3.Strings, added in Commons Lang 3.18. -->
         <commons-lang3.version>3.18.0</commons-lang3.version>
         <jacoco.version>0.8.14</jacoco.version>
         <!-- Docker Desktop (2026+) 默认最低 API 版本为 1.44，旧版 1.41 会导致 Testcontainers 探测失败 -->

@@ -11,8 +11,8 @@ import java.util.Optional;
 /**
  * 应用月度额度的一对一 MyBatis 持久化适配器。
  *
- * <p>该适配器只负责额度配置，不负责用量扣减或并发计数。常规创建使用普通 {@code INSERT}；
- * legacy reconcile 使用显式 upsert 覆盖为当前兼容额度。事务边界由调用方定义。</p>
+ * <p>该适配器只负责额度配置，不负责用量扣减或并发计数。写入使用普通 {@code INSERT}，
+ * 事务边界由调用方定义。</p>
  */
 @Component
 public class ApplicationQuotaRepositoryMybatisAdapter implements ApplicationQuotaRepository {
@@ -29,11 +29,6 @@ public class ApplicationQuotaRepositoryMybatisAdapter implements ApplicationQuot
     @Override
     public void insert(ApplicationQuota quota) {
         mapper.insert(toEntity(quota));
-    }
-
-    @Override
-    public void upsert(ApplicationQuota quota) {
-        mapper.upsert(toEntity(quota));
     }
 
     private static ApplicationQuotaEntity toEntity(ApplicationQuota quota) {

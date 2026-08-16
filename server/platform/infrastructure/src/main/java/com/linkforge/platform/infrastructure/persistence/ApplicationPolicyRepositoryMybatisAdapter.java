@@ -9,8 +9,7 @@ import org.springframework.stereotype.Component;
 /**
  * 应用默认策略的一对一持久化适配器。
  *
- * <p>常规创建使用普通 {@code INSERT} 并保留唯一约束错误；legacy reconcile 使用显式 upsert
- * 收敛当前策略。适配器不声明事务，两种写入都参与调用方事务。</p>
+ * <p>写入使用普通 {@code INSERT} 并保留唯一约束错误。适配器不声明事务，写入参与调用方事务。</p>
  */
 @Component
 public class ApplicationPolicyRepositoryMybatisAdapter implements ApplicationPolicyRepository {
@@ -27,11 +26,6 @@ public class ApplicationPolicyRepositoryMybatisAdapter implements ApplicationPol
     @Override
     public void insert(ApplicationPolicy policy) {
         mapper.insert(toEntity(policy));
-    }
-
-    @Override
-    public void upsert(ApplicationPolicy policy) {
-        mapper.upsert(toEntity(policy));
     }
 
     private static ApplicationPolicyEntity toEntity(ApplicationPolicy policy) {

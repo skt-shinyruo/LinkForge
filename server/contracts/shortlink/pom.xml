@@ -15,5 +15,11 @@
     <name>linkforge-contract-shortlink</name>
     <description>Published language: shortlink integration events + snapshots (JDK-only; no Spring/Jackson deps)</description>
 
-</project>
+    <dependencies>
+        <dependency>
+            <groupId>com.linkforge</groupId>
+            <artifactId>linkforge-contract-redirect</artifactId>
+        </dependency>
+    </dependencies>
 
+</project>

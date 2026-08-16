@@ -12,7 +12,6 @@ import com.linkforge.foundation.security.StandardRoles;
 import com.linkforge.foundation.tx.PostCommitHookPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,17 +49,6 @@ public class UserAdminService {
     private final AccountStatusCache statusCache;
     private final PostCommitHookPort postCommitHookPort;
 
-    public UserAdminService(
-            SnowflakeIdGenerator idGenerator,
-            AccountsUserStore userStore,
-            AccountsUserRoleStore userRoleStore,
-            AccountsPasswordHasher passwordHasher,
-            AccountStatusCache statusCache
-    ) {
-        this(idGenerator, userStore, userRoleStore, passwordHasher, statusCache, Runnable::run);
-    }
-
-    @Autowired
     public UserAdminService(
             SnowflakeIdGenerator idGenerator,
             AccountsUserStore userStore,

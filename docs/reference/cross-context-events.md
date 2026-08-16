@@ -30,9 +30,9 @@ LinkForge 是模块化单体，但模块边界仍按服务边界对待：
 
 创建、更新、归档、恢复和删除的核心提交顺序是：
 
-1. Shortlink 聚合执行不变量并记录领域事件。
+1. Shortlink 聚合执行不变量。
 2. repository 写短链、标签等业务状态。
-3. dispatcher 拉取聚合领域事件，转换为 V1 集成事件并追加 `integration_events`。
+3. 命令处理器直接调用 `ShortLinkEventPublisher`，转换为 V1 集成事件并追加 `integration_events`。
 4. 同一事务内 upsert Redirect 缓存失效 outbox。
 5. 事务提交；任何前置步骤失败会一起回滚。
 6. after-commit 快路径立即尝试驱逐缓存。
@@ -55,20 +55,16 @@ LinkForge 是模块化单体，但模块边界仍按服务边界对待：
 - Redis 长时间不可用时，Redirect 读异常降级为 MISS，并同步回源 Shortlink，因此正确性仍由数据库事实保证，代价是性能下降。
 - 负缓存和正缓存都必须驱逐，否则新建链接或状态变化会被旧 sentinel/快照遮蔽。
 
-generation 字段通过 additive migration 引入，默认值 `1` 让历史行和旧实例的 INSERT 在滚动发布中继续工作。
-应先发布 migration 与 generation producer，再在所有旧 producer/worker 退出后依赖 generation CAS 的完整竞态保证；
+generation 字段默认值为 `1`，让旧格式 INSERT 在滚动发布中继续工作。
+应先发布支持 generation 的 producer，再在所有旧 producer/worker 退出后依赖 generation CAS 的完整竞态保证；
 混部窗口保持向后兼容，但旧 worker 不理解 generation，仍只具备升级前的一致性保证。
 
 排障应检查 outbox 的 status、generation、attempts、next retry 和 last error，同时检查 Redis 与 Shortlink 权威读取，而不是手工修改数据库后只清一个 key。
 
-## 领域事件到集成事件
+## 集成事件追加
 
-`ShortLinkDomainEventDispatcher` 使用 destructive pull：从聚合取出当前积累事件后清空，再逐个发布。它隐含以下调用约束：
-
-- 每次状态变化后应在同一用例内及时 dispatch；不要在一个聚合中积累多轮变更后再依赖“当前快照”猜测每一步历史。
-- publisher 抛错会使业务事务失败，但已从内存聚合拉出的事件不会自动回到列表；调用方依赖事务回滚和整个用例重试，而不是复用同一个聚合实例。
-- ownership 变化使用内部 `ShortLinkOwnershipChanged` 捕获前后 scope，dispatcher 将其映射为现有 UPDATED 集成事件，不扩展跨上下文 wire contract。
-- 未识别的内部领域事件当前会被忽略，这是兼容限制，应通过日志和测试避免悄然丢失新增事件族。
+Shortlink 应用命令在聚合持久化成功后、同一事务内直接调用 `ShortLinkEventPublisher` 的对应方法。每个成功
+分支只追加一次；publisher 抛错会使业务事务失败，调用方依赖事务回滚和整个用例重试。
 
 `ShortLinkEventFactory` 创建的 `ShortLinkPublicSnapshot` 是事件时刻的发布事实。事件由 `IntegrationEventStore.append` 与业务数据同事务落库，producer 为 `shortlink`，aggregateType 为 `shortlink`。
 
@@ -160,8 +156,8 @@ active-set membership。当前 producer 默认只写 V2，consumer 在退役门�
 
 ## 源码入口
 
-- `ShortLinkDomainEventDispatcher`、`ShortLinkEventFactory`、`ShortLinkEventAppender`
+- `ShortLinkEventPublisher`、`ShortLinkEventPublisherAdapter`、`ShortLinkEventFactory`、`ShortLinkEventAppender`
 - `RedirectCacheInvalidations`、`RedirectCacheInvalidationOutboxJob`、`RedirectCacheSyncAdapter`
 - `MybatisIntegrationEventStore`、`ShortLinkCatalogProjectorJob`
 - `AnalyticsRedirectEventProjectorJob`、`AnalyticsFlushJob`、`AnalyticsEventIngestJob`
-- `ShortLinkReadApplicationService`、`RedirectService`
+- `MybatisShortLinkReadRepository`、`RedirectService`

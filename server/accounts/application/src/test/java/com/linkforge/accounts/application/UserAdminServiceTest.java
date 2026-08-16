@@ -53,7 +53,8 @@ class UserAdminServiceTest {
                 userStore,
                 userRoleStore,
                 passwordHasher,
-                statusCache
+                statusCache,
+                Runnable::run
         );
 
         CreateUserCommand req = new CreateUserCommand(
@@ -132,7 +133,8 @@ class UserAdminServiceTest {
                 userStore,
                 userRoleStore,
                 passwordHasher,
-                statusCache
+                statusCache,
+                Runnable::run
         );
 
         AccountsUserStore.UserData existing = new AccountsUserStore.UserData(
@@ -168,7 +170,8 @@ class UserAdminServiceTest {
                 userStore,
                 userRoleStore,
                 passwordHasher,
-                statusCache
+                statusCache,
+                Runnable::run
         );
 
         AccountsUserStore.UserData onlyAdmin = new AccountsUserStore.UserData(

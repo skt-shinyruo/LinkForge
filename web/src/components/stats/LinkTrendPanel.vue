@@ -1,24 +1,27 @@
 <script setup lang="ts">
-import { defineAsyncComponent } from "vue";
+import { computed, defineAsyncComponent, ref } from "vue";
 
 const LineChart = defineAsyncComponent(() => import("../LineChart.vue"));
 
-defineProps<{
+const props = defineProps<{
   links: { id: number; code: string; originalUrl: string }[];
   linkSearch: string;
   linkOptionsLoading: boolean;
   linkOptionsHasMore: boolean;
   linkOptionsError: string | null;
   selectedLinkId: number | null;
-  selectedLink: { id: number; code: string; originalUrl: string } | null;
   linkStats: { day: string; pv: number; uv: number }[];
-  showLinkChart: boolean;
-  linkChartLabels: string[];
-  linkChartSeries: { name: string; data: number[] }[];
 }>();
 
+const showChart = ref(false);
+const selectedLink = computed(() => props.links.find((link) => link.id === props.selectedLinkId));
+const labels = computed(() => props.linkStats.map((stat) => stat.day));
+const series = computed(() => [
+  { name: "PV", data: props.linkStats.map((stat) => stat.pv) },
+  { name: "UV", data: props.linkStats.map((stat) => stat.uv) },
+]);
+
 defineEmits<{
-  toggle: [];
   searchLinks: [];
   loadMoreLinks: [];
   updateLinkSearch: [value: string];
@@ -30,8 +33,8 @@ defineEmits<{
   <section class="card">
     <div class="card-head">
       <h2>单短链趋势（PV / UV）</h2>
-      <button class="btn small secondary" :disabled="!selectedLinkId || linkStats.length === 0" @click="$emit('toggle')">
-        {{ showLinkChart ? "收起图表" : "显示图表" }}
+      <button class="btn small secondary" :disabled="!selectedLinkId || linkStats.length === 0" @click="showChart = !showChart">
+        {{ showChart ? "收起图表" : "显示图表" }}
       </button>
     </div>
     <form class="linkSearch" @submit.prevent="$emit('searchLinks')">
@@ -64,12 +67,12 @@ defineEmits<{
     </button>
     <div v-if="!selectedLinkId" class="sub">未选择短链</div>
     <div v-else-if="linkStats.length === 0" class="sub">暂无统计数据</div>
-    <div v-else-if="!showLinkChart" class="sub">
+    <div v-else-if="!showChart" class="sub">
       当前短链：<span class="mono">{{ selectedLink?.code || selectedLinkId }}</span>
     </div>
     <Suspense v-else>
       <template #default>
-        <LineChart title="" :labels="linkChartLabels" :series="linkChartSeries" height="320px" />
+        <LineChart :labels="labels" :series="series" />
       </template>
       <template #fallback>
         <div class="sub">图表加载中...</div>

@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.slf4j.MDC;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
@@ -41,7 +42,7 @@ class StatsControllerTest {
     @AfterEach
     void tearDown() {
         SecurityContextHolder.clearContext();
-        RequestId.clear();
+        MDC.remove(RequestId.MDC_KEY);
     }
 
     @Test
@@ -140,7 +141,7 @@ class StatsControllerTest {
                 "N/A",
                 java.util.List.of()
         ));
-        RequestId.set("req-123");
+        MDC.put(RequestId.MDC_KEY, "req-123");
 
         UserActor actor = new UserActor(1L, 9L, "tenant-admin@example.com", Set.of("TENANT_ADMIN"));
         LocalDateTime from = LocalDateTime.parse("2026-03-30T00:00:00");
@@ -233,7 +234,7 @@ class StatsControllerTest {
                 "N/A",
                 java.util.List.of()
         ));
-        RequestId.set("req-456");
+        MDC.put(RequestId.MDC_KEY, "req-456");
 
         UserActor actor = new UserActor(1L, 9L, "tenant-admin@example.com", Set.of("TENANT_ADMIN"));
         LocalDateTime from = LocalDateTime.parse("2026-03-30T00:00:00");
@@ -255,22 +256,9 @@ class StatsControllerTest {
         when(principalActorMapper.requireUser(any(AuthPrincipal.class))).thenReturn(actor);
         when(linkEventsService.listLinkEvents(actor, 101L, from, to, 123)).thenReturn(expected);
 
-        ApiResponse<List<VisitEventHttpResponse>> response = controller.linkEvents(101L, from, to, 123);
+        ApiResponse<List<AnalyticsQueryService.VisitEvent>> response = controller.linkEvents(101L, from, to, 123);
 
-        assertThat(response.getData()).containsExactly(new VisitEventHttpResponse(
-                LocalDateTime.parse("2026-03-30T12:34:56"),
-                "visit-req-1",
-                "ip-hash-1",
-                "Mozilla/5.0",
-                "Chrome",
-                "macOS",
-                "desktop",
-                "example.com",
-                "en-US",
-                "newsletter",
-                "email",
-                "spring"
-        ));
+        assertThat(response.getData()).isEqualTo(expected);
         assertThat(response.getRequestId()).isEqualTo("req-456");
         verify(linkEventsService).listLinkEvents(actor, 101L, from, to, 123);
     }
@@ -295,7 +283,7 @@ class StatsControllerTest {
                 "N/A",
                 java.util.List.of()
         ));
-        RequestId.set("req-top");
+        MDC.put(RequestId.MDC_KEY, "req-top");
 
         LocalDate from = LocalDate.parse("2026-04-01");
         LocalDate to = LocalDate.parse("2026-04-24");
@@ -312,17 +300,9 @@ class StatsControllerTest {
         );
         when(reportingService.topLinks(1L, from, to, 10, AnalyticsQueryService.TopSortBy.PV)).thenReturn(expected);
 
-        ApiResponse<List<TopLinkStatHttpResponse>> response = controller.topLinks(from, to, null, null);
+        ApiResponse<List<AnalyticsQueryService.TopLinkStat>> response = controller.topLinks(from, to, null, null);
 
-        assertThat(response.getData()).containsExactly(new TopLinkStatHttpResponse(
-                101L,
-                "abc123",
-                "https://sho.rt/abc123",
-                "https://example.com/a",
-                50L,
-                40L,
-                false
-        ));
+        assertThat(response.getData()).isEqualTo(expected);
         assertThat(response.getRequestId()).isEqualTo("req-top");
         verify(reportingService).topLinks(1L, from, to, 10, AnalyticsQueryService.TopSortBy.PV);
     }

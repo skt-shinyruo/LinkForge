@@ -87,8 +87,8 @@ class LinkCacheServiceTest {
         ValueOperations<String, String> values = mock(ValueOperations.class);
         when(redis.opsForValue()).thenReturn(values);
 
-        assertThat(cache(redis).lookup(" ")).isEqualTo(LinkCachePort.LookupResult.miss());
-        assertThat(cache(redis).lookup(null)).isEqualTo(LinkCachePort.LookupResult.miss());
+        assertThat(cache(redis).lookup(null, " ")).isEqualTo(LinkCachePort.LookupResult.miss());
+        assertThat(cache(redis).lookup(null, null)).isEqualTo(LinkCachePort.LookupResult.miss());
         when(values.get("link:host:go.example.test:code:AbC123")).thenReturn(null);
         assertThat(cache(redis).lookup(" GO.EXAMPLE.TEST:443 ", "AbC123"))
                 .isEqualTo(LinkCachePort.LookupResult.miss());
@@ -103,7 +103,7 @@ class LinkCacheServiceTest {
         when(redis.opsForValue()).thenReturn(values);
         LinkMeta meta = meta("AbC123", "Go.Example.Test:443");
 
-        assertThat(cache(redis).tryPut(meta)).isTrue();
+        assertThat(cache(redis).tryPut(null, meta)).isTrue();
 
         verify(values).set(
                 eq("link:host:go.example.test:code:AbC123"),
@@ -119,10 +119,10 @@ class LinkCacheServiceTest {
         OperationalMetrics metrics = mock(OperationalMetrics.class);
         LinkCacheService cache = new LinkCacheService(redis, mapper, properties(60, 60), metrics);
 
-        assertThat(cache.tryPut((LinkMeta) null)).isTrue();
-        assertThat(cache.tryPut(meta(" ", HOST))).isTrue();
+        assertThat(cache.tryPut(null, null)).isTrue();
+        assertThat(cache.tryPut(null, meta(" ", HOST))).isTrue();
         when(mapper.writeValueAsString(any())).thenThrow(new IllegalStateException("cannot serialize"));
-        assertThat(cache.tryPut(meta(CODE, HOST))).isFalse();
+        assertThat(cache.tryPut(null, meta(CODE, HOST))).isFalse();
 
         verify(redis, never()).opsForValue();
         verify(metrics).increment(
@@ -164,32 +164,14 @@ class LinkCacheServiceTest {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         LinkCacheService cache = cache(redis);
 
-        assertThat(cache.tryEvict(" ")).isTrue();
+        assertThat(cache.tryEvict(null, " ")).isTrue();
         verify(redis, never()).delete(any(String.class));
         assertThat(cache.tryEvict(HOST, CODE)).isTrue();
         verify(redis).delete(CACHE_KEY);
 
         doThrow(new IllegalStateException("delete unavailable"))
                 .when(redis).delete("link:code:legacy");
-        assertThat(cache.tryEvict("legacy")).isFalse();
-    }
-
-    @Test
-    void compatibilityGetPutAndEvict_shouldDelegateToUnscopedCacheContract() throws Exception {
-        StringRedisTemplate redis = mock(StringRedisTemplate.class);
-        ValueOperations<String, String> values = mock(ValueOperations.class);
-        ObjectMapper mapper = new ObjectMapper();
-        LinkMeta meta = meta(CODE, null);
-        when(redis.opsForValue()).thenReturn(values);
-        when(values.get("link:code:" + CODE)).thenReturn(mapper.writeValueAsString(meta));
-        LinkCacheService cache = cache(redis, mapper, properties(60, 60));
-
-        assertThat(cache.get(CODE)).isEqualTo(meta);
-        cache.put(meta);
-        cache.evict(CODE);
-
-        verify(values).set(eq("link:code:" + CODE), any(String.class), eq(Duration.ofSeconds(60)));
-        verify(redis).delete("link:code:" + CODE);
+        assertThat(cache.tryEvict(null, "legacy")).isFalse();
     }
 
     private static LinkCacheService cache(StringRedisTemplate redis) {
@@ -201,7 +183,7 @@ class LinkCacheServiceTest {
             ObjectMapper mapper,
             RedirectProperties properties
     ) {
-        return new LinkCacheService(redis, mapper, properties);
+        return new LinkCacheService(redis, mapper, properties, OperationalMetrics.noop());
     }
 
     private static RedirectProperties properties(long cacheTtl, long notFoundTtl) {
@@ -224,7 +206,10 @@ class LinkCacheServiceTest {
                 null,
                 null,
                 null,
-                hostname
+                hostname,
+                null,
+                null,
+                LinkMeta.ACTIVE_LIFECYCLE_STATE
         );
     }
 }

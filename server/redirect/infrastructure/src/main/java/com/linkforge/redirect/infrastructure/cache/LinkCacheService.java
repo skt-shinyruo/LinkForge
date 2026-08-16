@@ -10,7 +10,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.beans.factory.annotation.Autowired;
 
 import java.time.Duration;
 
@@ -37,11 +36,6 @@ public class LinkCacheService implements LinkCachePort {
     private final RedirectProperties redirectProperties;
     private final OperationalMetrics metrics;
 
-    public LinkCacheService(StringRedisTemplate redis, ObjectMapper objectMapper, RedirectProperties redirectProperties) {
-        this(redis, objectMapper, redirectProperties, OperationalMetrics.noop());
-    }
-
-    @Autowired
     public LinkCacheService(
             StringRedisTemplate redis,
             ObjectMapper objectMapper,
@@ -52,16 +46,6 @@ public class LinkCacheService implements LinkCachePort {
         this.objectMapper = objectMapper;
         this.redirectProperties = redirectProperties;
         this.metrics = metrics == null ? OperationalMetrics.noop() : metrics;
-    }
-
-    /**
-     * 读取 legacy/unscoped 缓存。
-     *
-     * <p>负缓存仅表示权威读已确认不存在，用于抵御随机短码扫描的缓存穿透。</p>
-     */
-    @Override
-    public LookupResult lookup(String code) {
-        return lookup(null, code);
     }
 
     /**
@@ -110,30 +94,6 @@ public class LinkCacheService implements LinkCachePort {
     }
 
     /**
-     * 兼容旧调用面读取正缓存元数据；负缓存与未命中都会返回 {@code null}，新代码应使用三态 lookup。
-     */
-    public LinkMeta get(String code) {
-        return lookup(code).meta();
-    }
-
-    /**
-     * 兼容旧调用面尽力写入正缓存，调用者不应据此推断写入必然成功。
-     */
-    public void put(LinkMeta meta) {
-        tryPut(meta);
-    }
-
-    /**
-     * 尝试写入 legacy/unscoped 正缓存。
-     *
-     * <p>返回值只说明本次 Redis 调用是否成功，不是短链事实是否已持久化的确认。</p>
-     */
-    @Override
-    public boolean tryPut(LinkMeta meta) {
-        return tryPut(null, meta);
-    }
-
-    /**
      * 尝试写入指定 host + code 的正缓存。
      *
      * <p>无效元数据视为无需写入的成功，Redis 或 JSON 失败返回 {@code false} 并由上层决定是否重试。</p>
@@ -167,14 +127,6 @@ public class LinkCacheService implements LinkCachePort {
     }
 
     /**
-     * 为 legacy/unscoped code 尽力写入短 TTL 负缓存。
-     */
-    @Override
-    public void markNotFound(String code) {
-        markNotFound(null, code);
-    }
-
-    /**
      * 为指定 host + code 尽力写入短 TTL 负缓存。
      *
      * <p>只有 Shortlink 权威读正常返回空时才允许调用本方法；TTL 非正时显式关闭负缓存。</p>
@@ -195,23 +147,6 @@ public class LinkCacheService implements LinkCachePort {
             // 负缓存写入失败只增加回源次数，不能影响本次查询结论。
             log.debug("cache write not-found failed: host={}, code={}, err={}", host, code, e.getMessage());
         }
-    }
-
-    /**
-     * 兼容旧调用面驱逐 legacy/unscoped key。
-     */
-    public void evict(String code) {
-        tryEvict(code);
-    }
-
-    /**
-     * 尝试驱逐 legacy/unscoped key。
-     *
-     * <p>驱逐可重复调用，after-commit 快路径和 outbox worker 都可能执行它。</p>
-     */
-    @Override
-    public boolean tryEvict(String code) {
-        return tryEvict(null, code);
     }
 
     /**

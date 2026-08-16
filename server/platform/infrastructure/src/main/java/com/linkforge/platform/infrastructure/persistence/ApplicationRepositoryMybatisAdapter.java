@@ -46,14 +46,6 @@ public class ApplicationRepositoryMybatisAdapter implements ApplicationRepositor
     }
 
     /**
-     * 在租户边界内按业务键查询。数据库约束保证同一租户最多匹配一条记录。
-     */
-    @Override
-    public Optional<Application> findByTenantIdAndApplicationKey(long tenantId, String applicationKey) {
-        return Optional.ofNullable(mapper.findByTenantIdAndApplicationKey(tenantId, applicationKey)).map(this::toDomain);
-    }
-
-    /**
      * 返回指定租户的应用快照，顺序由 SQL 固定为创建时间和 ID 倒序。
      */
     @Override

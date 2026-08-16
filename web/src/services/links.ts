@@ -1,7 +1,6 @@
 import {
   API_ENDPOINTS,
   ensureApiSuccess,
-  parseApiResponse,
   requireApiData,
   withQuery,
 } from "./apiContract";
@@ -24,9 +23,7 @@ export async function listLinks(
 ): Promise<PageResponse<LinkDto>> {
   const page = query.page ?? 0;
   const size = query.size ?? 50;
-  const basePath = query.applicationId
-    ? API_ENDPOINTS.links.collection(query.applicationId)
-    : API_ENDPOINTS.links.collection();
+  const basePath = API_ENDPOINTS.links.collection(query.applicationId);
   const response = await apiFetch<PageResponse<LinkDto>>(
     withQuery(basePath, {
       page,
@@ -54,9 +51,7 @@ export async function listLinks(
 }
 
 export async function createLink(request: CreateLinkRequest): Promise<LinkDto> {
-  const path = request.applicationId
-    ? API_ENDPOINTS.links.collection(request.applicationId)
-    : API_ENDPOINTS.links.collection();
+  const path = API_ENDPOINTS.links.collection(request.applicationId);
   const response = await apiFetch<LinkDto>(
     path,
     {
@@ -126,25 +121,18 @@ export async function importLinksCsv(
       })
     : API_ENDPOINTS.links.importCsv();
 
-  const response = await authFetch(path, {
-    method: "POST",
-    body: formData,
-  });
-  const payload = await parseApiResponse<LinkImportResult>(response, isLinkImportResult);
-
-  if (!response.ok || payload.code !== 0) {
-    throw new Error(payload.message || `导入失败（HTTP ${response.status}）`);
-  }
-
-  return payload.data ?? { success: 0, failed: 0, errors: [] };
+  const response = await apiFetch<LinkImportResult>(
+    path,
+    { method: "POST", body: formData },
+    isLinkImportResult,
+  );
+  return ensureApiSuccess(response, "导入失败") ?? { success: 0, failed: 0, errors: [] };
 }
 
 export async function exportLinksCsv(query: LinkExportQuery = {}): Promise<Blob> {
   const page = query.page ?? 0;
   const size = query.size ?? 1000;
-  const basePath = query.applicationId
-    ? API_ENDPOINTS.links.exportCsv(query.applicationId)
-    : API_ENDPOINTS.links.exportCsv();
+  const basePath = API_ENDPOINTS.links.exportCsv(query.applicationId);
   const response = await authFetch(
     withQuery(basePath, {
       page,

@@ -105,13 +105,13 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 常用配置：
 
 - `MYSQL_ROOT_PASSWORD`：MySQL root 密码。
-- `MYSQL_API_USER` / `MYSQL_API_PASSWORD`：后端写库账号，Flyway 迁移和业务写入使用。
+- `MYSQL_API_USER` / `MYSQL_API_PASSWORD`：后端业务写库账号。
 - `MYSQL_READ_USER` / `MYSQL_READ_PASSWORD`：后端读库账号，读流量访问从库使用。
 - `MYSQL_REPLICATION_USER` / `MYSQL_REPLICATION_PASSWORD`：MySQL 主从复制账号。
 - `API_KEY_CURRENT_KEY_ID` / `API_KEY_CURRENT_PEPPER`：新 API Key 摘要使用的当前 keyring 项；current key id 最多 64 个字符。
 - `API_KEY_PREVIOUS_KEY_ID` / `API_KEY_PREVIOUS_PEPPER`：轮换兼容窗口内的上一代 keyring 项；previous key id 最多 64 个字符，必须成对配置。
 - `API_KEY_LEGACY_PEPPER`：仅用于验证无 key id 的历史 HMAC 摘要；新部署保持为空。
-- `API_KEY_HMAC_PEPPER`：V26 前的单 pepper 变量。Compose 继续转发它并在 current/legacy 未设置时作为 fallback，仅用于滚动升级和旧二进制兼容。
+- `API_KEY_HMAC_PEPPER`：旧版单 pepper 变量。Compose 继续转发它并在 current/legacy 未设置时作为 fallback，仅用于滚动升级和旧二进制兼容。
 - `API_KEY_LEGACY_JWT_FALLBACK_ENABLED`：仅用于非生产历史兼容；严格配置必须为 `false`。
 - `ANALYTICS_VISIT_STREAM_MAX_LEN`：基础 PV/UV Redis Stream 的近似最大长度；必须不低于峰值速率、恢复窗口和安全余量计算出的容量下限。
 - `ANALYTICS_VISIT_STREAM_PEAK_EVENTS_PER_SECOND` / `ANALYTICS_VISIT_STREAM_RECOVERY_WINDOW_SECONDS` / `ANALYTICS_VISIT_STREAM_SAFETY_MARGIN_PERCENT`：访问流容量预算输入。
@@ -129,15 +129,15 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 
 ## API Key pepper 滚动升级
 
-不要用新模板覆盖现有 `deploy/.env`。V26 migration 会为历史行新增可空 `key_id`；升级前先确认并保留当前
+不要用新模板覆盖现有 `deploy/.env`。从旧版单 pepper 配置升级前，先确认并保留当前
 `API_KEY_HMAC_PEPPER`，整个过程都保持 `API_KEY_LEGACY_JWT_FALLBACK_ENABLED=false`。
 
 1. 兼容混部：保持 `API_KEY_HMAC_PEPPER` 为原值；设置 `API_KEY_CURRENT_KEY_ID=v1`，并让
    `API_KEY_CURRENT_PEPPER` 与原值相同。`API_KEY_LEGACY_PEPPER` 可显式设为原值，也可使用 Compose fallback。
-   先部署 V26 实例并观察认证错误；不要在仍有旧实例时引入新 pepper。
+   先部署支持 keyring 的实例并观察认证错误；不要在仍有旧实例时引入新 pepper。
 2. 真正轮换：确认全部旧实例已停止，并接受从此不能安全回滚到旧二进制。把原 key id/pepper 成对移到
    `API_KEY_PREVIOUS_KEY_ID=v1` / `API_KEY_PREVIOUS_PEPPER`，原 pepper 同时保留在 `API_KEY_LEGACY_PEPPER`；
-   再设置新的 `API_KEY_CURRENT_KEY_ID` 和独立 `API_KEY_CURRENT_PEPPER`，滚动重启 V26 实例。
+   再设置新的 `API_KEY_CURRENT_KEY_ID` 和独立 `API_KEY_CURRENT_PEPPER`，滚动重启当前实例。
 3. 收缩兼容：认证成功会 CAS 升级旧摘要，但长期不用或 disabled 的 key 不会自动迁移。确认数据库中不再有旧
    key id，且不再有 `key_id IS NULL` 的 HMAC 行；剩余凭据应先逐个轮换、撤销或删除。只有盘点归零后才能移除
    previous/legacy pepper 和旧 `API_KEY_HMAC_PEPPER` 兼容变量。
@@ -147,7 +147,7 @@ compatibility pepper 可以在第一阶段按上述要求临时指向同一 API 
 
 ## 注意事项
 
-- MySQL 初始化脚本只会在全新数据卷上执行。修改 MySQL 初始化账号、复制账号或复制参数后，需要执行 `docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v` 再重新启动。
+- MySQL 初始化脚本和 `database/schema.sql` 只会在全新数据卷上执行。修改 schema、MySQL 初始化账号、复制账号或复制参数后，需要执行 `docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v` 再重新启动。
 - Compose 内部使用 `mysql-primary` + `mysql-replica` 模拟主从部署；后端通过 ShardingSphere-JDBC 暴露逻辑数据源，写入走主库，符合条件的非事务查询可走从库。
 - 后端健康检查依赖运行时镜像中的 `curl` 和 Spring Boot Actuator management 端口 `8081`。如果健康检查失败，`web` 不会接入后端流量，请先查看 `server` 日志。
 - 本地默认绑定 `127.0.0.1:18080`，外部机器无法直接访问。如需共享访问，请谨慎调整 `LINKFORGE_HTTP_BIND`、`APP_BASE_URL` 和相关安全配置。

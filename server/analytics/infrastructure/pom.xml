@@ -25,19 +25,7 @@
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-foundation-runtime-web</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-foundation-runtime-persistence</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.linkforge</groupId>
             <artifactId>linkforge-foundation-runtime-startup</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-contract-api</artifactId>
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>

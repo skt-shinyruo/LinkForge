@@ -7,7 +7,6 @@ import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.tx.PostCommitHookPort;
 import com.linkforge.shortlink.application.*;
-import com.linkforge.shortlink.application.eventing.ShortLinkDomainEventDispatcher;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
 import com.linkforge.shortlink.application.port.ApplicationLinkQuotaReservationPort;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
@@ -62,13 +61,11 @@ class CreateShortLinkCommandHandlerTest {
     }
 
     @Test
-    void constructor_shouldDependOnDomainEventDispatcherInsteadOfEventPublisher() {
+    void constructor_shouldDependOnEventPublisher() {
         Constructor<?> constructor = CreateShortLinkCommandHandler.class.getDeclaredConstructors()[0];
 
         assertThat(constructor.getParameterTypes())
-                .contains(ShortLinkDomainEventDispatcher.class);
-        assertThat(constructor.getParameterTypes())
-                .doesNotContain(ShortLinkEventPublisher.class);
+                .contains(ShortLinkEventPublisher.class);
     }
 
     @Test
@@ -79,7 +76,7 @@ class CreateShortLinkCommandHandlerTest {
         ShortLinkRepository shortLinkRepository = mock(ShortLinkRepository.class);
         SetLinkTagsCommandHandler setLinkTagsHandler = mock(SetLinkTagsCommandHandler.class);
         LinkTagRepository linkTagRepository = mock(LinkTagRepository.class);
-        ShortLinkDomainEventDispatcher domainEventDispatcher = mock(ShortLinkDomainEventDispatcher.class);
+        ShortLinkEventPublisher eventPublisher = mock(ShortLinkEventPublisher.class);
         RedirectCacheSyncPort redirectCacheSync = mock(RedirectCacheSyncPort.class);
         RedirectCacheInvalidationOutboxPort redirectCacheInvalidationOutbox = mock(RedirectCacheInvalidationOutboxPort.class);
         ShortLinkDtoMapper dtoMapper = mock(ShortLinkDtoMapper.class);
@@ -94,7 +91,7 @@ class CreateShortLinkCommandHandlerTest {
                 quotaReservationPort,
                 setLinkTagsHandler,
                 linkTagRepository,
-                domainEventDispatcher,
+                eventPublisher,
                 redirectCacheSync,
                 redirectCacheInvalidationOutbox,
                 dtoMapper,
@@ -181,7 +178,7 @@ class CreateShortLinkCommandHandlerTest {
                 LocalDateTime.parse("2026-05-01T00:00:00"),
                 10L
         );
-        verify(domainEventDispatcher).publish(any(ShortLink.class), eq(clock.instant()));
+        verify(eventPublisher).created(any(ShortLink.class), eq(clock.instant()));
         verify(redirectCacheInvalidationOutbox).enqueue(1L, 3001L, "abc123");
         verify(postCommitHookPort).run(any(Runnable.class));
     }
@@ -199,7 +196,7 @@ class CreateShortLinkCommandHandlerTest {
                 quotaReservationPort,
                 mock(SetLinkTagsCommandHandler.class),
                 mock(LinkTagRepository.class),
-                mock(ShortLinkDomainEventDispatcher.class),
+                mock(ShortLinkEventPublisher.class),
                 mock(RedirectCacheSyncPort.class),
                 mock(RedirectCacheInvalidationOutboxPort.class),
                 mock(ShortLinkDtoMapper.class),
@@ -289,7 +286,7 @@ class CreateShortLinkCommandHandlerTest {
                 new SinglePermitQuotaReservationPort(),
                 mock(SetLinkTagsCommandHandler.class),
                 linkTagRepository,
-                mock(ShortLinkDomainEventDispatcher.class),
+                mock(ShortLinkEventPublisher.class),
                 mock(RedirectCacheSyncPort.class),
                 mock(RedirectCacheInvalidationOutboxPort.class),
                 dtoMapper,
@@ -327,7 +324,7 @@ class CreateShortLinkCommandHandlerTest {
                 mock(ApplicationLinkQuotaReservationPort.class),
                 mock(SetLinkTagsCommandHandler.class),
                 mock(LinkTagRepository.class),
-                mock(ShortLinkDomainEventDispatcher.class),
+                mock(ShortLinkEventPublisher.class),
                 mock(RedirectCacheSyncPort.class),
                 mock(RedirectCacheInvalidationOutboxPort.class),
                 mock(ShortLinkDtoMapper.class),

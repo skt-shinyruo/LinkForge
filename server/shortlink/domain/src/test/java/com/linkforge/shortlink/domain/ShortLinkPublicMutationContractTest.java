@@ -35,14 +35,12 @@ class ShortLinkPublicMutationContractTest {
             "createdByType",
             "createdAtUtc",
             "updatedAtUtc",
-            "pullDomainEvents",
             "archive",
             "restore",
             "delete",
             "planPatch",
             "applyUpdate",
-            "approveDestinationChange",
-            "reconcileOwnership"
+            "approveDestinationChange"
     );
 
     @Test

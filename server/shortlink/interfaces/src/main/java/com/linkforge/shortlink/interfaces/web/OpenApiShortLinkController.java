@@ -11,8 +11,6 @@ import com.linkforge.shortlink.application.LinkDto;
 import com.linkforge.shortlink.application.ScopedCreateLinkRequest;
 import com.linkforge.shortlink.application.ShortLinkApplicationService;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkCreateHttpRequest;
-import com.linkforge.shortlink.interfaces.web.dto.ShortLinkHttpResponse;
-import com.linkforge.shortlink.interfaces.web.dto.ShortLinkPageHttpResponse;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -41,18 +39,18 @@ public class OpenApiShortLinkController {
     }
 
     @PostMapping("/links")
-    public ApiResponse<ShortLinkHttpResponse> create(@Valid @RequestBody ShortLinkCreateHttpRequest req) {
+    public ApiResponse<LinkDto> create(@Valid @RequestBody ShortLinkCreateHttpRequest req) {
         writeGuard.requireWriteEnabled();
         ApiKeyActor actor = principalActorMapper.requireApiKey(AuthContext.requirePrincipal());
         LinkDto dto = shortLinkService.createForApiKey(
                 actor,
                 new ScopedCreateLinkRequest(ShortLinkHttpMapper.toCreateRequest(req), null)
         );
-        return ApiResponse.ok(ShortLinkHttpMapper.toLinkResponse(dto), RequestId.get());
+        return ApiResponse.ok(dto, RequestId.get());
     }
 
     @PostMapping("/applications/{applicationId}/links")
-    public ApiResponse<ShortLinkHttpResponse> createForApplication(
+    public ApiResponse<LinkDto> createForApplication(
             @PathVariable("applicationId") long applicationId,
             @Valid @RequestBody ShortLinkCreateHttpRequest req
     ) {
@@ -62,11 +60,11 @@ public class OpenApiShortLinkController {
                 actor,
                 new ScopedCreateLinkRequest(ShortLinkHttpMapper.toCreateRequest(req), applicationId)
         );
-        return ApiResponse.ok(ShortLinkHttpMapper.toLinkResponse(dto), RequestId.get());
+        return ApiResponse.ok(dto, RequestId.get());
     }
 
     @GetMapping("/links")
-    public ApiResponse<ShortLinkPageHttpResponse<ShortLinkHttpResponse>> list(
+    public ApiResponse<PageResult<LinkDto>> list(
             @RequestParam(required = false) Boolean enabled,
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "0") int page,
@@ -81,11 +79,11 @@ public class OpenApiShortLinkController {
                         false, enabled, keyword, null, null, null, page, size, 100, cursor, includeTotal
                 )
         );
-        return ApiResponse.ok(ShortLinkHttpMapper.toPageResponse(result), RequestId.get());
+        return ApiResponse.ok(result, RequestId.get());
     }
 
     @GetMapping("/applications/{applicationId}/links")
-    public ApiResponse<ShortLinkPageHttpResponse<ShortLinkHttpResponse>> listByApplication(
+    public ApiResponse<PageResult<LinkDto>> listByApplication(
             @PathVariable("applicationId") long applicationId,
             @RequestParam(required = false) Boolean enabled,
             @RequestParam(required = false) String keyword,
@@ -101,6 +99,6 @@ public class OpenApiShortLinkController {
                         false, enabled, keyword, null, null, applicationId, page, size, 100, cursor, includeTotal
                 )
         );
-        return ApiResponse.ok(ShortLinkHttpMapper.toPageResponse(result), RequestId.get());
+        return ApiResponse.ok(result, RequestId.get());
     }
 }

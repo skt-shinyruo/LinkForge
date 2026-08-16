@@ -46,9 +46,6 @@ export function useStatsPage() {
 
   const rangeDays = ref<7 | 30>(7);
   const topSortBy = ref<TopLinkSortBy>("pv");
-  const showOverviewChart = ref(false);
-  const showLinkChart = ref(false);
-
   const applications = ref<ApplicationDto[]>([]);
   const selectedApplicationId = ref<number | null>(null);
   const links = ref<LinkDto[]>([]);
@@ -62,20 +59,7 @@ export function useStatsPage() {
   const overviewStats = ref<DailyStat[]>([]);
   const topLinks = ref<TopLinkStat[]>([]);
 
-  const selectedLink = computed(() => links.value.find((link) => link.id === selectedLinkId.value) || null);
   const range = computed(() => calcRange(rangeDays.value));
-
-  const overviewChartLabels = computed(() => overviewStats.value.map((stat) => stat.day));
-  const overviewChartSeries = computed(() => [
-    { name: "PV", data: overviewStats.value.map((stat) => stat.pv) },
-    { name: "UV", data: overviewStats.value.map((stat) => stat.uv) },
-  ]);
-
-  const linkChartLabels = computed(() => linkStats.value.map((stat) => stat.day));
-  const linkChartSeries = computed(() => [
-    { name: "PV", data: linkStats.value.map((stat) => stat.pv) },
-    { name: "UV", data: linkStats.value.map((stat) => stat.uv) },
-  ]);
 
   const auth = useAuthStore();
   const isTenantAdmin = computed(() => auth.isTenantAdmin);
@@ -271,8 +255,6 @@ export function useStatsPage() {
     applications,
     error,
     init,
-    linkChartLabels,
-    linkChartSeries,
     linkStats,
     linkOptionsError: latestLinkOptions.error,
     linkOptionsHasMore,
@@ -282,21 +264,16 @@ export function useStatsPage() {
     loadMoreLinks,
     loading,
     onSelectedLinkChange,
-    overviewChartLabels,
-    overviewChartSeries,
     overviewStats,
     range,
     rangeDays,
     refresh,
     searchLinks,
-    selectedLink,
     selectedApplicationId,
     selectedLinkId,
     setRange,
     setSelectedApplicationId,
     setTopSortBy,
-    showLinkChart,
-    showOverviewChart,
     topLinks,
     topSortBy,
     copyShort,

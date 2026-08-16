@@ -1,12 +1,12 @@
 package com.linkforge.shortlink.infrastructure.query;
 
+import com.linkforge.contract.redirect.LinkMeta;
 import com.linkforge.contract.shortlink.ShortLinkReadPort;
 import com.linkforge.foundation.config.CoreProperties;
 import com.linkforge.shortlink.infrastructure.persistence.entity.ShortLinkEntity;
 import com.linkforge.shortlink.infrastructure.persistence.mapper.ShortLinkQueryMapper;
 import org.junit.jupiter.api.Test;
 
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -32,17 +32,17 @@ class MybatisShortLinkReadRepositoryTest {
         when(queryMapper.findActiveByHostnameAndCode("alpha.example.test", "AbC123"))
                 .thenReturn(row);
 
-        Optional<ShortLinkReadPort.RedirectLinkView> actual =
+        Optional<LinkMeta> actual =
                 repository.findRedirectMetaByHostAndCode(" Alpha.Example.Test:8443 ", "  AbC123  ");
 
         assertThat(actual).hasValueSatisfying(meta -> {
             assertThat(meta.tenantId()).isEqualTo(22L);
-            assertThat(meta.linkId()).isEqualTo(11L);
+            assertThat(meta.id()).isEqualTo(11L);
             assertThat(meta.code()).isEqualTo("AbC123");
             assertThat(meta.hostname()).isEqualTo("alpha.example.test");
             assertThat(meta.originalUrl()).isEqualTo("https://example.com/live");
             assertThat(meta.enabled()).isTrue();
-            assertThat(meta.expiresAtUtc()).isEqualTo(Instant.parse("2026-03-18T10:15:30Z"));
+            assertThat(meta.expiresAt()).isEqualTo(LocalDateTime.parse("2026-03-18T10:15:30"));
             assertThat(meta.redirectStatusCode()).isEqualTo(302);
             assertThat(meta.previewEnabled()).isTrue();
             assertThat(meta.unavailableLandingUrl()).isEqualTo("https://example.com/unavailable");
@@ -73,7 +73,7 @@ class MybatisShortLinkReadRepositoryTest {
         when(queryMapper.findActiveByLegacyBaseHostAndCode("go.example.test", "abc123"))
                 .thenReturn(row);
 
-        Optional<ShortLinkReadPort.RedirectLinkView> actual =
+        Optional<LinkMeta> actual =
                 repository.findRedirectMetaByHostAndCode("Go.Example.Test:443", "abc123");
 
         assertThat(actual).hasValueSatisfying(meta -> {
@@ -101,7 +101,7 @@ class MybatisShortLinkReadRepositoryTest {
         when(queryMapper.findActiveUnscopedByCode("abc123")).thenReturn(row);
         MybatisShortLinkReadRepository repository = new MybatisShortLinkReadRepository(queryMapper, coreProperties);
 
-        Optional<ShortLinkReadPort.RedirectLinkView> actual =
+        Optional<LinkMeta> actual =
                 repository.findRedirectMetaByHostAndCode("Go.Example.Test:443", "abc123");
 
         assertThat(actual).hasValueSatisfying(meta -> {

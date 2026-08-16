@@ -1,17 +1,23 @@
 package com.linkforge.testsupport;
 
-import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.parallel.ResourceLock;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
 
 /** 使用单一主库数据源与共享 Redis 的 opt-in 集成测试基类。 */
-@ExtendWith(SharedIntegrationFixtureExtension.class)
+@ResourceLock("shared-integration-fixture")
 public abstract class SharedIntegrationTestSupport {
 
     protected static final MySQLContainer<?> MYSQL = SharedIntegrationTopology.primary();
     protected static final GenericContainer<?> REDIS = SharedIntegrationTopology.redis();
+
+    @BeforeEach
+    protected void resetSharedFixtures() {
+        SharedIntegrationTopology.resetFixtures();
+    }
 
     @DynamicPropertySource
     protected static void sharedIntegrationProperties(DynamicPropertyRegistry registry) {

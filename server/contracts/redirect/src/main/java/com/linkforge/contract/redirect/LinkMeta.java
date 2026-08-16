@@ -13,8 +13,8 @@ import java.time.LocalDateTime;
  * Shortlink 权威读的映射，也可来自缓存；缓存副本可能陈旧，不能被当作另一条权威读取通道。可空策略字段
  * 交由 Redirect 的全局配置接管；{@code hostname} 的 {@code null} 或空白值代表 legacy/unscoped 链接，且
  * 本类型不负责 host 归一化。非空 hostname 也不是 domain scope 的充分证据：权威读在基础域名回退到旧链接时
- * 会填入请求 host。application/domain 归属也可为空以兼容旧数据。旧构造器和 canonical constructor 的
- * {@code null}/空白 lifecycle 都兼容归一为 ACTIVE，不能据此推断持久化记录曾显式存储 ACTIVE。</p>
+ * 会填入请求 host。application/domain 归属也可为空以兼容旧数据。canonical constructor 会把
+ * {@code null}/空白 lifecycle 兼容归一为 ACTIVE，不能据此推断持久化记录曾显式存储 ACTIVE。</p>
  *
  * @param id 发布方提供的全局短链 ID；本类型不校验其取值
  * @param tenantId 发布方提供的所属租户 ID；本类型不校验其取值
@@ -66,86 +66,6 @@ public record LinkMeta(
      */
     public LinkMeta {
         lifecycleState = normalizeLifecycleState(lifecycleState);
-    }
-
-    /**
-     * 使用 ACTIVE lifecycle 创建兼容快照，并保留 application/domain 归属。
-     *
-     * <p>所有其余参数与 record component 的语义相同。该重载表达旧发布者没有 lifecycle 字段，而不是
-     * 证明持久化记录显式存储了 ACTIVE。</p>
-     */
-    public LinkMeta(
-            long id,
-            long tenantId,
-            String code,
-            String originalUrl,
-            boolean enabled,
-            LocalDateTime expiresAt,
-            Integer redirectStatusCode,
-            boolean previewEnabled,
-            String unavailableLandingUrl,
-            String queryForwardMode,
-            String queryForwardAllowlist,
-            String hostname,
-            Long applicationId,
-            Long domainId
-    ) {
-        this(
-                id,
-                tenantId,
-                code,
-                originalUrl,
-                enabled,
-                expiresAt,
-                redirectStatusCode,
-                previewEnabled,
-                unavailableLandingUrl,
-                queryForwardMode,
-                queryForwardAllowlist,
-                hostname,
-                applicationId,
-                domainId,
-                ACTIVE_LIFECYCLE_STATE
-        );
-    }
-
-    /**
-     * 使用 ACTIVE lifecycle 且无 application/domain 归属创建 legacy 兼容快照。
-     *
-     * <p>该重载固定 {@code applicationId} 和 {@code domainId} 为 {@code null}；它不根据 hostname 推断
-     * 归属，也不改变 code、URL 或 host 的原始值。</p>
-     */
-    public LinkMeta(
-            long id,
-            long tenantId,
-            String code,
-            String originalUrl,
-            boolean enabled,
-            LocalDateTime expiresAt,
-            Integer redirectStatusCode,
-            boolean previewEnabled,
-            String unavailableLandingUrl,
-            String queryForwardMode,
-            String queryForwardAllowlist,
-            String hostname
-    ) {
-        this(
-                id,
-                tenantId,
-                code,
-                originalUrl,
-                enabled,
-                expiresAt,
-                redirectStatusCode,
-                previewEnabled,
-                unavailableLandingUrl,
-                queryForwardMode,
-                queryForwardAllowlist,
-                hostname,
-                null,
-                null,
-                ACTIVE_LIFECYCLE_STATE
-        );
     }
 
     /**

@@ -34,12 +34,12 @@
 ## API Key 摘要兼容契约
 
 `api_keys.key_hash` 的稳定 HMAC wire format 是 `{hmac-sha256}` 加无 padding 的 Base64URL digest；
-`api_keys.key_id` 指明选择 current 或 previous pepper。V26 前写入的行没有 key id，只能使用显式 legacy pepper
+`api_keys.key_id` 指明选择 current 或 previous pepper。旧格式中没有 key id 的行只能使用显式 legacy pepper
 验证；历史 BCrypt 行仍由密码摘要兼容路径验证。成功验证的非 current 行由 Accounts 以旧 hash/key id 为条件 CAS
 升级，因此并发认证允许某次升级失败但不能覆盖更新后的凭据。
 
-第一阶段混部必须让旧 `API_KEY_HMAC_PEPPER`、V26 current pepper 和 legacy pepper 指向同一份独立 API Key
-secret，使旧实例能验证新写、V26 实例能验证无 key id 旧写。这个兼容 alias 只能在 API Key keyring 内复用，不能等于
+第一阶段混部必须让旧 `API_KEY_HMAC_PEPPER`、current pepper 和 legacy pepper 指向同一份独立 API Key
+secret，使旧实例能验证新写、当前实例能验证无 key id 旧写。这个兼容 alias 只能在 API Key keyring 内复用，不能等于
 JWT signing secret。切换到不同的 current pepper 会结束旧二进制的安全回滚窗口，必须在所有旧实例停止后进行。
 任何日志、异常、审计和 HTTP 响应都不得包含 pepper、完整 `key_hash` 或原始 API Key。
 
@@ -56,10 +56,6 @@ JWT signing secret。切换到不同的 current pepper 会结束旧二进制的�
 
 `findDomainHostname` 在租户范围内把 domainId 映射到规范化 hostname。`findDomainIdByHostname` 的默认实现可以不支持反查并返回空，调用方必须处理这一能力差异。
 
-### `LegacyApplicationProvisioningPort`
-
-为历史未分应用数据返回默认 application/domain 绑定。实现必须按租户幂等串行化：只有 ACTIVE application、同租户且正确授权的 ACTIVE domain，以及当前 policy/quota 都满足契约时才能返回。缺失或过期的可修复配置在同一事务内 reconcile；停用、跨租户或错误绑定返回业务错误。并发首次调用收敛到同一逻辑配对。新业务流程不应依赖 legacy provisioning。
-
 ## Shortlink 发布端口
 
 `ShortLinkReadPort` 是短链事实的唯一跨上下文权威读入口：
@@ -68,7 +64,7 @@ JWT signing secret。切换到不同的 current pepper 会结束旧二进制的�
 - `findOwnership(tenantId, linkId)` 只返回当前租户可见的 application/domain 归属。
 - `listSummaries(tenantId, linkIds)` 只返回存在的条目；结果 Map 中缺失 ID 不应补造默认链接。
 
-`ShortLinkReadPort.RedirectLinkView.expiresAtUtc` 使用 `Instant`。read port 返回事实快照，不替 Redirect 判定 enabled、生命周期、过期、预览、额度或风险策略。
+`ShortLinkReadPort` 直接返回 Redirect 已发布的 `LinkMeta`；其中 `expiresAt` 是 UTC 语义的 `LocalDateTime`。read port 返回事实快照，不替 Redirect 判定 enabled、生命周期、过期、预览、额度或风险策略。
 
 ## Redirect 缓存契约
 
@@ -84,7 +80,7 @@ JWT signing secret。切换到不同的 current pepper 会结束旧二进制的�
 
 `LookupResult` 工厂方法表达三态；公开 canonical constructor 为 Java 兼容保留，直接调用它的生产者也必须维持
 `meta` 与 `notFound` 不同时出现的三态不变量。
-缓存 key 分为 legacy code 和 host-scoped code 两族；code 保持大小写。`LinkCachePort` 的 host 重载默认实现为了旧实现兼容而忽略 `host` 并委派无 host 方法，不能承诺固定使用 legacy key；尤其 `tryPut(host, meta)` 的默认委派可由实现根据 `meta.hostname` 选择 key。生产 host-aware 缓存必须覆盖这些重载，调用方不能从接口默认行为推断 host 隔离。修改前缀、分隔符或序列化形状必须考虑滚动升级时新旧实例同时读写。
+缓存 key 分为 legacy code 和 host-scoped code 两族；code 保持大小写。`LinkCachePort` 只发布 host-aware 方法；`null` 或空白 host 表示 legacy/unscoped key，非空 host 由实现规范化后参与隔离。修改前缀、分隔符或序列化形状必须考虑滚动升级时新旧实例同时读写。
 
 ## Analytics 发布契约
 
@@ -184,4 +180,4 @@ Stream 回滚窗口。
 3. 为旧数据和滚动升级提供双读或显式迁移窗口；
 4. 更新本页和对应专题；
 5. 增加序列化/key 格式契约测试；
-6. 不修改已应用 Flyway migration。
+6. 首个不可销毁数据库出现前引入版本化迁移，之后不得用改写基线覆盖已部署结构。

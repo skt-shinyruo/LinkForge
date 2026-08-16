@@ -16,21 +16,6 @@
         )
     </insert>
 
-    <insert id="upsert" parameterType="com.linkforge.platform.infrastructure.persistence.entity.ApplicationQuotaEntity">
-        INSERT INTO application_quotas (
-            application_id,
-            monthly_link_limit,
-            monthly_click_limit
-        ) VALUES (
-            #{applicationId},
-            #{monthlyLinkLimit},
-            #{monthlyClickLimit}
-        )
-        ON DUPLICATE KEY UPDATE
-            monthly_link_limit = #{monthlyLinkLimit},
-            monthly_click_limit = #{monthlyClickLimit}
-    </insert>
-
     <select id="findByApplicationId" resultType="com.linkforge.platform.infrastructure.persistence.entity.ApplicationQuotaEntity">
         SELECT application_id, monthly_link_limit, monthly_click_limit, created_at, updated_at
         FROM application_quotas

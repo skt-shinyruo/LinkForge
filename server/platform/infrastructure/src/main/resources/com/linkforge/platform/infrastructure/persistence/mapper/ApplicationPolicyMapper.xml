@@ -18,21 +18,4 @@
         )
     </insert>
 
-    <insert id="upsert" parameterType="com.linkforge.platform.infrastructure.persistence.entity.ApplicationPolicyEntity">
-        INSERT INTO application_policies (
-            application_id,
-            default_domain_scope,
-            default_redirect_status_code,
-            preview_enabled
-        ) VALUES (
-            #{applicationId},
-            #{defaultDomainScope},
-            #{defaultRedirectStatusCode},
-            #{previewEnabled}
-        )
-        ON DUPLICATE KEY UPDATE
-            default_domain_scope = #{defaultDomainScope},
-            default_redirect_status_code = #{defaultRedirectStatusCode},
-            preview_enabled = #{previewEnabled}
-    </insert>
 </mapper>

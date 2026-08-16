@@ -6,6 +6,7 @@ import com.linkforge.contract.analytics.VisitRecorderPort;
 import com.linkforge.contract.redirect.LinkCachePort;
 import com.linkforge.contract.redirect.LinkMeta;
 import com.linkforge.contract.shortlink.ShortLinkReadPort;
+import com.linkforge.foundation.observability.OperationalMetrics;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,6 +19,7 @@ import java.util.TimeZone;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 class RedirectServiceTimezoneTest {
 
@@ -49,7 +51,10 @@ class RedirectServiceTimezoneTest {
                 null,
                 null,
                 null,
-                null
+                null,
+                null,
+                null,
+                LinkMeta.ACTIVE_LIFECYCLE_STATE
         );
 
         AtomicReference<RedirectVisitRecord> recorded = new AtomicReference<>();
@@ -58,28 +63,30 @@ class RedirectServiceTimezoneTest {
         RedirectService service = new RedirectService(
                 new LinkCachePort() {
                     @Override
-                    public LookupResult lookup(String code) {
-                        return LookupResult.miss();
+                    public LookupResult lookup(String host, String code) {
+                        return LookupResult.hit(meta);
                     }
 
                     @Override
-                    public boolean tryPut(LinkMeta meta) {
+                    public boolean tryPut(String host, LinkMeta meta) {
                         return true;
                     }
 
                     @Override
-                    public void markNotFound(String code) {
+                    public void markNotFound(String host, String code) {
                         // no-op
                     }
 
                     @Override
-                    public boolean tryEvict(String code) {
+                    public boolean tryEvict(String host, String code) {
                         return true;
                     }
                 },
                 new EmptyShortLinkReadPort(),
                 visitRecorderPort,
-                Clock.fixed(Instant.parse("2026-04-24T10:15:30Z"), ZoneOffset.UTC)
+                Clock.fixed(Instant.parse("2026-04-24T10:15:30Z"), ZoneOffset.UTC),
+                mock(RedirectQuotaGuard.class),
+                OperationalMetrics.noop()
         );
 
         RedirectVisitInput visitInput = new RedirectVisitInput(
@@ -90,8 +97,11 @@ class RedirectServiceTimezoneTest {
                 java.util.Map.of("utm_source", "newsletter")
         );
 
-        service.recordVisitIfAvailable(meta, visitInput);
+        RedirectResolution resolution = service.resolve(
+                new ResolveRedirectRequest("abc123", null, false, false, visitInput)
+        );
 
+        assertThat(resolution.kind()).isEqualTo(RedirectResolution.Kind.REDIRECT);
         assertThat(recorded.get()).isEqualTo(new RedirectVisitRecord(
                 1L,
                 1L,
@@ -113,7 +123,7 @@ class RedirectServiceTimezoneTest {
     private static final class EmptyShortLinkReadPort implements ShortLinkReadPort {
 
         @Override
-        public java.util.Optional<RedirectLinkView> findRedirectMetaByHostAndCode(String host, String code) {
+        public java.util.Optional<LinkMeta> findRedirectMetaByHostAndCode(String host, String code) {
             return java.util.Optional.empty();
         }
 

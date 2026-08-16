@@ -14,7 +14,6 @@ import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.security.StandardRoles;
 import com.linkforge.foundation.tx.PostCommitHookPort;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -50,28 +49,6 @@ public class AuthService {
     private final PostCommitHookPort postCommitHookPort;
     private final String dummyPasswordHash;
 
-    public AuthService(
-            SnowflakeIdGenerator idGenerator,
-            AccountsTenantStore tenantStore,
-            AccountsUserStore userStore,
-            AccountsUserRoleStore userRoleStore,
-            AccountsPasswordHasher passwordHasher,
-            AccountsTokenIssuer tokenIssuer,
-            AccountStatusCache statusCache
-    ) {
-        this(
-                idGenerator,
-                tenantStore,
-                userStore,
-                userRoleStore,
-                passwordHasher,
-                tokenIssuer,
-                statusCache,
-                Runnable::run
-        );
-    }
-
-    @Autowired
     public AuthService(
             SnowflakeIdGenerator idGenerator,
             AccountsTenantStore tenantStore,

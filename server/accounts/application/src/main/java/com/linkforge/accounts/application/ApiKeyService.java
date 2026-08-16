@@ -19,7 +19,6 @@ import com.linkforge.foundation.tx.PostCommitHookPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
@@ -69,30 +68,6 @@ public class ApiKeyService implements ApiKeyAuthenticator {
             ApiKeyAuthCache authCache,
             Clock clock,
             PostCommitHookPort postCommitHookPort,
-            ApplicationScopePort applicationScopePort
-    ) {
-        this(
-                idGenerator,
-                apiKeyStore,
-                passwordHasher,
-                securityProperties,
-                authCache,
-                clock,
-                postCommitHookPort,
-                applicationScopePort,
-                OperationalMetrics.noop()
-        );
-    }
-
-    @Autowired
-    public ApiKeyService(
-            SnowflakeIdGenerator idGenerator,
-            AccountsApiKeyStore apiKeyStore,
-            AccountsPasswordHasher passwordHasher,
-            SecurityProperties securityProperties,
-            ApiKeyAuthCache authCache,
-            Clock clock,
-            PostCommitHookPort postCommitHookPort,
             ApplicationScopePort applicationScopePort,
             OperationalMetrics metrics
     ) {
@@ -105,14 +80,6 @@ public class ApiKeyService implements ApiKeyAuthenticator {
         this.postCommitHookPort = postCommitHookPort;
         this.applicationScopePort = applicationScopePort;
         this.metrics = metrics == null ? OperationalMetrics.noop() : metrics;
-    }
-
-    /**
-     * 已废弃语义的兼容入口；API Key 必须显式绑定应用，因此稳定返回参数错误。
-     */
-    @Transactional
-    public CreatedApiKeyResult create(long tenantId, String name) {
-        throw new BusinessException(ErrorCode.BAD_REQUEST, "applicationId 不能为空");
     }
 
     /**

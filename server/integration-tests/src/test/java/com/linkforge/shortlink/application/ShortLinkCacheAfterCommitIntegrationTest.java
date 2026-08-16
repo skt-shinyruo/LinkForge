@@ -8,8 +8,6 @@ import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.redirect.application.RedirectService;
 import com.linkforge.redirect.application.RedirectResolution;
 import com.linkforge.redirect.application.ResolveRedirectRequest;
-import com.linkforge.redirect.application.error.RedirectBusinessException;
-import com.linkforge.redirect.application.error.RedirectErrorCode;
 import com.linkforge.shortlink.application.csv.ShortLinkCsvImportRow;
 import com.linkforge.testsupport.SharedIntegrationTestSupport;
 import org.junit.jupiter.api.AfterEach;
@@ -33,7 +31,6 @@ import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest(
         classes = LinkForgeApplication.class,
@@ -142,7 +139,7 @@ class ShortLinkCacheAfterCommitIntegrationTest extends SharedIntegrationTestSupp
         LinkDto created = shortLinkService.create(TENANT_ID, CreatedBy.user(USER_ID), createReq);
         String key = key(created.code());
 
-        assertThat(redirectService.resolve(created.code()).originalUrl()).isEqualTo("https://example.com/old");
+        assertThat(resolve(created.code()).meta().originalUrl()).isEqualTo("https://example.com/old");
         String before = redis.opsForValue().get(key);
         assertThat(before).isNotNull();
 
@@ -206,7 +203,7 @@ class ShortLinkCacheAfterCommitIntegrationTest extends SharedIntegrationTestSupp
         shortLinkService.create(TENANT_ID, CreatedBy.user(USER_ID), req);
 
         assertThat(redis.opsForValue().get(key)).isNull();
-        assertThat(redirectService.resolve(code).originalUrl()).isEqualTo("https://example.com/create");
+        assertThat(resolve(code).meta().originalUrl()).isEqualTo("https://example.com/create");
         assertThat(redis.opsForValue().get(key)).isNotNull();
     }
 
@@ -261,7 +258,7 @@ class ShortLinkCacheAfterCommitIntegrationTest extends SharedIntegrationTestSupp
         String code = created.code();
         String key = key(code);
 
-        assertThat(redirectService.resolve(code).originalUrl()).isEqualTo("https://example.com/old");
+        assertThat(resolve(code).meta().originalUrl()).isEqualTo("https://example.com/old");
         String before = redis.opsForValue().get(key);
         assertThat(before).isNotNull();
 
@@ -284,7 +281,7 @@ class ShortLinkCacheAfterCommitIntegrationTest extends SharedIntegrationTestSupp
         shortLinkService.update(TENANT_ID, created.id(), updateReq, currentActor(), LocalDateTime.now(ZoneOffset.UTC));
 
         assertThat(redis.opsForValue().get(key)).isNull();
-        assertThat(redirectService.resolve(code).originalUrl()).isEqualTo("https://example.com/new");
+        assertThat(resolve(code).meta().originalUrl()).isEqualTo("https://example.com/new");
         String after = redis.opsForValue().get(key);
         assertThat(after).isNotNull();
         assertThat(after).contains("https://example.com/new");
@@ -313,7 +310,7 @@ class ShortLinkCacheAfterCommitIntegrationTest extends SharedIntegrationTestSupp
         String code = created.code();
         String key = key(code);
 
-        assertThat(redirectService.resolve(code).code()).isEqualTo(code);
+        assertThat(resolve(code).code()).isEqualTo(code);
         assertThat(redis.opsForValue().get(key)).isNotNull();
 
         shortLinkService.archive(TENANT_ID, created.id());
@@ -325,7 +322,7 @@ class ShortLinkCacheAfterCommitIntegrationTest extends SharedIntegrationTestSupp
         shortLinkService.restore(TENANT_ID, created.id());
         assertThat(redis.opsForValue().get(key)).isNull();
 
-        assertThat(redirectService.resolve(code).code()).isEqualTo(code);
+        assertThat(resolve(code).code()).isEqualTo(code);
         assertThat(redis.opsForValue().get(key)).isNotNull();
 
         shortLinkService.archive(TENANT_ID, created.id());
@@ -374,10 +371,11 @@ class ShortLinkCacheAfterCommitIntegrationTest extends SharedIntegrationTestSupp
     }
 
     private void assertLinkNotFound(String code) {
-        assertThatThrownBy(() -> redirectService.resolve(code))
-                .isInstanceOf(RedirectBusinessException.class)
-                .extracting(e -> ((RedirectBusinessException) e).getErrorCode())
-                .isEqualTo(RedirectErrorCode.LINK_NOT_FOUND);
+        assertThat(resolve(code).kind()).isEqualTo(RedirectResolution.Kind.NOT_FOUND);
+    }
+
+    private RedirectResolution resolve(String code) {
+        return redirectService.resolve(new ResolveRedirectRequest(code, null, false, false, null));
     }
 
     private static String uniqueCode(String prefix) {

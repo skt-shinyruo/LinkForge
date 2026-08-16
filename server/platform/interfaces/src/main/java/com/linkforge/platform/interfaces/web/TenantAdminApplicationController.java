@@ -6,6 +6,7 @@ import com.linkforge.foundation.runtime.security.AuthContext;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.web.RequestId;
 import com.linkforge.platform.application.CreateApplicationCommand;
+import com.linkforge.platform.application.ApplicationResult;
 import com.linkforge.platform.application.PlatformControlPlaneService;
 import com.linkforge.platform.domain.PlatformDefaults;
 import jakarta.validation.Valid;
@@ -40,14 +41,9 @@ public class TenantAdminApplicationController {
     /** 返回当前认证主体所属租户的应用。 */
     @GetMapping
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<List<ApplicationHttpResponse>> list() {
+    public ApiResponse<List<ApplicationResult>> list() {
         long tenantId = AuthContext.requirePrincipal().getTenantId();
-        return ApiResponse.ok(
-                platformControlPlaneService.listApplications(tenantId).stream()
-                        .map(PlatformHttpMapper::toApplicationResponse)
-                        .toList(),
-                RequestId.get()
-        );
+        return ApiResponse.ok(platformControlPlaneService.listApplications(tenantId), RequestId.get());
     }
 
     /**
@@ -55,7 +51,7 @@ public class TenantAdminApplicationController {
      */
     @PostMapping
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<ApplicationHttpResponse> create(@Valid @RequestBody CreateApplicationRequest req) {
+    public ApiResponse<ApplicationResult> create(@Valid @RequestBody CreateApplicationRequest req) {
         AuthPrincipal principal = AuthContext.requirePrincipal();
         UserActor actor = new UserActor(
                 principal.getTenantId(),
@@ -64,11 +60,11 @@ public class TenantAdminApplicationController {
                 principal.getRoles()
         );
         return ApiResponse.ok(
-                PlatformHttpMapper.toApplicationResponse(platformControlPlaneService.createApplication(
+                platformControlPlaneService.createApplication(
                         principal.getTenantId(),
                         actor,
                         new CreateApplicationCommand(req.applicationKey(), req.displayName())
-                )),
+                ),
                 RequestId.get()
         );
     }

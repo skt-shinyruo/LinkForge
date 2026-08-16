@@ -7,16 +7,12 @@ describe("LinkTrendPanel", () => {
   let app: App<Element> | null = null;
 
   const baseProps = {
-    linkChartLabels: [],
-    linkChartSeries: [],
     linkOptionsError: null,
     linkOptionsHasMore: true,
     linkSearch: "",
     links: [],
     linkStats: [],
-    selectedLink: null,
     selectedLinkId: null,
-    showLinkChart: false,
   };
 
   afterEach(() => {
@@ -32,8 +28,6 @@ describe("LinkTrendPanel", () => {
     const host = document.createElement("div");
     document.body.appendChild(host);
     app = createApp(LinkTrendPanel, {
-      linkChartLabels: [],
-      linkChartSeries: [],
       linkOptionsError: null,
       linkOptionsHasMore: true,
       linkOptionsLoading: false,
@@ -43,9 +37,7 @@ describe("LinkTrendPanel", () => {
       onLoadMoreLinks: loadMoreLinks,
       onSearchLinks: searchLinks,
       onUpdateLinkSearch: updateSearch,
-      selectedLink: null,
       selectedLinkId: null,
-      showLinkChart: false,
     });
     app.mount(host);
 
@@ -70,8 +62,6 @@ describe("LinkTrendPanel", () => {
     const host = document.createElement("div");
     document.body.appendChild(host);
     app = createApp(LinkTrendPanel, {
-      linkChartLabels: [],
-      linkChartSeries: [],
       linkOptionsError: "加载短链选项失败",
       linkOptionsHasMore: false,
       linkOptionsLoading: false,
@@ -79,9 +69,7 @@ describe("LinkTrendPanel", () => {
       links: [],
       linkStats: [],
       onSearchLinks: searchLinks,
-      selectedLink: null,
       selectedLinkId: null,
-      showLinkChart: false,
     });
     app.mount(host);
 

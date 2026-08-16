@@ -1,6 +1,5 @@
 package com.linkforge.redirect.application;
 
-import com.linkforge.contract.analytics.ApplicationClickUsagePort;
 import com.linkforge.contract.analytics.ApplicationClickQuotaReservationPort;
 import com.linkforge.contract.analytics.RedirectVisitRecord;
 import com.linkforge.contract.analytics.VisitRecorderPort;
@@ -9,6 +8,7 @@ import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.contract.redirect.LinkCachePort;
 import com.linkforge.contract.redirect.LinkMeta;
 import com.linkforge.contract.shortlink.ShortLinkReadPort;
+import com.linkforge.foundation.observability.OperationalMetrics;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -16,14 +16,12 @@ import org.junit.jupiter.params.provider.ValueSource;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -34,7 +32,7 @@ class RedirectServiceAuthoritativeFallbackTest {
     void resolve_shouldNotQueryAuthorityOnNegativeCacheHit() {
         RecordingLinkCache cache = new RecordingLinkCache(LinkCachePort.LookupResult.negativeHit());
         ShortLinkReadPort shortLinkReadPort = mock(ShortLinkReadPort.class);
-        RedirectService service = new RedirectService(
+        RedirectService service = redirectService(
                 cache,
                 shortLinkReadPort,
                 visit -> {
@@ -54,55 +52,26 @@ class RedirectServiceAuthoritativeFallbackTest {
     void resolve_shouldUseShortLinkReadPortBeforeProjectionOnCacheMiss() {
         RecordingLinkCache cache = new RecordingLinkCache();
         ShortLinkReadPort shortLinkReadPort = mock(ShortLinkReadPort.class);
-        ShortLinkReadPort.RedirectLinkView authoritative = new ShortLinkReadPort.RedirectLinkView(
-                22L,
-                11L,
-                "abc123",
-                "go.example.test",
-                "https://example.com/live",
-                true,
-                Instant.parse("2026-03-18T10:15:30Z"),
-                302,
-                false,
-                "https://example.com/unavailable",
-                "ALLOWLIST",
-                "utm_source",
-                33L,
-                44L
-        );
+        LinkMeta authoritative = authoritative(false, "ACTIVE");
         when(shortLinkReadPort.findRedirectMetaByHostAndCode("go.example.test", "abc123"))
                 .thenReturn(Optional.of(authoritative));
 
-        LinkMeta expected = new LinkMeta(
-                11L,
-                22L,
-                "abc123",
-                "https://example.com/live",
-                true,
-                LocalDateTime.parse("2026-03-18T10:15:30"),
-                302,
-                false,
-                "https://example.com/unavailable",
-                "ALLOWLIST",
-                "utm_source",
-                "go.example.test",
-                33L,
-                44L
-        );
         VisitRecorderPort visitRecorderPort = visit -> {
         };
 
-        RedirectService service = new RedirectService(
+        RedirectService service = redirectService(
                 cache,
                 shortLinkReadPort,
                 visitRecorderPort,
                 Clock.systemUTC()
         );
 
-        LinkMeta resolved = service.resolve("go.example.test", "abc123");
+        RedirectResolution resolution = service.resolve(
+                new ResolveRedirectRequest("abc123", "go.example.test", false, false, null)
+        );
 
-        assertThat(resolved).isEqualTo(expected);
-        assertThat(cache.cachedMeta).isEqualTo(expected);
+        assertThat(resolution.meta()).isEqualTo(authoritative);
+        assertThat(cache.cachedMeta).isEqualTo(authoritative);
         verify(shortLinkReadPort).findRedirectMetaByHostAndCode("go.example.test", "abc123");
     }
 
@@ -113,7 +82,7 @@ class RedirectServiceAuthoritativeFallbackTest {
         RuntimeException failure = new IllegalStateException("primary unavailable");
         when(shortLinkReadPort.findRedirectMetaByHostAndCode("go.example.test", "abc123"))
                 .thenThrow(failure);
-        RedirectService service = new RedirectService(
+        RedirectService service = redirectService(
                 cache,
                 shortLinkReadPort,
                 visit -> {
@@ -132,28 +101,12 @@ class RedirectServiceAuthoritativeFallbackTest {
     void resolve_shouldTreatNonActiveLifecycleAsUnavailable(String lifecycleState) {
         RecordingLinkCache cache = new RecordingLinkCache();
         ShortLinkReadPort shortLinkReadPort = mock(ShortLinkReadPort.class);
-        ShortLinkReadPort.RedirectLinkView authoritative = new ShortLinkReadPort.RedirectLinkView(
-                22L,
-                11L,
-                "abc123",
-                "go.example.test",
-                "https://example.com/live",
-                true,
-                null,
-                302,
-                false,
-                "https://example.com/unavailable",
-                "ALLOWLIST",
-                "utm_source",
-                33L,
-                44L,
-                lifecycleState
-        );
+        LinkMeta authoritative = authoritative(false, lifecycleState);
         when(shortLinkReadPort.findRedirectMetaByHostAndCode("go.example.test", "abc123"))
                 .thenReturn(Optional.of(authoritative));
         VisitRecorderPort visitRecorderPort = visit -> {
         };
-        RedirectService service = new RedirectService(
+        RedirectService service = redirectService(
                 cache,
                 shortLinkReadPort,
                 visitRecorderPort,
@@ -172,22 +125,7 @@ class RedirectServiceAuthoritativeFallbackTest {
     void resolve_shouldReturnUnavailableAndSkipAnalyticsWhenMonthlyClickQuotaReached() {
         RecordingLinkCache cache = new RecordingLinkCache();
         ShortLinkReadPort shortLinkReadPort = mock(ShortLinkReadPort.class);
-        ShortLinkReadPort.RedirectLinkView authoritative = new ShortLinkReadPort.RedirectLinkView(
-                22L,
-                11L,
-                "abc123",
-                "go.example.test",
-                "https://example.com/live",
-                true,
-                null,
-                302,
-                false,
-                "https://example.com/unavailable",
-                "ALLOWLIST",
-                "utm_source",
-                33L,
-                44L
-        );
+        LinkMeta authoritative = authoritative(false, "ACTIVE");
         when(shortLinkReadPort.findRedirectMetaByHostAndCode("go.example.test", "abc123"))
                 .thenReturn(Optional.of(authoritative));
         AtomicReference<RedirectVisitRecord> recorded = new AtomicReference<>();
@@ -195,20 +133,22 @@ class RedirectServiceAuthoritativeFallbackTest {
         ApplicationScopePort applicationScopePort = mock(ApplicationScopePort.class);
         when(applicationScopePort.findApplicationQuota(22L, 33L))
                 .thenReturn(Optional.of(new ApplicationQuotaView(33L, 100L, 10L)));
-        ApplicationClickUsagePort applicationClickUsagePort = mock(ApplicationClickUsagePort.class);
-        when(applicationClickUsagePort.countApplicationClicks(
+        ApplicationClickQuotaReservationPort quotaReservationPort = mock(ApplicationClickQuotaReservationPort.class);
+        when(quotaReservationPort.tryReserveMonthlyClick(
                 22L,
                 33L,
                 LocalDate.parse("2026-04-01"),
-                LocalDate.parse("2026-05-01")
-        )).thenReturn(10L);
+                LocalDate.parse("2026-05-01"),
+                10L
+        )).thenReturn(false);
+        Clock clock = Clock.fixed(Instant.parse("2026-04-24T10:15:30Z"), java.time.ZoneOffset.UTC);
         RedirectService service = new RedirectService(
                 cache,
                 shortLinkReadPort,
                 visitRecorderPort,
-                Clock.fixed(Instant.parse("2026-04-24T10:15:30Z"), java.time.ZoneOffset.UTC),
-                applicationScopePort,
-                applicationClickUsagePort
+                clock,
+                quotaGuard(clock, applicationScopePort, quotaReservationPort, false),
+                OperationalMetrics.noop()
         );
 
         RedirectResolution resolution = service.resolve(
@@ -224,22 +164,7 @@ class RedirectServiceAuthoritativeFallbackTest {
     void resolve_shouldReserveMonthlyClickQuotaOnlyForActualRedirects() {
         RecordingLinkCache cache = new RecordingLinkCache();
         ShortLinkReadPort shortLinkReadPort = mock(ShortLinkReadPort.class);
-        ShortLinkReadPort.RedirectLinkView authoritative = new ShortLinkReadPort.RedirectLinkView(
-                22L,
-                11L,
-                "abc123",
-                "go.example.test",
-                "https://example.com/live",
-                true,
-                null,
-                302,
-                true,
-                "https://example.com/unavailable",
-                "ALLOWLIST",
-                "utm_source",
-                33L,
-                44L
-        );
+        LinkMeta authoritative = authoritative(true, "ACTIVE");
         when(shortLinkReadPort.findRedirectMetaByHostAndCode("go.example.test", "abc123"))
                 .thenReturn(Optional.of(authoritative));
         AtomicReference<RedirectVisitRecord> recorded = new AtomicReference<>();
@@ -247,7 +172,6 @@ class RedirectServiceAuthoritativeFallbackTest {
         ApplicationScopePort applicationScopePort = mock(ApplicationScopePort.class);
         when(applicationScopePort.findApplicationQuota(22L, 33L))
                 .thenReturn(Optional.of(new ApplicationQuotaView(33L, 100L, 10L)));
-        ApplicationClickUsagePort applicationClickUsagePort = mock(ApplicationClickUsagePort.class);
         ApplicationClickQuotaReservationPort quotaReservationPort = mock(ApplicationClickQuotaReservationPort.class);
         when(quotaReservationPort.tryReserveMonthlyClick(
                 22L,
@@ -256,14 +180,14 @@ class RedirectServiceAuthoritativeFallbackTest {
                 LocalDate.parse("2026-05-01"),
                 10L
         )).thenReturn(true);
+        Clock clock = Clock.fixed(Instant.parse("2026-04-24T10:15:30Z"), java.time.ZoneOffset.UTC);
         RedirectService service = new RedirectService(
                 cache,
                 shortLinkReadPort,
                 visitRecorderPort,
-                Clock.fixed(Instant.parse("2026-04-24T10:15:30Z"), java.time.ZoneOffset.UTC),
-                applicationScopePort,
-                applicationClickUsagePort,
-                quotaReservationPort
+                clock,
+                quotaGuard(clock, applicationScopePort, quotaReservationPort, false),
+                OperationalMetrics.noop()
         );
 
         RedirectResolution preview = service.resolve(
@@ -289,22 +213,7 @@ class RedirectServiceAuthoritativeFallbackTest {
     void resolve_shouldReturnUnavailableAndSkipAnalyticsWhenQuotaReservationRejected() {
         RecordingLinkCache cache = new RecordingLinkCache();
         ShortLinkReadPort shortLinkReadPort = mock(ShortLinkReadPort.class);
-        ShortLinkReadPort.RedirectLinkView authoritative = new ShortLinkReadPort.RedirectLinkView(
-                22L,
-                11L,
-                "abc123",
-                "go.example.test",
-                "https://example.com/live",
-                true,
-                null,
-                302,
-                false,
-                "https://example.com/unavailable",
-                "ALLOWLIST",
-                "utm_source",
-                33L,
-                44L
-        );
+        LinkMeta authoritative = authoritative(false, "ACTIVE");
         when(shortLinkReadPort.findRedirectMetaByHostAndCode("go.example.test", "abc123"))
                 .thenReturn(Optional.of(authoritative));
         AtomicReference<RedirectVisitRecord> recorded = new AtomicReference<>();
@@ -312,7 +221,6 @@ class RedirectServiceAuthoritativeFallbackTest {
         ApplicationScopePort applicationScopePort = mock(ApplicationScopePort.class);
         when(applicationScopePort.findApplicationQuota(22L, 33L))
                 .thenReturn(Optional.of(new ApplicationQuotaView(33L, 100L, 10L)));
-        ApplicationClickUsagePort applicationClickUsagePort = mock(ApplicationClickUsagePort.class);
         ApplicationClickQuotaReservationPort quotaReservationPort = mock(ApplicationClickQuotaReservationPort.class);
         when(quotaReservationPort.tryReserveMonthlyClick(
                 22L,
@@ -321,14 +229,14 @@ class RedirectServiceAuthoritativeFallbackTest {
                 LocalDate.parse("2026-05-01"),
                 10L
         )).thenReturn(false);
+        Clock clock = Clock.fixed(Instant.parse("2026-04-24T10:15:30Z"), java.time.ZoneOffset.UTC);
         RedirectService service = new RedirectService(
                 cache,
                 shortLinkReadPort,
                 visitRecorderPort,
-                Clock.fixed(Instant.parse("2026-04-24T10:15:30Z"), java.time.ZoneOffset.UTC),
-                applicationScopePort,
-                applicationClickUsagePort,
-                quotaReservationPort
+                clock,
+                quotaGuard(clock, applicationScopePort, quotaReservationPort, false),
+                OperationalMetrics.noop()
         );
 
         RedirectResolution resolution = service.resolve(
@@ -338,34 +246,13 @@ class RedirectServiceAuthoritativeFallbackTest {
         assertThat(resolution.kind()).isEqualTo(RedirectResolution.Kind.UNAVAILABLE);
         assertThat(resolution.unavailableReason()).isEqualTo(RedirectResolution.UnavailableReason.QUOTA_EXCEEDED);
         assertThat(recorded.get()).isNull();
-        verify(applicationClickUsagePort, never()).countApplicationClicks(
-                22L,
-                33L,
-                LocalDate.parse("2026-04-01"),
-                LocalDate.parse("2026-05-01")
-        );
     }
 
     @Test
     void resolve_shouldReturnUnavailableWhenQuotaReservationBackendFails() {
         RecordingLinkCache cache = new RecordingLinkCache();
         ShortLinkReadPort shortLinkReadPort = mock(ShortLinkReadPort.class);
-        ShortLinkReadPort.RedirectLinkView authoritative = new ShortLinkReadPort.RedirectLinkView(
-                22L,
-                11L,
-                "abc123",
-                "go.example.test",
-                "https://example.com/live",
-                true,
-                null,
-                302,
-                false,
-                "https://example.com/unavailable",
-                "ALLOWLIST",
-                "utm_source",
-                33L,
-                44L
-        );
+        LinkMeta authoritative = authoritative(false, "ACTIVE");
         when(shortLinkReadPort.findRedirectMetaByHostAndCode("go.example.test", "abc123"))
                 .thenReturn(Optional.of(authoritative));
         AtomicReference<RedirectVisitRecord> recorded = new AtomicReference<>();
@@ -373,7 +260,6 @@ class RedirectServiceAuthoritativeFallbackTest {
         ApplicationScopePort applicationScopePort = mock(ApplicationScopePort.class);
         when(applicationScopePort.findApplicationQuota(22L, 33L))
                 .thenReturn(Optional.of(new ApplicationQuotaView(33L, 100L, 10L)));
-        ApplicationClickUsagePort applicationClickUsagePort = mock(ApplicationClickUsagePort.class);
         ApplicationClickQuotaReservationPort quotaReservationPort = mock(ApplicationClickQuotaReservationPort.class);
         when(quotaReservationPort.tryReserveMonthlyClick(
                 22L,
@@ -382,14 +268,14 @@ class RedirectServiceAuthoritativeFallbackTest {
                 LocalDate.parse("2026-05-01"),
                 10L
         )).thenThrow(new IllegalStateException("redis unavailable"));
+        Clock clock = Clock.fixed(Instant.parse("2026-04-24T10:15:30Z"), java.time.ZoneOffset.UTC);
         RedirectService service = new RedirectService(
                 cache,
                 shortLinkReadPort,
                 visitRecorderPort,
-                Clock.fixed(Instant.parse("2026-04-24T10:15:30Z"), java.time.ZoneOffset.UTC),
-                applicationScopePort,
-                applicationClickUsagePort,
-                quotaReservationPort
+                clock,
+                quotaGuard(clock, applicationScopePort, quotaReservationPort, false),
+                OperationalMetrics.noop()
         );
 
         RedirectResolution resolution = service.resolve(
@@ -405,22 +291,7 @@ class RedirectServiceAuthoritativeFallbackTest {
     void resolve_shouldReturnUnavailableWhenApplicationQuotaLookupFails() {
         RecordingLinkCache cache = new RecordingLinkCache();
         ShortLinkReadPort shortLinkReadPort = mock(ShortLinkReadPort.class);
-        ShortLinkReadPort.RedirectLinkView authoritative = new ShortLinkReadPort.RedirectLinkView(
-                22L,
-                11L,
-                "abc123",
-                "go.example.test",
-                "https://example.com/live",
-                true,
-                null,
-                302,
-                false,
-                "https://example.com/unavailable",
-                "ALLOWLIST",
-                "utm_source",
-                33L,
-                44L
-        );
+        LinkMeta authoritative = authoritative(false, "ACTIVE");
         when(shortLinkReadPort.findRedirectMetaByHostAndCode("go.example.test", "abc123"))
                 .thenReturn(Optional.of(authoritative));
         AtomicReference<RedirectVisitRecord> recorded = new AtomicReference<>();
@@ -428,16 +299,15 @@ class RedirectServiceAuthoritativeFallbackTest {
         ApplicationScopePort applicationScopePort = mock(ApplicationScopePort.class);
         when(applicationScopePort.findApplicationQuota(22L, 33L))
                 .thenThrow(new IllegalStateException("platform db unavailable"));
-        ApplicationClickUsagePort applicationClickUsagePort = mock(ApplicationClickUsagePort.class);
         ApplicationClickQuotaReservationPort quotaReservationPort = mock(ApplicationClickQuotaReservationPort.class);
+        Clock clock = Clock.fixed(Instant.parse("2026-04-24T10:15:30Z"), java.time.ZoneOffset.UTC);
         RedirectService service = new RedirectService(
                 cache,
                 shortLinkReadPort,
                 visitRecorderPort,
-                Clock.fixed(Instant.parse("2026-04-24T10:15:30Z"), java.time.ZoneOffset.UTC),
-                applicationScopePort,
-                applicationClickUsagePort,
-                quotaReservationPort
+                clock,
+                quotaGuard(clock, applicationScopePort, quotaReservationPort, false),
+                OperationalMetrics.noop()
         );
 
         RedirectResolution resolution = service.resolve(
@@ -453,22 +323,7 @@ class RedirectServiceAuthoritativeFallbackTest {
     void resolve_shouldRedirectOnQuotaBackendFailureWhenFailOpenIsExplicit() {
         RecordingLinkCache cache = new RecordingLinkCache();
         ShortLinkReadPort shortLinkReadPort = mock(ShortLinkReadPort.class);
-        ShortLinkReadPort.RedirectLinkView authoritative = new ShortLinkReadPort.RedirectLinkView(
-                22L,
-                11L,
-                "abc123",
-                "go.example.test",
-                "https://example.com/live",
-                true,
-                null,
-                302,
-                false,
-                "https://example.com/unavailable",
-                "ALLOWLIST",
-                "utm_source",
-                33L,
-                44L
-        );
+        LinkMeta authoritative = authoritative(false, "ACTIVE");
         when(shortLinkReadPort.findRedirectMetaByHostAndCode("go.example.test", "abc123"))
                 .thenReturn(Optional.of(authoritative));
         AtomicReference<RedirectVisitRecord> recorded = new AtomicReference<>();
@@ -488,14 +343,18 @@ class RedirectServiceAuthoritativeFallbackTest {
                 Clock.fixed(Instant.parse("2026-04-24T10:15:30Z"), java.time.ZoneOffset.UTC),
                 applicationScopePort,
                 quotaReservationPort,
-                true
+                true,
+                30L,
+                10_000L,
+                OperationalMetrics.noop()
         );
         RedirectService service = new RedirectService(
                 cache,
                 shortLinkReadPort,
                 visitRecorderPort,
                 Clock.fixed(Instant.parse("2026-04-24T10:15:30Z"), java.time.ZoneOffset.UTC),
-                quotaGuard
+                quotaGuard,
+                OperationalMetrics.noop()
         );
 
         RedirectResolution resolution = service.resolve(
@@ -521,24 +380,77 @@ class RedirectServiceAuthoritativeFallbackTest {
         }
 
         @Override
-        public LookupResult lookup(String code) {
+        public LookupResult lookup(String host, String code) {
             return lookupResult;
         }
 
         @Override
-        public boolean tryPut(LinkMeta meta) {
+        public boolean tryPut(String host, LinkMeta meta) {
             cachedMeta = meta;
             return true;
         }
 
         @Override
-        public void markNotFound(String code) {
+        public void markNotFound(String host, String code) {
             markedNotFoundCode = code;
         }
 
         @Override
-        public boolean tryEvict(String code) {
+        public boolean tryEvict(String host, String code) {
             return true;
         }
+    }
+
+    private static RedirectService redirectService(
+            LinkCachePort cache,
+            ShortLinkReadPort shortLinkReadPort,
+            VisitRecorderPort visitRecorderPort,
+            Clock clock
+    ) {
+        return new RedirectService(
+                cache,
+                shortLinkReadPort,
+                visitRecorderPort,
+                clock,
+                mock(RedirectQuotaGuard.class),
+                OperationalMetrics.noop()
+        );
+    }
+
+    private static RedirectQuotaGuard quotaGuard(
+            Clock clock,
+            ApplicationScopePort applicationScopePort,
+            ApplicationClickQuotaReservationPort quotaReservationPort,
+            boolean failOpen
+    ) {
+        return new RedirectQuotaGuard(
+                clock,
+                applicationScopePort,
+                quotaReservationPort,
+                failOpen,
+                30L,
+                10_000L,
+                OperationalMetrics.noop()
+        );
+    }
+
+    private static LinkMeta authoritative(boolean previewEnabled, String lifecycleState) {
+        return new LinkMeta(
+                11L,
+                22L,
+                "abc123",
+                "https://example.com/live",
+                true,
+                null,
+                302,
+                previewEnabled,
+                "https://example.com/unavailable",
+                "ALLOWLIST",
+                "utm_source",
+                "go.example.test",
+                33L,
+                44L,
+                lifecycleState
+        );
     }
 }

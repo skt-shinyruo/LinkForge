@@ -190,7 +190,9 @@ export async function apiFetch<T>(
   observeResponse?: (response: Response) => void,
 ): Promise<ApiResponse<T>> {
   const headers = new Headers(options.headers || {});
-  headers.set("Content-Type", headers.get("Content-Type") || "application/json");
+  if (!(options.body instanceof FormData) && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
 
   const resp = await authFetch(path, { ...options, headers });
   observeResponse?.(resp);

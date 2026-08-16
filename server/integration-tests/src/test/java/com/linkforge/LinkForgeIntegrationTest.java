@@ -117,19 +117,13 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
     }
 
     @Test
-    void integrationTests_use_plain_mysql_datasource_and_primary_flyway_override() {
+    void integrationTests_use_plain_mysql_datasource() {
         var env = applicationContext.getEnvironment();
 
         assertThat(env.getProperty("spring.datasource.driver-class-name"))
                 .isEqualTo("com.mysql.cj.jdbc.Driver");
         assertThat(env.getProperty("spring.datasource.url"))
                 .startsWith("jdbc:mysql:");
-        assertThat(env.getProperty("spring.flyway.url"))
-                .startsWith("jdbc:mysql:");
-        assertThat(env.getProperty("spring.flyway.user"))
-                .isEqualTo(MYSQL.getUsername());
-        assertThat(env.getProperty("spring.flyway.password"))
-                .isEqualTo(MYSQL.getPassword());
     }
 
     private static boolean hasAnnotation(Class<?> target, String annotationClassName) {

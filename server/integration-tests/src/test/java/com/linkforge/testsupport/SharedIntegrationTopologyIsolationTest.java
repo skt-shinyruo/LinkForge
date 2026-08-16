@@ -4,7 +4,6 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.testcontainers.containers.Container;
 
@@ -12,8 +11,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@ExtendWith(SharedIntegrationFixtureExtension.class)
-class SharedIntegrationTopologyIsolationTest {
+class SharedIntegrationTopologyIsolationTest extends SharedIntegrationTestSupport {
 
     private static final String SENTINEL_TABLE = "shared_fixture_sentinel";
 

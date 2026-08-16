@@ -55,7 +55,7 @@ public class AnalyticsLinkEventsService {
         requireAdmin(actor);
         LocalDateTime effectiveTo = to == null ? nowUtc() : to;
         LocalDateTime effectiveFrom = from == null ? effectiveTo.minusDays(1) : from;
-        ReportRange.ofUtc(effectiveFrom, effectiveTo);
+        ReportRange.validateUtc(effectiveFrom, effectiveTo);
 
         int effectiveLimit = limit == null ? 50 : limit;
         if (effectiveLimit < 1) {

@@ -42,7 +42,7 @@ public class RedirectCacheSyncAdapter implements RedirectCacheSyncPort {
      */
     @Override
     public void evict(long tenantId, Long domainId, String code) {
-        if (linkCache.tryEvict(code)) {
+        if (linkCache.tryEvict(null, code)) {
             // 纯短码键成功后仍需继续删除按主机隔离的键。
         } else {
             log.debug("redirect cache evict failed: code={}", code);

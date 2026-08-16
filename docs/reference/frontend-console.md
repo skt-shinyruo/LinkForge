@@ -2,7 +2,7 @@
 
 ## 业务目标
 
-前端是 Vue 3 + Vite + Pinia 的单页控制台。它不承载后端业务规则，主要负责会话初始化、权限路由、HTTP transport、页面状态组合和用户操作编排。后端返回业务错误时，前端保留 message 展示给用户。
+前端是 Vue 3 + Vite 的单页控制台。它不承载后端业务规则，主要负责会话初始化、权限路由、HTTP transport、页面状态组合和用户操作编排。后端返回业务错误时，前端保留 message 展示给用户。
 
 ## 页面结构
 
@@ -101,13 +101,13 @@
 - `VITE_AUTH_MODE=bearer`：token 存 local/session storage，默认 session。
 - `VITE_AUTH_MODE=cookie`：不保存 token，依赖服务端 HttpOnly cookie。
 
-`auth.init()` 会调用 `/api/v1/me` 补齐用户、租户和角色，并用 `initInFlight` 避免并发初始化。
+`auth.init()` 会调用 `/api/v1/me` 补齐用户和角色，并用 `initInFlight` 避免并发初始化。
 
 初始化状态有三个重要约束：
 
 - Bearer storage 中存在 token 只代表“可以尝试认证”，最终以 `/me` 为准。
 - Cookie 模式不读取 HttpOnly token，以 `/me` 返回的 email/roles 建立前端会话快照。
-- 初始化失败会清 token、roles 和 tenantId，并稳定设置 `initialized=true`；否则路由守卫会反复 bootstrap。
+- 初始化失败会清 token 和用户状态，并稳定设置 `initialized=true`；否则路由守卫会反复 bootstrap。
 
 `requiresTenantAdmin` 只允许 `TENANT_ADMIN`；`requiresAdmin` 允许 `TENANT_ADMIN` 或 `PLATFORM_ADMIN`。平台管理员会被挡在租户控制面页面之外，但能访问共享审批/审计页面。路由元信息只改善导航体验，后端权限仍是最终边界。
 
@@ -131,10 +131,10 @@ Cookie 写请求的 CSRF 初始化只由一个共享的在途 Promise 收敛，�
 - `apiFetch()` 负责 HTTP 状态和 JSON 形状；HTTP 2xx 内仍可能有非零业务 code。
 - `ensureApiSuccess()` 检查 `code===0`，允许成功响应没有 data。
 - `requireApiData()` 用于后端承诺返回资源的调用，成功但缺 data 也视为协议错误。
-- `buildQueryString()` 保留 `false` 和 `0`，省略 null/undefined，默认省略空字符串。
+- `withQuery()` 使用 `URLSearchParams` 编码参数，保留 `false` 和 `0`，省略 null/undefined 和空字符串。
 - `API_ENDPOINTS` 是控制台路径 SSOT。应用域名授权固定为 `/applications/{id}/domain-authorizations/{domainId}`；链接和统计的应用作用域固定走 `/applications/{id}/...`。
 
-Blob 下载和 `FormData` 上传直接使用 `authFetch()`，因为 `apiFetch()` 会消费 body 并要求 JSON。
+Blob 下载直接使用 `authFetch()`；`FormData` 上传使用 `apiFetch()` 解析统一响应，transport 不会替浏览器设置 multipart boundary。
 
 ## services
 

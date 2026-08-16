@@ -19,7 +19,7 @@ class RedirectCacheSyncAdapterTest {
         DomainHostnameLookupPort domainHostnameLookupPort = mock(DomainHostnameLookupPort.class);
         CoreProperties coreProperties = mock(CoreProperties.class);
         when(coreProperties.getBaseUrl()).thenReturn(" https://Go.Example.Test/base-path ");
-        when(linkCache.tryEvict("abc123")).thenReturn(true);
+        when(linkCache.tryEvict(null, "abc123")).thenReturn(true);
         when(linkCache.tryEvict("go.example.test", "abc123")).thenReturn(true);
         RedirectCacheSyncAdapter adapter = new RedirectCacheSyncAdapter(
                 linkCache,
@@ -29,7 +29,7 @@ class RedirectCacheSyncAdapterTest {
 
         adapter.evict(22L, null, "abc123");
 
-        verify(linkCache).tryEvict("abc123");
+        verify(linkCache).tryEvict(null, "abc123");
         verify(coreProperties).getBaseUrl();
         verify(linkCache).tryEvict("go.example.test", "abc123");
         verifyNoInteractions(domainHostnameLookupPort);
@@ -40,7 +40,7 @@ class RedirectCacheSyncAdapterTest {
         LinkCachePort linkCache = mock(LinkCachePort.class);
         DomainHostnameLookupPort domainHostnameLookupPort = mock(DomainHostnameLookupPort.class);
         CoreProperties coreProperties = mock(CoreProperties.class);
-        when(linkCache.tryEvict("abc123")).thenReturn(false);
+        when(linkCache.tryEvict(null, "abc123")).thenReturn(false);
         RedirectCacheSyncAdapter adapter = new RedirectCacheSyncAdapter(
                 linkCache,
                 domainHostnameLookupPort,
@@ -51,7 +51,7 @@ class RedirectCacheSyncAdapterTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("redirect cache evict failed");
 
-        verify(linkCache).tryEvict("abc123");
+        verify(linkCache).tryEvict(null, "abc123");
         verifyNoInteractions(domainHostnameLookupPort, coreProperties);
     }
 }

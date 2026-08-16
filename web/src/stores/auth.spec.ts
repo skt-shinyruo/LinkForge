@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createPinia, setActivePinia } from "pinia";
 
 const apiFetchMock = vi.hoisted(() => vi.fn());
 const clearTokenMock = vi.hoisted(() => vi.fn());
@@ -21,7 +20,6 @@ describe("useAuthStore", () => {
     clearTokenMock.mockReset();
     getTokenMock.mockReset();
     setTokenMock.mockReset();
-    setActivePinia(createPinia());
   });
 
   afterEach(() => {
@@ -40,7 +38,6 @@ describe("useAuthStore", () => {
     expect(auth.initialized).toBe(true);
     expect(auth.token).toBeNull();
     expect(auth.email).toBe("");
-    expect(auth.tenantId).toBe(0);
     expect(auth.roles).toEqual([]);
     expect(clearTokenMock).toHaveBeenCalled();
   });
@@ -53,7 +50,6 @@ describe("useAuthStore", () => {
     const auth = useAuthStore();
     auth.token = "persisted-token";
     auth.email = "admin@example.com";
-    auth.tenantId = 9;
     auth.roles = ["TENANT_ADMIN"];
     auth.initialized = true;
 
@@ -72,7 +68,6 @@ describe("useAuthStore", () => {
 
     auth.roles = ["PLATFORM_ADMIN"];
 
-    expect(auth.isPlatformAdmin).toBe(true);
     expect(auth.isTenantAdmin).toBe(false);
     expect(auth.isAdmin).toBe(true);
   });

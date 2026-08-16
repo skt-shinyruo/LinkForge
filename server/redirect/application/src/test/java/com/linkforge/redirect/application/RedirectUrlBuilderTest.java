@@ -26,7 +26,10 @@ class RedirectUrlBuilderTest {
                 null,
                 "ALL",
                 null,
-                null
+                null,
+                null,
+                null,
+                LinkMeta.ACTIVE_LIFECYCLE_STATE
         );
 
         Map<String, String[]> params = new LinkedHashMap<>();
@@ -54,7 +57,10 @@ class RedirectUrlBuilderTest {
                 null,
                 "ALL",
                 null,
-                null
+                null,
+                null,
+                null,
+                LinkMeta.ACTIVE_LIFECYCLE_STATE
         );
 
         Map<String, String[]> params = new LinkedHashMap<>();
@@ -85,7 +91,10 @@ class RedirectUrlBuilderTest {
                 null,
                 "ALL",
                 null,
-                null
+                null,
+                null,
+                null,
+                LinkMeta.ACTIVE_LIFECYCLE_STATE
         );
 
         Map<String, String[]> params = new LinkedHashMap<>();

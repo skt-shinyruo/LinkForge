@@ -41,7 +41,7 @@ Java 21 `mvn verify` 成功；构建日志中已没有待处理的 JDK、Maven �
 
 `server/integration-tests` 提供两种 opt-in 基类：
 
-- `SharedIntegrationTestSupport`：业务数据源与 Flyway 都使用 shared primary，适合绝大多数持久化、缓存和端到端测试。
+- `SharedIntegrationTestSupport`：业务数据源使用 shared primary，适合绝大多数持久化、缓存和端到端测试。
 - `SharedReadWriteIntegrationTestSupport`：ShardingSphere 写入使用 shared primary，非事务读取使用独立 replica，适合验证复制延迟与 transactional primary read。
 
 两者在同一测试 JVM 内复用一个 primary、一个 replica 和一个 Redis。集成测试源码迁移已经完成：容器定义只存在于
@@ -53,18 +53,17 @@ Spring Test context cache 的最大容量固定为 `8`，避免完整套件因�
 
 ### Fixture 隔离协议
 
-`SharedIntegrationFixtureExtension` 对每个 opt-in 测试执行以下协议：
+两个共享测试基类对每个 opt-in 测试执行以下协议：
 
-1. 获取 JVM 内公平互斥锁，shared fixture 测试不并行执行。
-2. 测试前删除 primary 与 replica 中除 `flyway_schema_history` 外的所有表数据，并执行 Redis `FLUSHALL`。
+1. 通过 JUnit `@ResourceLock("shared-integration-fixture")` 串行执行 shared fixture 测试。
+2. 测试前删除 primary 与 replica 中所有业务表数据，并执行 Redis `FLUSHALL`。
 3. 测试持锁运行；共享入口默认关闭后台调度，测试可显式调用 job，并可使用事务、Redis stream/group/pending、HLL、hash、set 和 TTL。
-4. 测试后再次执行同样清理，即使断言失败也释放锁。
 
 绝大多数数据库主键由业务 Snowflake ID 生成；`integration_events.seq` 与 `redirect_cache_invalidation_outbox.id` 是仅有的业务自增序列。reset 不对业务表泛化执行 `TRUNCATE`：删除事务提交并恢复外键检查后，仅当实时元数据显示这两条序列已经前进时，才对对应空表执行 `ALTER TABLE ... AUTO_INCREMENT = 1`。这样避免 DDL 的隐式提交破坏删除回滚语义，也让未触碰这两张表的 fixture 边界不承担 ALTER 成本；该条件 DDL 的耗时仍计入 `averageResetMillis`。
 
 `FLUSHALL` 会一起删除 key、stream、consumer group、pending、DLQ 和过期时间。Spring 上下文或进程内缓存若承载可变业务状态，测试仍须通过公开用例显式初始化或清理，不能把它们误认为 Redis fixture。
 
-共享 fixture 不依赖 JUnit 方法顺序；`SharedIntegrationTopologyIsolationTest` 使用不同哨兵并重复运行，锁定双库、多种 Redis 状态以及两条业务自增序列不泄漏。仓库当前不开启集成测试并行执行；若未来开启，只有持有共享扩展锁的测试可以操作这套 topology。
+共享 fixture 不依赖 JUnit 方法顺序；`SharedIntegrationTopologyIsolationTest` 使用不同哨兵并重复运行，锁定双库、多种 Redis 状态以及两条业务自增序列不泄漏。仓库当前不开启集成测试并行执行；若未来开启，只有继承带资源锁共享基类的测试可以操作这套 topology。
 
 `AnalyticsVisitStreamRecoveryIntegrationTest` 通过真实访问事件 appender 交错执行固定轮数的峰值生产与多轮调度。每次调度的落库增量不得超过 `ingest-batch-size × ingest-max-batches`；生产停止后，测试在有限调度轮数内要求 consumer group 的 lag 与 pending 都回落为零，并验证 Stream 的 `XLEN` 保持在 `MAXLEN ~` 预算及一个 Redis macro-node 容差内。该门禁不使用墙钟性能阈值，避免把 CI 主机抖动误判为恢复语义回归。
 
@@ -74,24 +73,11 @@ Spring Test context cache 的最大容量固定为 `8`，避免完整套件因�
 
 1. 确认 Docker daemon 可访问且磁盘空间充足。
 2. 检查 Testcontainers/Ryuk 日志及实际映射端口。
-3. 检查两库 Flyway 是否停在同一最新版本。
+3. 检查两库是否都从当前 `database/schema.sql` 完整初始化。
 4. 若只在单测间歇失败，先检查测试是否绕过共享扩展或在异步任务仍运行时结束。
 5. 若 reset 失败，检查遗留事务、连接池日志与 Redis `FLUSHALL` 返回值。
 
 `SharedIntegrationTopology.metrics()` 暴露本 JVM 的 topology 启动尝试数、容器启动数、启动耗时、reset 次数和平均 reset 耗时；`SharedIntegrationTopologyMetricsListener` 在整个 JUnit launcher session 关闭时只输出一次最终快照，避免随机类顺序产生中途计数。`SharedIntegrationTopologyConcurrencyTest` 以并发调用和重复调用锁定单次启动语义。完整迁移门禁需要连续运行三次，并把中位数及波动与迁移前 `14m36s` 基线对比；未得到可解释改善时不得把共享 topology 宣告为唯一入口。
-
-2026-08-16 在同一工作树快照上执行三次完整随机顺序门禁；每轮均为独立 JVM，命令为
-`mvn -q -pl integration-tests -am -Pit -Dsurefire.runOrder=random -Dsurefire.runOrder.random.seed=<seed> verify`。
-每轮 142 项测试全部通过，实测如下：
-
-| 随机种子 | 总耗时 | topology 启动次数 | 容器启动数 | 启动耗时 | reset 次数 | 平均 reset 耗时 |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `1701` | 214.51s | 1 | 3 | 55,132ms | 278 | 156ms |
-| `2903` | 215.78s | 1 | 3 | 55,326ms | 278 | 163ms |
-| `4517` | 213.84s | 1 | 3 | 54,106ms | 278 | 156ms |
-
-总耗时中位数为 214.51s，最小值 213.84s、最大值 215.78s，极差 1.94s（中位数的 0.90%）。
-相比迁移前 876s 基线，中位数下降 75.51%；三轮均只启动一个共享拓扑，因此共享 topology 的唯一入口验收通过。
 
 ## 覆盖率原则
 

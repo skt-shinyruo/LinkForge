@@ -1,17 +1,7 @@
 package com.linkforge.shortlink.domain;
 
-import com.linkforge.shortlink.domain.event.ShortLinkArchived;
-import com.linkforge.shortlink.domain.event.ShortLinkCreated;
-import com.linkforge.shortlink.domain.event.ShortLinkDeleted;
-import com.linkforge.shortlink.domain.event.ShortLinkDomainEvent;
-import com.linkforge.shortlink.domain.event.ShortLinkOwnershipChanged;
-import com.linkforge.shortlink.domain.event.ShortLinkRestored;
-import com.linkforge.shortlink.domain.event.ShortLinkUpdated;
-
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.EnumSet;
-import java.util.List;
 import java.util.Objects;
 
 import static com.linkforge.shortlink.domain.ShortLinkDomainException.Reason.DELETE_REQUIRES_ARCHIVE;
@@ -22,20 +12,16 @@ import static com.linkforge.shortlink.domain.ShortLinkDomainException.Reason.NOT
 import static com.linkforge.shortlink.domain.ShortLinkDomainException.Reason.UPDATE_NOT_ALLOWED_WHEN_ARCHIVED;
 
 /**
- * 短链聚合根，集中维护短链自身的数据约束、归档规则和待发布领域事件。
+ * 短链聚合根，集中维护短链自身的数据约束和归档规则。
  *
  * <p>聚合强制 {@code id > 0}、{@code tenantId > 0}、短码与原始地址非空，备注最长 512 个
  * Java 字符，重定向状态码只能为 301、302 或空。应用、域名的归属关系以及操作者权限属于跨上下文规则，
- * 由应用层在构造聚合前校验；因此 {@code applicationId}、{@code domainId} 在本类型中允许为空，后续只能通过
- * 命名 ownership reconciliation 行为成对改变。</p>
+ * 由应用层在构造聚合前校验；因此 {@code applicationId}、{@code domainId} 在本类型中允许为空。</p>
  *
  * <p>{@link ShortLinkLifecycleState} 表示发布阶段，{@code archivedAtUtc} 表示可恢复的归档状态，两者彼此独立。
- * 更新、审批、归档、恢复、删除和 ownership reconciliation 的命名行为统一拥有状态守卫、单次版本推进与领域事件；
+ * 更新、审批、归档、恢复和删除的命名行为统一拥有状态守卫与单次版本推进；
  * 字段赋值、版本推进和守卫均为聚合内部实现，不对应用层暴露直接 mutation。</p>
- *
- * <p>时间字段使用不携带时区的 {@link LocalDateTime}，但业务语义一律为 UTC。领域事件按业务操作发生顺序暂存在聚合内；
- * {@code create} 会记录创建事件，{@code rehydrate} 不会重放历史事件。调用 {@link #pullDomainEvents()} 会以原顺序取出
- * 不可变快照并清空缓冲区，因此发布失败后的重试与事务一致性必须由应用层和 outbox 负责。</p>
+ * 时间字段使用不携带时区的 {@link LocalDateTime}，但业务语义一律为 UTC。</p>
  */
 public class ShortLink {
 
@@ -64,7 +50,6 @@ public class ShortLink {
     private final CreatedByType createdByType;
     private LocalDateTime createdAtUtc;
     private LocalDateTime updatedAtUtc;
-    private final List<ShortLinkDomainEvent> domainEvents = new ArrayList<>();
     private boolean deletionRequested;
 
     private ShortLink(
@@ -168,7 +153,7 @@ public class ShortLink {
     }
 
     /**
-     * 创建新的短链聚合并记录 {@link ShortLinkCreated}。
+     * 创建新的短链聚合。
      *
      * <p>{@code enabled == null} 时默认为启用，{@code previewEnabled == null} 时默认为关闭；生命周期为空时默认为
      * {@link ShortLinkLifecycleState#ACTIVE}，查询透传白名单为空时归一化为空白名单。版本从 0 开始，创建/更新时间由
@@ -218,14 +203,13 @@ public class ShortLink {
                 null,
                 null
         );
-        link.recordDomainEvent(new ShortLinkCreated(link.id, link.tenantId, link.domainId, link.code.value()));
         return link;
     }
 
     /**
      * 从旧版、不包含应用与域名范围的持久化记录恢复聚合。
      *
-     * <p>恢复只重建当前状态，不产生创建或更新事件；缺失的生命周期按 {@code ACTIVE} 处理。</p>
+     * <p>恢复只重建当前状态；缺失的生命周期按 {@code ACTIVE} 处理。</p>
      */
     public static ShortLink rehydrate(
             long id,
@@ -275,7 +259,7 @@ public class ShortLink {
     /**
      * 从持久化快照恢复完整聚合。
      *
-     * <p>该入口与创建入口共享值约束和空值默认规则，但不会记录领域事件。负版本会归一化为 0；数据库行版本的合法性
+     * <p>该入口与创建入口共享值约束和空值默认规则。负版本会归一化为 0；数据库行版本的合法性
      * 与乐观锁冲突仍由仓储负责。</p>
      */
     public static ShortLink rehydrate(
@@ -411,26 +395,9 @@ public class ShortLink {
     }
 
     /**
-     * 按记录顺序取出当前待发布事件，并清空聚合内的事件缓冲区。
+     * 将短链归档。
      *
-     * <p>返回列表是不可变快照。该操作具有破坏性：再次调用会得到空列表，除非期间发生了新的领域操作。</p>
-     *
-     * @return 按业务操作顺序排列的不可变事件列表
-     */
-    public List<ShortLinkDomainEvent> pullDomainEvents() {
-        List<ShortLinkDomainEvent> events = List.copyOf(domainEvents);
-        domainEvents.clear();
-        return events;
-    }
-
-    private void recordDomainEvent(ShortLinkDomainEvent event) {
-        domainEvents.add(Objects.requireNonNull(event, "event"));
-    }
-
-    /**
-     * 将短链归档，并在状态首次变化时记录归档事件。
-     *
-     * <p>重复归档是幂等操作：保留第一次的归档时间，不追加事件并返回 {@code false}。归档不修改
+     * <p>重复归档是幂等操作：保留第一次的归档时间并返回 {@code false}。归档不修改
      * {@link #lifecycleState()} 或 {@link #enabled()}。</p>
      *
      * @param nowUtc 归档发生时间，调用方必须传入 UTC 语义的非空时间
@@ -443,14 +410,13 @@ public class ShortLink {
         }
         archivedAtUtc = nowUtc;
         advanceVersion();
-        recordDomainEvent(new ShortLinkArchived(id, tenantId, domainId, code.value(), nowUtc));
         return true;
     }
 
     /**
-     * 恢复已归档短链，并在状态实际变化时记录恢复事件。
+     * 恢复已归档短链。
      *
-     * <p>未归档时调用是幂等的，不追加事件并返回 {@code false}。恢复只清除归档标记，不改变发布阶段与启用标记。</p>
+     * <p>未归档时调用是幂等的并返回 {@code false}。恢复只清除归档标记，不改变发布阶段与启用标记。</p>
      *
      * @return 本次是否实际清除了归档状态
      */
@@ -460,7 +426,6 @@ public class ShortLink {
         }
         archivedAtUtc = null;
         advanceVersion();
-        recordDomainEvent(new ShortLinkRestored(id, tenantId, domainId, code.value()));
         return true;
     }
 
@@ -477,10 +442,10 @@ public class ShortLink {
     }
 
     /**
-     * 记录已归档短链的删除意图，并只在首次调用时推进版本和产生事件。
+     * 记录已归档短链的删除意图，并只在首次调用时推进版本。
      *
      * <p>该行为不直接删除持久化行；仓储使用变化前版本完成 CAS 删除。重复调用同一内存聚合返回
-     * {@code false}，不会重复推进版本或产生事件。</p>
+     * {@code false}，不会重复推进版本。</p>
      */
     public boolean delete(LocalDateTime nowUtc) {
         Objects.requireNonNull(nowUtc, "nowUtc must be provided in UTC");
@@ -490,7 +455,6 @@ public class ShortLink {
         }
         deletionRequested = true;
         advanceVersion();
-        recordDomainEvent(new ShortLinkDeleted(id, tenantId, domainId, code.value(), nowUtc));
         return true;
     }
 
@@ -599,7 +563,7 @@ public class ShortLink {
      * 执行已批准的目标地址变更。
      *
      * <p>只有未归档、绑定 domain 且处于 ACTIVE 发布阶段的短链可以执行审批。目标未变化时幂等返回；成功时只推进
-     * 一次版本并产生一条更新事件。</p>
+     * 一次版本。</p>
      */
     public boolean approveDestinationChange(HttpUrl approvedUrl, LocalDateTime changedAtUtc) {
         requireNotArchivedForUpdate();
@@ -618,44 +582,6 @@ public class ShortLink {
         Objects.requireNonNull(changedAtUtc, "changedAtUtc must be provided in UTC");
         originalUrl = approvedUrl;
         completeUpdatedMutation(changedAtUtc);
-        return true;
-    }
-
-    /**
-     * 把 legacy ownership 调整为给定 application/domain scope。
-     *
-     * <p>该 expand 行为只把 application/domain 都为空的 legacy link 绑定到一对正数 ID，不允许清空或换绑
-     * 已有 ownership。相同已绑定 scope 的重复 reconciliation 幂等返回；成功时事件同时捕获旧、新 scope，
-     * 供应用层可靠失效两套路由身份。</p>
-     */
-    public boolean reconcileOwnership(Long newApplicationId, Long newDomainId, LocalDateTime changedAtUtc) {
-        validateOwnershipTarget(newApplicationId, newDomainId);
-        if (Objects.equals(applicationId, newApplicationId) && Objects.equals(domainId, newDomainId)) {
-            return false;
-        }
-        if (applicationId != null || domainId != null) {
-            throw new ShortLinkDomainException(
-                    ShortLinkDomainException.Reason.INVALID_OWNERSHIP_SCOPE,
-                    "已有 ownership 不能重新绑定"
-            );
-        }
-        Objects.requireNonNull(changedAtUtc, "changedAtUtc must be provided in UTC");
-        Long previousApplicationId = applicationId;
-        Long previousDomainId = domainId;
-        applicationId = newApplicationId;
-        domainId = newDomainId;
-        updatedAtUtc = changedAtUtc;
-        advanceVersion();
-        recordDomainEvent(new ShortLinkOwnershipChanged(
-                id,
-                tenantId,
-                previousApplicationId,
-                previousDomainId,
-                applicationId,
-                domainId,
-                code.value(),
-                changedAtUtc
-        ));
         return true;
     }
 
@@ -750,21 +676,10 @@ public class ShortLink {
     private void completeUpdatedMutation(LocalDateTime occurredAtUtc) {
         updatedAtUtc = occurredAtUtc;
         advanceVersion();
-        recordDomainEvent(new ShortLinkUpdated(id, tenantId, domainId, code.value(), occurredAtUtc));
     }
 
     private void advanceVersion() {
         version++;
-    }
-
-    private static void validateOwnershipTarget(Long applicationId, Long domainId) {
-        boolean bothPositive = applicationId != null && applicationId > 0 && domainId != null && domainId > 0;
-        if (!bothPositive) {
-            throw new ShortLinkDomainException(
-                    ShortLinkDomainException.Reason.INVALID_OWNERSHIP_SCOPE,
-                    "目标 applicationId 与 domainId 必须同时存在且为正数"
-            );
-        }
     }
 
     private static Integer validateRedirectStatusCode(Integer status) {

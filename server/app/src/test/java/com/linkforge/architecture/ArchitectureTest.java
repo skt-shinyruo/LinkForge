@@ -8,12 +8,6 @@ import com.tngtech.archunit.lang.ArchRule;
 import org.junit.jupiter.api.Test;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
@@ -21,17 +15,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.lang.reflect.GenericArrayType;
-import java.lang.reflect.Method;
-import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Modifier;
-import java.lang.reflect.Type;
-import java.lang.reflect.TypeVariable;
-import java.lang.reflect.WildcardType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.Predicate;
 
 class ArchitectureTest {
 
@@ -243,36 +230,6 @@ class ArchitectureTest {
     }
 
     @Test
-    void shortlink_controllers_should_not_expose_application_link_dto_as_http_contract() {
-        List<String> violations = shortlinkControllerMethods().stream()
-                .filter(method -> typeMentions(method.getGenericReturnType(), "com.linkforge.shortlink.application.LinkDto"))
-                .map(method -> method.getDeclaringClass().getName() + "#" + method.getName())
-                .sorted()
-                .toList();
-
-        assertThat(violations)
-                .withFailMessage("Shortlink controllers must map application LinkDto to HTTP response DTOs: %s", violations)
-                .isEmpty();
-    }
-
-    @Test
-    void controllers_should_not_expose_application_dtos_as_http_contracts() {
-        List<String> violations = CLASSES.stream()
-                .filter(javaClass -> javaClass.isAnnotatedWith(RestController.class))
-                .map(ArchitectureTest::loadClass)
-                .flatMap(clazz -> Arrays.stream(clazz.getDeclaredMethods()))
-                .filter(ArchitectureTest::isMappedEndpoint)
-                .filter(method -> exposesApplicationType(method))
-                .map(method -> method.getDeclaringClass().getName() + "#" + method.getName())
-                .sorted()
-                .toList();
-
-        assertThat(violations)
-                .withFailMessage("Controllers must map application results to interface-owned HTTP DTOs: %s", violations)
-                .isEmpty();
-    }
-
-    @Test
     void application_services_should_not_own_nested_public_dto_records() {
         List<String> violations = CLASSES.stream()
                 .filter(javaClass -> javaClass.getPackageName().contains(".application"))
@@ -428,25 +385,6 @@ class ArchitectureTest {
     }
 
     @Test
-    void shortlink_application_code_should_publish_shortlink_events_only_through_domain_event_dispatcher() {
-        List<String> violations = new ArrayList<>();
-        CLASSES.stream()
-                .filter(javaClass -> javaClass.getPackageName().startsWith("com.linkforge.shortlink.application"))
-                .filter(javaClass -> !javaClass.getPackageName().equals("com.linkforge.shortlink.application.eventing"))
-                .filter(javaClass -> !javaClass.getPackageName().equals("com.linkforge.shortlink.application.port"))
-                .filter(javaClass -> javaClass.getDirectDependenciesFromSelf().stream()
-                        .anyMatch(dependency -> dependency.getTargetClass().getName()
-                                .equals("com.linkforge.shortlink.application.port.ShortLinkEventPublisher")))
-                .map(JavaClass::getName)
-                .sorted()
-                .forEach(violations::add);
-
-        assertThat(violations)
-                .withFailMessage("Shortlink application code must dispatch aggregate domain events before publishing integration events: %s", violations)
-                .isEmpty();
-    }
-
-    @Test
     void foundation_should_not_depend_on_bounded_contexts() {
         ArchRule rule = noClasses()
                 .that()
@@ -493,67 +431,12 @@ class ArchitectureTest {
         throw new IllegalStateException("Could not resolve any of " + String.join(", ", relativePaths) + " from " + cwd);
     }
 
-    private static List<Method> shortlinkControllerMethods() {
-        return CLASSES.stream()
-                .filter(javaClass -> javaClass.isAnnotatedWith(RestController.class))
-                .filter(javaClass -> javaClass.getPackageName().startsWith("com.linkforge.shortlink.interfaces.web"))
-                .map(ArchitectureTest::loadClass)
-                .flatMap(clazz -> Arrays.stream(clazz.getDeclaredMethods()))
-                .toList();
-    }
-
     private static Class<?> loadClass(JavaClass javaClass) {
         try {
             return Class.forName(javaClass.getName());
         } catch (ClassNotFoundException e) {
             throw new IllegalStateException("Could not load " + javaClass.getName(), e);
         }
-    }
-
-    private static boolean typeMentions(Type type, String fullyQualifiedName) {
-        return typeMatches(type, clazz -> clazz.getName().equals(fullyQualifiedName));
-    }
-
-    private static boolean typeMentionsPackage(Type type, String packageSegment) {
-        return typeMatches(type, clazz -> clazz.getName().contains(packageSegment));
-    }
-
-    private static boolean typeMatches(Type type, Predicate<Class<?>> classPredicate) {
-        if (type == null) {
-            return false;
-        }
-        if (type instanceof Class<?> clazz) {
-            return classPredicate.test(clazz);
-        }
-        if (type instanceof ParameterizedType parameterizedType) {
-            return typeMatches(parameterizedType.getRawType(), classPredicate)
-                    || Arrays.stream(parameterizedType.getActualTypeArguments())
-                    .anyMatch(argument -> typeMatches(argument, classPredicate));
-        }
-        if (type instanceof GenericArrayType genericArrayType) {
-            return typeMatches(genericArrayType.getGenericComponentType(), classPredicate);
-        }
-        if (type instanceof WildcardType wildcardType) {
-            return Arrays.stream(wildcardType.getUpperBounds()).anyMatch(bound -> typeMatches(bound, classPredicate))
-                    || Arrays.stream(wildcardType.getLowerBounds()).anyMatch(bound -> typeMatches(bound, classPredicate));
-        }
-        if (type instanceof TypeVariable<?> typeVariable) {
-            return Arrays.stream(typeVariable.getBounds()).anyMatch(bound -> typeMatches(bound, classPredicate));
-        }
-        return false;
-    }
-
-    private static boolean isMappedEndpoint(Method method) {
-        return method.isAnnotationPresent(GetMapping.class)
-                || method.isAnnotationPresent(PostMapping.class)
-                || method.isAnnotationPresent(PutMapping.class)
-                || method.isAnnotationPresent(PatchMapping.class)
-                || method.isAnnotationPresent(DeleteMapping.class)
-                || method.isAnnotationPresent(RequestMapping.class);
-    }
-
-    private static boolean exposesApplicationType(Method method) {
-        return typeMentionsPackage(method.getGenericReturnType(), ".application.");
     }
 
     private record BoundedContext(String name, String basePackage) {

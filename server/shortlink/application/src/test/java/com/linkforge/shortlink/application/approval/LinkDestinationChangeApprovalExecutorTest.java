@@ -5,7 +5,6 @@ import com.linkforge.contract.governance.ApprovalExecutionRequest;
 import com.linkforge.contract.governance.ApprovalPayloadCodec;
 import com.linkforge.contract.governance.LinkDestinationChangeApprovalPayload;
 import com.linkforge.contract.governance.SensitiveOperation;
-import com.linkforge.shortlink.application.eventing.ShortLinkDomainEventDispatcher;
 import com.linkforge.shortlink.application.port.RedirectCacheInvalidationOutboxPort;
 import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
 import com.linkforge.shortlink.application.port.ShortLinkEventPublisher;
@@ -33,24 +32,22 @@ import static org.mockito.Mockito.when;
 class LinkDestinationChangeApprovalExecutorTest {
 
     @Test
-    void constructor_shouldDependOnDomainEventDispatcherInsteadOfEventPublisher() {
+    void constructor_shouldDependOnEventPublisher() {
         Constructor<?> constructor = LinkDestinationChangeApprovalExecutor.class.getDeclaredConstructors()[0];
 
         assertThat(constructor.getParameterTypes())
-                .contains(ShortLinkDomainEventDispatcher.class);
-        assertThat(constructor.getParameterTypes())
-                .doesNotContain(ShortLinkEventPublisher.class);
+                .contains(ShortLinkEventPublisher.class);
     }
 
     @Test
     void execute_shouldRejectLegacyTextPayload() {
         ShortLinkRepository shortLinkRepository = mock(ShortLinkRepository.class);
-        ShortLinkDomainEventDispatcher domainEventDispatcher = mock(ShortLinkDomainEventDispatcher.class);
+        ShortLinkEventPublisher eventPublisher = mock(ShortLinkEventPublisher.class);
         RedirectCacheSyncPort redirectCacheSync = mock(RedirectCacheSyncPort.class);
         PostCommitHookPort postCommitHookPort = mock(PostCommitHookPort.class);
         LinkDestinationChangeApprovalExecutor executor = new LinkDestinationChangeApprovalExecutor(
                 shortLinkRepository,
-                domainEventDispatcher,
+                eventPublisher,
                 redirectCacheSync,
                 mock(RedirectCacheInvalidationOutboxPort.class),
                 postCommitHookPort
@@ -90,18 +87,18 @@ class LinkDestinationChangeApprovalExecutorTest {
         assertThat(executor.supports(SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE)).isTrue();
         assertThat(link.originalUrl().value()).isEqualTo("https://example.com/old");
         verify(shortLinkRepository, never()).update(link);
-        verify(domainEventDispatcher, never()).publish(any(), any());
+        verify(eventPublisher, never()).updated(any(), any());
     }
 
     @Test
     void execute_shouldApplyApprovedDestinationChangeFromVersionedStructuredPayload() {
         ShortLinkRepository shortLinkRepository = mock(ShortLinkRepository.class);
-        ShortLinkDomainEventDispatcher domainEventDispatcher = mock(ShortLinkDomainEventDispatcher.class);
+        ShortLinkEventPublisher eventPublisher = mock(ShortLinkEventPublisher.class);
         RedirectCacheSyncPort redirectCacheSync = mock(RedirectCacheSyncPort.class);
         PostCommitHookPort postCommitHookPort = mock(PostCommitHookPort.class);
         LinkDestinationChangeApprovalExecutor executor = new LinkDestinationChangeApprovalExecutor(
                 shortLinkRepository,
-                domainEventDispatcher,
+                eventPublisher,
                 redirectCacheSync,
                 mock(RedirectCacheInvalidationOutboxPort.class),
                 postCommitHookPort
@@ -145,17 +142,17 @@ class LinkDestinationChangeApprovalExecutorTest {
 
         assertThat(link.originalUrl().value()).isEqualTo("https://example.com/new");
         verify(shortLinkRepository).update(link);
-        verify(domainEventDispatcher).publish(link, executedAt.toInstant(java.time.ZoneOffset.UTC));
+        verify(eventPublisher).updated(link, executedAt.toInstant(java.time.ZoneOffset.UTC));
         verify(redirectCacheSync).evict(1L, 3001L, "governed2");
     }
 
     @Test
     void execute_shouldReturnWithoutWritesWhenApprovedDestinationAlreadyMatches() {
         ShortLinkRepository shortLinkRepository = mock(ShortLinkRepository.class);
-        ShortLinkDomainEventDispatcher domainEventDispatcher = mock(ShortLinkDomainEventDispatcher.class);
+        ShortLinkEventPublisher eventPublisher = mock(ShortLinkEventPublisher.class);
         LinkDestinationChangeApprovalExecutor executor = new LinkDestinationChangeApprovalExecutor(
                 shortLinkRepository,
-                domainEventDispatcher,
+                eventPublisher,
                 mock(RedirectCacheSyncPort.class),
                 mock(RedirectCacheInvalidationOutboxPort.class),
                 mock(PostCommitHookPort.class)
@@ -193,7 +190,7 @@ class LinkDestinationChangeApprovalExecutorTest {
 
         assertThat(link.version()).isZero();
         verify(shortLinkRepository, never()).update(link);
-        verify(domainEventDispatcher, never()).publish(any(), any());
+        verify(eventPublisher, never()).updated(any(), any());
     }
 
     private static String linkDestinationPayload(long linkId, String originalUrl) {

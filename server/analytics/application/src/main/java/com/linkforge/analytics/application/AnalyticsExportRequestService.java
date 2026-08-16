@@ -69,7 +69,7 @@ public class AnalyticsExportRequestService {
 
         LocalDateTime effectiveTo = to == null ? nowUtc() : to;
         LocalDateTime effectiveFrom = from == null ? effectiveTo.minusDays(1) : from;
-        ReportRange.ofUtc(effectiveFrom, effectiveTo);
+        ReportRange.validateUtc(effectiveFrom, effectiveTo);
 
         return approvalSubmissionPort.requestAnalyticsDetailExportApproval(
                 actor.tenantId(),

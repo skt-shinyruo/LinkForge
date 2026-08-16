@@ -41,7 +41,6 @@ public final class ShortLinkDomainExceptions {
                  UPDATE_NOT_ALLOWED_WHEN_ARCHIVED,
                  DELETE_REQUIRES_ARCHIVE,
                  APPROVAL_REQUIRES_ACTIVE_SCOPED_LINK,
-                 INVALID_OWNERSHIP_SCOPE,
                  INVALID_TENANT_ID,
                  INVALID_LINK_ID -> new BusinessException(ErrorCode.BAD_REQUEST, ex.getMessage());
         };

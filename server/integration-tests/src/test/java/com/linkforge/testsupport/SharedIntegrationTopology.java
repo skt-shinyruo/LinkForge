@@ -1,6 +1,5 @@
 package com.linkforge.testsupport;
 
-import org.flywaydb.core.Flyway;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -24,8 +23,8 @@ import java.util.stream.Stream;
 /**
  * opt-in 集成测试在 JVM 内共享的 MySQL 主库、副本与 Redis 拓扑。
  *
- * <p>该拓扑拥有容器启动、Flyway migration 和连接属性。测试隔离是独立操作：
- * {@link #resetFixtures()} 删除两个数据库中非 Flyway 表的全部数据并执行 Redis {@code FLUSHALL}，
+ * <p>该拓扑拥有容器启动、schema 初始化和连接属性。测试隔离是独立操作：
+ * {@link #resetFixtures()} 删除两个数据库中的全部业务数据并执行 Redis {@code FLUSHALL}，
  * 同时清除 stream、consumer group、pending entry 和 TTL 状态。</p>
  */
 public final class SharedIntegrationTopology {
@@ -58,7 +57,7 @@ public final class SharedIntegrationTopology {
     private SharedIntegrationTopology() {
     }
 
-    /** 并行启动全部容器，并在每个测试 JVM 内只迁移两个数据库一次。 */
+    /** 并行启动全部容器；MySQL 容器从共享 schema 基线初始化。 */
     public static void ensureStarted() {
         if (started) {
             return;
@@ -71,8 +70,6 @@ public final class SharedIntegrationTopology {
             START_ATTEMPTS.incrementAndGet();
             try {
                 Startables.deepStart(Stream.of(PRIMARY, REPLICA, REDIS)).join();
-                migrate(PRIMARY);
-                migrate(REPLICA);
                 configureReadWriteSystemProperties();
                 startupMillis = Duration.ofNanos(System.nanoTime() - startedAt).toMillis();
                 started = true;
@@ -94,7 +91,7 @@ public final class SharedIntegrationTopology {
         registry.add("spring.datasource.url", PRIMARY::getJdbcUrl);
         registry.add("spring.datasource.username", PRIMARY::getUsername);
         registry.add("spring.datasource.password", PRIMARY::getPassword);
-        registerFlywayAndRedis(registry);
+        registerRedis(registry);
     }
 
     /** 注册使用独立主库与刻意保持延迟副本的 ShardingSphere。 */
@@ -103,13 +100,13 @@ public final class SharedIntegrationTopology {
         registry.add("spring.datasource.driver-class-name", () ->
                 "org.apache.shardingsphere.driver.ShardingSphereDriver");
         registry.add("spring.datasource.url", () -> SHARDINGSPHERE_URL);
-        registerFlywayAndRedis(registry);
+        registerRedis(registry);
         registry.add("app.edge.risk-control.enabled", () -> "false");
     }
 
     /**
-     * 清除所有可变 fixture 状态，同时保留 Flyway 历史与数据库结构。
-     * 调用方必须通过 {@link SharedIntegrationFixtureExtension} 将该操作与测试执行串行化。
+     * 清除所有可变 fixture 状态，同时保留数据库结构。
+     * 调用方必须通过 JUnit {@code @ResourceLock("shared-integration-fixture")} 将该操作与测试执行串行化。
      */
     public static void resetFixtures() {
         ensureStarted();
@@ -157,10 +154,7 @@ public final class SharedIntegrationTopology {
         );
     }
 
-    private static void registerFlywayAndRedis(DynamicPropertyRegistry registry) {
-        registry.add("spring.flyway.url", PRIMARY::getJdbcUrl);
-        registry.add("spring.flyway.user", PRIMARY::getUsername);
-        registry.add("spring.flyway.password", PRIMARY::getPassword);
+    private static void registerRedis(DynamicPropertyRegistry registry) {
         registry.add("spring.data.redis.host", REDIS::getHost);
         registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
         registry.add("app.security.jwt.secret", () ->
@@ -182,15 +176,8 @@ public final class SharedIntegrationTopology {
         return new MySQLContainer<>(MYSQL_IMAGE)
                 .withDatabaseName(databaseName)
                 .withUsername("linkforge")
-                .withPassword("linkforge");
-    }
-
-    private static void migrate(MySQLContainer<?> mysql) {
-        Flyway.configure()
-                .dataSource(mysql.getJdbcUrl(), mysql.getUsername(), mysql.getPassword())
-                .locations("classpath:db/migration")
-                .load()
-                .migrate();
+                .withPassword("linkforge")
+                .withInitScript("database/schema.sql");
     }
 
     private static JdbcTemplate jdbc(MySQLContainer<?> mysql) {
@@ -214,7 +201,6 @@ public final class SharedIntegrationTopology {
                     FROM information_schema.tables
                     WHERE table_schema = DATABASE()
                       AND table_type = 'BASE TABLE'
-                      AND table_name <> 'flyway_schema_history'
                     """)) {
                 while (result.next()) {
                     String table = result.getString(1);

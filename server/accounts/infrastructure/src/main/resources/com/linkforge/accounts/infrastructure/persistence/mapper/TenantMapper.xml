@@ -35,10 +35,4 @@
         WHERE id = #{param1}
     </select>
 
-    <select id="findByName" resultMap="TenantResultMap">
-        SELECT
-        <include refid="tenantColumns"/>
-        FROM tenants
-        WHERE name = #{param1}
-    </select>
 </mapper>

@@ -12,8 +12,6 @@ public interface ApplicationMapper {
 
     ApplicationEntity findByTenantIdAndId(long tenantId, long applicationId);
 
-    ApplicationEntity findByTenantIdAndApplicationKey(long tenantId, String applicationKey);
-
     List<ApplicationEntity> listByTenantId(long tenantId);
 
     List<ApplicationEntity> listAll();

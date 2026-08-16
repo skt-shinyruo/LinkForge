@@ -1,4 +1,4 @@
-import { computed, reactive, ref } from "vue";
+import { reactive, ref } from "vue";
 import { listApplications } from "../services/applications";
 import {
   createApiKey,
@@ -28,11 +28,6 @@ export function useApiKeysPage() {
   });
 
   const selectedApplicationId = ref<number | null>(null);
-
-  const selectedApplication = computed(
-    () =>
-      applications.value.find((application) => application.id === selectedApplicationId.value) ?? null,
-  );
 
   async function load() {
     loading.value = true;
@@ -132,7 +127,6 @@ export function useApiKeysPage() {
     load,
     loading,
     rotate,
-    selectedApplication,
     selectedApplicationId,
     setSelectedApplicationId,
   };

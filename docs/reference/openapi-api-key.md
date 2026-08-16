@@ -102,7 +102,7 @@ OpenAPI 链路让内部系统通过 API Key 创建和查询短链。它和控制
 
 `API_KEY_CURRENT_KEY_ID` 与 `API_KEY_PREVIOUS_KEY_ID` 均不得超过 64 个字符，以匹配 `api_keys.key_id VARCHAR(64)`；该存储约束在 strict 和非 strict 启动中都会执行。
 
-V26 的 `key_id` 是 additive schema。第一阶段滚动部署仍使用升级前的单 pepper：V26 把它同时视为 current 和
+从旧版单 pepper 部署升级时，第一阶段仍使用原 pepper：当前实现把它同时视为 current 和
 legacy，写出带 `v1` key id 但 digest 与旧实例兼容的摘要。此阶段不能切换 pepper，否则旧实例只能识别一个 pepper，
 必然在“历史 key”和“新 key”之间失去一侧验证能力。所有旧实例停止且旧二进制回滚窗口结束后，才把原 pepper 配成
 previous 与 legacy，并启用新的 current key id/pepper。移除 previous/legacy 前必须盘点仍引用旧 key id 或无 key id
@@ -129,7 +129,6 @@ HMAC 的数据库行；仅等待时间或观察认证流量不足以证明不活
   - `create()`：校验应用 ACTIVE，生成 secret，使用 current pepper 保存 hash 和 key id。
   - `authenticate()`：解析 `lfk_{id}_{secret}`，按 key id 选择 current/previous/legacy pepper，校验状态和绑定应用 ACTIVE，并把成功的旧摘要 CAS 升级到 current。
   - `disable()`、`enable()`、`rotate()`：更新状态或 secret，并处理认证缓存驱逐。
-  - 旧的 `create(tenantId, name)` 重载刻意拒绝缺少 `applicationId` 的调用，防止创建无 scope 新 key。
 
 ### OpenAPI 安全链
 

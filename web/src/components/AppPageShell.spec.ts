@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createPinia, setActivePinia } from "pinia";
 import { createApp, type App } from "vue";
 import AppPageShell from "./AppPageShell.vue";
 import { useAuthStore } from "../stores/auth";
@@ -31,13 +30,10 @@ describe("AppPageShell", () => {
   });
 
   it("hides tenant-admin navigation from platform admins", () => {
-    const pinia = createPinia();
-    setActivePinia(pinia);
     useAuthStore().roles = ["PLATFORM_ADMIN"];
     host = document.createElement("div");
     document.body.appendChild(host);
     app = createApp(AppPageShell);
-    app.use(pinia);
     app.mount(host);
 
     expect(host.textContent).not.toContain("概览");

@@ -9,6 +9,7 @@ import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.contract.openapi.OpenApiErrorCode;
 import com.linkforge.foundation.config.SecurityProperties;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
+import com.linkforge.foundation.observability.OperationalMetrics;
 import com.linkforge.foundation.tx.PostCommitHookPort;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -809,32 +810,19 @@ class ApiKeyServiceTest {
             PostCommitHookPort postCommitHook,
             ApplicationScopePort applicationScopePort
     ) {
-        try {
-            SnowflakeIdGenerator idGenerator = mock(SnowflakeIdGenerator.class);
-            when(idGenerator.nextId()).thenReturn(123L);
-            Constructor<ApiKeyService> constructor = ApiKeyService.class.getConstructor(
-                    SnowflakeIdGenerator.class,
-                    AccountsApiKeyStore.class,
-                    AccountsPasswordHasher.class,
-                    SecurityProperties.class,
-                    ApiKeyAuthCache.class,
-                    Clock.class,
-                    PostCommitHookPort.class,
-                    ApplicationScopePort.class
-            );
-            return constructor.newInstance(
-                    idGenerator,
-                    store,
-                    passwordHasher,
-                    props,
-                    authCache,
-                    clock,
-                    postCommitHook,
-                    applicationScopePort
-            );
-        } catch (ReflectiveOperationException ex) {
-            throw new IllegalStateException(ex);
-        }
+        SnowflakeIdGenerator idGenerator = mock(SnowflakeIdGenerator.class);
+        when(idGenerator.nextId()).thenReturn(123L);
+        return new ApiKeyService(
+                idGenerator,
+                store,
+                passwordHasher,
+                props,
+                authCache,
+                clock,
+                postCommitHook,
+                applicationScopePort,
+                OperationalMetrics.noop()
+        );
     }
 
     private static final class CapturingPostCommitHook implements PostCommitHookPort {

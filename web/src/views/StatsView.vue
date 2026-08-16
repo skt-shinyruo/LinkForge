@@ -41,10 +41,6 @@ void page.init();
 
     <StatsOverviewPanel
       :overview-stats="page.overviewStats.value"
-      :overview-chart-labels="page.overviewChartLabels.value"
-      :overview-chart-series="page.overviewChartSeries.value"
-      :show-overview-chart="page.showOverviewChart.value"
-      @toggle="page.showOverviewChart.value = !page.showOverviewChart.value"
     />
 
     <TopLinksTable
@@ -61,12 +57,7 @@ void page.init();
       :link-options-has-more="page.linkOptionsHasMore.value"
       :link-options-error="page.linkOptionsError.value"
       :selected-link-id="page.selectedLinkId.value"
-      :selected-link="page.selectedLink.value"
       :link-stats="page.linkStats.value"
-      :show-link-chart="page.showLinkChart.value"
-      :link-chart-labels="page.linkChartLabels.value"
-      :link-chart-series="page.linkChartSeries.value"
-      @toggle="page.showLinkChart.value = !page.showLinkChart.value"
       @search-links="page.searchLinks"
       @load-more-links="page.loadMoreLinks"
       @update-link-search="page.linkSearch.value = $event"

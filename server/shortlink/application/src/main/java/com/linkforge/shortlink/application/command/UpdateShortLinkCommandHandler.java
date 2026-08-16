@@ -10,11 +10,11 @@ import com.linkforge.foundation.tx.PostCommitHookPort;
 import com.linkforge.shortlink.application.LinkDto;
 import com.linkforge.shortlink.application.ShortLinkUserAccess;
 import com.linkforge.shortlink.application.UpdateLinkRequest;
-import com.linkforge.shortlink.application.eventing.ShortLinkDomainEventDispatcher;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
 import com.linkforge.shortlink.application.port.RedirectCacheInvalidationOutboxPort;
 import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
+import com.linkforge.shortlink.application.port.ShortLinkEventPublisher;
 import com.linkforge.shortlink.application.port.ShortLinkRepository;
 import com.linkforge.shortlink.application.support.RedirectCacheInvalidations;
 import com.linkforge.shortlink.application.support.LinkTagSetNormalizer;
@@ -45,7 +45,7 @@ import java.util.Set;
  * 不直接修改短链、标签，也不发布短链事件或清理缓存。未触发审批时，聚合更新和标签替换位于同一事务，
  * 仓储以版本号执行乐观锁；过期写会令整个事务回滚。</p>
  *
- * <p>成功直写后会在事务内发布领域事件并登记缓存失效 outbox，提交后再执行一次 best-effort 缓存清理；
+ * <p>成功直写后会在事务内发布集成事件并登记缓存失效 outbox，提交后再执行一次 best-effort 缓存清理；
  * 即时清理失败由 outbox 重试承担可靠性。</p>
  */
 @Component
@@ -53,7 +53,7 @@ public class UpdateShortLinkCommandHandler {
 
     private final ShortLinkRepository shortLinkRepository;
     private final SetLinkTagsCommandHandler setLinkTagsHandler;
-    private final ShortLinkDomainEventDispatcher domainEventDispatcher;
+    private final ShortLinkEventPublisher eventPublisher;
     private final LinkTagRepository linkTagRepository;
     private final RedirectCacheSyncPort redirectCacheSync;
     private final RedirectCacheInvalidationOutboxPort redirectCacheInvalidationOutbox;
@@ -65,7 +65,7 @@ public class UpdateShortLinkCommandHandler {
     public UpdateShortLinkCommandHandler(
             ShortLinkRepository shortLinkRepository,
             SetLinkTagsCommandHandler setLinkTagsHandler,
-            ShortLinkDomainEventDispatcher domainEventDispatcher,
+            ShortLinkEventPublisher eventPublisher,
             LinkTagRepository linkTagRepository,
             RedirectCacheSyncPort redirectCacheSync,
             RedirectCacheInvalidationOutboxPort redirectCacheInvalidationOutbox,
@@ -76,7 +76,7 @@ public class UpdateShortLinkCommandHandler {
     ) {
         this.shortLinkRepository = shortLinkRepository;
         this.setLinkTagsHandler = setLinkTagsHandler;
-        this.domainEventDispatcher = domainEventDispatcher;
+        this.eventPublisher = eventPublisher;
         this.linkTagRepository = linkTagRepository;
         this.redirectCacheSync = redirectCacheSync;
         this.redirectCacheInvalidationOutbox = redirectCacheInvalidationOutbox;
@@ -175,7 +175,7 @@ public class UpdateShortLinkCommandHandler {
             setLinkTagsHandler.handle(tenantId, linkId, update.tags().value());
         }
 
-        domainEventDispatcher.publish(link, updatedAtUtc.toInstant(ZoneOffset.UTC));
+        eventPublisher.updated(link, updatedAtUtc.toInstant(ZoneOffset.UTC));
         RedirectCacheInvalidations.enqueueAndRunAfterCommit(
                 redirectCacheInvalidationOutbox,
                 postCommitHookPort,

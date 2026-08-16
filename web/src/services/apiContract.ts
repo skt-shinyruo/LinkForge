@@ -6,10 +6,6 @@ const API_V1 = "/api/v1";
 
 type QueryValue = string | number | boolean | null | undefined;
 
-type QueryStringOptions = {
-  skipEmptyString?: boolean;
-};
-
 /** 检查 HTTP 200 内的业务 code；成功数据允许为 `undefined`。 */
 export function ensureApiSuccess<T>(
   response: ApiResponse<T>,
@@ -37,30 +33,15 @@ export function requireApiData<T>(
  * 使用 `URLSearchParams` 编码查询参数；null/undefined 永不发送，空字符串默认也省略。
  * false 和 0 是有效协议值，不能因 JavaScript truthy 规则被丢弃。
  */
-export function buildQueryString(
-  values: Record<string, QueryValue>,
-  options: QueryStringOptions = {},
-): string {
-  const skipEmptyString = options.skipEmptyString ?? true;
+export function withQuery(path: string, values: Record<string, QueryValue>): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(values)) {
-    if (value === undefined || value === null) {
-      continue;
-    }
-    if (skipEmptyString && value === "") {
+    if (value === undefined || value === null || value === "") {
       continue;
     }
     params.set(key, String(value));
   }
-  return params.toString();
-}
-
-export function withQuery(
-  path: string,
-  values: Record<string, QueryValue>,
-  options?: QueryStringOptions,
-): string {
-  const queryString = buildQueryString(values, options);
+  const queryString = params.toString();
   return queryString ? `${path}?${queryString}` : path;
 }
 
@@ -83,18 +64,6 @@ export function decodeApiResponse<T>(
     throw new Error("Invalid API response data");
   }
   return value as ApiResponse<T>;
-}
-
-/** 解析调用方已获得的原始响应；非空 body 必须符合统一 envelope。 */
-export async function parseApiResponse<T>(
-  response: Response,
-  validateData?: RuntimeValidator<T>,
-): Promise<ApiResponse<T>> {
-  const text = await response.text();
-  if (!text) {
-    return {} as ApiResponse<T>;
-  }
-  return decodeApiResponse(JSON.parse(text) as unknown, validateData);
 }
 
 function applicationPath(applicationId: number): string {

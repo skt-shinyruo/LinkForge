@@ -3,14 +3,12 @@ package com.linkforge.redirect.application;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkforge.contract.analytics.ApplicationClickQuotaReservationPort;
-import com.linkforge.contract.analytics.ApplicationClickUsagePort;
 import com.linkforge.contract.platform.ApplicationQuotaView;
 import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.contract.redirect.LinkMeta;
 import com.linkforge.foundation.observability.OperationalMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -38,9 +36,6 @@ import java.util.concurrent.atomic.AtomicReference;
 public class RedirectQuotaGuard {
 
     private static final Logger log = LoggerFactory.getLogger(RedirectQuotaGuard.class);
-    private static final long DEFAULT_QUOTA_LOOKUP_CACHE_TTL_SECONDS = 30L;
-    private static final long DEFAULT_QUOTA_LOOKUP_CACHE_MAX_ENTRIES = 10_000L;
-
     private final Clock clock;
     private final ApplicationScopePort applicationScopePort;
     private final ApplicationClickQuotaReservationPort applicationClickQuotaReservationPort;
@@ -49,36 +44,6 @@ public class RedirectQuotaGuard {
     private final Cache<QuotaCacheKey, Optional<ApplicationQuotaView>> quotaLookupCache;
     private final OperationalMetrics metrics;
 
-    /**
-     * 创建生产用额度守卫。
-     *
-     * @param failOpenOnQuotaErrors Platform 查询或端口调用抛异常时是否继续跳转
-     * @param quotaLookupCacheTtlSeconds Platform quota 视图的本地缓存秒数，非正值关闭缓存
-     * @param quotaLookupCacheMaxEntries 本地缓存最大应用数，至少为 1
-     * @param clock UTC 时间来源
-     * @param applicationScopePort Platform quota 查询端口
-     * @param applicationClickQuotaReservationPort 原子月额度预留端口
-     */
-    public RedirectQuotaGuard(
-            Clock clock,
-            ApplicationScopePort applicationScopePort,
-            ApplicationClickQuotaReservationPort applicationClickQuotaReservationPort,
-            @Value("${app.analytics.quota.fail-open:false}") boolean failOpenOnQuotaErrors,
-            @Value("${app.analytics.quota.lookup-cache-ttl-seconds:30}") long quotaLookupCacheTtlSeconds,
-            @Value("${app.analytics.quota.lookup-cache-max-entries:10000}") long quotaLookupCacheMaxEntries
-    ) {
-        this(
-                clock,
-                applicationScopePort,
-                applicationClickQuotaReservationPort,
-                failOpenOnQuotaErrors,
-                quotaLookupCacheTtlSeconds,
-                quotaLookupCacheMaxEntries,
-                OperationalMetrics.noop()
-        );
-    }
-
-    @Autowired
     public RedirectQuotaGuard(
             Clock clock,
             ApplicationScopePort applicationScopePort,
@@ -89,10 +54,8 @@ public class RedirectQuotaGuard {
             OperationalMetrics metrics
     ) {
         this.clock = clock;
-        this.applicationScopePort = applicationScopePort == null ? noQuotaApplicationScopePort() : applicationScopePort;
-        this.applicationClickQuotaReservationPort = applicationClickQuotaReservationPort == null
-                ? allowAllClickQuotaReservationPort()
-                : applicationClickQuotaReservationPort;
+        this.applicationScopePort = applicationScopePort;
+        this.applicationClickQuotaReservationPort = applicationClickQuotaReservationPort;
         this.failOpenOnQuotaErrors = failOpenOnQuotaErrors;
         this.metrics = metrics == null ? OperationalMetrics.noop() : metrics;
         this.quotaLookupCacheTtlMillis = toMillis(quotaLookupCacheTtlSeconds);
@@ -103,78 +66,6 @@ public class RedirectQuotaGuard {
                 .expireAfterWrite(ttl)
                 .ticker(() -> TimeUnit.MILLISECONDS.toNanos(clock.instant().toEpochMilli()))
                 .build();
-    }
-
-    RedirectQuotaGuard(
-            Clock clock,
-            ApplicationScopePort applicationScopePort,
-            ApplicationClickQuotaReservationPort applicationClickQuotaReservationPort,
-            boolean failOpenOnQuotaErrors,
-            long quotaLookupCacheTtlSeconds
-    ) {
-        this(
-                clock,
-                applicationScopePort,
-                applicationClickQuotaReservationPort,
-                failOpenOnQuotaErrors,
-                quotaLookupCacheTtlSeconds,
-                DEFAULT_QUOTA_LOOKUP_CACHE_MAX_ENTRIES
-        );
-    }
-
-    /**
-     * 以默认 30 秒 quota 查询缓存创建守卫。
-     *
-     * @param clock UTC 时间来源
-     * @param applicationScopePort Platform quota 查询端口
-     * @param applicationClickQuotaReservationPort 原子月额度预留端口
-     * @param failOpenOnQuotaErrors Platform/端口异常是否放行
-     */
-    public RedirectQuotaGuard(
-            Clock clock,
-            ApplicationScopePort applicationScopePort,
-            ApplicationClickQuotaReservationPort applicationClickQuotaReservationPort,
-            boolean failOpenOnQuotaErrors
-    ) {
-        this(
-                clock,
-                applicationScopePort,
-                applicationClickQuotaReservationPort,
-                failOpenOnQuotaErrors,
-                DEFAULT_QUOTA_LOOKUP_CACHE_TTL_SECONDS,
-                DEFAULT_QUOTA_LOOKUP_CACHE_MAX_ENTRIES
-        );
-    }
-
-    /**
-     * 以 fail-closed 和默认查询缓存创建守卫。
-     *
-     * @param clock UTC 时间来源
-     * @param applicationScopePort Platform quota 查询端口
-     * @param applicationClickQuotaReservationPort 原子月额度预留端口
-     */
-    public RedirectQuotaGuard(
-            Clock clock,
-            ApplicationScopePort applicationScopePort,
-            ApplicationClickQuotaReservationPort applicationClickQuotaReservationPort
-    ) {
-        this(clock, applicationScopePort, applicationClickQuotaReservationPort, false, DEFAULT_QUOTA_LOOKUP_CACHE_TTL_SECONDS);
-    }
-
-    static RedirectQuotaGuard from(
-            Clock clock,
-            ApplicationScopePort applicationScopePort,
-            ApplicationClickUsagePort applicationClickUsagePort,
-            ApplicationClickQuotaReservationPort applicationClickQuotaReservationPort
-    ) {
-        ApplicationClickQuotaReservationPort reservationPort = applicationClickQuotaReservationPort == null
-                ? fallbackClickQuotaReservationPort(applicationClickUsagePort)
-                : applicationClickQuotaReservationPort;
-        return new RedirectQuotaGuard(clock, applicationScopePort, reservationPort);
-    }
-
-    static RedirectQuotaGuard disabled(Clock clock) {
-        return new RedirectQuotaGuard(clock, noQuotaApplicationScopePort(), allowAllClickQuotaReservationPort());
     }
 
     /**
@@ -295,22 +186,6 @@ public class RedirectQuotaGuard {
         return failOpenOnQuotaErrors ? null : RedirectResolution.UnavailableReason.QUOTA_EXCEEDED;
     }
 
-    private static ApplicationClickQuotaReservationPort fallbackClickQuotaReservationPort(
-            ApplicationClickUsagePort clickUsagePort
-    ) {
-        ApplicationClickUsagePort usagePort = clickUsagePort == null ? noClickUsagePort() : clickUsagePort;
-        return (tenantId, applicationId, fromInclusiveUtc, toExclusiveUtc, monthlyClickLimit) ->
-                usagePort.countApplicationClicks(tenantId, applicationId, fromInclusiveUtc, toExclusiveUtc) < monthlyClickLimit;
-    }
-
-    private static ApplicationClickUsagePort noClickUsagePort() {
-        return (tenantId, applicationId, fromInclusiveUtc, toExclusiveUtc) -> 0L;
-    }
-
-    private static ApplicationClickQuotaReservationPort allowAllClickQuotaReservationPort() {
-        return (tenantId, applicationId, fromInclusiveUtc, toExclusiveUtc, monthlyClickLimit) -> true;
-    }
-
     private static long toMillis(long ttlSeconds) {
         if (ttlSeconds <= 0) {
             return 0L;
@@ -323,23 +198,6 @@ public class RedirectQuotaGuard {
 
     private static Optional<ApplicationQuotaView> normalizeQuota(Optional<ApplicationQuotaView> quota) {
         return quota == null ? Optional.empty() : quota;
-    }
-
-    private static ApplicationScopePort noQuotaApplicationScopePort() {
-        return new ApplicationScopePort() {
-            @Override
-            public void requireApplicationExists(long tenantId, long applicationId) {
-            }
-
-            @Override
-            public void requireApplicationAndDomainAuthorized(long tenantId, long applicationId, long domainId) {
-            }
-
-            @Override
-            public Optional<ApplicationQuotaView> findApplicationQuota(long tenantId, long applicationId) {
-                return Optional.empty();
-            }
-        };
     }
 
     private record QuotaCacheKey(long tenantId, long applicationId) {

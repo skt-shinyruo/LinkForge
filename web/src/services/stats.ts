@@ -19,11 +19,8 @@ export async function fetchOverviewStats(
   range: StatsRangeQuery,
   options: Pick<RequestInit, "signal"> = {},
 ): Promise<DailyStat[]> {
-  const path = range.applicationId
-    ? API_ENDPOINTS.stats.overview(range.applicationId)
-    : API_ENDPOINTS.stats.overview();
   const response = await apiFetch<DailyStat[]>(
-    withQuery(path, buildRangeQuery(range), { skipEmptyString: false }),
+    withQuery(API_ENDPOINTS.stats.overview(range.applicationId), buildRangeQuery(range)),
     options,
     arrayOf(isDailyStat),
   );
@@ -34,18 +31,14 @@ export async function fetchTopLinksStats(
   query: TopLinksQuery,
   options: Pick<RequestInit, "signal"> = {},
 ): Promise<TopLinkStat[]> {
-  const path = query.applicationId
-    ? API_ENDPOINTS.stats.topLinks(query.applicationId)
-    : API_ENDPOINTS.stats.topLinks();
   const response = await apiFetch<TopLinkStat[]>(
     withQuery(
-      path,
+      API_ENDPOINTS.stats.topLinks(query.applicationId),
       {
         ...buildRangeQuery(query),
         limit: query.limit ?? 10,
         sortBy: query.sortBy ?? "pv",
       },
-      { skipEmptyString: false },
     ),
     options,
     arrayOf(isTopLinkStat),
@@ -59,9 +52,7 @@ export async function fetchLinkDailyStats(
   options: Pick<RequestInit, "signal"> = {},
 ): Promise<DailyStat[]> {
   const response = await apiFetch<DailyStat[]>(
-    withQuery(API_ENDPOINTS.stats.linkDaily(linkId), buildRangeQuery(range), {
-      skipEmptyString: false,
-    }),
+    withQuery(API_ENDPOINTS.stats.linkDaily(linkId), buildRangeQuery(range)),
     options,
     arrayOf(isDailyStat),
   );

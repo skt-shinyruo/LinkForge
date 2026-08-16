@@ -68,7 +68,10 @@ class RedirectRiskControlIntegrationTest extends SharedIntegrationTestSupport {
                         null,
                         null,
                         null,
-                        null
+                        null,
+                        null,
+                        null,
+                        LinkMeta.ACTIVE_LIFECYCLE_STATE
                 );
         when(redirectService.resolve(any(ResolveRedirectRequest.class)))
                 .thenAnswer(invocation -> {

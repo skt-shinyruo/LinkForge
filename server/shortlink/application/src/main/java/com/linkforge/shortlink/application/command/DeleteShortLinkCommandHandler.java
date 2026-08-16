@@ -3,10 +3,10 @@ package com.linkforge.shortlink.application.command;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.shortlink.ShortLinkErrorCode;
 import com.linkforge.foundation.tx.PostCommitHookPort;
-import com.linkforge.shortlink.application.eventing.ShortLinkDomainEventDispatcher;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
 import com.linkforge.shortlink.application.port.RedirectCacheInvalidationOutboxPort;
 import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
+import com.linkforge.shortlink.application.port.ShortLinkEventPublisher;
 import com.linkforge.shortlink.application.port.ShortLinkRepository;
 import com.linkforge.shortlink.application.support.RedirectCacheInvalidations;
 import com.linkforge.shortlink.application.support.ShortLinkDomainExceptions;
@@ -23,7 +23,7 @@ import java.time.ZoneOffset;
 /**
  * 物理删除已经归档的短链，并同步删除标签关联、发布删除事件和失效跳转缓存。
  *
- * <p>聚合规则强制“先归档、后删除”。标签关联删除、带版本条件的短链删除、领域事件和缓存失效 outbox
+ * <p>聚合规则强制“先归档、后删除”。标签关联删除、带版本条件的短链删除、集成事件和缓存失效 outbox
  * 位于同一事务，任一步骤失败都会整体回滚。提交后缓存清理作为 best-effort 快路径执行，失败由 outbox
  * 重试。该处理器仅以租户作为数据隔离边界，用户删除权限由上游校验。</p>
  */
@@ -32,7 +32,7 @@ public class DeleteShortLinkCommandHandler {
 
     private final ShortLinkRepository shortLinkRepository;
     private final LinkTagRepository linkTagRepository;
-    private final ShortLinkDomainEventDispatcher domainEventDispatcher;
+    private final ShortLinkEventPublisher eventPublisher;
     private final RedirectCacheSyncPort redirectCacheSync;
     private final RedirectCacheInvalidationOutboxPort redirectCacheInvalidationOutbox;
     private final PostCommitHookPort postCommitHookPort;
@@ -41,7 +41,7 @@ public class DeleteShortLinkCommandHandler {
     public DeleteShortLinkCommandHandler(
             ShortLinkRepository shortLinkRepository,
             LinkTagRepository linkTagRepository,
-            ShortLinkDomainEventDispatcher domainEventDispatcher,
+            ShortLinkEventPublisher eventPublisher,
             RedirectCacheSyncPort redirectCacheSync,
             RedirectCacheInvalidationOutboxPort redirectCacheInvalidationOutbox,
             PostCommitHookPort postCommitHookPort,
@@ -49,7 +49,7 @@ public class DeleteShortLinkCommandHandler {
     ) {
         this.shortLinkRepository = shortLinkRepository;
         this.linkTagRepository = linkTagRepository;
-        this.domainEventDispatcher = domainEventDispatcher;
+        this.eventPublisher = eventPublisher;
         this.redirectCacheSync = redirectCacheSync;
         this.redirectCacheInvalidationOutbox = redirectCacheInvalidationOutbox;
         this.postCommitHookPort = postCommitHookPort;
@@ -83,7 +83,7 @@ public class DeleteShortLinkCommandHandler {
         if (!shortLinkRepository.delete(link)) {
             throw new BusinessException(ShortLinkErrorCode.LINK_STALE_WRITE);
         }
-        domainEventDispatcher.publish(link, occurredAtUtc);
+        eventPublisher.deleted(link, occurredAtUtc);
         RedirectCacheInvalidations.enqueueAndRunAfterCommit(
                 redirectCacheInvalidationOutbox,
                 postCommitHookPort,

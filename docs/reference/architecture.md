@@ -45,9 +45,9 @@ LinkForge 是一个模块化单体：后端由 Maven Reactor 组织，前端是�
 
 ## 战术 DDD 规则
 
-- `domain` 拥有聚合行为、不变量、值对象、领域服务和内部领域事件。
+- `domain` 拥有聚合行为、不变量、值对象和领域服务；集成事件由应用层在持久化成功后追加。
 - `application` 拥有用例编排、事务、仓储端口、授权输入处理和集成事件发布。应用服务可以接收显式的参与者和输入对象，但不能读取隐藏的运行时安全上下文。应用代码中的公开请求和结果模型应当是顶层类型，不应把 DTO、Result、Request 容器嵌套在服务类内部。
-- `interfaces` 拥有 HTTP 映射、请求校验、身份主体提取和传输响应塑形。控制器把应用 DTO 映射为传输 DTO，而不是直接把应用 record 暴露为 HTTP 契约。
+- `interfaces` 拥有请求校验、身份主体提取和必要的 HTTP 映射。应用读模型与响应形状一致时直接序列化；只有字段变换、脱敏或协议差异存在时才维护独立传输 DTO。
 - `infrastructure` 拥有 MyBatis、Redis、调度器和持久化映射。基础设施适配器不能依赖 `AuthContext`、`TenantGuard` 等运行时安全辅助类；租户范围必须通过应用端口显式传入。
 - `runtime` 拥有上下文本地的 Spring 组合装配，负责导入该上下文的 application、infrastructure、interfaces 配置。
 - `contracts/*` 拥有限界上下文之间共享的发布语言。契约模块表达稳定业务语义，不能复用 foundation 的安全或上下文参与者对象作为发布 API 语言。
@@ -93,6 +93,6 @@ SPA 同时暴露原有短链页面和自助控制平面控制台：
 - 一个前端应用（`web`）
 - MySQL primary/replica（`mysql-primary`/`mysql-replica`）、Redis 等支撑基础设施
 
-后端使用 Apache ShardingSphere-JDBC 作为逻辑应用数据源。`readwrite_ds` 把写入路由到 `write_ds`，把符合条件的非事务读取路由到 `read_ds_0`；事务内读取通过 `transactionalReadQueryStrategy: PRIMARY` 保持走主库。Flyway 显式绑定主库 MySQL 连接，不通过逻辑读写分离数据源执行迁移。
+后端使用 Apache ShardingSphere-JDBC 作为逻辑应用数据源。`readwrite_ds` 把写入路由到 `write_ds`，把符合条件的非事务读取路由到 `read_ds_0`；事务内读取通过 `transactionalReadQueryStrategy: PRIMARY` 保持走主库。数据库结构由部署流程在空库上执行唯一的 `database/schema.sql`，应用运行时不创建或升级 schema。
 
 这不是微服务部署。模块边界用于明确所有权和测试边界，但日常正确性是围绕单一部署单体设计的，而不是围绕未来服务拆分设计的。

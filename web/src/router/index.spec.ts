@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createPinia, setActivePinia } from "pinia";
 
 const apiFetchMock = vi.hoisted(() => vi.fn());
 const clearTokenMock = vi.hoisted(() => vi.fn());
@@ -22,7 +21,6 @@ describe("router auth bootstrap", () => {
     getTokenMock.mockReset();
     setTokenMock.mockReset();
     window.history.replaceState({}, "", "/");
-    setActivePinia(createPinia());
   });
 
   afterEach(() => {

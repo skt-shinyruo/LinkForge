@@ -41,11 +41,6 @@ public interface DomainRepository {
     Optional<Domain> findByTenantIdAndHostname(long tenantId, String hostname);
 
     /**
-     * 按全局唯一主机名读取，仅供 Platform 在创建前识别被其他租户占用的确定性冲突。
-     */
-    Optional<Domain> findByHostname(String hostname);
-
-    /**
      * 列出租户全部域名，不隐式过滤状态或授权关系。
      */
     List<Domain> listByTenantId(long tenantId);

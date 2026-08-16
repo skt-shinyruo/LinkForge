@@ -61,7 +61,6 @@ Platform 是 LinkForge 的控制面，负责租户下的应用、域名、授权
   <text class="text" x="618" y="250" text-anchor="middle">PlatformApplicationScopeAdapter</text>
   <text class="small" x="618" y="272" text-anchor="middle">ApplicationScopePort</text>
   <text class="small" x="618" y="292" text-anchor="middle">DomainHostnameLookupPort</text>
-  <text class="small" x="618" y="312" text-anchor="middle">LegacyProvisioningPort</text>
 
   <rect class="box" x="785" y="210" width="170" height="134"/>
   <text class="text" x="870" y="240" text-anchor="middle">其他上下文</text>
@@ -155,12 +154,6 @@ Platform 是 LinkForge 的控制面，负责租户下的应用、域名、授权
 - `server/platform/application/src/main/java/com/linkforge/platform/application/PlatformApplicationScopeAdapter.java`
   - 实现 `ApplicationScopePort`，供 Shortlink、Accounts、Redirect 调用。
   - 实现 `DomainHostnameLookupPort`，供 Shortlink/Analytics 做 `domainId <-> hostname` 转换。
-  - 实现 `LegacyApplicationProvisioningPort`，为历史未应用化短链补齐默认应用和域名绑定。
-- `server/platform/application/src/main/java/com/linkforge/platform/application/LegacyApplicationBindingService.java`
-  - 在 Platform 自有租户锁行内执行幂等 get-or-reconcile。
-  - 创建或复用 ACTIVE 的 `legacy-default` 应用和正确绑定的 ACTIVE 专属域名。
-  - 每次把 legacy policy/quota 补齐或收敛到当前默认值；停用、跨租户、错误绑定和错误信任配置明确拒绝。
-  - 从 `app.base-url` 派生 synthetic legacy hostname，例如 `legacy-{tenantId}.{baseHost}`。
 
 ### 领域对象
 
@@ -202,5 +195,3 @@ Platform 因此是控制面事实来源，但不直接参与跳转 URL 解析；
 - `ApplicationQuota` 的月发链和月点击限制按 UTC 月解释；非正数表示不限制。
 - Shortlink 发链预留使用 MySQL named lock，锁获取失败与真实额度耗尽当前都会表现为未获得名额，调用方不能从同一个结果推断根因。
 - Redirect 点击额度的实时计数由 Analytics Redis adapter 管理，Platform 只发布 quota 配置/视图；Redis adapter 的内部故障固定 fail-open，详见[统计采集与报表](analytics-ingestion-and-reporting.md)。
-- `LegacyApplicationBindingService` 是历史未分应用数据的兼容路径，不应成为新业务的默认开通方式。同一租户的首次调用通过 `platform_legacy_binding_locks` 唯一键写锁串行化；返回前必须满足 ACTIVE application、ACTIVE `APPLICATION_DEDICATED` domain、同租户/同应用归属和 `FIRST_PARTY` 信任分类。缺失的资源、policy 或 quota 会在同一事务中补齐，过期 policy/quota 会更新为当前 legacy 默认值；已有 DISABLED 或错误归属资源不会被静默启用或改绑。
-- Platform 只发布已验证的 legacy binding，不直接修改 `short_links`。历史 ownership 的 checkpoint、逐链接 CAS、quota 校准、事件和缓存失效全部由 Shortlink 的公共 reconciliation 用例拥有。

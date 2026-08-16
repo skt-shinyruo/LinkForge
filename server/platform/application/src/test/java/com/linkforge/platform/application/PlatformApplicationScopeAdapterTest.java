@@ -2,7 +2,6 @@ package com.linkforge.platform.application;
 
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.platform.ApplicationQuotaView;
-import com.linkforge.contract.platform.LegacyApplicationBindingView;
 import com.linkforge.platform.application.port.DomainRepository;
 import com.linkforge.platform.domain.ApplicationQuota;
 import com.linkforge.platform.domain.Domain;
@@ -30,8 +29,7 @@ class PlatformApplicationScopeAdapterTest {
 
         PlatformApplicationScopeAdapter adapter = newAdapter(
                 controlPlaneService,
-                mock(DomainRepository.class),
-                mock(LegacyApplicationBindingService.class)
+                mock(DomainRepository.class)
         );
 
         assertThat(adapter.findApplicationQuota(1L, 2L))
@@ -47,8 +45,7 @@ class PlatformApplicationScopeAdapterTest {
 
         PlatformApplicationScopeAdapter adapter = newAdapter(
                 controlPlaneService,
-                mock(DomainRepository.class),
-                mock(LegacyApplicationBindingService.class)
+                mock(DomainRepository.class)
         );
 
         assertThatThrownBy(() -> adapter.requireApplicationExists(1L, 2L))
@@ -61,32 +58,12 @@ class PlatformApplicationScopeAdapterTest {
 
         PlatformApplicationScopeAdapter adapter = newAdapter(
                 controlPlaneService,
-                mock(DomainRepository.class),
-                mock(LegacyApplicationBindingService.class)
+                mock(DomainRepository.class)
         );
 
         adapter.requireApplicationAndDomainAuthorized(1L, 2L, 3L);
 
         verify(controlPlaneService).requireApplicationAndDomainAuthorized(1L, 2L, 3L);
-    }
-
-    @Test
-    void ensureLegacyDefaultBinding_shouldDelegateToLegacyBindingService() {
-        DomainRepository domainRepository = mock(DomainRepository.class);
-        LegacyApplicationBindingService legacyBindingService = mock(LegacyApplicationBindingService.class);
-        when(legacyBindingService.ensureLegacyDefaultBinding(7L))
-                .thenReturn(new LegacyApplicationBindingService.LegacyBinding(101L, 202L));
-
-        PlatformApplicationScopeAdapter adapter = newAdapter(
-                mock(PlatformControlPlaneService.class),
-                domainRepository,
-                legacyBindingService
-        );
-
-        LegacyApplicationBindingView binding = adapter.ensureLegacyDefaultBinding(7L);
-
-        assertThat(binding).isEqualTo(new LegacyApplicationBindingView(101L, 202L));
-        verify(legacyBindingService).ensureLegacyDefaultBinding(7L);
     }
 
     @Test
@@ -97,8 +74,7 @@ class PlatformApplicationScopeAdapterTest {
 
         PlatformApplicationScopeAdapter adapter = newAdapter(
                 mock(PlatformControlPlaneService.class),
-                domainRepository,
-                mock(LegacyApplicationBindingService.class)
+                domainRepository
         );
 
         assertThat(adapter.findDomainHostname(1L, 3L)).contains("d.example");
@@ -112,8 +88,7 @@ class PlatformApplicationScopeAdapterTest {
 
         PlatformApplicationScopeAdapter adapter = newAdapter(
                 mock(PlatformControlPlaneService.class),
-                domainRepository,
-                mock(LegacyApplicationBindingService.class)
+                domainRepository
         );
 
         assertThat(adapter.findDomainIdByHostname(1L, "d.example")).contains(3L);
@@ -121,13 +96,11 @@ class PlatformApplicationScopeAdapterTest {
 
     private static PlatformApplicationScopeAdapter newAdapter(
             PlatformControlPlaneService controlPlaneService,
-            DomainRepository domainRepository,
-            LegacyApplicationBindingService legacyApplicationBindingService
+            DomainRepository domainRepository
     ) {
         return new PlatformApplicationScopeAdapter(
                 controlPlaneService,
-                domainRepository,
-                legacyApplicationBindingService
+                domainRepository
         );
     }
 }

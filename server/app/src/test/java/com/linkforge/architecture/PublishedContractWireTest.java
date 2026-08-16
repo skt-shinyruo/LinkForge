@@ -109,7 +109,10 @@ class PublishedContractWireTest {
                 null,
                 "OFF",
                 null,
-                "go.example.test"
+                "go.example.test",
+                null,
+                null,
+                LinkMeta.ACTIVE_LIFECYCLE_STATE
         );
 
         LinkCachePort.LookupResult hit = LinkCachePort.LookupResult.hit(meta);

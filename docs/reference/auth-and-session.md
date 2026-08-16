@@ -106,7 +106,7 @@
 - Bearer token 无效时按认证失败处理；Cookie token 无效或超长时清 cookie 后继续，避免公开登录接口被错误 cookie 阻断。
 - Cookie 会话下写请求使用双提交 CSRF：前端先拿 `XSRF-TOKEN` cookie，再带 `X-XSRF-TOKEN` header。
 - `/api/v1/open/**` 只接受 API Key，不接受 JWT/Cookie；普通 `/api/v1/**` 不接受 `X-API-Key`。
-- API Key HMAC pepper 必须独立于 JWT signing secret；V26 只在滚动兼容期保留旧单 pepper 变量，不能借兼容路径重新启用生产 JWT fallback。摘要 keyring 与 rollout 细节见 [OpenAPI 与 API Key](openapi-api-key.md)。
+- API Key HMAC pepper 必须独立于 JWT signing secret；旧单 pepper 变量只在滚动兼容期保留，不能借兼容路径重新启用生产 JWT fallback。摘要 keyring 与 rollout 细节见 [OpenAPI 与 API Key](openapi-api-key.md)。
 
 ## 源码分析
 

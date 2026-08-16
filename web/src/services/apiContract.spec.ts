@@ -1,13 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   API_ENDPOINTS,
-  buildQueryString,
   ensureApiSuccess,
-  parseApiResponse,
   requireApiData,
   withQuery,
 } from "./apiContract";
-import { cursorPageOf, isLinkDto, pageOf } from "./runtimeContracts";
+import { isLinkDto, pageOf } from "./runtimeContracts";
 
 describe("service API contract helpers", () => {
   it("unwraps successful ApiResponse payloads and preserves empty success data", () => {
@@ -37,7 +35,7 @@ describe("service API contract helpers", () => {
 
   it("builds query strings while omitting undefined and empty-string values", () => {
     expect(
-      buildQueryString({
+      withQuery("/api/v1/links", {
         page: 0,
         size: 50,
         enabled: false,
@@ -45,7 +43,7 @@ describe("service API contract helpers", () => {
         missing: undefined,
         tag: "中文",
       }),
-    ).toBe("page=0&size=50&enabled=false&tag=%E4%B8%AD%E6%96%87");
+    ).toBe("/api/v1/links?page=0&size=50&enabled=false&tag=%E4%B8%AD%E6%96%87");
   });
 
   it("attaches query strings only when at least one parameter is present", () => {
@@ -55,29 +53,10 @@ describe("service API contract helpers", () => {
     expect(withQuery("/api/v1/links", { keyword: "" })).toBe("/api/v1/links");
   });
 
-  it("parses ApiResponse objects from raw fetch responses", async () => {
-    await expect(
-      parseApiResponse<{ success: number }>(
-        new Response(JSON.stringify({ code: 0, message: "ok", data: { success: 1 } })),
-      ),
-    ).resolves.toEqual({ code: 0, message: "ok", data: { success: 1 } });
-
-    await expect(parseApiResponse<void>(new Response(""))).resolves.toEqual({});
-    await expect(parseApiResponse(new Response('{"code":0,"message":"ok"}'))).resolves.toEqual({
-      code: 0,
-      message: "ok",
-    });
-    await expect(parseApiResponse(new Response('{"code":"0","message":"ok"}'))).rejects.toThrow(
-      "envelope",
-    );
-  });
-
   it("rejects malformed DTO data instead of trusting a TypeScript assertion", () => {
     expect(isLinkDto({ id: 1, tenantId: 2, code: "x" })).toBe(false);
     expect(pageOf(isLinkDto)({ items: [], total: 0, page: 0, size: 20 })).toBe(true);
     expect(pageOf(isLinkDto)({ items: [{ id: 1 }], total: 1, page: 0, size: 20 })).toBe(false);
-    expect(cursorPageOf(isLinkDto)({ items: [], hasMore: false, nextCursor: null })).toBe(true);
-    expect(cursorPageOf(isLinkDto)({ items: [], hasMore: true })).toBe(false);
   });
 
   it("centralizes endpoint builders for tenant and application scoped routes", () => {

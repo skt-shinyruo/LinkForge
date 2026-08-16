@@ -8,25 +8,22 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ReportRangeTest {
 
     @Test
     void sameUtcDay_shouldBeOneInclusiveReportDay() {
-        ReportRange range = ReportRange.of(
+        assertThatCode(() -> ReportRange.validate(
                 LocalDate.parse("2026-08-15"),
                 LocalDate.parse("2026-08-15")
-        );
-
-        assertThat(range.from()).isEqualTo(LocalDate.parse("2026-08-15"));
-        assertThat(range.to()).isEqualTo(LocalDate.parse("2026-08-15"));
-        assertThat(range.inclusiveDays()).isEqualTo(1L);
+        )).doesNotThrowAnyException();
     }
 
     @Test
     void moreThan366UtcDays_shouldBeRejected() {
-        assertThatThrownBy(() -> ReportRange.of(
+        assertThatThrownBy(() -> ReportRange.validate(
                 LocalDate.parse("2024-01-01"),
                 LocalDate.parse("2025-01-01")
         ))
@@ -37,7 +34,7 @@ class ReportRangeTest {
 
     @Test
     void reversedUtcDays_shouldBeRejected() {
-        assertThatThrownBy(() -> ReportRange.of(
+        assertThatThrownBy(() -> ReportRange.validate(
                 LocalDate.parse("2026-08-16"),
                 LocalDate.parse("2026-08-15")
         ))
@@ -48,13 +45,9 @@ class ReportRangeTest {
 
     @Test
     void utcTimestamps_shouldUseTheirInclusiveNaturalDays() {
-        ReportRange range = ReportRange.ofUtc(
+        assertThatCode(() -> ReportRange.validateUtc(
                 LocalDateTime.parse("2024-01-01T23:59:59"),
                 LocalDateTime.parse("2024-12-31T00:00:00")
-        );
-
-        assertThat(range.from()).isEqualTo(LocalDate.parse("2024-01-01"));
-        assertThat(range.to()).isEqualTo(LocalDate.parse("2024-12-31"));
-        assertThat(range.inclusiveDays()).isEqualTo(366L);
+        )).doesNotThrowAnyException();
     }
 }

@@ -9,6 +9,4 @@ public interface TenantMapper {
     int insert(TenantEntity tenant);
 
     TenantEntity findById(Long id);
-
-    TenantEntity findByName(String name);
 }

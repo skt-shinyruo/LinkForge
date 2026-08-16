@@ -5,6 +5,7 @@ import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.runtime.security.AuthContext;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.web.RequestId;
+import com.linkforge.platform.application.DomainResult;
 import com.linkforge.platform.application.PlatformControlPlaneService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -38,14 +39,9 @@ public class TenantAdminDomainController {
     /** 返回当前租户可管理的全部域名。 */
     @GetMapping("/domains")
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<List<DomainHttpResponse>> list() {
+    public ApiResponse<List<DomainResult>> list() {
         long tenantId = AuthContext.requirePrincipal().getTenantId();
-        return ApiResponse.ok(
-                platformControlPlaneService.listDomains(tenantId).stream()
-                        .map(PlatformHttpMapper::toDomainResponse)
-                        .toList(),
-                RequestId.get()
-        );
+        return ApiResponse.ok(platformControlPlaneService.listDomains(tenantId), RequestId.get());
     }
 
     /**
@@ -53,22 +49,17 @@ public class TenantAdminDomainController {
      */
     @GetMapping("/applications/{applicationId}/domains")
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<List<DomainHttpResponse>> listByApplication(
+    public ApiResponse<List<DomainResult>> listByApplication(
             @PathVariable("applicationId") long applicationId
     ) {
         long tenantId = AuthContext.requirePrincipal().getTenantId();
-        return ApiResponse.ok(
-                platformControlPlaneService.listDomainsForApplication(tenantId, applicationId).stream()
-                        .map(PlatformHttpMapper::toDomainResponse)
-                        .toList(),
-                RequestId.get()
-        );
+        return ApiResponse.ok(platformControlPlaneService.listDomainsForApplication(tenantId, applicationId), RequestId.get());
     }
 
     /** 创建可由同租户多个应用显式授权使用的共享域名。 */
     @PostMapping("/domains/tenant-shared")
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<DomainHttpResponse> createTenantSharedDomain(
+    public ApiResponse<DomainResult> createTenantSharedDomain(
             @Valid @RequestBody CreateDomainRequest req
     ) {
         AuthPrincipal principal = AuthContext.requirePrincipal();
@@ -79,9 +70,7 @@ public class TenantAdminDomainController {
                 principal.getRoles()
         );
         return ApiResponse.ok(
-                PlatformHttpMapper.toDomainResponse(
-                        platformControlPlaneService.createTenantSharedDomain(principal.getTenantId(), actor, req.hostname())
-                ),
+                platformControlPlaneService.createTenantSharedDomain(principal.getTenantId(), actor, req.hostname()),
                 RequestId.get()
         );
     }
@@ -89,7 +78,7 @@ public class TenantAdminDomainController {
     /** 创建仅供指定应用使用的专属域名。 */
     @PostMapping("/applications/{applicationId}/domains")
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<DomainHttpResponse> createApplicationDedicatedDomain(
+    public ApiResponse<DomainResult> createApplicationDedicatedDomain(
             @PathVariable("applicationId") long applicationId,
             @Valid @RequestBody CreateDomainRequest req
     ) {
@@ -101,9 +90,7 @@ public class TenantAdminDomainController {
                 principal.getRoles()
         );
         return ApiResponse.ok(
-                PlatformHttpMapper.toDomainResponse(
-                        platformControlPlaneService.createApplicationDedicatedDomain(principal.getTenantId(), actor, applicationId, req.hostname())
-                ),
+                platformControlPlaneService.createApplicationDedicatedDomain(principal.getTenantId(), actor, applicationId, req.hostname()),
                 RequestId.get()
         );
     }

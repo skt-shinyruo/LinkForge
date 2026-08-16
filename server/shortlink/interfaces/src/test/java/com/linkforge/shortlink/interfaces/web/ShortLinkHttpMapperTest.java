@@ -1,16 +1,11 @@
 package com.linkforge.shortlink.interfaces.web;
 
-import com.linkforge.foundation.persistence.PageResult;
 import com.linkforge.shortlink.application.*;
 import com.linkforge.shortlink.application.csv.ShortLinkCsvExport;
 import com.linkforge.shortlink.application.csv.ShortLinkCsvExportRow;
 import com.linkforge.shortlink.application.csv.ShortLinkCsvImportRow;
-import com.linkforge.shortlink.interfaces.web.dto.ImportHttpResponse;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkCreateHttpRequest;
-import com.linkforge.shortlink.interfaces.web.dto.ShortLinkHttpResponse;
-import com.linkforge.shortlink.interfaces.web.dto.ShortLinkPageHttpResponse;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkUpdateHttpRequest;
-import com.linkforge.shortlink.interfaces.web.dto.TagHttpResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -109,130 +104,6 @@ class ShortLinkHttpMapperTest {
                         "DRAFT"
                 )
         );
-    }
-
-    @Test
-    void toLinkResponse_shouldTranslateApplicationDtoToHttpContract() {
-        LinkDto link = new LinkDto(
-                42L,
-                7L,
-                11L,
-                12L,
-                "ACTIVE",
-                "launch",
-                "https://lnk.forge/launch",
-                "https://example.com/source",
-                "launch note",
-                true,
-                Instant.parse("2026-04-01T01:02:03Z"),
-                null,
-                302,
-                true,
-                "https://example.com/unavailable",
-                "ALLOWLIST",
-                List.of("utm_*"),
-                List.of("marketing"),
-                Instant.parse("2026-03-18T09:10:11Z"),
-                true,
-                7001L,
-                "https://example.com/pending"
-        );
-
-        assertThat(ShortLinkHttpMapper.toLinkResponse(link)).isEqualTo(new ShortLinkHttpResponse(
-                42L,
-                7L,
-                11L,
-                12L,
-                "ACTIVE",
-                "launch",
-                "https://lnk.forge/launch",
-                "https://example.com/source",
-                "launch note",
-                true,
-                Instant.parse("2026-04-01T01:02:03Z"),
-                null,
-                302,
-                true,
-                "https://example.com/unavailable",
-                "ALLOWLIST",
-                List.of("utm_*"),
-                List.of("marketing"),
-                Instant.parse("2026-03-18T09:10:11Z"),
-                true,
-                7001L,
-                "https://example.com/pending"
-        ));
-    }
-
-    @Test
-    void toPageResponse_shouldMapItemsToHttpContractAndPreservePagination() {
-        LinkDto link = new LinkDto(
-                42L,
-                7L,
-                11L,
-                12L,
-                "ACTIVE",
-                "launch",
-                "https://lnk.forge/launch",
-                "https://example.com/source",
-                "launch note",
-                true,
-                Instant.parse("2026-04-01T01:02:03Z"),
-                null,
-                302,
-                true,
-                "https://example.com/unavailable",
-                "ALLOWLIST",
-                List.of("utm_*"),
-                List.of("marketing"),
-                Instant.parse("2026-03-18T09:10:11Z")
-        );
-        PageResult<LinkDto> result = new PageResult<>(List.of(link), 11L, 2, 5);
-
-        assertThat(ShortLinkHttpMapper.toPageResponse(result)).isEqualTo(
-                new ShortLinkPageHttpResponse<>(
-                        List.of(new ShortLinkHttpResponse(
-                                42L,
-                                7L,
-                                11L,
-                                12L,
-                                "ACTIVE",
-                                "launch",
-                                "https://lnk.forge/launch",
-                                "https://example.com/source",
-                                "launch note",
-                                true,
-                                Instant.parse("2026-04-01T01:02:03Z"),
-                                null,
-                                302,
-                                true,
-                                "https://example.com/unavailable",
-                                "ALLOWLIST",
-                                List.of("utm_*"),
-                                List.of("marketing"),
-                                Instant.parse("2026-03-18T09:10:11Z")
-                        )),
-                        11L,
-                        2,
-                        5
-                )
-        );
-    }
-
-    @Test
-    void toImportResponse_shouldTranslateApplicationResultToHttpContract() {
-        ImportResult result = new ImportResult(2, 1, List.of("row 3: missing url"));
-
-        assertThat(ShortLinkHttpMapper.toImportResponse(result))
-                .isEqualTo(new ImportHttpResponse(2, 1, List.of("row 3: missing url")));
-    }
-
-    @Test
-    void toTagResponse_shouldTranslateApplicationDtoToHttpContract() {
-        TagDto tag = new TagDto(101L, "launch");
-
-        assertThat(ShortLinkHttpMapper.toTagResponse(tag))
-                .isEqualTo(new TagHttpResponse(101L, "launch"));
     }
 
     @Test

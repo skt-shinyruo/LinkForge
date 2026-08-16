@@ -10,7 +10,7 @@ LinkForge 是模块化单体。`server/app` 是 Spring Boot 组合根，各限�
 | --- | --- | --- |
 | `interfaces` | HTTP 校验、身份映射、响应塑形 | 业务状态机、隐式跨租户查询 |
 | `application` | 用例编排、事务、授权输入、端口与副作用 | Servlet/SecurityContext 读取、基础设施细节 |
-| `domain` | 聚合、值对象、不变量、领域事件 | Spring/MyBatis/Redis |
+| `domain` | 聚合、值对象和不变量 | Spring/MyBatis/Redis |
 | `infrastructure` | MyBatis、Redis、调度、outbox、事件适配 | 决定业务权限或可用性 |
 | `runtime` | 上下文本地 Spring 装配 | 发布业务 API |
 | `contracts/*` | 跨上下文稳定语言 | 复用其他上下文私有模型 |

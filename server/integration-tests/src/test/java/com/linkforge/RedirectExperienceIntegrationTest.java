@@ -96,7 +96,10 @@ class RedirectExperienceIntegrationTest extends SharedIntegrationTestSupport {
                         null,
                         null,
                         null,
-                        null
+                        null,
+                        null,
+                        null,
+                        LinkMeta.ACTIVE_LIFECYCLE_STATE
                 );
         when(redirectService.resolve(any(ResolveRedirectRequest.class)))
                 .thenReturn(RedirectResolution.unavailable(
@@ -125,7 +128,10 @@ class RedirectExperienceIntegrationTest extends SharedIntegrationTestSupport {
                         null,
                         null,
                         null,
-                        null
+                        null,
+                        null,
+                        null,
+                        LinkMeta.ACTIVE_LIFECYCLE_STATE
                 );
         when(redirectService.resolve(any(ResolveRedirectRequest.class)))
                 .thenReturn(RedirectResolution.preview("abc", true, meta));
@@ -153,7 +159,10 @@ class RedirectExperienceIntegrationTest extends SharedIntegrationTestSupport {
                         null,
                         "ALLOWLIST",
                         "utm_*",
-                        null
+                        null,
+                        null,
+                        null,
+                        LinkMeta.ACTIVE_LIFECYCLE_STATE
                 );
         when(redirectService.resolve(any(ResolveRedirectRequest.class)))
                 .thenReturn(RedirectResolution.redirect("abc", true, meta));
@@ -190,7 +199,10 @@ class RedirectExperienceIntegrationTest extends SharedIntegrationTestSupport {
                         null,
                         "ALL",
                         null,
-                        null
+                        null,
+                        null,
+                        null,
+                        LinkMeta.ACTIVE_LIFECYCLE_STATE
                 );
         when(redirectService.resolve(any(ResolveRedirectRequest.class)))
                 .thenReturn(RedirectResolution.redirect("abc", true, meta));
@@ -222,7 +234,10 @@ class RedirectExperienceIntegrationTest extends SharedIntegrationTestSupport {
                         null,
                         null,
                         null,
-                        null
+                        null,
+                        null,
+                        null,
+                        LinkMeta.ACTIVE_LIFECYCLE_STATE
                 );
         when(redirectService.resolve(any(ResolveRedirectRequest.class)))
                 .thenReturn(RedirectResolution.unavailable(

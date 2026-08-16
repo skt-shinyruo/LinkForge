@@ -10,12 +10,12 @@ import com.linkforge.foundation.util.Base62;
 import com.linkforge.shortlink.application.CreatedBy;
 import com.linkforge.shortlink.application.CreateLinkRequest;
 import com.linkforge.shortlink.application.LinkDto;
-import com.linkforge.shortlink.application.eventing.ShortLinkDomainEventDispatcher;
 import com.linkforge.shortlink.application.mapper.ShortLinkDtoMapper;
 import com.linkforge.shortlink.application.port.ApplicationLinkQuotaReservationPort;
 import com.linkforge.shortlink.application.port.LinkTagRepository;
 import com.linkforge.shortlink.application.port.RedirectCacheInvalidationOutboxPort;
 import com.linkforge.shortlink.application.port.RedirectCacheSyncPort;
+import com.linkforge.shortlink.application.port.ShortLinkEventPublisher;
 import com.linkforge.shortlink.application.port.ShortLinkRepository;
 import com.linkforge.shortlink.application.support.RedirectCacheInvalidations;
 import com.linkforge.shortlink.application.support.ShortLinkDomainExceptions;
@@ -37,10 +37,10 @@ import java.time.ZoneOffset;
 import java.util.List;
 
 /**
- * 创建短链聚合并协调应用作用域、额度、标签、领域事件和跳转缓存失效。
+ * 创建短链聚合并协调应用作用域、额度、标签、集成事件和跳转缓存失效。
  *
  * <p>应用短链必须同时提供 {@code applicationId} 与 {@code domainId}，并在写入前通过应用/域名授权及
- * 月度发链额度检查；未绑定应用和域名的历史作用域仍按仓储规则创建。聚合、标签、领域事件发布端口和
+ * 月度发链额度检查；未绑定应用和域名的历史作用域仍按仓储规则创建。聚合、标签、集成事件发布端口和
  * 缓存失效 outbox 在同一事务中执行。事务提交后会立即尝试清理跳转缓存；快路径失败不会回滚业务事务，
  * 后续由已持久化的 outbox 重试。</p>
  *
@@ -55,7 +55,7 @@ public class CreateShortLinkCommandHandler {
     private final ApplicationLinkQuotaReservationPort applicationLinkQuotaReservationPort;
     private final SetLinkTagsCommandHandler setLinkTagsHandler;
     private final LinkTagRepository linkTagRepository;
-    private final ShortLinkDomainEventDispatcher domainEventDispatcher;
+    private final ShortLinkEventPublisher eventPublisher;
     private final RedirectCacheSyncPort redirectCacheSync;
     private final RedirectCacheInvalidationOutboxPort redirectCacheInvalidationOutbox;
     private final ShortLinkDtoMapper dtoMapper;
@@ -69,7 +69,7 @@ public class CreateShortLinkCommandHandler {
             ApplicationLinkQuotaReservationPort applicationLinkQuotaReservationPort,
             SetLinkTagsCommandHandler setLinkTagsHandler,
             LinkTagRepository linkTagRepository,
-            ShortLinkDomainEventDispatcher domainEventDispatcher,
+            ShortLinkEventPublisher eventPublisher,
             RedirectCacheSyncPort redirectCacheSync,
             RedirectCacheInvalidationOutboxPort redirectCacheInvalidationOutbox,
             ShortLinkDtoMapper dtoMapper,
@@ -82,7 +82,7 @@ public class CreateShortLinkCommandHandler {
         this.applicationLinkQuotaReservationPort = applicationLinkQuotaReservationPort;
         this.setLinkTagsHandler = setLinkTagsHandler;
         this.linkTagRepository = linkTagRepository;
-        this.domainEventDispatcher = domainEventDispatcher;
+        this.eventPublisher = eventPublisher;
         this.redirectCacheSync = redirectCacheSync;
         this.redirectCacheInvalidationOutbox = redirectCacheInvalidationOutbox;
         this.dtoMapper = dtoMapper;
@@ -195,7 +195,7 @@ public class CreateShortLinkCommandHandler {
         ShortLink persisted = shortLinkRepository.findByTenantIdAndId(tenantId, id).orElse(link);
 
         setLinkTagsHandler.handle(tenantId, id, req.tags());
-        domainEventDispatcher.publish(link, clock.instant());
+        eventPublisher.created(link, clock.instant());
         RedirectCacheInvalidations.enqueueAndRunAfterCommit(
                 redirectCacheInvalidationOutbox,
                 postCommitHookPort,

@@ -8,7 +8,6 @@ import io.micrometer.core.instrument.Timer;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
-import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -35,8 +34,7 @@ public class MicrometerOperationalMetrics implements OperationalMetrics {
         if (amount <= 0) {
             return;
         }
-        String[] safeTags = validateTags(tags);
-        Counter.builder(name).tags(safeTags).register(registry).increment(amount);
+        Counter.builder(name).tags(tags).register(registry).increment(amount);
     }
 
     @Override
@@ -44,29 +42,17 @@ public class MicrometerOperationalMetrics implements OperationalMetrics {
         if (duration == null || duration.isNegative()) {
             return;
         }
-        String[] safeTags = validateTags(tags);
-        Timer.builder(name).tags(safeTags).register(registry).record(duration);
+        Timer.builder(name).tags(tags).register(registry).record(duration);
     }
 
     @Override
     public void set(String name, long value, String... tags) {
-        String[] safeTags = validateTags(tags);
-        MeterKey key = new MeterKey(name, List.copyOf(Arrays.asList(safeTags)));
+        MeterKey key = new MeterKey(name, List.of(tags == null ? new String[0] : tags));
         gauges.computeIfAbsent(key, ignored -> {
             AtomicLong state = new AtomicLong();
-            Gauge.builder(name, state, AtomicLong::get).tags(safeTags).register(registry);
+            Gauge.builder(name, state, AtomicLong::get).tags(tags).register(registry);
             return state;
         }).set(value);
-    }
-
-    private static String[] validateTags(String[] tags) {
-        if (tags == null || tags.length == 0) {
-            return new String[0];
-        }
-        if (tags.length % 2 != 0) {
-            throw new IllegalArgumentException("metric tags must be key/value pairs");
-        }
-        return Arrays.copyOf(tags, tags.length);
     }
 
     private record MeterKey(String name, List<String> tags) {

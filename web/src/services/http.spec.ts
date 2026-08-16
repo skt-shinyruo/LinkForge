@@ -249,6 +249,17 @@ describe("HTTP transport contract", () => {
     expect(observer).toHaveBeenCalledWith(response);
   });
 
+  it("lets fetch set the multipart boundary for FormData", async () => {
+    const fetchMock = vi.fn(async (_path: string, options?: RequestInit) => {
+      expect(new Headers(options?.headers).has("Content-Type")).toBe(false);
+      return new Response(JSON.stringify({ code: 0, message: "ok" }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { apiFetch } = await import("./http");
+
+    await apiFetch("/upload", { method: "POST", body: new FormData() });
+  });
+
   it("preserves business errors and rejects malformed successful responses", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ code: 40301, message: "forbidden" }), {

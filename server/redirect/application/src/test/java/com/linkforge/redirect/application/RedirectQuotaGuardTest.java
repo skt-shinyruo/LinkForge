@@ -4,6 +4,7 @@ import com.linkforge.contract.analytics.ApplicationClickQuotaReservationPort;
 import com.linkforge.contract.platform.ApplicationQuotaView;
 import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.contract.redirect.LinkMeta;
+import com.linkforge.foundation.observability.OperationalMetrics;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
@@ -32,7 +33,9 @@ class RedirectQuotaGuardTest {
                 applicationScopePort,
                 quotaReservationPort,
                 false,
-                30L
+                30L,
+                10_000L,
+                OperationalMetrics.noop()
         );
 
         RedirectResolution.UnavailableReason first = guard.unavailableReason(meta(22L, 33L));
@@ -54,7 +57,9 @@ class RedirectQuotaGuardTest {
                 applicationScopePort,
                 quotaReservationPort,
                 false,
-                30L
+                30L,
+                10_000L,
+                OperationalMetrics.noop()
         );
 
         RedirectResolution.UnavailableReason first = guard.unavailableReason(meta(22L, 33L));
@@ -79,7 +84,9 @@ class RedirectQuotaGuardTest {
                 applicationScopePort,
                 quotaReservationPort,
                 false,
-                30L
+                30L,
+                10_000L,
+                OperationalMetrics.noop()
         );
 
         RedirectResolution.UnavailableReason first = guard.unavailableReason(meta(22L, 33L));
@@ -105,7 +112,9 @@ class RedirectQuotaGuardTest {
                 applicationScopePort,
                 quotaReservationPort,
                 false,
-                30L
+                30L,
+                10_000L,
+                OperationalMetrics.noop()
         );
 
         RedirectResolution.UnavailableReason first = guard.unavailableReason(meta(22L, 33L));
@@ -127,7 +136,8 @@ class RedirectQuotaGuardTest {
                 new RecordingQuotaReservationPort(),
                 false,
                 30L,
-                2L
+                2L,
+                OperationalMetrics.noop()
         );
 
         guard.unavailableReason(meta(22L, 31L));
@@ -162,7 +172,8 @@ class RedirectQuotaGuardTest {
                 "utm_source",
                 "go.example.test",
                 applicationId,
-                44L
+                44L,
+                LinkMeta.ACTIVE_LIFECYCLE_STATE
         );
     }
 

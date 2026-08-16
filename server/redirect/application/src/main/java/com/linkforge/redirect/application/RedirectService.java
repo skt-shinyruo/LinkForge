@@ -1,23 +1,16 @@
 package com.linkforge.redirect.application;
 
-import com.linkforge.contract.analytics.ApplicationClickUsagePort;
-import com.linkforge.contract.analytics.ApplicationClickQuotaReservationPort;
 import com.linkforge.contract.analytics.RedirectVisitRecord;
 import com.linkforge.contract.analytics.VisitContext;
 import com.linkforge.contract.analytics.VisitRecorderPort;
-import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.contract.redirect.LinkCachePort;
 import com.linkforge.contract.redirect.LinkMeta;
 import com.linkforge.contract.shortlink.ShortLinkReadPort;
 import com.linkforge.foundation.observability.OperationalMetrics;
-import org.springframework.beans.factory.annotation.Autowired;
-import com.linkforge.redirect.application.error.RedirectBusinessException;
-import com.linkforge.redirect.application.error.RedirectErrorCode;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 
@@ -42,29 +35,6 @@ public class RedirectService {
     private final RedirectQuotaGuard quotaGuard;
     private final OperationalMetrics metrics;
 
-    /**
-     * 创建生产主流程所需的依赖。
-     *
-     * <p>当 quotaGuard 为 {@code null} 时采用显式关闭额度的兼容守卫；这仅供旧装配或测试使用，生产
-     * 运行时应提供完整的 {@link RedirectQuotaGuard}。</p>
-     *
-     * @param linkCache 三态缓存端口，必须把基础设施读故障表达为 miss
-     * @param shortLinkReadPort 短链权威读取端口
-     * @param visitRecorderPort 真实跳转访问记录端口
-     * @param clock UTC 时间来源
-     * @param quotaGuard 应用额度守卫；仅兼容场景可为 {@code null}
-     */
-    public RedirectService(
-            LinkCachePort linkCache,
-            ShortLinkReadPort shortLinkReadPort,
-            VisitRecorderPort visitRecorderPort,
-            Clock clock,
-            RedirectQuotaGuard quotaGuard
-    ) {
-        this(linkCache, shortLinkReadPort, visitRecorderPort, clock, quotaGuard, OperationalMetrics.noop());
-    }
-
-    @Autowired
     public RedirectService(
             LinkCachePort linkCache,
             ShortLinkReadPort shortLinkReadPort,
@@ -77,127 +47,8 @@ public class RedirectService {
         this.shortLinkReadPort = shortLinkReadPort;
         this.visitRecorderPort = visitRecorderPort;
         this.clock = clock;
-        this.quotaGuard = quotaGuard == null ? RedirectQuotaGuard.disabled(clock) : quotaGuard;
+        this.quotaGuard = quotaGuard;
         this.metrics = metrics == null ? OperationalMetrics.noop() : metrics;
-    }
-
-    /**
-     * 兼容旧调用面的构造器：从 Platform 与 Analytics 端口组合额度守卫。
-     *
-     * <p>若未提供 reservation port，会退回到已落库点击量查询，不能提供并发精确预留；新装配应传入
-     * {@link ApplicationClickQuotaReservationPort}。</p>
-     *
-     * @param linkCache 三态缓存端口
-     * @param shortLinkReadPort 短链权威读取端口
-     * @param visitRecorderPort 真实跳转访问记录端口
-     * @param clock UTC 时间来源
-     * @param applicationScopePort Platform quota 查询端口
-     * @param applicationClickUsagePort 已落库点击量查询端口
-     * @param applicationClickQuotaReservationPort 原子额度预留端口，可为 {@code null}
-     */
-    public RedirectService(
-            LinkCachePort linkCache,
-            ShortLinkReadPort shortLinkReadPort,
-            VisitRecorderPort visitRecorderPort,
-            Clock clock,
-            ApplicationScopePort applicationScopePort,
-            ApplicationClickUsagePort applicationClickUsagePort,
-            ApplicationClickQuotaReservationPort applicationClickQuotaReservationPort
-    ) {
-        this(
-                linkCache,
-                shortLinkReadPort,
-                visitRecorderPort,
-                clock,
-                RedirectQuotaGuard.from(
-                        clock,
-                        applicationScopePort,
-                        applicationClickUsagePort,
-                        applicationClickQuotaReservationPort
-                )
-        );
-    }
-
-    /**
-     * 兼容仅有点击量查询端口的调用面。
-     *
-     * @param linkCache 三态缓存端口
-     * @param shortLinkReadPort 短链权威读取端口
-     * @param visitRecorderPort 真实跳转访问记录端口
-     * @param clock UTC 时间来源
-     * @param applicationScopePort Platform quota 查询端口
-     * @param applicationClickUsagePort 已落库点击量查询端口
-     */
-    public RedirectService(
-            LinkCachePort linkCache,
-            ShortLinkReadPort shortLinkReadPort,
-            VisitRecorderPort visitRecorderPort,
-            Clock clock,
-            ApplicationScopePort applicationScopePort,
-            ApplicationClickUsagePort applicationClickUsagePort
-    ) {
-        this(
-                linkCache,
-                shortLinkReadPort,
-                visitRecorderPort,
-                clock,
-                applicationScopePort,
-                applicationClickUsagePort,
-                null
-        );
-    }
-
-    /**
-     * 关闭应用额度的最小构造器，主要用于不具备 Platform/Analytics 依赖的测试或旧调用方。
-     *
-     * @param linkCache 三态缓存端口
-     * @param shortLinkReadPort 短链权威读取端口
-     * @param visitRecorderPort 真实跳转访问记录端口
-     * @param clock UTC 时间来源
-     */
-    public RedirectService(
-            LinkCachePort linkCache,
-            ShortLinkReadPort shortLinkReadPort,
-            VisitRecorderPort visitRecorderPort,
-            Clock clock
-    ) {
-        this(
-                linkCache,
-                shortLinkReadPort,
-                visitRecorderPort,
-                clock,
-                null,
-                noClickUsagePort(),
-                null
-        );
-    }
-
-    /**
-     * 以 legacy/unscoped 方式读取短链元数据，不写统计。
-     *
-     * <p>找不到或短码不合法时抛出 {@link RedirectBusinessException}，适用于需要明确读取结果的
-     * 内部调用；HTTP 主流程应使用 {@link #resolve(ResolveRedirectRequest)} 获取可渲染的状态。</p>
-     *
-     * @param code 大小写敏感的短码
-     * @return 权威读取或正缓存中的短链元数据
-     * @throws RedirectBusinessException 短码非法或不存在
-     */
-    public LinkMeta resolve(String code) {
-        return resolveMeta(null, code);
-    }
-
-    /**
-     * 在给定 host 范围读取短链元数据，不写统计。
-     *
-     * <p>host 为空时沿用 legacy/unscoped 查询兼容路径；短码保持大小写，不能在此处转小写。</p>
-     *
-     * @param host 规范化 host，可为 {@code null}
-     * @param code 大小写敏感的短码
-     * @return 权威读取或正缓存中的短链元数据
-     * @throws RedirectBusinessException 短码非法或在该 host 范围不可见
-     */
-    public LinkMeta resolve(String host, String code) {
-        return resolveMeta(host, code);
     }
 
     /**
@@ -268,61 +119,6 @@ public class RedirectService {
         return RedirectResolution.redirect(normalizedCode, request.htmlRequest(), meta);
     }
 
-    /**
-     * 为兼容调用者在已解析元数据后补写访问记录。
-     *
-     * <p>仅当静态可用性与额度均通过时写入；该方法不会构造 HTTP 响应，也不会重新加载缓存。
-     * 新的 HTTP 路径应优先使用 {@link #resolve(ResolveRedirectRequest)}，避免预览或重复调用
-     * 造成计数语义不清。</p>
-     *
-     * @param meta 已加载的短链元数据
-     * @param visitInput 已清洗的访问上下文，可为 {@code null}
-     */
-    public void recordVisitIfAvailable(LinkMeta meta, RedirectVisitInput visitInput) {
-        if (isAvailable(meta)) {
-            visitRecorderPort.recordVisit(toRedirectVisitRecord(meta, visitInput));
-        }
-    }
-
-    /**
-     * 读取 legacy/unscoped 短链后按 {@link #recordVisitIfAvailable(LinkMeta, RedirectVisitInput)} 的
-     * 规则尝试记录访问。
-     *
-     * @param code 大小写敏感的短码
-     * @param visitInput 已清洗的访问上下文，可为 {@code null}
-     * @return 已解析的短链元数据
-     */
-    public LinkMeta resolveAndRecord(String code, RedirectVisitInput visitInput) {
-        LinkMeta meta = resolveMeta(null, code);
-        recordVisitIfAvailable(meta, visitInput);
-        return meta;
-    }
-
-    /**
-     * 在指定 host 范围读取短链后尝试记录访问。
-     *
-     * <p>这是旧调用面的便利方法；它不具备预览确认语义，不能替代 HTTP 主流程。</p>
-     *
-     * @param host 规范化 host，可为 {@code null}
-     * @param code 大小写敏感的短码
-     * @param visitInput 已清洗的访问上下文，可为 {@code null}
-     * @return 已解析的短链元数据
-     */
-    public LinkMeta resolveAndRecord(String host, String code, RedirectVisitInput visitInput) {
-        LinkMeta meta = resolveMeta(host, code);
-        recordVisitIfAvailable(meta, visitInput);
-        return meta;
-    }
-
-    private LinkMeta resolveMeta(String host, String code) {
-        String normalized = normalizeAndValidateCode(code);
-        LinkMeta meta = findMeta(host, normalized);
-        if (meta == null) {
-            throw new RedirectBusinessException(RedirectErrorCode.LINK_NOT_FOUND);
-        }
-        return meta;
-    }
-
     private LinkMeta findMeta(String host, String normalized) {
         // LinkCachePort 将 Redis 故障规范为 MISS；只有 NEGATIVE 才能终止权威回源。
         LinkCachePort.LookupResult cached = linkCache.lookup(host, normalized);
@@ -336,9 +132,7 @@ public class RedirectService {
         long startedAt = System.nanoTime();
         LinkMeta meta;
         try {
-            meta = shortLinkReadPort.findRedirectMetaByHostAndCode(host, normalized)
-                    .map(RedirectService::toLinkMeta)
-                    .orElse(null);
+            meta = shortLinkReadPort.findRedirectMetaByHostAndCode(host, normalized).orElse(null);
             metrics.record(
                     "linkforge.redirect.authoritative_lookup",
                     Duration.ofNanos(System.nanoTime() - startedAt),
@@ -362,14 +156,6 @@ public class RedirectService {
         // 缓存不是事实来源：只有权威读确认不存在才允许写负缓存。
         linkCache.markNotFound(host, normalized);
         return null;
-    }
-
-    private static String normalizeAndValidateCode(String code) {
-        String normalized = normalizeCode(code);
-        if (normalized == null) {
-            throw new RedirectBusinessException(RedirectErrorCode.LINK_NOT_FOUND);
-        }
-        return normalized;
     }
 
     private static String redirectResultTag(RedirectResolution resolution) {
@@ -405,35 +191,6 @@ public class RedirectService {
             }
         }
         return v;
-    }
-
-    private static LinkMeta toLinkMeta(ShortLinkReadPort.RedirectLinkView meta) {
-        return new LinkMeta(
-                meta.linkId(),
-                meta.tenantId(),
-                meta.code(),
-                meta.originalUrl(),
-                meta.enabled(),
-                toUtcLocalDateTime(meta.expiresAtUtc()),
-                meta.redirectStatusCode(),
-                meta.previewEnabled(),
-                meta.unavailableLandingUrl(),
-                meta.queryForwardMode(),
-                meta.queryForwardAllowlist(),
-                meta.hostname(),
-                meta.applicationId(),
-                meta.domainId(),
-                meta.lifecycleState()
-        );
-    }
-
-    private boolean isAvailable(LinkMeta meta) {
-        return redirectUnavailableReason(meta) == null;
-    }
-
-    private RedirectResolution.UnavailableReason redirectUnavailableReason(LinkMeta meta) {
-        RedirectResolution.UnavailableReason reason = staticUnavailableReason(meta);
-        return reason == null ? quotaUnavailableReason(meta) : reason;
     }
 
     private RedirectResolution.UnavailableReason staticUnavailableReason(LinkMeta meta) {
@@ -472,18 +229,8 @@ public class RedirectService {
         );
     }
 
-    private static LocalDateTime toUtcLocalDateTime(Instant instant) {
-        if (instant == null) {
-            return null;
-        }
-        return LocalDateTime.ofInstant(instant, ZoneOffset.UTC);
-    }
-
     private RedirectResolution.UnavailableReason quotaUnavailableReason(LinkMeta meta) {
         return quotaGuard.unavailableReason(meta);
     }
 
-    private static ApplicationClickUsagePort noClickUsagePort() {
-        return (tenantId, applicationId, fromInclusiveUtc, toExclusiveUtc) -> 0L;
-    }
 }

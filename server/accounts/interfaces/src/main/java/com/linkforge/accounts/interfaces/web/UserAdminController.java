@@ -45,48 +45,45 @@ public class UserAdminController {
 
     @GetMapping
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<List<UserHttpResponse>> list() {
+    public ApiResponse<List<UserResult>> list() {
         long tenantId = AuthContext.requirePrincipal().getTenantId();
-        List<UserHttpResponse> dto = userAdminService.list(tenantId).stream()
-                .map(AccountsHttpMapper::toUserResponse)
-                .toList();
-        return ApiResponse.ok(dto, RequestId.get());
+        return ApiResponse.ok(userAdminService.list(tenantId), RequestId.get());
     }
 
     @PostMapping
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<UserHttpResponse> create(@Valid @RequestBody CreateUserRequest req) {
+    public ApiResponse<UserResult> create(@Valid @RequestBody CreateUserRequest req) {
         long tenantId = AuthContext.requirePrincipal().getTenantId();
         UserResult out = userAdminService.create(
                 tenantId,
                 new CreateUserCommand(req.email(), req.password(), req.roles())
         );
-        return ApiResponse.ok(AccountsHttpMapper.toUserResponse(out), RequestId.get());
+        return ApiResponse.ok(out, RequestId.get());
     }
 
     @PutMapping("/{id}/disable")
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<UserHttpResponse> disable(@PathVariable("id") long id) {
+    public ApiResponse<UserResult> disable(@PathVariable("id") long id) {
         var principal = AuthContext.requirePrincipal();
         return ApiResponse.ok(
-                AccountsHttpMapper.toUserResponse(userAdminService.disable(principal.getTenantId(), principal.getUserId(), id)),
+                userAdminService.disable(principal.getTenantId(), principal.getUserId(), id),
                 RequestId.get()
         );
     }
 
     @PutMapping("/{id}/enable")
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<UserHttpResponse> enable(@PathVariable("id") long id) {
+    public ApiResponse<UserResult> enable(@PathVariable("id") long id) {
         long tenantId = AuthContext.requirePrincipal().getTenantId();
-        return ApiResponse.ok(AccountsHttpMapper.toUserResponse(userAdminService.enable(tenantId, id)), RequestId.get());
+        return ApiResponse.ok(userAdminService.enable(tenantId, id), RequestId.get());
     }
 
     @PutMapping("/{id}/password")
     @PreAuthorize("hasRole('TENANT_ADMIN')")
-    public ApiResponse<UserHttpResponse> resetPassword(@PathVariable("id") long id, @Valid @RequestBody ResetPasswordRequest req) {
+    public ApiResponse<UserResult> resetPassword(@PathVariable("id") long id, @Valid @RequestBody ResetPasswordRequest req) {
         long tenantId = AuthContext.requirePrincipal().getTenantId();
         return ApiResponse.ok(
-                AccountsHttpMapper.toUserResponse(userAdminService.resetPassword(tenantId, id, req.password())),
+                userAdminService.resetPassword(tenantId, id, req.password()),
                 RequestId.get()
         );
     }

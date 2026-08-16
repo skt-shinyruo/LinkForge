@@ -71,7 +71,7 @@ JWT 用户主体携带 `tokenVersion`，每次受保护请求由 Accounts 复核
 - 事件随业务事务一起提交时，回滚不会留下事件；store 本身不提供消息代理级 exactly-once。
 - 消费者可能在提交消费位点前重放，必须按事件 ID 或业务幂等键处理；未知版本应显式跳过、告警或停住游标，不能猜测字段。
 
-不要修改已应用 Flyway migration 来“补注释”；历史 schema 与迁移语义在文档中说明，新的结构变化使用新 migration。
+开发期数据库均可销毁，结构变化直接修改 `database/schema.sql` 并重建数据库。创建首个不可销毁数据库前，必须从当前基线引入版本化迁移；此后不得用改写基线代替升级脚本。
 
 ## 基础与安全配置
 
@@ -96,13 +96,13 @@ JWT 用户主体携带 `tokenVersion`，每次受保护请求由 Accounts 复核
 | `app.security.api-key.previous-key-id` | `API_KEY_PREVIOUS_KEY_ID` | 空 | 轮换窗口的上一代 key id，最多 64 个字符，必须与 previous pepper 成对配置 |
 | `app.security.api-key.previous-pepper` | `API_KEY_PREVIOUS_PEPPER` | 空 | 只验证 previous key id，不用于新写入 |
 | `app.security.api-key.legacy-pepper` | `API_KEY_LEGACY_PEPPER` | 旧 `API_KEY_HMAC_PEPPER`，否则空 | 只验证 `key_id IS NULL` 的历史 HMAC 摘要 |
-| `app.security.api-key.hmac-pepper` | `API_KEY_HMAC_PEPPER` | 空 | V26 前单 pepper 兼容名；第一阶段滚动部署仍须保留 |
+| `app.security.api-key.hmac-pepper` | `API_KEY_HMAC_PEPPER` | 空 | 旧版单 pepper 兼容名；第一阶段滚动部署仍须保留 |
 | `app.security.api-key.legacy-jwt-fallback-enabled` | `API_KEY_LEGACY_JWT_FALLBACK_ENABLED` | `true`（Compose 为 `false`） | 非 strict 本地兼容；strict 必须关闭 |
 | `app.security.api-key.last-used-update-interval-seconds` | `API_KEY_LAST_USED_UPDATE_INTERVAL_SECONDS` | `300` | 秒；`0` 关闭 `lastUsedAt` 写回，负值按实现的非正分支处理 |
 | `app.security.api-key.auth-cache-ttl-seconds` | `API_KEY_AUTH_CACHE_TTL_SECONDS` | `60` | 秒；只缓存 disabled 短路状态，`0` 关闭 |
 
 API Key active 请求仍会回库并校验 secret hash；缓存不是 active 凭据的授权事实源。Compose 会把旧
-`API_KEY_HMAC_PEPPER` additive 地映射到缺省的 current/legacy slot，使只带旧环境变量的部署在 V26 strict
+`API_KEY_HMAC_PEPPER` additive 地映射到缺省的 current/legacy slot，使只带旧环境变量的部署在 strict
 模式下仍能启动并验证 `key_id=NULL` 的历史行。这个桥接不允许 API Key pepper 等于 JWT signing secret。
 真正切换到新 current pepper 前必须先排空旧版本实例；完整步骤以
 [部署 runbook](../../deploy/README.md#api-key-pepper-滚动升级) 为准。

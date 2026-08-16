@@ -21,9 +21,8 @@ import java.util.UUID;
  * {@code X-Request-Id}；不符合约束的客户端值会被替换为服务端生成的 UUID。该 ID 仅用于日志、错误响应
  * 和排障关联，不是认证或授权凭据。</p>
  *
- * <p>在进入下游链路前，它同时写入响应头、{@link RequestId} 和 MDC；无论下游是否抛错，都会在
- * {@code finally} 中清理线程局部状态，避免线程池复用时串到下一请求。Servlet 依赖留在 runtime 包，
- * 共享层只暴露无框架的 {@link RequestId}。</p>
+ * <p>在进入下游链路前，它同时写入响应头和 MDC；无论下游是否抛错，都会在
+ * {@code finally} 中清理 MDC，避免线程池复用时串到下一请求。</p>
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 10)
@@ -44,15 +43,13 @@ public class RequestIdFilter extends OncePerRequestFilter {
             requestId = newRequestId();
         }
 
-        RequestId.set(requestId);
-        MDC.put("requestId", requestId);
+        MDC.put(RequestId.MDC_KEY, requestId);
         response.setHeader(HEADER_REQUEST_ID, requestId);
 
         try {
             filterChain.doFilter(request, response);
         } finally {
-            MDC.remove("requestId");
-            RequestId.clear();
+            MDC.remove(RequestId.MDC_KEY);
         }
     }
 

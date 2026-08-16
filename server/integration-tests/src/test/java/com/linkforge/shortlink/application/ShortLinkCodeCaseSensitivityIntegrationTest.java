@@ -4,6 +4,7 @@ import com.linkforge.LinkForgeApplication;
 import com.linkforge.TestTenantFixtures;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.redirect.application.RedirectService;
+import com.linkforge.redirect.application.ResolveRedirectRequest;
 import com.linkforge.shortlink.infrastructure.persistence.entity.ShortLinkEntity;
 import com.linkforge.shortlink.infrastructure.persistence.mapper.ShortLinkQueryMapper;
 import com.linkforge.testsupport.SharedIntegrationTestSupport;
@@ -123,8 +124,12 @@ class ShortLinkCodeCaseSensitivityIntegrationTest extends SharedIntegrationTestS
         assertThat(linkB.getCode()).isEqualTo("abcdef");
         assertThat(linkA.getId()).isNotEqualTo(linkB.getId());
 
-        assertThat(redirectService.resolve("Abcdef").originalUrl()).isEqualTo("https://example.com/a");
-        assertThat(redirectService.resolve("abcdef").originalUrl()).isEqualTo("https://example.com/b");
+        assertThat(redirectService.resolve(
+                new ResolveRedirectRequest("Abcdef", null, false, false, null)
+        ).meta().originalUrl()).isEqualTo("https://example.com/a");
+        assertThat(redirectService.resolve(
+                new ResolveRedirectRequest("abcdef", null, false, false, null)
+        ).meta().originalUrl()).isEqualTo("https://example.com/b");
         assertThat(redis.opsForValue().get(key("Abcdef"))).isNotNull();
         assertThat(redis.opsForValue().get(key("abcdef"))).isNotNull();
     }

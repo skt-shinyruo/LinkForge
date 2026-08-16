@@ -353,8 +353,8 @@ class ShortLinkPaginationApiIntegrationTest extends SharedIntegrationTestSupport
     void pagingContracts_shouldNotExposeSpringDataTypes() {
         assertNoSpringDataPagingLeak(ShortLinkController.class, "list", "exportCsv");
         assertNoSpringDataPagingLeak(OpenApiShortLinkController.class, "list");
-        assertNoSpringDataPagingLeak(ShortLinkQueryUseCase.class, "search");
-        assertNoSpringDataPagingLeak(ShortLinkCsvUseCase.class, "exportCsv");
+        assertNoSpringDataPagingLeak(ShortLinkApplicationService.class, "search");
+        assertNoSpringDataPagingLeak(ShortLinkApplicationService.class, "exportCsv");
     }
 
     private void assertNoSpringDataPagingLeak(Class<?> type, String... methodNames) {

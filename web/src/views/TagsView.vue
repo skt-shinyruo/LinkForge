@@ -1,11 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { ref } from "vue";
 import AppPageShell from "../components/AppPageShell.vue";
-import { useAppSessionNavigation } from "../composables/useAppSessionNavigation";
 import { createTag, listTags } from "../services/tags";
 import type { TagDto } from "../services/types";
-
-const navigation = useAppSessionNavigation("tags");
 
 const loading = ref(false);
 const error = ref<string | null>(null);
@@ -48,19 +45,11 @@ async function submitCreateTag() {
   }
 }
 
-onMounted(() => {
-  void load();
-});
+void load();
 </script>
 
 <template>
-  <AppPageShell
-    :title="navigation.title"
-    :user-email="navigation.userEmail.value"
-    :nav-items="navigation.navItems"
-    @navigate="navigation.navigate"
-    @logout="navigation.logout"
-  >
+  <AppPageShell>
     <section class="card">
       <h2>创建标签</h2>
       <div class="form">
@@ -73,7 +62,7 @@ onMounted(() => {
     </section>
 
     <section class="card">
-      <div class="cardHead">
+      <div class="card-head">
         <h2>标签列表</h2>
         <button class="btn secondary" :disabled="loading" @click="load">
           {{ loading ? "刷新中..." : "刷新" }}
@@ -103,22 +92,7 @@ onMounted(() => {
 
 <style scoped>
 .sub {
-  color: #666;
   margin: 4px 0 0;
-}
-
-.card {
-  border: 1px solid #eee;
-  border-radius: 10px;
-  padding: 16px;
-  margin-bottom: 16px;
-}
-
-.cardHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
 }
 
 .form {
@@ -127,46 +101,7 @@ onMounted(() => {
   gap: 8px;
 }
 
-input {
-  padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-}
-
-.btn {
-  padding: 10px 12px;
-  border: none;
-  border-radius: 8px;
-  background: #111;
-  color: #fff;
-  cursor: pointer;
-}
-
-.btn.secondary {
-  background: #444;
-}
-
 .error {
-  color: #c00;
   margin: 8px 0 0;
-}
-
-.table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.table th,
-.table td {
-  border-top: 1px solid #eee;
-  padding: 10px 8px;
-  text-align: left;
-  vertical-align: top;
-}
-
-.mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
-    monospace;
-  font-size: 12px;
 }
 </style>

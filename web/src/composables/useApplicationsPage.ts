@@ -1,4 +1,4 @@
-import { getCurrentInstance, onMounted, reactive, ref } from "vue";
+import { reactive, ref } from "vue";
 import { createApplication, listApplications } from "../services/applications";
 import type { ApplicationDto } from "../services/types";
 
@@ -48,12 +48,6 @@ export function useApplicationsPage() {
     } finally {
       creating.value = false;
     }
-  }
-
-  if (getCurrentInstance()) {
-    onMounted(() => {
-      void load();
-    });
   }
 
   return {

@@ -10,7 +10,7 @@ import com.linkforge.accounts.application.UserAdminService;
 import com.linkforge.accounts.application.port.AccountsTenantStore;
 import com.linkforge.accounts.application.port.AccountsUserStore;
 import com.linkforge.accounts.application.port.AccountStatusCache;
-import com.linkforge.accounts.domain.AccountsConstants;
+import com.linkforge.accounts.application.AccountsConstants;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.security.StandardRoles;

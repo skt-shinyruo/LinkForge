@@ -6,7 +6,6 @@ import com.linkforge.accounts.application.port.AccountsTenantStore;
 import com.linkforge.accounts.application.port.AccountsTokenIssuer;
 import com.linkforge.accounts.application.port.AccountsUserRoleStore;
 import com.linkforge.accounts.application.port.AccountsUserStore;
-import com.linkforge.accounts.domain.AccountsConstants;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.security.StandardRoles;
 import com.linkforge.foundation.tx.PostCommitHookPort;

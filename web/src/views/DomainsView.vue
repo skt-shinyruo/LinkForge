@@ -1,20 +1,13 @@
 <script setup lang="ts">
 import AppPageShell from "../components/AppPageShell.vue";
-import { useAppSessionNavigation } from "../composables/useAppSessionNavigation";
 import { useDomainsPage } from "../composables/useDomainsPage";
 
-const navigation = useAppSessionNavigation("domains");
 const page = useDomainsPage();
+void page.load();
 </script>
 
 <template>
-  <AppPageShell
-    :title="navigation.title"
-    :user-email="navigation.userEmail.value"
-    :nav-items="navigation.navItems"
-    @navigate="navigation.navigate"
-    @logout="navigation.logout"
-  >
+  <AppPageShell>
     <section class="card">
       <h2>创建域名</h2>
       <div class="form">
@@ -88,14 +81,6 @@ const page = useDomainsPage();
 </template>
 
 <style scoped>
-.card {
-  border: 1px solid #eee;
-  border-radius: 10px;
-  padding: 16px;
-  margin-bottom: 16px;
-}
-
-.card-head,
 .form {
   display: flex;
   gap: 8px;
@@ -103,44 +88,7 @@ const page = useDomainsPage();
   flex-wrap: wrap;
 }
 
-input,
-select {
-  padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-}
-
-.btn {
-  padding: 10px 12px;
-  border: none;
-  border-radius: 8px;
-  background: #111;
-  color: #fff;
-  cursor: pointer;
-}
-
-.btn.secondary {
-  background: #444;
-}
-
 .table {
-  width: 100%;
-  border-collapse: collapse;
   margin-top: 12px;
-}
-
-.table th,
-.table td {
-  border-top: 1px solid #eee;
-  padding: 10px 8px;
-  text-align: left;
-}
-
-.sub {
-  color: #666;
-}
-
-.error {
-  color: #c00;
 }
 </style>

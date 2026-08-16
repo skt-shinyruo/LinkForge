@@ -2,7 +2,7 @@ package com.linkforge.shortlink.application;
 
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.TestTenantFixtures;
-import com.linkforge.analytics.infrastructure.persistence.AnalyticsQueryRepository;
+import com.linkforge.analytics.application.AnalyticsQueryService;
 import com.linkforge.analytics.infrastructure.persistence.mapper.LinkStatsDailyMapper;
 import com.linkforge.analytics.infrastructure.persistence.mapper.LinkStatsDailyUpsertRow;
 import com.linkforge.analytics.infrastructure.persistence.mapper.LinkStatsDimDailyMapper;
@@ -51,7 +51,7 @@ class ShortLinkDeleteRetentionIntegrationTest extends SharedIntegrationTestSuppo
     ShortLinkQueryMapper shortLinkQueryMapper;
 
     @Autowired
-    AnalyticsQueryRepository analyticsQueryRepository;
+    AnalyticsQueryService analyticsQueryService;
 
     @Autowired
     LinkStatsDailyMapper linkStatsDailyMapper;
@@ -135,9 +135,9 @@ class ShortLinkDeleteRetentionIntegrationTest extends SharedIntegrationTestSuppo
 
         assertThat(shortLinkQueryMapper.findByTenantIdAndId(TENANT_ID, linkId)).isNull();
 
-        assertThat(analyticsQueryRepository.linkDaily(TENANT_ID, linkId, day, day)).hasSize(1);
-        assertThat(analyticsQueryRepository.linkDimRows(TENANT_ID, linkId, day, day, "referer_domain", 10)).hasSize(1);
-        assertThat(analyticsQueryRepository.linkEvents(
+        assertThat(analyticsQueryService.linkDaily(TENANT_ID, linkId, day, day)).hasSize(1);
+        assertThat(analyticsQueryService.linkDimensions(TENANT_ID, linkId, day, day, "referer_domain", 10)).hasSize(1);
+        assertThat(analyticsQueryService.linkEvents(
                 TENANT_ID,
                 linkId,
                 day.atStartOfDay(),

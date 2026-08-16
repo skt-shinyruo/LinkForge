@@ -1,4 +1,4 @@
-import { computed, getCurrentInstance, onMounted, reactive, ref } from "vue";
+import { computed, reactive, ref } from "vue";
 import { listApplications } from "../services/applications";
 import {
   createApiKey,
@@ -116,12 +116,6 @@ export function useApiKeysPage() {
   async function setSelectedApplicationId(value: number | null) {
     selectedApplicationId.value = value;
     await load();
-  }
-
-  if (getCurrentInstance()) {
-    onMounted(() => {
-      void load();
-    });
   }
 
   return {

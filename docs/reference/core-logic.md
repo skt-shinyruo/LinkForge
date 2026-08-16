@@ -134,4 +134,4 @@ LinkForge 是模块化单体。`server/app` 是 Spring Boot 组合根，各限�
 
 ## 维护入口
 
-核心流程与源码映射由 [机器可读目录](core-logic-catalog.json) 维护。新增或修改核心逻辑时，按 [文档规范](documentation-standards.md) 同步专题、源码契约、目录和测试。
+核心流程从本页进入各权威专题；专题直接列出源码类型名。新增或修改核心逻辑时，按 [文档规范](documentation-standards.md) 同步专题、源码契约和测试。

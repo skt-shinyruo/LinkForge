@@ -1,6 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
-import { createApp, h, type App } from "vue";
 import type { ApplicationDto, DailyStat, LinkDto, PageResponse, TopLinkStat } from "../services/types";
 
 const listApplicationsMock = vi.hoisted(() => vi.fn());
@@ -75,14 +74,10 @@ function deferred<T>() {
 }
 
 describe("useStatsPage", () => {
-  let app: App<Element> | null = null;
-  let pinia: ReturnType<typeof createPinia>;
-
   beforeEach(() => {
     vi.resetModules();
     vi.restoreAllMocks();
-    pinia = createPinia();
-    setActivePinia(pinia);
+    setActivePinia(createPinia());
     listApplicationsMock.mockReset();
     listLinksMock.mockReset();
     fetchLinkDailyStatsMock.mockReset();
@@ -93,12 +88,6 @@ describe("useStatsPage", () => {
     fetchOverviewStatsMock.mockResolvedValue([] satisfies DailyStat[]);
     fetchTopLinksStatsMock.mockResolvedValue([] satisfies TopLinkStat[]);
     fetchLinkDailyStatsMock.mockResolvedValue([] satisfies DailyStat[]);
-  });
-
-  afterEach(() => {
-    app?.unmount();
-    app = null;
-    document.body.innerHTML = "";
   });
 
   it("loads one bounded cursor page of link options without requesting a total", async () => {
@@ -336,19 +325,8 @@ describe("useStatsPage", () => {
     const auth = useAuthStore();
     auth.roles = ["TENANT_ADMIN"];
 
-    let page!: ReturnType<typeof useStatsPage>;
-    const host = document.createElement("div");
-    document.body.appendChild(host);
-    app = createApp({
-      setup() {
-        page = useStatsPage();
-        return () => h("div");
-      },
-    });
-    app.use(pinia);
-    app.mount(host);
-
-    await flushPromises();
+    const page = useStatsPage();
+    await page.init();
 
     expect(listApplicationsMock).toHaveBeenCalledTimes(1);
     expect(page.selectedApplicationId.value).toBeNull();
@@ -381,18 +359,8 @@ describe("useStatsPage", () => {
     const auth = useAuthStore();
     auth.roles = ["PLATFORM_ADMIN"];
 
-    const host = document.createElement("div");
-    document.body.appendChild(host);
-    app = createApp({
-      setup() {
-        useStatsPage();
-        return () => h("div");
-      },
-    });
-    app.use(pinia);
-    app.mount(host);
-
-    await flushPromises();
+    const page = useStatsPage();
+    await page.init();
 
     expect(listApplicationsMock).not.toHaveBeenCalled();
     expect(listLinksMock).toHaveBeenCalledWith(

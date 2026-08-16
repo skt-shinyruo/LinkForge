@@ -1,20 +1,13 @@
 <script setup lang="ts">
 import AppPageShell from "../components/AppPageShell.vue";
-import { useAppSessionNavigation } from "../composables/useAppSessionNavigation";
 import { useTenantOverviewPage } from "../composables/useTenantOverviewPage";
 
-const navigation = useAppSessionNavigation("overview");
 const page = useTenantOverviewPage();
+void page.load();
 </script>
 
 <template>
-  <AppPageShell
-    :title="navigation.title"
-    :user-email="navigation.userEmail.value"
-    :nav-items="navigation.navItems"
-    @navigate="navigation.navigate"
-    @logout="navigation.logout"
-  >
+  <AppPageShell>
     <section class="summary-grid">
       <article class="card">
         <h2>应用</h2>
@@ -54,60 +47,7 @@ const page = useTenantOverviewPage();
 </template>
 
 <style scoped>
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.card {
-  border: 1px solid #eee;
-  border-radius: 10px;
-  padding: 16px;
-  margin-bottom: 16px;
-}
-
-.card-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  align-items: center;
-}
-
-.metric {
-  font-size: 28px;
-  font-weight: 700;
-  margin: 8px 0 0;
-}
-
-.list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 10px;
-}
-
 .sub {
-  color: #666;
   display: block;
-}
-
-.btn {
-  padding: 10px 12px;
-  border: none;
-  border-radius: 8px;
-  background: #111;
-  color: #fff;
-  cursor: pointer;
-}
-
-.btn.secondary {
-  background: #444;
-}
-
-.error {
-  color: #c00;
 }
 </style>

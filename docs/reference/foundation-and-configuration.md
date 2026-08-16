@@ -52,7 +52,7 @@ JWT 用户主体携带 `tokenVersion`，每次受保护请求由 Accounts 复核
 
 ## 事务后动作
 
-`PostCommitHookPort` 的 Spring 实现委托给 `AfterCommit`：
+`SpringPostCommitHookAdapter` 直接用 Spring 事务同步实现 `PostCommitHookPort`：
 
 - 存在活跃事务时，动作只在事务成功提交后运行。
 - 回滚时动作不运行。

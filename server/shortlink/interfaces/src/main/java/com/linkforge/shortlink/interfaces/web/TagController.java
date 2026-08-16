@@ -4,7 +4,7 @@ import com.linkforge.contract.api.ApiResponse;
 import com.linkforge.foundation.runtime.security.AuthContext;
 import com.linkforge.foundation.security.AuthPrincipal;
 import com.linkforge.foundation.web.RequestId;
-import com.linkforge.shortlink.application.ShortLinkTagUseCase;
+import com.linkforge.shortlink.application.ShortLinkApplicationService;
 import com.linkforge.shortlink.interfaces.web.dto.TagHttpResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -21,11 +21,11 @@ import java.util.List;
 @RequestMapping("/api/v1/tags")
 public class TagController {
 
-    private final ShortLinkTagUseCase shortLinkTagUseCase;
+    private final ShortLinkApplicationService shortLinkService;
     private final ShortLinkWriteGuard writeGuard;
 
-    public TagController(ShortLinkTagUseCase shortLinkTagUseCase, ShortLinkWriteGuard writeGuard) {
-        this.shortLinkTagUseCase = shortLinkTagUseCase;
+    public TagController(ShortLinkApplicationService shortLinkService, ShortLinkWriteGuard writeGuard) {
+        this.shortLinkService = shortLinkService;
         this.writeGuard = writeGuard;
     }
 
@@ -33,7 +33,7 @@ public class TagController {
     public ApiResponse<List<TagHttpResponse>> list() {
         AuthPrincipal p = AuthContext.requirePrincipal();
         return ApiResponse.ok(
-                shortLinkTagUseCase.listTags(p.getTenantId()).stream()
+                shortLinkService.listTags(p.getTenantId()).stream()
                         .map(ShortLinkHttpMapper::toTagResponse)
                         .toList(),
                 RequestId.get()
@@ -45,7 +45,7 @@ public class TagController {
         writeGuard.requireWriteEnabled();
         AuthPrincipal p = AuthContext.requirePrincipal();
         return ApiResponse.ok(
-                ShortLinkHttpMapper.toTagResponse(shortLinkTagUseCase.createTag(p.getTenantId(), req.name())),
+                ShortLinkHttpMapper.toTagResponse(shortLinkService.createTag(p.getTenantId(), req.name())),
                 RequestId.get()
         );
     }

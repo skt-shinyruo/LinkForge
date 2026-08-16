@@ -54,35 +54,6 @@
 
 图表必须与正文同时保留可搜索的协议名和源码入口，不能只靠图片表达规则。
 
-## 核心目录
-
-`core-logic-catalog.json` 使用以下 schema：
-
-```json
-{
-  "schemaVersion": 1,
-  "entries": [
-    {
-      "id": "shortlink.create",
-      "context": "shortlink",
-      "sources": ["server/shortlink/.../CreateShortLinkCommandHandler.java"],
-      "document": "docs/reference/shortlink-management.md",
-      "heading": "创建短链"
-    }
-  ]
-}
-```
-
-约束：
-
-- `id` 全局唯一且稳定，使用小写点分命名；重命名流程时优先保留 ID。
-- `context` 是拥有该逻辑的上下文。当前允许值为 `accounts`、`platform`、`shortlink`、`redirect`、`analytics`、`governance`、`foundation`、`contracts`、`cross-context` 和 `frontend`；`contracts` 用于已发布的跨上下文类型，不能借此绕过业务上下文归属。
-- `sources` 至少一个仓库相对路径，必须存在；只登记拥有核心行为的文件，不罗列所有 DTO。
-- `document` 必须是权威专题，不能指向地图页中的重复描述。
-- `heading` 必须在 Markdown 中真实存在且唯一到足以定位。
-
-目录门禁校验 schema、唯一 ID、合法 context、路径、唯一标题、公开 contracts 登记和核心符号前的文档注释。它只能保证覆盖和可定位，不能判断说明是否正确。
-
 ## 评审清单
 
 核心逻辑变更的评审至少检查：
@@ -94,7 +65,7 @@
 5. 配置默认值、单位及 `0/null/负值` 是否明确；
 6. 安全边界是否包含租户隔离、认证状态、CSRF、代理头和敏感字段；
 7. 当前限制是否被如实记录，而不是用 exactly-once、实时或精确 UV 等过强措辞；
-8. catalog、专题链接和源码注释是否同步。
+8. 专题链接和源码注释是否同步。
 
 ## 校验命令
 
@@ -109,4 +80,4 @@ npm test
 npm run build
 ```
 
-Docker 可用时再运行集成测试 profile。Markdown 相对链接、catalog 和 contract 覆盖由 `server/app` 的文档架构测试随 Maven 测试执行。
+Docker 可用时再运行集成测试 profile。查找核心实现时从参考文档索引进入专题，再按其中的类型名使用 `rg` 定位源码。

@@ -1,4 +1,4 @@
-import { computed, getCurrentInstance, onMounted, reactive, ref } from "vue";
+import { computed, reactive, ref } from "vue";
 import { listApplications } from "../services/applications";
 import {
   authorizeDomain,
@@ -90,12 +90,6 @@ export function useDomainsPage() {
     } finally {
       authorizing.value = false;
     }
-  }
-
-  if (getCurrentInstance()) {
-    onMounted(() => {
-      void load();
-    });
   }
 
   return {

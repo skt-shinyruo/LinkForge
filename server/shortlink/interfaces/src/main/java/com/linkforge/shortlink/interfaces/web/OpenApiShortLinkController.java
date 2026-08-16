@@ -9,8 +9,7 @@ import com.linkforge.foundation.web.RequestId;
 import com.linkforge.shortlink.application.BrowseLinksRequest;
 import com.linkforge.shortlink.application.LinkDto;
 import com.linkforge.shortlink.application.ScopedCreateLinkRequest;
-import com.linkforge.shortlink.application.ShortLinkCreationUseCase;
-import com.linkforge.shortlink.application.ShortLinkQueryUseCase;
+import com.linkforge.shortlink.application.ShortLinkApplicationService;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkCreateHttpRequest;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkHttpResponse;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkPageHttpResponse;
@@ -27,19 +26,16 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/open")
 public class OpenApiShortLinkController {
 
-    private final ShortLinkCreationUseCase shortLinkCreationUseCase;
-    private final ShortLinkQueryUseCase shortLinkQueryUseCase;
+    private final ShortLinkApplicationService shortLinkService;
     private final ShortLinkWriteGuard writeGuard;
     private final PrincipalActorMapper principalActorMapper;
 
     public OpenApiShortLinkController(
-            ShortLinkCreationUseCase shortLinkCreationUseCase,
-            ShortLinkQueryUseCase shortLinkQueryUseCase,
+            ShortLinkApplicationService shortLinkService,
             ShortLinkWriteGuard writeGuard,
             PrincipalActorMapper principalActorMapper
     ) {
-        this.shortLinkCreationUseCase = shortLinkCreationUseCase;
-        this.shortLinkQueryUseCase = shortLinkQueryUseCase;
+        this.shortLinkService = shortLinkService;
         this.writeGuard = writeGuard;
         this.principalActorMapper = principalActorMapper;
     }
@@ -48,7 +44,7 @@ public class OpenApiShortLinkController {
     public ApiResponse<ShortLinkHttpResponse> create(@Valid @RequestBody ShortLinkCreateHttpRequest req) {
         writeGuard.requireWriteEnabled();
         ApiKeyActor actor = principalActorMapper.requireApiKey(AuthContext.requirePrincipal());
-        LinkDto dto = shortLinkCreationUseCase.createForApiKey(
+        LinkDto dto = shortLinkService.createForApiKey(
                 actor,
                 new ScopedCreateLinkRequest(ShortLinkHttpMapper.toCreateRequest(req), null)
         );
@@ -62,7 +58,7 @@ public class OpenApiShortLinkController {
     ) {
         writeGuard.requireWriteEnabled();
         ApiKeyActor actor = principalActorMapper.requireApiKey(AuthContext.requirePrincipal());
-        LinkDto dto = shortLinkCreationUseCase.createForApiKey(
+        LinkDto dto = shortLinkService.createForApiKey(
                 actor,
                 new ScopedCreateLinkRequest(ShortLinkHttpMapper.toCreateRequest(req), applicationId)
         );
@@ -79,7 +75,7 @@ public class OpenApiShortLinkController {
             @RequestParam(defaultValue = "true") boolean includeTotal
     ) {
         ApiKeyActor actor = principalActorMapper.requireApiKey(AuthContext.requirePrincipal());
-        PageResult<LinkDto> result = shortLinkQueryUseCase.browseForApiKey(
+        PageResult<LinkDto> result = shortLinkService.browseForApiKey(
                 actor,
                 new BrowseLinksRequest(
                         false, enabled, keyword, null, null, null, page, size, 100, cursor, includeTotal
@@ -99,7 +95,7 @@ public class OpenApiShortLinkController {
             @RequestParam(defaultValue = "true") boolean includeTotal
     ) {
         ApiKeyActor actor = principalActorMapper.requireApiKey(AuthContext.requirePrincipal());
-        PageResult<LinkDto> result = shortLinkQueryUseCase.browseForApiKey(
+        PageResult<LinkDto> result = shortLinkService.browseForApiKey(
                 actor,
                 new BrowseLinksRequest(
                         false, enabled, keyword, null, null, applicationId, page, size, 100, cursor, includeTotal

@@ -22,7 +22,7 @@ class AnalyticsReportingApplicationServiceTest {
     void topLinks_shouldRejectMoreThan366UtcDaysBeforeReadingModels() {
         AnalyticsQueryService queryService = mock(AnalyticsQueryService.class);
         ShortLinkReadPort shortLinkReadPort = mock(ShortLinkReadPort.class);
-        AnalyticsReportingService service = new AnalyticsReportingApplicationService(
+        AnalyticsReportingApplicationService service = new AnalyticsReportingApplicationService(
                 queryService,
                 new AnalyticsLinkSummaryEnricher(shortLinkReadPort)
         );
@@ -44,7 +44,7 @@ class AnalyticsReportingApplicationServiceTest {
     void topLinks_shouldEnrichRawRowsWithShortlinkSummaries() {
         AnalyticsQueryService queryService = mock(AnalyticsQueryService.class);
         ShortLinkReadPort shortLinkReadPort = mock(ShortLinkReadPort.class);
-        AnalyticsReportingService service = new AnalyticsReportingApplicationService(
+        AnalyticsReportingApplicationService service = new AnalyticsReportingApplicationService(
                 queryService,
                 new AnalyticsLinkSummaryEnricher(shortLinkReadPort)
         );
@@ -76,7 +76,7 @@ class AnalyticsReportingApplicationServiceTest {
     void applicationTopLinks_shouldReuseQueryServiceAndSummaryEnrichment() {
         AnalyticsQueryService queryService = mock(AnalyticsQueryService.class);
         ShortLinkReadPort shortLinkReadPort = mock(ShortLinkReadPort.class);
-        AnalyticsReportingService service = new AnalyticsReportingApplicationService(
+        AnalyticsReportingApplicationService service = new AnalyticsReportingApplicationService(
                 queryService,
                 new AnalyticsLinkSummaryEnricher(shortLinkReadPort)
         );
@@ -102,7 +102,7 @@ class AnalyticsReportingApplicationServiceTest {
     void topLinks_shouldKeepCatalogMetadataWhenShortlinkSummaryIsMissingAfterDelete() {
         AnalyticsQueryService queryService = mock(AnalyticsQueryService.class);
         ShortLinkReadPort shortLinkReadPort = mock(ShortLinkReadPort.class);
-        AnalyticsReportingService service = new AnalyticsReportingApplicationService(
+        AnalyticsReportingApplicationService service = new AnalyticsReportingApplicationService(
                 queryService,
                 new AnalyticsLinkSummaryEnricher(shortLinkReadPort)
         );

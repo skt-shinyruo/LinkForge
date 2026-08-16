@@ -17,9 +17,7 @@ describe("useLatestRequest", () => {
     const second = deferred<string>();
     const commits: string[] = [];
     const firstSignals: AbortSignal[] = [];
-    const request = useLatestRequest((caught, fallback) =>
-      caught instanceof Error ? caught.message : fallback,
-    );
+    const request = useLatestRequest();
 
     const firstRun = request.run(
       (signal) => {
@@ -45,8 +43,7 @@ describe("useLatestRequest", () => {
   it("does not publish an error from an obsolete request", async () => {
     const first = deferred<string>();
     const second = deferred<string>();
-    const formatter = vi.fn((_caught: unknown, fallback: string) => fallback);
-    const request = useLatestRequest(formatter);
+    const request = useLatestRequest();
 
     const firstRun = request.run(() => first.promise, vi.fn(), "old failure");
     const secondRun = request.run(() => second.promise, vi.fn(), "new failure");
@@ -55,7 +52,6 @@ describe("useLatestRequest", () => {
     first.reject(new Error("late"));
     await firstRun;
 
-    expect(formatter).not.toHaveBeenCalled();
     expect(request.error.value).toBeNull();
   });
 });

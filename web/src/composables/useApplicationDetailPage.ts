@@ -1,4 +1,4 @@
-import { computed, getCurrentInstance, onMounted, ref } from "vue";
+import { computed, ref } from "vue";
 import { useRoute } from "vue-router";
 import { listApplications } from "../services/applications";
 import { listApiKeys } from "../services/apiKeys";
@@ -60,12 +60,6 @@ export function useApplicationDetailPage() {
     } finally {
       loading.value = false;
     }
-  }
-
-  if (getCurrentInstance()) {
-    onMounted(() => {
-      void load();
-    });
   }
 
   return {

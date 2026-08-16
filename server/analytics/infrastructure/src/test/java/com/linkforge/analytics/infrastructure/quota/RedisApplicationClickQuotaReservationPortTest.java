@@ -1,6 +1,6 @@
 package com.linkforge.analytics.infrastructure.quota;
 
-import com.linkforge.analytics.infrastructure.persistence.AnalyticsQueryRepository;
+import com.linkforge.analytics.infrastructure.persistence.mapper.AnalyticsQueryMapper;
 import com.linkforge.contract.analytics.AnalyticsKeys;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -24,8 +24,8 @@ class RedisApplicationClickQuotaReservationPortTest {
     @Test
     void tryReserveMonthlyClick_shouldSeedRedisCounterFromMysqlBaselineAndReturnScriptDecision() {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
-        AnalyticsQueryRepository queryRepository = mock(AnalyticsQueryRepository.class);
-        when(queryRepository.countApplicationPv(
+        AnalyticsQueryMapper queryMapper = mock(AnalyticsQueryMapper.class);
+        when(queryMapper.countApplicationPv(
                 22L,
                 33L,
                 LocalDate.parse("2026-04-01"),
@@ -46,7 +46,7 @@ class RedisApplicationClickQuotaReservationPortTest {
         )).thenReturn(1L);
         RedisApplicationClickQuotaReservationPort port = new RedisApplicationClickQuotaReservationPort(
                 redis,
-                queryRepository
+                queryMapper
         );
 
         boolean reserved = port.tryReserveMonthlyClick(
@@ -58,7 +58,7 @@ class RedisApplicationClickQuotaReservationPortTest {
         );
 
         assertThat(reserved).isTrue();
-        verify(queryRepository).countApplicationPv(
+        verify(queryMapper).countApplicationPv(
                 22L,
                 33L,
                 LocalDate.parse("2026-04-01"),
@@ -79,7 +79,7 @@ class RedisApplicationClickQuotaReservationPortTest {
     @Test
     void tryReserveMonthlyClick_shouldNotQueryMysqlWhenRedisCounterExists() {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
-        AnalyticsQueryRepository queryRepository = mock(AnalyticsQueryRepository.class);
+        AnalyticsQueryMapper queryMapper = mock(AnalyticsQueryMapper.class);
         when(redis.execute(
                 any(DefaultRedisScript.class),
                 eq(List.of(AnalyticsKeys.applicationClickQuotaKey(22L, 33L, LocalDate.parse("2026-04-01")))),
@@ -88,7 +88,7 @@ class RedisApplicationClickQuotaReservationPortTest {
         )).thenReturn(1L);
         RedisApplicationClickQuotaReservationPort port = new RedisApplicationClickQuotaReservationPort(
                 redis,
-                queryRepository
+                queryMapper
         );
 
         boolean reserved = port.tryReserveMonthlyClick(
@@ -100,14 +100,14 @@ class RedisApplicationClickQuotaReservationPortTest {
         );
 
         assertThat(reserved).isTrue();
-        verifyNoInteractions(queryRepository);
+        verifyNoInteractions(queryMapper);
     }
 
     @Test
     void tryReserveMonthlyClick_shouldRejectWhenRedisScriptRejects() {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
-        AnalyticsQueryRepository queryRepository = mock(AnalyticsQueryRepository.class);
-        when(queryRepository.countApplicationPv(
+        AnalyticsQueryMapper queryMapper = mock(AnalyticsQueryMapper.class);
+        when(queryMapper.countApplicationPv(
                 22L,
                 33L,
                 LocalDate.parse("2026-04-01"),
@@ -123,7 +123,7 @@ class RedisApplicationClickQuotaReservationPortTest {
                 .thenReturn(0L);
         RedisApplicationClickQuotaReservationPort port = new RedisApplicationClickQuotaReservationPort(
                 redis,
-                queryRepository
+                queryMapper
         );
 
         boolean reserved = port.tryReserveMonthlyClick(
@@ -140,8 +140,8 @@ class RedisApplicationClickQuotaReservationPortTest {
     @Test
     void tryReserveMonthlyClick_shouldFailOpenWhenRedisReservationFails() {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
-        AnalyticsQueryRepository queryRepository = mock(AnalyticsQueryRepository.class);
-        when(queryRepository.countApplicationPv(
+        AnalyticsQueryMapper queryMapper = mock(AnalyticsQueryMapper.class);
+        when(queryMapper.countApplicationPv(
                 22L,
                 33L,
                 LocalDate.parse("2026-04-01"),
@@ -151,7 +151,7 @@ class RedisApplicationClickQuotaReservationPortTest {
                 .thenThrow(new IllegalStateException("redis unavailable"));
         RedisApplicationClickQuotaReservationPort port = new RedisApplicationClickQuotaReservationPort(
                 redis,
-                queryRepository
+                queryMapper
         );
 
         boolean reserved = port.tryReserveMonthlyClick(
@@ -168,7 +168,7 @@ class RedisApplicationClickQuotaReservationPortTest {
     @Test
     void tryReserveMonthlyClick_shouldFailOpenWithoutMysqlQueryWhenRedisReturnsNull() {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
-        AnalyticsQueryRepository queryRepository = mock(AnalyticsQueryRepository.class);
+        AnalyticsQueryMapper queryMapper = mock(AnalyticsQueryMapper.class);
         when(redis.execute(
                 any(DefaultRedisScript.class),
                 eq(List.of(AnalyticsKeys.applicationClickQuotaKey(22L, 33L, LocalDate.parse("2026-04-01")))),
@@ -177,7 +177,7 @@ class RedisApplicationClickQuotaReservationPortTest {
         )).thenReturn(null);
         RedisApplicationClickQuotaReservationPort port = new RedisApplicationClickQuotaReservationPort(
                 redis,
-                queryRepository
+                queryMapper
         );
 
         boolean reserved = port.tryReserveMonthlyClick(
@@ -189,6 +189,6 @@ class RedisApplicationClickQuotaReservationPortTest {
         );
 
         assertThat(reserved).isTrue();
-        verifyNoInteractions(queryRepository);
+        verifyNoInteractions(queryMapper);
     }
 }

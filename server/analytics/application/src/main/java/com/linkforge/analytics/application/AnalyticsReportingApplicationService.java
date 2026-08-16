@@ -14,7 +14,7 @@ import java.util.List;
  * 删除或 catalog 延迟只会影响链接展示字段和 {@code deleted} 标记。</p>
  */
 @Service
-public class AnalyticsReportingApplicationService implements AnalyticsReportingService {
+public class AnalyticsReportingApplicationService {
 
     private final AnalyticsQueryService analyticsQueryService;
     private final AnalyticsLinkSummaryEnricher linkSummaryEnricher;
@@ -27,15 +27,11 @@ public class AnalyticsReportingApplicationService implements AnalyticsReportingS
         this.linkSummaryEnricher = linkSummaryEnricher;
     }
 
-    /** {@inheritDoc} */
-    @Override
     public List<TopLinkStat> topLinks(long tenantId, LocalDate from, LocalDate to, int limit, TopSortBy sortBy) {
         ReportRange.of(from, to);
         return linkSummaryEnricher.enrich(tenantId, analyticsQueryService.topLinks(tenantId, from, to, limit, sortBy));
     }
 
-    /** {@inheritDoc} */
-    @Override
     public List<TopLinkStat> applicationTopLinks(
             long tenantId,
             long applicationId,
@@ -48,8 +44,6 @@ public class AnalyticsReportingApplicationService implements AnalyticsReportingS
         return linkSummaryEnricher.enrich(tenantId, analyticsQueryService.applicationTopLinks(tenantId, applicationId, from, to, limit, sortBy));
     }
 
-    /** {@inheritDoc} */
-    @Override
     public List<TopLinkStat> domainTopLinks(
             long tenantId,
             long domainId,

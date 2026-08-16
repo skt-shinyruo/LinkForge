@@ -1,8 +1,9 @@
 package com.linkforge.foundation.runtime.tx;
 
-import com.linkforge.foundation.runtime.tx.AfterCommit;
 import com.linkforge.foundation.tx.PostCommitHookPort;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * 把框架无关的提交后端口适配到 Spring 事务同步。
@@ -15,6 +16,19 @@ public final class SpringPostCommitHookAdapter implements PostCommitHookPort {
 
     @Override
     public void run(Runnable action) {
-        AfterCommit.run(action);
+        if (action == null) {
+            return;
+        }
+        if (!TransactionSynchronizationManager.isActualTransactionActive()
+                || !TransactionSynchronizationManager.isSynchronizationActive()) {
+            action.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                action.run();
+            }
+        });
     }
 }

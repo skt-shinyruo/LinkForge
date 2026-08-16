@@ -177,7 +177,7 @@
 
 ## 异常与一致性
 
-- 认证失败由 `RestAuthenticationEntryPoint` 和 `RestAccessDeniedHandler` 返回统一 API 错误形状。
+- 认证失败由 `SecurityConfig` 提供的 `AuthenticationEntryPoint` 和 `AccessDeniedHandler` bean 返回统一 API 错误形状。
 - 业务错误进入 `GlobalExceptionHandler`，响应体包含 `ApiResponse.requestId`。
 - `RequestIdFilter` 会把请求 ID 放到 MDC、响应头和 API 响应中，便于串联认证失败和后续业务日志。
 - 注销和重置密码通过原子 `tokenVersion` 命令加 after-commit 状态缓存驱逐实现会话失效；禁用依赖窄 status 命令、ACTIVE 状态拒绝和相同的提交后驱逐。启用不会撤销或新建 tokenVersion，这是需要在管理员操作中知晓的当前限制。

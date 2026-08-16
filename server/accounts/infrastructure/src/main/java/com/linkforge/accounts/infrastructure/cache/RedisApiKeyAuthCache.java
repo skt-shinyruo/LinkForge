@@ -1,7 +1,7 @@
 package com.linkforge.accounts.infrastructure.cache;
 
 import com.linkforge.accounts.application.port.ApiKeyAuthCache;
-import com.linkforge.accounts.domain.AccountsConstants;
+import com.linkforge.accounts.application.AccountsConstants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;

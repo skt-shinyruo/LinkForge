@@ -3,7 +3,6 @@ package com.linkforge.accounts.application;
 import com.linkforge.accounts.application.port.AccountsApiKeyStore;
 import com.linkforge.accounts.application.port.AccountsPasswordHasher;
 import com.linkforge.accounts.application.port.ApiKeyAuthCache;
-import com.linkforge.accounts.domain.AccountsConstants;
 import com.linkforge.contract.api.AppErrorCode;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;

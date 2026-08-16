@@ -53,7 +53,7 @@ const hasNextPage = computed(() => (props.page + 1) * props.size < props.total);
 
 <template>
   <section class="card">
-    <div class="cardHead">
+    <div class="card-head">
       <h2>短链列表</h2>
       <div class="list-actions">
         <button class="btn secondary" :disabled="props.loading || !props.showArchived" @click="emit('setArchived', false)">
@@ -222,21 +222,6 @@ const hasNextPage = computed(() => (props.page + 1) * props.size < props.total);
 </template>
 
 <style scoped>
-.card {
-  border: 1px solid #eee;
-  border-radius: 10px;
-  padding: 16px;
-  margin-bottom: 16px;
-}
-
-.cardHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
 .list-actions {
   display: flex;
   align-items: center;
@@ -246,41 +231,6 @@ const hasNextPage = computed(() => (props.page + 1) * props.size < props.total);
 
 .keyword {
   min-width: 240px;
-}
-
-input,
-select,
-textarea {
-  padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  font: inherit;
-}
-
-textarea {
-  resize: vertical;
-}
-
-.btn {
-  padding: 10px 12px;
-  border: none;
-  border-radius: 8px;
-  background: #111;
-  color: #fff;
-  cursor: pointer;
-}
-
-.btn.secondary {
-  background: #444;
-}
-
-.btn.danger {
-  background: #c00;
-}
-
-.btn.small {
-  padding: 6px 10px;
-  font-size: 12px;
 }
 
 .actions-col {
@@ -306,13 +256,11 @@ textarea {
 
 .sub,
 .hint {
-  color: #666;
   margin: 4px 0 0;
   font-size: 12px;
 }
 
 .error {
-  color: #c00;
   margin: 8px 0 0;
 }
 
@@ -331,37 +279,6 @@ textarea {
   color: #333;
 }
 
-.table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.table th,
-.table td {
-  border-top: 1px solid #eee;
-  padding: 10px 8px;
-  text-align: left;
-  vertical-align: top;
-}
-
-.mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
-    monospace;
-  font-size: 12px;
-}
-
-.ok {
-  color: #0a0;
-}
-
-.bad {
-  color: #c00;
-}
-
-.muted {
-  color: #666;
-}
-
 .edit-card {
   border: 1px solid #eee;
   border-radius: 10px;
@@ -373,27 +290,6 @@ textarea {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.field.checkbox {
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-}
-
-.field.span2 {
-  grid-column: 1 / -1;
-}
-
-.label {
-  font-size: 12px;
-  color: #444;
 }
 
 .edit-actions {

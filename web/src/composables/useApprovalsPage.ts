@@ -1,4 +1,4 @@
-import { getCurrentInstance, onMounted, reactive, ref } from "vue";
+import { reactive, ref } from "vue";
 import { approveRequest, listApprovals } from "../services/approvals";
 import type { ApprovalRequestDto } from "../services/types";
 
@@ -64,12 +64,6 @@ export function useApprovalsPage() {
     } finally {
       actingId.value = null;
     }
-  }
-
-  if (getCurrentInstance()) {
-    onMounted(() => {
-      void load();
-    });
   }
 
   return {

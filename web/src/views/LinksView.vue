@@ -2,22 +2,17 @@
 import AppPageShell from "../components/AppPageShell.vue";
 import LinkCreateForm from "../components/links/LinkCreateForm.vue";
 import LinkListTable from "../components/links/LinkListTable.vue";
-import { useAppSessionNavigation } from "../composables/useAppSessionNavigation";
 import { useLinksPage } from "../composables/useLinksPage";
+import { useAuthStore } from "../stores/auth";
 
-const navigation = useAppSessionNavigation("links");
+const auth = useAuthStore();
 const page = useLinksPage();
+void page.init();
 </script>
 
 <template>
-  <AppPageShell
-    :title="navigation.title"
-    :user-email="navigation.userEmail.value"
-    :nav-items="navigation.navItems"
-    @navigate="navigation.navigate"
-    @logout="navigation.logout"
-  >
-    <section v-if="navigation.isTenantAdmin.value" class="scope card">
+  <AppPageShell>
+    <section v-if="auth.isTenantAdmin" class="scope card">
       <h2>应用范围</h2>
       <div class="scope-grid">
         <label class="field">
@@ -53,7 +48,7 @@ const page = useLinksPage();
       :importing="page.importing.value"
       :import-file-name="page.importFileName.value"
       :import-result="page.importResult.value"
-      :is-admin="navigation.isTenantAdmin.value"
+      :is-admin="auth.isTenantAdmin"
       :error="page.error.value"
       @create="page.createLink"
       @import="page.importCsv"
@@ -69,7 +64,7 @@ const page = useLinksPage();
       :keyword="page.filters.keyword"
       :editing-id="page.editingId.value"
       :edit-form="page.editForm"
-      :is-admin="navigation.isTenantAdmin.value"
+      :is-admin="auth.isTenantAdmin"
       :page="page.page.value"
       :size="page.size.value"
       :total="page.total.value"
@@ -93,33 +88,13 @@ const page = useLinksPage();
 </template>
 
 <style scoped>
-.card {
-  border: 1px solid #eee;
-  border-radius: 10px;
-  padding: 16px;
-  margin-bottom: 16px;
-}
-
 .scope-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 10px;
 }
 
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
 .sub {
-  color: #666;
   font-size: 12px;
-}
-
-select {
-  padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
 }
 </style>

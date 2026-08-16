@@ -1,4 +1,4 @@
-import { computed, getCurrentInstance, onMounted, ref } from "vue";
+import { computed, ref } from "vue";
 import { listApplications } from "../services/applications";
 import { listApprovals } from "../services/approvals";
 import { listAuditLogs } from "../services/audit";
@@ -40,12 +40,6 @@ export function useTenantOverviewPage() {
     } finally {
       loading.value = false;
     }
-  }
-
-  if (getCurrentInstance()) {
-    onMounted(() => {
-      void load();
-    });
   }
 
   return {

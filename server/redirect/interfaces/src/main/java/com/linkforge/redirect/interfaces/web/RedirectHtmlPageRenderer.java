@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.web.util.HtmlUtils;
 
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
@@ -192,22 +193,7 @@ public class RedirectHtmlPageRenderer {
     }
 
     private static String escapeHtml(String value) {
-        if (value == null) {
-            return "";
-        }
-        StringBuilder out = new StringBuilder(value.length() + 16);
-        for (int i = 0; i < value.length(); i++) {
-            char ch = value.charAt(i);
-            switch (ch) {
-                case '<' -> out.append("&lt;");
-                case '>' -> out.append("&gt;");
-                case '&' -> out.append("&amp;");
-                case '"' -> out.append("&quot;");
-                case '\'' -> out.append("&#39;");
-                default -> out.append(ch);
-            }
-        }
-        return out.toString();
+        return HtmlUtils.htmlEscape(value == null ? "" : value);
     }
 
     private static boolean isHttpUrl(String url) {

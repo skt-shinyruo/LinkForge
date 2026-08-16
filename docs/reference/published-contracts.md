@@ -182,6 +182,6 @@ Stream 回滚窗口。
 1. 判断是 Java source compatibility、JSON wire、Redis key/member 还是数据库历史数据变化；
 2. 对破坏性 payload 变化新增版本，不覆盖 V1；
 3. 为旧数据和滚动升级提供双读或显式迁移窗口；
-4. 更新本页、对应专题和 `core-logic-catalog.json`；
+4. 更新本页和对应专题；
 5. 增加序列化/key 格式契约测试；
 6. 不修改已应用 Flyway migration。

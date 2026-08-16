@@ -1,21 +1,14 @@
 <script setup lang="ts">
 import { RouterLink } from "vue-router";
 import AppPageShell from "../components/AppPageShell.vue";
-import { useAppSessionNavigation } from "../composables/useAppSessionNavigation";
 import { useApplicationsPage } from "../composables/useApplicationsPage";
 
-const navigation = useAppSessionNavigation("applications");
 const page = useApplicationsPage();
+void page.load();
 </script>
 
 <template>
-  <AppPageShell
-    :title="navigation.title"
-    :user-email="navigation.userEmail.value"
-    :nav-items="navigation.navItems"
-    @navigate="navigation.navigate"
-    @logout="navigation.logout"
-  >
+  <AppPageShell>
     <section class="card">
       <h2>创建应用</h2>
       <div class="form">
@@ -67,70 +60,23 @@ const page = useApplicationsPage();
 </template>
 
 <style scoped>
-.card {
-  border: 1px solid #eee;
-  border-radius: 10px;
-  padding: 16px;
-  margin-bottom: 16px;
-}
-
-.card-head,
 .form {
   display: flex;
   gap: 8px;
   align-items: center;
-}
-
-.form {
   flex-wrap: wrap;
 }
 
 input {
   flex: 1;
   min-width: 180px;
-  padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-}
-
-.btn {
-  padding: 10px 12px;
-  border: none;
-  border-radius: 8px;
-  background: #111;
-  color: #fff;
-  cursor: pointer;
-}
-
-.btn.secondary {
-  background: #444;
 }
 
 .table {
-  width: 100%;
-  border-collapse: collapse;
   margin-top: 12px;
 }
 
-.table th,
-.table td {
-  border-top: 1px solid #eee;
-  padding: 10px 8px;
-  text-align: left;
-}
-
-.mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
-    monospace;
-  font-size: 12px;
-}
-
-.sub {
-  color: #666;
-}
-
 .error {
-  color: #c00;
   margin-top: 8px;
 }
 </style>

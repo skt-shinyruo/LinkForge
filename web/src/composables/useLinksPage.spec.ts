@@ -4,34 +4,42 @@ import type { DomainDto, LinkDto, PageResponse } from "../services/types";
 
 const listLinksMock = vi.hoisted(() => vi.fn());
 const listDomainsForApplicationMock = vi.hoisted(() => vi.fn());
-const useLinkImportExportMock = vi.hoisted(() => vi.fn());
-const useLinkMutationsMock = vi.hoisted(() => vi.fn());
+const importLinksCsvMock = vi.hoisted(() => vi.fn());
+const updateLinkMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../services/links", () => ({
+  archiveLink: vi.fn(),
+  createLink: vi.fn(),
+  deleteLink: vi.fn(),
+  exportLinksCsv: vi.fn(),
+  importLinksCsv: importLinksCsvMock,
   listLinks: listLinksMock,
+  restoreLink: vi.fn(),
+  updateLink: updateLinkMock,
 }));
 
 vi.mock("../services/domains", () => ({
   listDomainsForApplication: listDomainsForApplicationMock,
 }));
 
-vi.mock("./links/useLinkImportExport", () => ({
-  useLinkImportExport: useLinkImportExportMock,
-}));
-
-vi.mock("./links/useLinkMutations", () => ({
-  useLinkMutations: useLinkMutationsMock,
-}));
-
 type LinksPagePublic = {
+  editForm: { originalUrl: string };
+  editingId: { value: number | null };
+  error: { value: string | null };
   filters: { showArchived: boolean; keyword: string };
+  importResult: { value: { success: number; failed: number; errors: string[] } | null };
   items: { value: LinkDto[] };
   page: { value: number };
+  selectedApplicationId: { value: number | null };
+  selectedDomainId: { value: number | null };
   size: { value: number };
   total: { value: number };
   availableDomains: { value: DomainDto[] };
+  importCsv: () => Promise<void>;
   load: () => Promise<void>;
+  saveEdit: () => Promise<void>;
   setArchived: (value: boolean) => Promise<void> | void;
+  setImportFile: (file: File | null) => void;
   setKeyword: (value: string) => void;
   setSelectedApplicationId: (value: number | null) => Promise<void>;
 };
@@ -64,26 +72,8 @@ describe("useLinksPage", () => {
     setActivePinia(createPinia());
     listLinksMock.mockReset();
     listDomainsForApplicationMock.mockReset();
-    useLinkMutationsMock.mockReset();
-    useLinkImportExportMock.mockReset();
-
-    useLinkMutationsMock.mockReturnValue({
-      archiveLink: vi.fn(),
-      cancelEdit: vi.fn(),
-      createLink: vi.fn(),
-      deleteLink: vi.fn(),
-      restoreLink: vi.fn(),
-      saveEdit: vi.fn(),
-      startEdit: vi.fn(),
-      toggleEnabled: vi.fn(),
-    });
-
-    useLinkImportExportMock.mockReturnValue({
-      exportCsv: vi.fn(),
-      importCsv: vi.fn(),
-      importFileName: { value: "" },
-      setImportFile: vi.fn(),
-    });
+    importLinksCsvMock.mockReset();
+    updateLinkMock.mockReset();
   });
 
   it("requests the selected page instead of hardcoding page=0,size=50", async () => {
@@ -224,5 +214,45 @@ describe("useLinksPage", () => {
     await firstSelection;
 
     expect(page.availableDomains.value.map((domain) => domain.id)).toEqual([220]);
+  });
+
+  it("surfaces pending approval after saving a destination change", async () => {
+    listLinksMock.mockResolvedValue(createPageResponse());
+    updateLinkMock.mockResolvedValueOnce({
+      ...createLink(101),
+      pendingApproval: true,
+      approvalRequestId: 7001,
+    });
+
+    const { useLinksPage } = await import("./useLinksPage");
+    const page = useLinksPage() as unknown as LinksPagePublic;
+    page.editingId.value = 101;
+    page.editForm.originalUrl = "https://example.com/new";
+
+    await page.saveEdit();
+
+    expect(page.editingId.value).toBeNull();
+    expect(page.error.value).toBe("目标地址变更已提交审批（#7001），审批通过后生效");
+    expect(listLinksMock).toHaveBeenCalledOnce();
+  });
+
+  it("imports CSV in the selected application and domain scope", async () => {
+    listLinksMock.mockResolvedValue(createPageResponse());
+    importLinksCsvMock.mockResolvedValueOnce({ success: 2, failed: 1, errors: ["row 3"] });
+
+    const { useLinksPage } = await import("./useLinksPage");
+    const page = useLinksPage() as unknown as LinksPagePublic;
+    const file = new File(["originalUrl\nhttps://example.com"], "links.csv");
+    page.selectedApplicationId.value = 2001;
+    page.selectedDomainId.value = 3001;
+    page.setImportFile(file);
+
+    await page.importCsv();
+
+    expect(importLinksCsvMock).toHaveBeenCalledWith(file, {
+      applicationId: 2001,
+      domainId: 3001,
+    });
+    expect(page.importResult.value).toEqual({ success: 2, failed: 1, errors: ["row 3"] });
   });
 });

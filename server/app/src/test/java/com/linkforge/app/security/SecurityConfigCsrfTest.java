@@ -52,8 +52,6 @@ import static org.mockito.Mockito.when;
         SecurityConfig.class,
         OpenApiSecurityConfig.class,
         ApiSecurityConfig.class,
-        RestAuthenticationEntryPoint.class,
-        RestAccessDeniedHandler.class,
         ApiErrorResponseWriter.class,
         SecurityConfigCsrfTest.TestSecurityBeans.class
 })

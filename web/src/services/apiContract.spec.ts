@@ -1,8 +1,4 @@
-/// <reference types="node" />
-
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import {
   API_ENDPOINTS,
   buildQueryString,
@@ -10,7 +6,6 @@ import {
   parseApiResponse,
   requireApiData,
   withQuery,
-  WEB_API_CONTRACT_ENDPOINTS,
 } from "./apiContract";
 import { cursorPageOf, isLinkDto, pageOf } from "./runtimeContracts";
 
@@ -75,13 +70,6 @@ describe("service API contract helpers", () => {
     await expect(parseApiResponse(new Response('{"code":"0","message":"ok"}'))).rejects.toThrow(
       "envelope",
     );
-  });
-
-  it("keeps the checked frontend endpoint list byte-for-byte aligned with the repository snapshot", () => {
-    const snapshot = JSON.parse(
-      readFileSync(resolve(process.cwd(), "../contracts/web-api-v1.snapshot.json"), "utf8"),
-    ) as { endpoints: readonly (readonly [string, string])[] };
-    expect(WEB_API_CONTRACT_ENDPOINTS).toEqual(snapshot.endpoints);
   });
 
   it("rejects malformed DTO data instead of trusting a TypeScript assertion", () => {

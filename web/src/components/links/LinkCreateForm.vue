@@ -127,13 +127,6 @@ function onImportFileChange(event: Event) {
 </template>
 
 <style scoped>
-.card {
-  border: 1px solid #eee;
-  border-radius: 10px;
-  padding: 16px;
-  margin-bottom: 16px;
-}
-
 .form {
   display: grid;
   grid-template-columns: 1fr 1fr auto;
@@ -156,31 +149,9 @@ function onImportFileChange(event: Event) {
   margin-top: 10px;
 }
 
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.field.checkbox {
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-}
-
-.field.span2 {
-  grid-column: 1 / -1;
-}
-
-.label {
-  font-size: 12px;
-  color: #444;
-}
-
 .hint,
 .sub {
   font-size: 12px;
-  color: #666;
 }
 
 .bulk {
@@ -190,34 +161,7 @@ function onImportFileChange(event: Event) {
   flex-wrap: wrap;
 }
 
-input,
-select,
-textarea {
-  padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  font: inherit;
-}
-
-textarea {
-  resize: vertical;
-}
-
-.btn {
-  padding: 10px 12px;
-  border: none;
-  border-radius: 8px;
-  background: #111;
-  color: #fff;
-  cursor: pointer;
-}
-
-.btn.secondary {
-  background: #444;
-}
-
 .error {
-  color: #c00;
   margin: 8px 0 0;
 }
 

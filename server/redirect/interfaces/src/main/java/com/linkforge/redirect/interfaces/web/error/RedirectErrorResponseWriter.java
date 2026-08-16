@@ -9,6 +9,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.web.util.HtmlUtils;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -86,8 +87,8 @@ public class RedirectErrorResponseWriter {
      */
     private static String renderHtml(int httpStatus, String message, String requestId) {
         String title = httpStatus == 429 ? "请求过于频繁" : "请求被拒绝";
-        String msg = message == null || message.isBlank() ? "请求无法处理。" : escapeHtml(message);
-        String rid = requestId == null ? "" : escapeHtml(requestId);
+        String msg = message == null || message.isBlank() ? "请求无法处理。" : HtmlUtils.htmlEscape(message);
+        String rid = requestId == null ? "" : HtmlUtils.htmlEscape(requestId);
         return """
                 <!doctype html>
                 <html lang="zh-CN">
@@ -111,17 +112,6 @@ public class RedirectErrorResponseWriter {
                     </div>
                   </body>
                 </html>
-                """.formatted(escapeHtml(title), escapeHtml(title), msg, rid);
-    }
-
-    private static String escapeHtml(String s) {
-        if (s == null) {
-            return "";
-        }
-        return s.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;")
-                .replace("'", "&#39;");
+                """.formatted(HtmlUtils.htmlEscape(title), HtmlUtils.htmlEscape(title), msg, rid);
     }
 }

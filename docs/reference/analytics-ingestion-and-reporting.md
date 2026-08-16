@@ -227,8 +227,8 @@ DLQ writer 不向调度线程传播 Redis 异常，但会返回持久化结果�
   - 维度统计落 MySQL。
 - `server/analytics/infrastructure/src/main/java/com/linkforge/analytics/infrastructure/job/AnalyticsEventIngestJob.java`
   - 访问明细消费、采样、poison 隔离。
-- `server/analytics/infrastructure/src/main/java/com/linkforge/analytics/infrastructure/query/AnalyticsQueryServiceImpl.java`
-  - MySQL 读模型查询实现。
+- `server/analytics/infrastructure/src/main/java/com/linkforge/analytics/infrastructure/persistence/AnalyticsQueryRepository.java`
+  - MySQL 读模型查询及 nullable row 规范化实现。
 - `server/analytics/application/src/main/java/com/linkforge/analytics/application/AnalyticsReportingApplicationService.java`
   - 报表应用服务，补齐 Top 链接摘要。
 - `server/analytics/application/src/main/java/com/linkforge/analytics/application/AnalyticsExportRequestService.java`

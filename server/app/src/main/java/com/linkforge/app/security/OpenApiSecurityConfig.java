@@ -10,6 +10,8 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
@@ -26,8 +28,8 @@ public class OpenApiSecurityConfig {
     @Order(1)
     public SecurityFilterChain openApiSecurityFilterChain(
             HttpSecurity http,
-            RestAuthenticationEntryPoint restAuthenticationEntryPoint,
-            RestAccessDeniedHandler restAccessDeniedHandler,
+            AuthenticationEntryPoint restAuthenticationEntryPoint,
+            AccessDeniedHandler restAccessDeniedHandler,
             ApiKeyAuthenticator apiKeyService,
             AccountStatusVerifier accountStatusService,
             ApiErrorResponseWriter errorResponseWriter

@@ -4,7 +4,7 @@ import com.linkforge.analytics.application.AnalyticsExportRequestService;
 import com.linkforge.analytics.application.AnalyticsLinkEventsService;
 import com.linkforge.analytics.application.AnalyticsQueryService;
 import com.linkforge.analytics.application.ReportRange;
-import com.linkforge.analytics.application.AnalyticsReportingService;
+import com.linkforge.analytics.application.AnalyticsReportingApplicationService;
 import com.linkforge.contract.api.ApiResponse;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
@@ -45,7 +45,7 @@ import java.util.Set;
 public class StatsController {
 
     private final AnalyticsQueryService queryService;
-    private final AnalyticsReportingService reportingService;
+    private final AnalyticsReportingApplicationService reportingService;
     private final AnalyticsLinkEventsService linkEventsService;
     private final AnalyticsExportRequestService exportRequestService;
     private final PrincipalActorMapper principalActorMapper;
@@ -63,7 +63,7 @@ public class StatsController {
 
     public StatsController(
             AnalyticsQueryService queryService,
-            AnalyticsReportingService reportingService,
+            AnalyticsReportingApplicationService reportingService,
             AnalyticsLinkEventsService linkEventsService,
             AnalyticsExportRequestService exportRequestService,
             PrincipalActorMapper principalActorMapper

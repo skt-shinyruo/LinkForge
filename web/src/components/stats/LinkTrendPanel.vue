@@ -28,7 +28,7 @@ defineEmits<{
 
 <template>
   <section class="card">
-    <div class="cardHead">
+    <div class="card-head">
       <h2>单短链趋势（PV / UV）</h2>
       <button class="btn small secondary" :disabled="!selectedLinkId || linkStats.length === 0" @click="$emit('toggle')">
         {{ showLinkChart ? "收起图表" : "显示图表" }}
@@ -103,23 +103,11 @@ defineEmits<{
 
 <style scoped>
 .sub {
-  color: #666;
   margin: 4px 0 0;
 }
 
-.card {
-  border: 1px solid #eee;
-  border-radius: 10px;
-  padding: 16px;
-  margin-bottom: 16px;
-}
-
-.cardHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.card-head {
   gap: 12px;
-  flex-wrap: wrap;
 }
 
 .field {
@@ -139,9 +127,6 @@ defineEmits<{
 
 .linkSearch input {
   min-width: 0;
-  padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
 }
 
 .loadMore {
@@ -157,7 +142,6 @@ defineEmits<{
 }
 
 .error {
-  color: #c00;
   margin-bottom: 8px;
 }
 
@@ -165,45 +149,5 @@ select {
   inline-size: 100%;
   min-inline-size: 0;
   max-inline-size: 100%;
-  padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-}
-
-.btn {
-  padding: 10px 12px;
-  border: none;
-  border-radius: 8px;
-  background: #111;
-  color: #fff;
-  cursor: pointer;
-}
-
-.btn.secondary {
-  background: #444;
-}
-
-.btn.small {
-  padding: 6px 10px;
-  font-size: 12px;
-}
-
-.table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.table th,
-.table td {
-  border-top: 1px solid #eee;
-  padding: 10px 8px;
-  text-align: left;
-  vertical-align: top;
-}
-
-.mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
-    monospace;
-  font-size: 12px;
 }
 </style>

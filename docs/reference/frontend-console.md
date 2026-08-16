@@ -156,18 +156,15 @@ services 只负责 HTTP transport，不持有页面状态，也不在各文件�
   - 管理筛选条件、应用选择、域名选择、创建和编辑表单。
   - 租户管理员选择应用后加载该应用可用域名。
   - 导入时如果选择应用，必须选择域名。
-- `web/src/composables/links/useLinkMutations.ts`
   - 创建时从表单构造 payload，当前选择应用时注入 applicationId/domainId。
   - 启用/禁用、编辑前检查未归档。
   - 删除前要求短链已归档。
+  - CSV 导入使用 `FormData`；导出拿 Blob 并下载 `links.csv`。
 - `web/src/composables/links/linkFormCodec.ts`
   - 标签和 query allowlist 支持逗号或换行分隔、去重。
   - `datetime-local` 按浏览器时区解释，再转 UTC ISO instant。
   - 编辑时空过期时间、状态码、query mode 转成对应 clear flag，且不会同时发送值与 clear。
   - 空 allowlist/tags 发送空数组，表示显式清空；创建时空可选字段则省略。
-- `web/src/composables/links/useLinkImportExport.ts`
-  - CSV 导入用 `FormData`。
-  - 导出拿 Blob 并下载 `links.csv`。
 - `web/src/composables/useStatsPage.ts`
   - 默认 7 天，也支持 30 天。
   - 租户管理员可选应用范围。
@@ -187,8 +184,8 @@ services 只负责 HTTP transport，不持有页面状态，也不在各文件�
   - 审批列表、审批原因、审批成功后刷新；下一页按不透明 cursor 追加，不回退到全量加载。
 - `web/src/composables/useAuditPage.ts`
   - 审计日志首屏和按 cursor 继续加载。
-- `web/src/composables/useAppSessionNavigation.ts`
-  - 页面 shell 的登出和导航状态。
+- `web/src/router/index.ts` 与 `web/src/components/AppPageShell.vue`
+  - route meta 是页面标题、导航顺序和角色可见性的事实源；页面 shell 负责渲染导航和登出。
 
 ## 典型页面流转
 

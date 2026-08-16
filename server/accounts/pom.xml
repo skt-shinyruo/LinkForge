@@ -17,7 +17,6 @@
     <description>Accounts bounded context</description>
 
     <modules>
-        <module>domain</module>
         <module>application</module>
         <module>infrastructure</module>
         <module>interfaces</module>

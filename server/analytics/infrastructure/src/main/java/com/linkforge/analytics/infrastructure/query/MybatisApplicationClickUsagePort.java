@@ -1,7 +1,7 @@
 package com.linkforge.analytics.infrastructure.query;
 
 import com.linkforge.contract.analytics.ApplicationClickUsagePort;
-import com.linkforge.analytics.infrastructure.persistence.AnalyticsQueryRepository;
+import com.linkforge.analytics.infrastructure.persistence.mapper.AnalyticsQueryMapper;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -15,10 +15,10 @@ import java.time.LocalDate;
 @Component
 public class MybatisApplicationClickUsagePort implements ApplicationClickUsagePort {
 
-    private final AnalyticsQueryRepository queryRepository;
+    private final AnalyticsQueryMapper queryMapper;
 
-    public MybatisApplicationClickUsagePort(AnalyticsQueryRepository queryRepository) {
-        this.queryRepository = queryRepository;
+    public MybatisApplicationClickUsagePort(AnalyticsQueryMapper queryMapper) {
+        this.queryMapper = queryMapper;
     }
 
     /** 返回指定 UTC 半开区间内应用所属链接 PV 的总和。 */
@@ -33,6 +33,7 @@ public class MybatisApplicationClickUsagePort implements ApplicationClickUsagePo
                 || !toExclusiveUtc.isAfter(fromInclusiveUtc)) {
             return 0L;
         }
-        return queryRepository.countApplicationPv(tenantId, applicationId, fromInclusiveUtc, toExclusiveUtc);
+        Long count = queryMapper.countApplicationPv(tenantId, applicationId, fromInclusiveUtc, toExclusiveUtc);
+        return count == null ? 0L : count;
     }
 }

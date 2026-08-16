@@ -17,7 +17,7 @@ defineEmits<{
 
 <template>
   <section class="card">
-    <div class="cardHead">
+    <div class="card-head">
       <h2>租户趋势（PV / UV）</h2>
       <button class="btn small secondary" :disabled="overviewStats.length === 0" @click="$emit('toggle')">
         {{ showOverviewChart ? "收起图表" : "显示图表" }}
@@ -40,40 +40,10 @@ defineEmits<{
 
 <style scoped>
 .sub {
-  color: #666;
   margin: 4px 0 0;
 }
 
-.card {
-  border: 1px solid #eee;
-  border-radius: 10px;
-  padding: 16px;
-  margin-bottom: 16px;
-}
-
-.cardHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.card-head {
   gap: 12px;
-  flex-wrap: wrap;
-}
-
-.btn {
-  padding: 10px 12px;
-  border: none;
-  border-radius: 8px;
-  background: #111;
-  color: #fff;
-  cursor: pointer;
-}
-
-.btn.secondary {
-  background: #444;
-}
-
-.btn.small {
-  padding: 6px 10px;
-  font-size: 12px;
 }
 </style>

@@ -1,6 +1,6 @@
 package com.linkforge.analytics.infrastructure.quota;
 
-import com.linkforge.analytics.infrastructure.persistence.AnalyticsQueryRepository;
+import com.linkforge.analytics.infrastructure.persistence.mapper.AnalyticsQueryMapper;
 import com.linkforge.contract.analytics.AnalyticsKeys;
 import com.linkforge.contract.analytics.ApplicationClickQuotaReservationPort;
 import org.slf4j.Logger;
@@ -95,14 +95,14 @@ public class RedisApplicationClickQuotaReservationPort implements ApplicationCli
     );
 
     private final StringRedisTemplate redis;
-    private final AnalyticsQueryRepository queryRepository;
+    private final AnalyticsQueryMapper queryMapper;
 
     public RedisApplicationClickQuotaReservationPort(
             StringRedisTemplate redis,
-            AnalyticsQueryRepository queryRepository
+            AnalyticsQueryMapper queryMapper
     ) {
         this.redis = redis;
-        this.queryRepository = queryRepository;
+        this.queryMapper = queryMapper;
     }
 
     /**
@@ -175,12 +175,13 @@ public class RedisApplicationClickQuotaReservationPort implements ApplicationCli
 
         long baseline;
         try {
-            baseline = Math.max(0L, queryRepository.countApplicationPv(
+            Long persisted = queryMapper.countApplicationPv(
                     tenantId,
                     applicationId,
                     fromInclusiveUtc,
                     toExclusiveUtc
-            ));
+            );
+            baseline = Math.max(0L, persisted == null ? 0L : persisted);
         } catch (Exception e) {
             log.debug(
                     "application click quota baseline query failed; allow redirect: tenantId={}, applicationId={}, monthStart={}, err={}",

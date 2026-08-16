@@ -3,7 +3,7 @@ package com.linkforge.app.api.error;
 import com.linkforge.analytics.application.AnalyticsExportRequestService;
 import com.linkforge.analytics.application.AnalyticsLinkEventsService;
 import com.linkforge.analytics.application.AnalyticsQueryService;
-import com.linkforge.analytics.application.AnalyticsReportingService;
+import com.linkforge.analytics.application.AnalyticsReportingApplicationService;
 import com.linkforge.analytics.interfaces.web.StatsController;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.runtime.security.PrincipalActorMapper;
@@ -44,7 +44,7 @@ class StatsDateRangeHttpContractTest {
         queryService = mock(AnalyticsQueryService.class);
         StatsController controller = new StatsController(
                 queryService,
-                mock(AnalyticsReportingService.class),
+                mock(AnalyticsReportingApplicationService.class),
                 mock(AnalyticsLinkEventsService.class),
                 mock(AnalyticsExportRequestService.class),
                 mock(PrincipalActorMapper.class)

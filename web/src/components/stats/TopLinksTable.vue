@@ -19,7 +19,7 @@ defineEmits<{
 
 <template>
   <section class="card">
-    <div class="cardHead">
+    <div class="card-head">
       <h2>Top 链接（按 {{ topSortBy.toUpperCase() }}）</h2>
       <div class="range">
         <span class="label">排序</span>
@@ -76,69 +76,23 @@ defineEmits<{
 
 <style scoped>
 .sub {
-  color: #666;
   margin: 4px 0 0;
 }
 
-.card {
-  border: 1px solid #eee;
-  border-radius: 10px;
-  padding: 16px;
-  margin-bottom: 16px;
+.card-head {
+  gap: 12px;
 }
 
-.cardHead,
 .range {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  justify-content: space-between;
 }
 
 .label {
   font-size: 14px;
   color: #111;
-}
-
-.btn {
-  padding: 10px 12px;
-  border: none;
-  border-radius: 8px;
-  background: #111;
-  color: #fff;
-  cursor: pointer;
-}
-
-.btn.secondary {
-  background: #444;
-}
-
-.btn.small {
-  padding: 6px 10px;
-  font-size: 12px;
-}
-
-.btn.active {
-  background: #111;
-}
-
-.table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.table th,
-.table td {
-  border-top: 1px solid #eee;
-  padding: 10px 8px;
-  text-align: left;
-  vertical-align: top;
-}
-
-.mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
-    monospace;
-  font-size: 12px;
 }
 </style>

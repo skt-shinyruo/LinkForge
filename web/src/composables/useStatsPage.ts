@@ -1,4 +1,4 @@
-import { computed, getCurrentInstance, onMounted, ref } from "vue";
+import { computed, ref } from "vue";
 import { listApplications } from "../services/applications";
 import { listLinks } from "../services/links";
 import { useAuthStore } from "../stores/auth";
@@ -8,18 +8,11 @@ import { useLatestRequest } from "./useLatestRequest";
 
 const LINK_OPTIONS_PAGE_SIZE = 20;
 
-function toDateUTCString(date: Date) {
-  const yyyy = date.getUTCFullYear();
-  const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(date.getUTCDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
 function calcRange(days: number) {
   const to = new Date();
   const from = new Date(to.getTime());
   from.setUTCDate(from.getUTCDate() - (days - 1));
-  return { from: toDateUTCString(from), to: toDateUTCString(to) };
+  return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
 }
 
 function getErrorMessage(caught: unknown, fallbackMessage: string) {
@@ -35,10 +28,10 @@ function getErrorMessage(caught: unknown, fallbackMessage: string) {
  * 所有报表读取先形成局部快照，再由 latest-request 控制器一次提交；快速切换不会混入旧响应。
  */
 export function useStatsPage() {
-  const latestOverview = useLatestRequest(getErrorMessage);
-  const latestLinkOptions = useLatestRequest(getErrorMessage);
-  const latestLinkTrend = useLatestRequest(getErrorMessage);
-  const latestTopLinks = useLatestRequest(getErrorMessage);
+  const latestOverview = useLatestRequest();
+  const latestLinkOptions = useLatestRequest();
+  const latestLinkTrend = useLatestRequest();
+  const latestTopLinks = useLatestRequest();
   const applicationError = ref<string | null>(null);
   const error = computed(() =>
     applicationError.value ||
@@ -262,25 +255,22 @@ export function useStatsPage() {
     }
   }
 
-  if (getCurrentInstance()) {
-    onMounted(() => {
-      void (async () => {
-        if (isTenantAdmin.value) {
-          try {
-            await loadApplications();
-          } catch (caught) {
-            applicationError.value = getErrorMessage(caught, "加载应用失败");
-          }
-        }
-        await searchLinks();
-        await refreshReports(false);
-      })();
-    });
+  async function init() {
+    if (isTenantAdmin.value) {
+      try {
+        await loadApplications();
+      } catch (caught) {
+        applicationError.value = getErrorMessage(caught, "加载应用失败");
+      }
+    }
+    await searchLinks();
+    await refreshReports(false);
   }
 
   return {
     applications,
     error,
+    init,
     linkChartLabels,
     linkChartSeries,
     linkStats,

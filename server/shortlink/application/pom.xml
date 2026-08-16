@@ -30,10 +30,6 @@
         </dependency>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-contract-redirect</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.linkforge</groupId>
             <artifactId>linkforge-contract-shortlink</artifactId>
         </dependency>
         <dependency>
@@ -45,11 +41,6 @@
             <artifactId>linkforge-contract-governance</artifactId>
         </dependency>
 
-        <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-csv</artifactId>
-            <version>${commons-csv.version}</version>
-        </dependency>
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-tx</artifactId>

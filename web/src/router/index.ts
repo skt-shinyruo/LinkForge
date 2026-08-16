@@ -1,6 +1,20 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 
+declare module "vue-router" {
+  interface RouteMeta {
+    title?: string;
+    navLabel?: string;
+    navOrder?: number;
+    navFrom?: string[];
+    navExclude?: string[];
+    primaryFrom?: string[];
+    requiresAuth?: boolean;
+    requiresAdmin?: boolean;
+    requiresTenantAdmin?: boolean;
+  }
+}
+
 const LoginView = () => import("../views/LoginView.vue");
 const TenantOverviewView = () => import("../views/TenantOverviewView.vue");
 const ApplicationsView = () => import("../views/ApplicationsView.vue");
@@ -23,29 +37,80 @@ export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: "/", redirect: "/links" },
-    { path: "/login", component: LoginView },
+    { path: "/login", name: "login", component: LoginView },
     {
       path: "/overview",
+      name: "overview",
       component: TenantOverviewView,
-      meta: { requiresAuth: true, requiresTenantAdmin: true },
+      meta: {
+        title: "租户概览",
+        navLabel: "概览",
+        navOrder: 1,
+        requiresAuth: true,
+        requiresTenantAdmin: true,
+      },
     },
     {
       path: "/applications",
+      name: "applications",
       component: ApplicationsView,
-      meta: { requiresAuth: true, requiresTenantAdmin: true },
+      meta: {
+        title: "应用管理",
+        navLabel: "应用",
+        navOrder: 2,
+        primaryFrom: ["overview", "application-detail"],
+        requiresAuth: true,
+        requiresTenantAdmin: true,
+      },
     },
     {
       path: "/applications/:applicationId",
+      name: "application-detail",
       component: ApplicationDetailView,
-      meta: { requiresAuth: true, requiresTenantAdmin: true },
+      meta: { title: "应用详情", requiresAuth: true, requiresTenantAdmin: true },
     },
-    { path: "/domains", component: DomainsView, meta: { requiresAuth: true, requiresTenantAdmin: true } },
-    { path: "/api-keys", component: ApiKeysView, meta: { requiresAuth: true, requiresTenantAdmin: true } },
-    { path: "/approvals", component: ApprovalsView, meta: { requiresAuth: true, requiresAdmin: true } },
-    { path: "/audit", component: AuditView, meta: { requiresAuth: true, requiresAdmin: true } },
-    { path: "/links", component: LinksView, meta: { requiresAuth: true } },
-    { path: "/tags", component: TagsView, meta: { requiresAuth: true } },
-    { path: "/stats", component: StatsView, meta: { requiresAuth: true } },
+    {
+      path: "/domains",
+      name: "domains",
+      component: DomainsView,
+      meta: { title: "域名管理", navLabel: "域名", navOrder: 3, requiresAuth: true, requiresTenantAdmin: true },
+    },
+    {
+      path: "/api-keys",
+      name: "api-keys",
+      component: ApiKeysView,
+      meta: { title: "API Key 管理", navLabel: "API Keys", navOrder: 4, requiresAuth: true, requiresTenantAdmin: true },
+    },
+    {
+      path: "/links",
+      name: "links",
+      component: LinksView,
+      meta: { title: "短链管理", navLabel: "短链", navOrder: 5, requiresAuth: true },
+    },
+    {
+      path: "/stats",
+      name: "stats",
+      component: StatsView,
+      meta: { title: "统计看板", navLabel: "统计", navOrder: 6, primaryFrom: ["links"], requiresAuth: true },
+    },
+    {
+      path: "/approvals",
+      name: "approvals",
+      component: ApprovalsView,
+      meta: { title: "审批中心", navLabel: "审批", navOrder: 7, navExclude: ["application-detail"], requiresAuth: true, requiresAdmin: true },
+    },
+    {
+      path: "/audit",
+      name: "audit",
+      component: AuditView,
+      meta: { title: "审计日志", navLabel: "审计", navOrder: 8, navExclude: ["application-detail"], requiresAuth: true, requiresAdmin: true },
+    },
+    {
+      path: "/tags",
+      name: "tags",
+      component: TagsView,
+      meta: { title: "标签管理", navLabel: "标签", navOrder: 9, navFrom: ["links", "stats"], requiresAuth: true },
+    },
   ],
 });
 

@@ -36,12 +36,7 @@ import java.util.List;
  * 调用方必须先完成认证与授权，不能直接暴露为绕过主体作用域检查的 HTTP 接口。</p>
  */
 @Service
-public class ShortLinkApplicationService implements
-        ShortLinkCreationUseCase,
-        ShortLinkQueryUseCase,
-        ShortLinkLifecycleUseCase,
-        ShortLinkCsvUseCase,
-        ShortLinkTagUseCase {
+public class ShortLinkApplicationService {
 
     private final CreateShortLinkCommandHandler createHandler;
     private final UpdateShortLinkCommandHandler updateHandler;
@@ -84,19 +79,16 @@ public class ShortLinkApplicationService implements
         this.actorScopeResolver = actorScopeResolver;
     }
 
-    @Override
     public LinkDto createForUser(UserActor actor, ScopedCreateLinkRequest request) {
         CreateLinkRequest scopedRequest = actorScopeResolver.resolveCreateForUser(actor, request);
         return create(actor.tenantId(), CreatedBy.user(actor.userId()), scopedRequest);
     }
 
-    @Override
     public LinkDto createForApiKey(ApiKeyActor actor, ScopedCreateLinkRequest request) {
         CreateLinkRequest scopedRequest = actorScopeResolver.resolveCreateForApiKey(actor, request);
         return create(actor.tenantId(), CreatedBy.apiKey(actor.apiKeyId()), scopedRequest);
     }
 
-    @Override
     public PageResult<LinkDto> browseForUser(UserActor actor, BrowseLinksRequest request) {
         return browse(
                 actor.tenantId(),
@@ -106,7 +98,6 @@ public class ShortLinkApplicationService implements
         );
     }
 
-    @Override
     public PageResult<LinkDto> browseForApiKey(ApiKeyActor actor, BrowseLinksRequest request) {
         return browse(
                 actor.tenantId(),
@@ -116,12 +107,10 @@ public class ShortLinkApplicationService implements
         );
     }
 
-    @Override
     public ImportResult importCsv(UserActor actor, List<ShortLinkCsvImportRow> rows) {
         return importCsv(actor.tenantId(), CreatedBy.user(actor.userId()), rows);
     }
 
-    @Override
     public ImportResult importCsv(UserActor actor, ScopedImportCsvRequest request) {
         ShortLinkActorScopeResolver.ImportScope scope = actorScopeResolver.resolveImportForUser(actor, request);
         if (scope.applicationId() == null) {
@@ -136,7 +125,6 @@ public class ShortLinkApplicationService implements
         );
     }
 
-    @Override
     public ShortLinkCsvExport exportCsvForUser(UserActor actor, BrowseLinksRequest request) {
         return exportCsv(
                 actor.tenantId(),
@@ -145,12 +133,10 @@ public class ShortLinkApplicationService implements
         );
     }
 
-    @Override
     public LinkDto create(long tenantId, CreatedBy createdBy, CreateLinkRequest req) {
         return createHandler.handle(tenantId, createdBy, req);
     }
 
-    @Override
     public PageResult<LinkDto> search(long tenantId, ShortLinkSearchQuery query, PageQuery pageQuery) {
         return searchHandler.handle(tenantId, query, pageQuery);
     }
@@ -167,52 +153,42 @@ public class ShortLinkApplicationService implements
         return searchHandler.handle(tenantId, query, pageQuery, request.includeTotal(), request.cursor());
     }
 
-    @Override
     public LinkDto detail(long tenantId, long linkId) {
         return detailHandler.handle(tenantId, linkId);
     }
 
-    @Override
     public LinkDto detailForUser(UserActor actor, long linkId) {
         return detailHandler.handle(actor, linkId);
     }
 
-    @Override
     public LinkDto archive(long tenantId, long linkId) {
         return archiveHandler.handle(tenantId, linkId);
     }
 
-    @Override
     public LinkDto restore(long tenantId, long linkId) {
         return restoreHandler.handle(tenantId, linkId);
     }
 
-    @Override
     public void delete(long tenantId, long linkId) {
         deleteHandler.handle(tenantId, linkId);
     }
 
-    @Override
     public LinkDto update(long tenantId, long linkId, UpdateLinkRequest req, UserActor actor, LocalDateTime requestedAt) {
         return updateHandler.handle(tenantId, linkId, req, actor, requestedAt);
     }
 
-    @Override
     public List<TagDto> listTags(long tenantId) {
         return listTagsHandler.handle(tenantId);
     }
 
-    @Override
     public TagDto createTag(long tenantId, String name) {
         return createTagHandler.handle(tenantId, name);
     }
 
-    @Override
     public ImportResult importCsv(long tenantId, CreatedBy createdBy, List<ShortLinkCsvImportRow> rows) {
         return importCsvHandler.handle(tenantId, createdBy, rows);
     }
 
-    @Override
     public ShortLinkCsvExport exportCsv(long tenantId, ShortLinkSearchQuery query, PageQuery pageQuery) {
         return exportCsvHandler.handle(tenantId, query, pageQuery);
     }

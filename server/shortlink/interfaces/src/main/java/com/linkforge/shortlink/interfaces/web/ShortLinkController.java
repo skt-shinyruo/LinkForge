@@ -12,10 +12,7 @@ import com.linkforge.shortlink.application.ImportResult;
 import com.linkforge.shortlink.application.LinkDto;
 import com.linkforge.shortlink.application.ScopedCreateLinkRequest;
 import com.linkforge.shortlink.application.ScopedImportCsvRequest;
-import com.linkforge.shortlink.application.ShortLinkCreationUseCase;
-import com.linkforge.shortlink.application.ShortLinkCsvUseCase;
-import com.linkforge.shortlink.application.ShortLinkLifecycleUseCase;
-import com.linkforge.shortlink.application.ShortLinkQueryUseCase;
+import com.linkforge.shortlink.application.ShortLinkApplicationService;
 import com.linkforge.shortlink.application.csv.ShortLinkCsvExport;
 import com.linkforge.shortlink.interfaces.web.dto.ImportHttpResponse;
 import com.linkforge.shortlink.interfaces.web.dto.ShortLinkCreateHttpRequest;
@@ -44,27 +41,18 @@ import java.time.ZoneOffset;
 @RequestMapping("/api/v1")
 public class ShortLinkController {
 
-    private final ShortLinkCreationUseCase shortLinkCreationUseCase;
-    private final ShortLinkQueryUseCase shortLinkQueryUseCase;
-    private final ShortLinkLifecycleUseCase shortLinkLifecycleUseCase;
-    private final ShortLinkCsvUseCase shortLinkCsvUseCase;
+    private final ShortLinkApplicationService shortLinkService;
     private final ShortLinkWriteGuard writeGuard;
     private final PrincipalActorMapper principalActorMapper;
     private final ShortLinkCsvHttpMapper shortLinkCsvHttpMapper;
 
     public ShortLinkController(
-            ShortLinkCreationUseCase shortLinkCreationUseCase,
-            ShortLinkQueryUseCase shortLinkQueryUseCase,
-            ShortLinkLifecycleUseCase shortLinkLifecycleUseCase,
-            ShortLinkCsvUseCase shortLinkCsvUseCase,
+            ShortLinkApplicationService shortLinkService,
             ShortLinkWriteGuard writeGuard,
             PrincipalActorMapper principalActorMapper,
             ShortLinkCsvHttpMapper shortLinkCsvHttpMapper
     ) {
-        this.shortLinkCreationUseCase = shortLinkCreationUseCase;
-        this.shortLinkQueryUseCase = shortLinkQueryUseCase;
-        this.shortLinkLifecycleUseCase = shortLinkLifecycleUseCase;
-        this.shortLinkCsvUseCase = shortLinkCsvUseCase;
+        this.shortLinkService = shortLinkService;
         this.writeGuard = writeGuard;
         this.principalActorMapper = principalActorMapper;
         this.shortLinkCsvHttpMapper = shortLinkCsvHttpMapper;
@@ -74,7 +62,7 @@ public class ShortLinkController {
     public ApiResponse<ShortLinkHttpResponse> create(@Valid @RequestBody ShortLinkCreateHttpRequest req) {
         writeGuard.requireWriteEnabled();
         UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
-        LinkDto dto = shortLinkCreationUseCase.createForUser(
+        LinkDto dto = shortLinkService.createForUser(
                 actor,
                 new ScopedCreateLinkRequest(ShortLinkHttpMapper.toCreateRequest(req), null)
         );
@@ -89,7 +77,7 @@ public class ShortLinkController {
     ) {
         writeGuard.requireWriteEnabled();
         UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
-        LinkDto dto = shortLinkCreationUseCase.createForUser(
+        LinkDto dto = shortLinkService.createForUser(
                 actor,
                 new ScopedCreateLinkRequest(ShortLinkHttpMapper.toCreateRequest(req), applicationId)
         );
@@ -109,7 +97,7 @@ public class ShortLinkController {
             @RequestParam(defaultValue = "true") boolean includeTotal
     ) {
         UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
-        PageResult<LinkDto> result = shortLinkQueryUseCase.browseForUser(
+        PageResult<LinkDto> result = shortLinkService.browseForUser(
                 actor,
                 new BrowseLinksRequest(
                         archived, enabled, keyword, tag, applicationId, null, page, size, 100, cursor, includeTotal
@@ -132,7 +120,7 @@ public class ShortLinkController {
             @RequestParam(defaultValue = "true") boolean includeTotal
     ) {
         UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
-        PageResult<LinkDto> result = shortLinkQueryUseCase.browseForUser(
+        PageResult<LinkDto> result = shortLinkService.browseForUser(
                 actor,
                 new BrowseLinksRequest(
                         archived, enabled, keyword, tag, null, applicationId, page, size, 100, cursor, includeTotal
@@ -145,7 +133,7 @@ public class ShortLinkController {
     public ApiResponse<ShortLinkHttpResponse> detail(@PathVariable("id") long id) {
         UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
         return ApiResponse.ok(
-                ShortLinkHttpMapper.toLinkResponse(shortLinkQueryUseCase.detailForUser(actor, id)),
+                ShortLinkHttpMapper.toLinkResponse(shortLinkService.detailForUser(actor, id)),
                 RequestId.get()
         );
     }
@@ -156,7 +144,7 @@ public class ShortLinkController {
         UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
         return ApiResponse.ok(
                 ShortLinkHttpMapper.toLinkResponse(
-                        shortLinkLifecycleUseCase.update(
+                        shortLinkService.update(
                                 actor.tenantId(),
                                 id,
                                 ShortLinkHttpMapper.toUpdateRequest(req),
@@ -174,7 +162,7 @@ public class ShortLinkController {
         writeGuard.requireWriteEnabled();
         AuthPrincipal p = AuthContext.requirePrincipal();
         return ApiResponse.ok(
-                ShortLinkHttpMapper.toLinkResponse(shortLinkLifecycleUseCase.archive(p.getTenantId(), id)),
+                ShortLinkHttpMapper.toLinkResponse(shortLinkService.archive(p.getTenantId(), id)),
                 RequestId.get()
         );
     }
@@ -185,7 +173,7 @@ public class ShortLinkController {
         writeGuard.requireWriteEnabled();
         AuthPrincipal p = AuthContext.requirePrincipal();
         return ApiResponse.ok(
-                ShortLinkHttpMapper.toLinkResponse(shortLinkLifecycleUseCase.restore(p.getTenantId(), id)),
+                ShortLinkHttpMapper.toLinkResponse(shortLinkService.restore(p.getTenantId(), id)),
                 RequestId.get()
         );
     }
@@ -195,7 +183,7 @@ public class ShortLinkController {
     public ApiResponse<Void> delete(@PathVariable("id") long id) {
         writeGuard.requireWriteEnabled();
         AuthPrincipal p = AuthContext.requirePrincipal();
-        shortLinkLifecycleUseCase.delete(p.getTenantId(), id);
+        shortLinkService.delete(p.getTenantId(), id);
         return ApiResponse.ok(null, RequestId.get());
     }
 
@@ -204,7 +192,7 @@ public class ShortLinkController {
     public ApiResponse<ImportHttpResponse> importCsv(@RequestParam("file") MultipartFile file) {
         writeGuard.requireWriteEnabled();
         UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
-        ImportResult result = shortLinkCsvUseCase.importCsv(actor, shortLinkCsvHttpMapper.parse(file));
+        ImportResult result = shortLinkService.importCsv(actor, shortLinkCsvHttpMapper.parse(file));
         return ApiResponse.ok(ShortLinkHttpMapper.toImportResponse(result), RequestId.get());
     }
 
@@ -217,7 +205,7 @@ public class ShortLinkController {
     ) {
         writeGuard.requireWriteEnabled();
         UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
-        ImportResult result = shortLinkCsvUseCase.importCsv(
+        ImportResult result = shortLinkService.importCsv(
                 actor,
                 new ScopedImportCsvRequest(shortLinkCsvHttpMapper.parse(file), applicationId, domainId)
         );
@@ -237,7 +225,7 @@ public class ShortLinkController {
             @RequestParam(defaultValue = "200") int size
     ) {
         UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
-        ShortLinkCsvExport export = shortLinkCsvUseCase.exportCsvForUser(
+        ShortLinkCsvExport export = shortLinkService.exportCsvForUser(
                 actor,
                 new BrowseLinksRequest(archived, enabled, keyword, tag, applicationId, null, page, size, 1000)
         );
@@ -257,7 +245,7 @@ public class ShortLinkController {
             @RequestParam(defaultValue = "200") int size
     ) {
         UserActor actor = principalActorMapper.requireUser(AuthContext.requirePrincipal());
-        ShortLinkCsvExport export = shortLinkCsvUseCase.exportCsvForUser(
+        ShortLinkCsvExport export = shortLinkService.exportCsvForUser(
                 actor,
                 new BrowseLinksRequest(archived, enabled, keyword, tag, null, applicationId, page, size, 1000)
         );

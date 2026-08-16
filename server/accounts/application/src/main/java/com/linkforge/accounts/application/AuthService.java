@@ -6,7 +6,6 @@ import com.linkforge.accounts.application.port.AccountsPasswordHasher;
 import com.linkforge.accounts.application.port.AccountsTokenIssuer;
 import com.linkforge.accounts.application.port.AccountsUserRoleStore;
 import com.linkforge.accounts.application.port.AccountsUserStore;
-import com.linkforge.accounts.domain.AccountsConstants;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.contract.accounts.AccountsErrorCode;

@@ -189,10 +189,7 @@ class ArchitectureTest {
                 )
                 .orShould()
                 .dependOnClassesThat()
-                .haveFullyQualifiedName("com.linkforge.foundation.runtime.security.AuthContext")
-                .orShould()
-                .dependOnClassesThat()
-                .haveFullyQualifiedName("com.linkforge.foundation.runtime.tx.AfterCommit");
+                .haveFullyQualifiedName("com.linkforge.foundation.runtime.security.AuthContext");
         rule.check(CLASSES);
     }
 

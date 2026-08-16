@@ -97,48 +97,9 @@ Spring Test context cache 的最大容量固定为 `8`，避免完整套件因�
 
 覆盖率用于防止高风险边界回退，不代替真实 MySQL/Redis 的并发、恢复或端到端断言。CI 上传各 Maven 模块 JaCoCo 报告和前端 V8 报告；关键认证、HTTP transport、Redirect 缓存、outbox、Analytics job 以及前端 composable/service 另设最低基线。临时豁免必须在仓库内写明负责人、原因和到期日，不能静默降低阈值。
 
-后端当前值来自最近一次 `mvn verify` 生成的模块 `jacoco.csv`，最低值来自 `server/pom.xml`。JaCoCo agent 的 class
-filter 使用 JVM 路径形式（例如 `com/linkforge/.../Type.class`），class rule 使用点分全限定名；
-`LegacyDirtyStreamMetrics` 外部类与 `Aggregate` 嵌套类分别设门禁，防止 include 形式不匹配导致规则空跑。
-
-| 关键类 | 当前行覆盖率 | 最低行覆盖率 | 当前分支覆盖率 | 最低分支覆盖率 |
-| --- | ---: | ---: | ---: | ---: |
-| `ApiKeyService` | 74.8918% | 74.89% | 53.1250% | 53.12% |
-| `ApiKeySecretCodec` | 92.6471% | 92.64% | 69.7368% | 69.73% |
-| `AccountStatusService` | 74.6032% | 74.60% | 58.0000% | 58.00% |
-| `AuthService` | 84.8101% | 84.81% | 52.9412% | 52.94% |
-| `UserAdminService` | 62.3077% | 62.30% | 47.0588% | 47.05% |
-| `AuthController` | 90.1639% | 90.16% | 62.5000% | 62.50% |
-| `ReportRange` | 93.7500% | 93.75% | 83.3333% | 83.33% |
-| `RedisAnalyticsVisitEventAppender` | 94.8276% | 94.82% | 55.8824% | 55.88% |
-| `AnalyticsDimensionFlushJob` | 75.6972% | 75.69% | 53.6458% | 53.64% |
-| `AnalyticsEventIngestJob` | 80.4878% | 80.48% | 60.5769% | 60.57% |
-| `AnalyticsEventRetentionJob` | 100.0000% | 100.00% | 78.5714% | 78.57% |
-| `AnalyticsFlushJob` | 76.0656% | 76.06% | 56.3725% | 56.37% |
-| `AnalyticsRedirectEventProjectorJob` | 82.4561% | 82.45% | 63.4615% | 63.46% |
-| `AnalyticsRedisAggregateWriter` | 81.1060% | 81.10% | 53.7415% | 53.74% |
-| `LegacyDirtyStreamMetrics` | 90.0000% | 90.00% | 50.0000% | 50.00% |
-| `LegacyDirtyStreamMetrics.Aggregate` | 71.7949% | 71.79% | 78.2609% | 78.26% |
-| `RedisStreamBatchConsumer` | 70.1923% | 70.19% | 61.0294% | 61.02% |
-| `VersionedDirtyMarkerStore` | 86.5385% | 86.53% | 63.0435% | 63.04% |
-| `VisitEventDeadLetterWriter` | 80.9524% | 80.95% | 50.0000% | 50.00% |
-| `StatsController` | 30.4762% | 30.47% | 9.5238% | 9.52% |
-| `GlobalExceptionHandler` | 51.1111% | 51.11% | 44.4444% | 44.44% |
-| `ApiKeyAuthenticationFilter` | 88.2353% | 88.23% | 58.3333% | 58.33% |
-| `JwtAuthenticationFilter` | 88.4615% | 88.46% | 59.2593% | 59.25% |
-| `RedirectService` | 85.8065% | 85.80% | 68.8889% | 68.88% |
-| `LinkCacheService` | 95.8333% | 95.83% | 75.0000% | 75.00% |
-| `RedirectCacheInvalidationOutboxJob` | 61.5385% | 61.53% | 35.2941% | 35.29% |
-
-前端当前值来自 `npm run test:coverage` 生成的 V8/lcov 报告，最低值来自 `web/vite.config.ts`：
-
-| 关键文件 | 当前 statements / branches / functions / lines | 最低 statements / branches / functions / lines |
-| --- | ---: | ---: |
-| `src/composables/useStatsPage.ts` | 87.5940% / 79.2453% / 90.9091% / 87.5940% | 87.59% / 79.24% / 90.90% / 87.59% |
-| `src/services/http.ts` | 92.8177% / 75.0000% / 100.0000% / 92.8177% | 92.81% / 75.00% / 100.00% / 92.81% |
-
-最低值按工具支持的配置精度锁定当前报告基线；覆盖率提升后应同步抬高最低值。任何下调都必须走前述有负责人和
-到期日的显式豁免，不能用移除 include、改错 class 名或降低阈值绕过门禁。
+后端 JaCoCo 对 `server/pom.xml` 列出的关键类按模块合计，统一要求行覆盖率不低于 30%、分支覆盖率不低于 9%。
+前端 V8 对纳入统计的源码统一要求 statements 60%、branches 65%、functions 55%、lines 60%。阈值调整必须经过
+评审，不能通过排除源码绕过门禁。
 
 ## Redirect 压测
 

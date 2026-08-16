@@ -1,6 +1,6 @@
 package com.linkforge.analytics.interfaces.web;
 
-import com.linkforge.analytics.application.AnalyticsReportingService;
+import com.linkforge.analytics.application.AnalyticsReportingApplicationService;
 import com.linkforge.analytics.application.AnalyticsQueryService;
 import com.linkforge.analytics.application.AnalyticsExportRequestService;
 import com.linkforge.analytics.application.AnalyticsLinkEventsService;
@@ -50,7 +50,7 @@ class StatsControllerTest {
 
         assertThat(constructor.getParameterTypes())
                 .contains(
-                        AnalyticsReportingService.class,
+                        AnalyticsReportingApplicationService.class,
                         AnalyticsExportRequestService.class,
                         AnalyticsLinkEventsService.class,
                         PrincipalActorMapper.class
@@ -69,7 +69,7 @@ class StatsControllerTest {
         AnalyticsQueryService queryService = mock(AnalyticsQueryService.class);
         StatsController controller = new StatsController(
                 queryService,
-                mock(AnalyticsReportingService.class),
+                mock(AnalyticsReportingApplicationService.class),
                 mock(AnalyticsLinkEventsService.class),
                 mock(AnalyticsExportRequestService.class),
                 mock(PrincipalActorMapper.class)
@@ -93,7 +93,7 @@ class StatsControllerTest {
     ) {
         StatsController controller = new StatsController(
                 mock(AnalyticsQueryService.class),
-                mock(AnalyticsReportingService.class),
+                mock(AnalyticsReportingApplicationService.class),
                 mock(AnalyticsLinkEventsService.class),
                 mock(AnalyticsExportRequestService.class),
                 mock(PrincipalActorMapper.class)
@@ -123,7 +123,7 @@ class StatsControllerTest {
     @Test
     void requestEventExport_shouldDelegateToAnalyticsExportRequestService() {
         AnalyticsQueryService queryService = mock(AnalyticsQueryService.class);
-        AnalyticsReportingService reportingService = mock(AnalyticsReportingService.class);
+        AnalyticsReportingApplicationService reportingService = mock(AnalyticsReportingApplicationService.class);
         AnalyticsLinkEventsService linkEventsService = mock(AnalyticsLinkEventsService.class);
         AnalyticsExportRequestService exportRequestService = mock(AnalyticsExportRequestService.class);
         PrincipalActorMapper principalActorMapper = mock(PrincipalActorMapper.class);
@@ -171,7 +171,7 @@ class StatsControllerTest {
     @Test
     void requestEventExportByApplication_shouldDelegateExpectedApplicationScope() {
         AnalyticsQueryService queryService = mock(AnalyticsQueryService.class);
-        AnalyticsReportingService reportingService = mock(AnalyticsReportingService.class);
+        AnalyticsReportingApplicationService reportingService = mock(AnalyticsReportingApplicationService.class);
         AnalyticsLinkEventsService linkEventsService = mock(AnalyticsLinkEventsService.class);
         AnalyticsExportRequestService exportRequestService = mock(AnalyticsExportRequestService.class);
         PrincipalActorMapper principalActorMapper = mock(PrincipalActorMapper.class);
@@ -216,7 +216,7 @@ class StatsControllerTest {
     @Test
     void linkEvents_shouldDelegateToApplicationServiceWithoutControllerDefaulting() {
         AnalyticsQueryService queryService = mock(AnalyticsQueryService.class);
-        AnalyticsReportingService reportingService = mock(AnalyticsReportingService.class);
+        AnalyticsReportingApplicationService reportingService = mock(AnalyticsReportingApplicationService.class);
         AnalyticsLinkEventsService linkEventsService = mock(AnalyticsLinkEventsService.class);
         AnalyticsExportRequestService exportRequestService = mock(AnalyticsExportRequestService.class);
         PrincipalActorMapper principalActorMapper = mock(PrincipalActorMapper.class);
@@ -276,9 +276,9 @@ class StatsControllerTest {
     }
 
     @Test
-    void topLinks_shouldDelegateToAnalyticsReportingService() {
+    void topLinks_shouldDelegateToAnalyticsReportingApplicationService() {
         AnalyticsQueryService queryService = mock(AnalyticsQueryService.class);
-        AnalyticsReportingService reportingService = mock(AnalyticsReportingService.class);
+        AnalyticsReportingApplicationService reportingService = mock(AnalyticsReportingApplicationService.class);
         AnalyticsLinkEventsService linkEventsService = mock(AnalyticsLinkEventsService.class);
         AnalyticsExportRequestService exportRequestService = mock(AnalyticsExportRequestService.class);
         PrincipalActorMapper principalActorMapper = mock(PrincipalActorMapper.class);

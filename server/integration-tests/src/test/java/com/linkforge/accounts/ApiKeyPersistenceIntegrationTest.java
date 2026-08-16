@@ -7,7 +7,7 @@ import com.linkforge.accounts.application.AuthResult;
 import com.linkforge.accounts.application.CreatedApiKeyResult;
 import com.linkforge.accounts.application.ApiKeyService;
 import com.linkforge.accounts.application.AuthService;
-import com.linkforge.accounts.domain.AccountsConstants;
+import com.linkforge.accounts.application.AccountsConstants;
 import com.linkforge.foundation.security.StandardRoles;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

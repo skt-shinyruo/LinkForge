@@ -56,13 +56,9 @@ async function onSubmit() {
   padding: 0 16px;
 }
 .sub {
-  color: #666;
   margin-bottom: 12px;
 }
 .card {
-  border: 1px solid #eee;
-  border-radius: 10px;
-  padding: 16px;
   display: grid;
   gap: 12px;
 }
@@ -71,26 +67,7 @@ label {
   gap: 6px;
   font-size: 14px;
 }
-input {
-  padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-}
-button {
-  padding: 10px 12px;
-  border: none;
-  border-radius: 8px;
-  background: #111;
-  color: #fff;
-  cursor: pointer;
-}
-button[disabled] {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
 .error {
-  color: #c00;
   margin: 0;
 }
 </style>
-

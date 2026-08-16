@@ -1,20 +1,30 @@
-import { computed, getCurrentInstance, onMounted, reactive, ref } from "vue";
+import { computed, reactive, ref } from "vue";
 import { listApplications } from "../services/applications";
 import { listDomainsForApplication } from "../services/domains";
-import { listLinks } from "../services/links";
-import type { ApplicationDto, DomainDto, LinkDto } from "../services/types";
+import {
+  archiveLink as archiveLinkRequest,
+  createLink as createLinkRequest,
+  deleteLink as deleteLinkRequest,
+  exportLinksCsv,
+  importLinksCsv,
+  listLinks,
+  restoreLink as restoreLinkRequest,
+  updateLink,
+} from "../services/links";
+import type { ApplicationDto, DomainDto, LinkDto, LinkImportResult } from "../services/types";
 import { useAuthStore } from "../stores/auth";
 import {
+  buildCreatePayload,
+  buildEditPayload,
   createEmptyCreateForm,
   createEmptyEditForm,
+  fillEditFormFromLink,
   formatInstantLocal,
   policySummary,
   statusLabel,
   type LinkCreateFormState,
   type LinkEditFormState,
 } from "./links/linkFormCodec";
-import { useLinkImportExport } from "./links/useLinkImportExport";
-import { useLinkMutations } from "./links/useLinkMutations";
 import { useLatestRequest } from "./useLatestRequest";
 
 export type { LinkCreateFormState, LinkEditFormState } from "./links/linkFormCodec";
@@ -38,6 +48,7 @@ export function useLinksPage() {
   const availableDomains = ref<DomainDto[]>([]);
   const editingId = ref<number | null>(null);
   const importFile = ref<File | null>(null);
+  const importResult = ref<LinkImportResult | null>(null);
   const page = ref(0);
   const size = ref(DEFAULT_PAGE_SIZE);
   const total = ref(0);
@@ -51,11 +62,12 @@ export function useLinksPage() {
 
   const createForm = reactive<LinkCreateFormState>(createEmptyCreateForm());
   const editForm = reactive<LinkEditFormState>(createEmptyEditForm());
+  const importFileName = computed(() => importFile.value?.name ?? "");
 
   const auth = useAuthStore();
   const isAdmin = computed(() => auth.isTenantAdmin);
-  const latestLoad = useLatestRequest(getErrorMessage);
-  const latestDomainLoad = useLatestRequest(getErrorMessage);
+  const latestLoad = useLatestRequest();
+  const latestDomainLoad = useLatestRequest();
   const loading = latestLoad.loading;
   const error = latestLoad.error;
 
@@ -131,22 +143,112 @@ export function useLinksPage() {
     }
   }
 
-  const mutations = useLinkMutations({
-    createForm,
-    editForm,
-    editingId,
-    creating,
-    filters,
-    selectedApplicationId,
-    selectedDomainId,
-    setError: (message) => {
-      error.value = message;
-    },
-    getErrorMessage,
-    load,
-    resetCreateForm,
-    resetEditForm,
-  });
+  async function createLink() {
+    creating.value = true;
+    error.value = null;
+    try {
+      const payload = buildCreatePayload(createForm);
+      if (selectedApplicationId.value != null) {
+        if (selectedDomainId.value == null) {
+          throw new Error("请选择应用域名");
+        }
+        payload.applicationId = selectedApplicationId.value;
+        payload.domainId = selectedDomainId.value;
+      }
+      await createLinkRequest(payload);
+      filters.showArchived = false;
+      resetCreateForm();
+      await load();
+    } catch (caught) {
+      error.value = getErrorMessage(caught, "创建失败");
+    } finally {
+      creating.value = false;
+    }
+  }
+
+  async function toggleEnabled(link: LinkDto) {
+    error.value = null;
+    try {
+      if (link.archivedAt) {
+        throw new Error("短链已归档，请先恢复后再启用/禁用");
+      }
+      await updateLink(link.id, { enabled: !link.enabled });
+      await load();
+    } catch (caught) {
+      error.value = getErrorMessage(caught, "更新失败");
+    }
+  }
+
+  function startEdit(link: LinkDto) {
+    if (link.archivedAt) {
+      error.value = "短链已归档，请先恢复后再编辑";
+      return;
+    }
+    editingId.value = link.id;
+    fillEditFormFromLink(editForm, link);
+  }
+
+  function cancelEdit() {
+    editingId.value = null;
+    resetEditForm();
+  }
+
+  async function saveEdit() {
+    if (!editingId.value) {
+      return;
+    }
+    error.value = null;
+    try {
+      if (!editForm.originalUrl.trim()) {
+        throw new Error("原始链接不能为空");
+      }
+      const updated = await updateLink(editingId.value, buildEditPayload(editForm));
+      cancelEdit();
+      await load();
+      if (updated.pendingApproval) {
+        const approvalId = updated.approvalRequestId == null ? "" : `（#${updated.approvalRequestId}）`;
+        error.value = `目标地址变更已提交审批${approvalId}，审批通过后生效`;
+      }
+    } catch (caught) {
+      error.value = getErrorMessage(caught, "更新失败");
+    }
+  }
+
+  async function archiveLink(link: LinkDto) {
+    error.value = null;
+    try {
+      await archiveLinkRequest(link.id);
+      await load();
+    } catch (caught) {
+      error.value = getErrorMessage(caught, "归档失败");
+    }
+  }
+
+  async function restoreLink(link: LinkDto) {
+    error.value = null;
+    try {
+      await restoreLinkRequest(link.id);
+      await load();
+    } catch (caught) {
+      error.value = getErrorMessage(caught, "恢复失败");
+    }
+  }
+
+  async function deleteLink(link: LinkDto) {
+    error.value = null;
+    try {
+      if (!link.archivedAt) {
+        throw new Error("删除前请先归档");
+      }
+      if (!window.confirm(`确认删除短链 ${link.code}？该操作不可恢复。`)) {
+        return;
+      }
+      await deleteLinkRequest(link.id);
+      await load();
+    } catch (caught) {
+      error.value = getErrorMessage(caught, "删除失败");
+    }
+  }
 
   function setKeyword(value: string) {
     filters.keyword = value;
@@ -173,29 +275,54 @@ export function useLinksPage() {
     await load(page.value + 1);
   }
 
-  const importExport = useLinkImportExport({
-    importFile,
-    importing,
-    setError: (message) => {
-      error.value = message;
-    },
-    getErrorMessage,
-    getImportQuery: () => {
+  function setImportFile(file: File | null) {
+    importFile.value = file;
+  }
+
+  async function importCsv() {
+    if (!importFile.value) {
+      return;
+    }
+    importing.value = true;
+    error.value = null;
+    importResult.value = null;
+    try {
       if (selectedApplicationId.value != null && selectedDomainId.value == null) {
         throw new Error("请选择应用域名");
       }
-      return {
+      importResult.value = await importLinksCsv(importFile.value, {
         applicationId: selectedApplicationId.value ?? undefined,
         domainId: selectedDomainId.value ?? undefined,
-      };
-    },
-    getExportQuery: () => ({
-      applicationId: selectedApplicationId.value ?? undefined,
-      archived: filters.showArchived,
-      keyword: filters.keyword.trim() || undefined,
-    }),
-    reload: load,
-  });
+      });
+      importFile.value = null;
+      await load();
+    } catch (caught) {
+      error.value = getErrorMessage(caught, "导入失败");
+    } finally {
+      importing.value = false;
+    }
+  }
+
+  async function exportCsv() {
+    error.value = null;
+    try {
+      const blob = await exportLinksCsv({
+        page: 0,
+        size: 1000,
+        applicationId: selectedApplicationId.value ?? undefined,
+        archived: filters.showArchived,
+        keyword: filters.keyword.trim() || undefined,
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "links.csv";
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (caught) {
+      error.value = getErrorMessage(caught, "导出失败");
+    }
+  }
 
   async function setSelectedApplicationId(value: number | null) {
     selectedApplicationId.value = value;
@@ -212,15 +339,11 @@ export function useLinksPage() {
     selectedDomainId.value = value;
   }
 
-  if (getCurrentInstance()) {
-    onMounted(() => {
-      void (async () => {
-        if (isAdmin.value) {
-          await loadAdminOptions();
-        }
-        await load();
-      })();
-    });
+  async function init() {
+    if (isAdmin.value) {
+      await loadAdminOptions();
+    }
+    await load();
   }
 
   return {
@@ -233,35 +356,36 @@ export function useLinksPage() {
     error,
     filters,
     formatInstantLocal,
-    importCsv: importExport.importCsv,
-    importFileName: importExport.importFileName,
-    importResult: importExport.importResult,
+    importCsv,
+    importFileName,
+    importResult,
     importing,
+    init,
     items,
     load,
     nextPage,
     page,
     policySummary,
     previousPage,
-    saveEdit: mutations.saveEdit,
+    saveEdit,
     selectedApplicationId,
     selectedDomainId,
     setArchived,
     setSelectedApplicationId,
     setSelectedDomainId,
     setKeyword,
-    setImportFile: importExport.setImportFile,
+    setImportFile,
     size,
-    startEdit: mutations.startEdit,
+    startEdit,
     statusLabel,
     total,
-    toggleEnabled: mutations.toggleEnabled,
-    archiveLink: mutations.archiveLink,
-    cancelEdit: mutations.cancelEdit,
-    createLink: mutations.createLink,
-    deleteLink: mutations.deleteLink,
-    exportCsv: importExport.exportCsv,
-    restoreLink: mutations.restoreLink,
+    toggleEnabled,
+    archiveLink,
+    cancelEdit,
+    createLink,
+    deleteLink,
+    exportCsv,
+    restoreLink,
     loading,
   };
 }

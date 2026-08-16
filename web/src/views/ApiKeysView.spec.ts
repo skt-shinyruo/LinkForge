@@ -5,19 +5,8 @@ import ApiKeysView from "./ApiKeysView.vue";
 const disableMock = vi.hoisted(() => vi.fn());
 const enableMock = vi.hoisted(() => vi.fn());
 
-vi.mock("../composables/useAppSessionNavigation", () => ({
-  useAppSessionNavigation: () => ({
-    title: "API Key 管理",
-    userEmail: ref("admin@example.com"),
-    navItems: [],
-    navigate: vi.fn(),
-    logout: vi.fn(),
-  }),
-}));
-
 vi.mock("../components/AppPageShell.vue", () => ({
   default: {
-    props: ["title", "userEmail", "navItems"],
     setup(_: unknown, { slots }: { slots: { default?: () => unknown } }) {
       return () => h("main", slots.default?.() as any);
     },
@@ -39,6 +28,7 @@ vi.mock("../composables/useApiKeysPage", () => ({
     enable: enableMock,
     error: ref(null),
     latestCreated: ref(null),
+    load: vi.fn(),
     rotate: vi.fn(),
     selectedApplicationId: ref(null),
     setSelectedApplicationId: vi.fn(),

@@ -4,22 +4,17 @@ import LinkTrendPanel from "../components/stats/LinkTrendPanel.vue";
 import StatsOverviewPanel from "../components/stats/StatsOverviewPanel.vue";
 import StatsRangeToolbar from "../components/stats/StatsRangeToolbar.vue";
 import TopLinksTable from "../components/stats/TopLinksTable.vue";
-import { useAppSessionNavigation } from "../composables/useAppSessionNavigation";
 import { useStatsPage } from "../composables/useStatsPage";
+import { useAuthStore } from "../stores/auth";
 
-const navigation = useAppSessionNavigation("stats");
+const auth = useAuthStore();
 const page = useStatsPage();
+void page.init();
 </script>
 
 <template>
-  <AppPageShell
-    :title="navigation.title"
-    :user-email="navigation.userEmail.value"
-    :nav-items="navigation.navItems"
-    @navigate="navigation.navigate"
-    @logout="navigation.logout"
-  >
-    <section v-if="navigation.isTenantAdmin.value" class="scope card">
+  <AppPageShell>
+    <section v-if="auth.isTenantAdmin" class="scope card">
       <h2>统计范围</h2>
       <label class="field">
         <span class="sub">应用</span>
@@ -81,28 +76,11 @@ const page = useStatsPage();
 </template>
 
 <style scoped>
-.card {
-  border: 1px solid #eee;
-  border-radius: 10px;
-  padding: 16px;
-  margin-bottom: 16px;
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
 .sub {
-  color: #666;
   font-size: 12px;
 }
 
 select {
   max-width: 320px;
-  padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
 }
 </style>

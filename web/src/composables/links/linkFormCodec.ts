@@ -19,34 +19,7 @@ export type LinkCreateFormState = {
   queryForwardAllowlist: string;
 };
 
-export type LinkEditFormState = {
-  originalUrl: string;
-  note: string;
-  expiresAt: string;
-  tags: string;
-  enabled: boolean;
-  redirectStatusCode: RedirectStatusFieldValue;
-  previewEnabled: boolean;
-  unavailableLandingUrl: string;
-  queryForwardMode: QueryForwardModeFieldValue;
-  queryForwardAllowlist: string;
-};
-
-export function createEmptyCreateForm(): LinkCreateFormState {
-  return {
-    originalUrl: "",
-    note: "",
-    customCode: "",
-    expiresAt: "",
-    tags: "",
-    enabled: true,
-    redirectStatusCode: "",
-    previewEnabled: false,
-    unavailableLandingUrl: "",
-    queryForwardMode: "",
-    queryForwardAllowlist: "",
-  };
-}
+export type LinkEditFormState = Omit<LinkCreateFormState, "customCode">;
 
 export function createEmptyEditForm(): LinkEditFormState {
   return {
@@ -61,6 +34,10 @@ export function createEmptyEditForm(): LinkEditFormState {
     queryForwardMode: "",
     queryForwardAllowlist: "",
   };
+}
+
+export function createEmptyCreateForm(): LinkCreateFormState {
+  return { ...createEmptyEditForm(), customCode: "" };
 }
 
 /**

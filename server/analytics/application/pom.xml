@@ -17,10 +17,6 @@
     <dependencies>
         <dependency>
             <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-analytics-domain</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.linkforge</groupId>
             <artifactId>linkforge-foundation-core</artifactId>
         </dependency>
         <dependency>

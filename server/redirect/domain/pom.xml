@@ -14,12 +14,4 @@
     <artifactId>linkforge-redirect-domain</artifactId>
     <name>linkforge-redirect-domain</name>
 
-    <dependencies>
-        <!-- test -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
 </project>

@@ -35,15 +35,7 @@ defineEmits<{
 
 <style scoped>
 .sub {
-  color: #666;
   margin: 4px 0 0;
-}
-
-.card {
-  border: 1px solid #eee;
-  border-radius: 10px;
-  padding: 16px;
-  margin-bottom: 16px;
 }
 
 .toolbar {
@@ -66,29 +58,4 @@ defineEmits<{
   color: #111;
 }
 
-.error {
-  color: #c00;
-}
-
-.btn {
-  padding: 10px 12px;
-  border: none;
-  border-radius: 8px;
-  background: #111;
-  color: #fff;
-  cursor: pointer;
-}
-
-.btn.secondary {
-  background: #444;
-}
-
-.btn.small {
-  padding: 6px 10px;
-  font-size: 12px;
-}
-
-.btn.active {
-  background: #111;
-}
 </style>

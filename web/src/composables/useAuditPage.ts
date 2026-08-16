@@ -1,4 +1,4 @@
-import { getCurrentInstance, onMounted, ref } from "vue";
+import { ref } from "vue";
 import { listAuditLogs } from "../services/audit";
 import type { AuditLogDto } from "../services/types";
 
@@ -44,12 +44,6 @@ export function useAuditPage() {
     } finally {
       loading.value = false;
     }
-  }
-
-  if (getCurrentInstance()) {
-    onMounted(() => {
-      void load();
-    });
   }
 
   return {

@@ -8,6 +8,7 @@ import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.contract.platform.ApplicationScopePort;
 import com.linkforge.contract.openapi.OpenApiErrorCode;
 import com.linkforge.foundation.config.SecurityProperties;
+import com.linkforge.foundation.security.ApiKeyAuthenticationResult;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.observability.OperationalMetrics;
 import com.linkforge.foundation.tx.PostCommitHookPort;
@@ -107,7 +108,7 @@ class ApiKeyServiceTest {
         when(store.findById(123L)).thenReturn(apiKey);
         when(passwordHasher.matches("secret", "hash")).thenReturn(true);
 
-        ApiKeyAuthResult r = service.authenticate("lfk_123_secret");
+        ApiKeyAuthenticationResult r = service.authenticate("lfk_123_secret");
         assertThat(r.tenantId()).isEqualTo(1L);
         assertThat(r.apiKeyId()).isEqualTo(123L);
         assertThat(r.applicationId()).isEqualTo(2001L);
@@ -267,7 +268,7 @@ class ApiKeyServiceTest {
         when(store.findById(123L)).thenReturn(apiKey);
         when(passwordHasher.matches("secret", "hash")).thenReturn(true);
 
-        ApiKeyAuthResult r = service.authenticate("lfk_123_secret");
+        ApiKeyAuthenticationResult r = service.authenticate("lfk_123_secret");
         assertThat(r.tenantId()).isEqualTo(1L);
         assertThat(r.apiKeyId()).isEqualTo(123L);
         assertThat(r.applicationId()).isEqualTo(2001L);
@@ -276,13 +277,13 @@ class ApiKeyServiceTest {
     }
 
     @Test
-    void authenticateApiKey_shouldRunInTransactionSoReadwriteSplittingReadsPrimary() throws Exception {
+    void authenticateApiKey_shouldRunInTransactionForConsistentCredentialRead() throws Exception {
         Transactional transactional = ApiKeyService.class
                 .getMethod("authenticateApiKey", String.class)
                 .getAnnotation(Transactional.class);
 
         assertThat(transactional)
-                .as("OpenAPI API-key authentication must be transactional so ShardingSphere routes the credential read to primary")
+                .as("OpenAPI API-key authentication must use a consistent transactional credential read")
                 .isNotNull();
     }
 
@@ -338,7 +339,7 @@ class ApiKeyServiceTest {
         when(store.findById(123L)).thenReturn(apiKey);
         when(passwordHasher.matches("secret", "$2a$legacy")).thenReturn(true);
 
-        ApiKeyAuthResult result = service.authenticate("lfk_123_secret");
+        ApiKeyAuthenticationResult result = service.authenticate("lfk_123_secret");
 
         assertThat(result.apiKeyId()).isEqualTo(123L);
         verify(store).updateKeyHashIfCurrent(
@@ -423,7 +424,7 @@ class ApiKeyServiceTest {
         when(store.findById(123L)).thenReturn(apiKey);
         when(passwordHasher.matches("secret", "hash")).thenReturn(true);
 
-        ApiKeyAuthResult result = service.authenticate("lfk_123_secret");
+        ApiKeyAuthenticationResult result = service.authenticate("lfk_123_secret");
 
         assertThat(result.tenantId()).isEqualTo(1L);
         assertThat(result.apiKeyId()).isEqualTo(123L);
@@ -549,7 +550,7 @@ class ApiKeyServiceTest {
         ));
         when(passwordHasher.matches("secret", "legacy-hash")).thenReturn(true);
 
-        ApiKeyAuthResult result = service.authenticate("lfk_123_secret");
+        ApiKeyAuthenticationResult result = service.authenticate("lfk_123_secret");
 
         assertThat(result.applicationId()).isEqualTo(2001L);
         verify(applicationScopePort).requireApplicationExists(1L, 2001L);

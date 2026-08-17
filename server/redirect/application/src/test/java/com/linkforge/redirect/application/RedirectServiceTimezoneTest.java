@@ -91,10 +91,7 @@ class RedirectServiceTimezoneTest {
 
         RedirectVisitInput visitInput = new RedirectVisitInput(
                 "1.2.3.4",
-                "Mozilla/5.0",
-                "https://ref.example.com/path",
-                "zh-CN,zh;q=0.9",
-                java.util.Map.of("utm_source", "newsletter")
+                "Mozilla/5.0"
         );
 
         RedirectResolution resolution = service.resolve(
@@ -108,14 +105,9 @@ class RedirectServiceTimezoneTest {
                 Instant.parse("2026-04-24T10:15:30Z").toEpochMilli(),
                 null,
                 null,
-                "abc123",
-                "https://example.com",
                 new VisitContext(
                         "1.2.3.4",
-                        "Mozilla/5.0",
-                        "https://ref.example.com/path",
-                        "zh-CN,zh;q=0.9",
-                        java.util.Map.of("utm_source", "newsletter")
+                        "Mozilla/5.0"
                 )
         ));
     }

@@ -100,10 +100,10 @@ Platform 是 LinkForge 的控制面，负责租户下的应用、域名、授权
 - actor 必须属于当前租户。
 - `applicationKey` 和 `displayName` 必填。
 - `applicationKey` 最大 64 字符，`displayName` 最大 128 字符；HTTP 与应用层校验都以数据库列宽为界，64 可接受、65 稳定返回 400。
-- 创建应用时同步创建默认 `ApplicationPolicy` 和 `ApplicationQuota`。
-- 默认策略和额度来自 `PlatformDefaults`。
+- 创建应用时同步创建默认 `ApplicationQuota`。
+- 默认额度来自 `PlatformDefaults`。
 
-创建在一个事务中写 application、policy 和 quota；`applicationKey` 的唯一约束仍是最终并发裁决，预查不能取代数据库冲突处理。
+创建在一个事务中写 application 和 quota；`applicationKey` 的唯一约束仍是最终并发裁决，预查不能取代数据库冲突处理。
 
 ### 域名创建
 
@@ -161,8 +161,6 @@ Platform 是 LinkForge 的控制面，负责租户下的应用、域名、授权
   - 应用主体，包含 `id`、`tenantId`、`applicationKey`、`displayName`、`status`。
 - `server/platform/domain/src/main/java/com/linkforge/platform/domain/Domain.java`
   - 域名主体，包含 `applicationId`、`hostname`、`scope`、`status`、`trustClass`。
-- `server/platform/domain/src/main/java/com/linkforge/platform/domain/ApplicationPolicy.java`
-  - 应用默认域名范围、默认跳转状态码、默认预览开关。
 - `server/platform/domain/src/main/java/com/linkforge/platform/domain/ApplicationQuota.java`
   - 应用月发链额度和月点击额度。
 - `server/platform/domain/src/main/java/com/linkforge/platform/domain/Hostname.java`
@@ -176,8 +174,6 @@ Platform 是 LinkForge 的控制面，负责租户下的应用、域名、授权
   - 应用读写。
 - `server/platform/infrastructure/src/main/java/com/linkforge/platform/infrastructure/persistence/DomainRepositoryMybatisAdapter.java`
   - 域名读写、共享域名授权关系、应用可用域名查询。
-- `server/platform/infrastructure/src/main/java/com/linkforge/platform/infrastructure/persistence/ApplicationPolicyRepositoryMybatisAdapter.java`
-  - 应用策略写入。
 - `server/platform/infrastructure/src/main/java/com/linkforge/platform/infrastructure/persistence/ApplicationQuotaRepositoryMybatisAdapter.java`
   - 应用额度写入和查询。
 

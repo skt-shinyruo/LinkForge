@@ -7,8 +7,6 @@ import com.linkforge.foundation.config.AnalyticsProperties;
 import com.linkforge.foundation.observability.OperationalMetrics;
 import org.junit.jupiter.api.Test;
 
-import java.util.Map;
-
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
@@ -27,13 +25,8 @@ class AnalyticsVisitEventServiceTest {
                 1_710_000_000_000L,
                 100L,
                 200L,
-                "abc123",
-                "https://example.com/live",
                 "1.2.3.4",
-                "Mozilla/5.0",
-                "https://example.com/ref",
-                "zh-CN,zh;q=0.9",
-                Map.of("utm_source", "newsletter")
+                "Mozilla/5.0"
         );
 
         service.append(event);
@@ -52,14 +45,9 @@ class AnalyticsVisitEventServiceTest {
                 1_710_000_000_000L,
                 100L,
                 200L,
-                "abc123",
-                "https://example.com/live",
                 new VisitContext(
                         "1.2.3.4",
-                        "Mozilla/5.0",
-                        "https://example.com/ref",
-                        "zh-CN,zh;q=0.9",
-                        Map.of("utm_source", "newsletter")
+                        "Mozilla/5.0"
                 )
         ));
 
@@ -69,13 +57,8 @@ class AnalyticsVisitEventServiceTest {
                 1_710_000_000_000L,
                 100L,
                 200L,
-                "abc123",
-                "https://example.com/live",
                 "1.2.3.4",
-                "Mozilla/5.0",
-                "https://example.com/ref",
-                "zh-CN,zh;q=0.9",
-                Map.of("utm_source", "newsletter")
+                "Mozilla/5.0"
         ));
     }
 
@@ -95,13 +78,8 @@ class AnalyticsVisitEventServiceTest {
                 1_710_000_000_000L,
                 null,
                 null,
-                "abc123",
-                "https://example.com/live",
                 "1.2.3.4",
-                "Mozilla/5.0",
-                null,
-                null,
-                Map.of()
+                "Mozilla/5.0"
         ))).doesNotThrowAnyException();
 
         verify(metrics).increment(
@@ -127,13 +105,8 @@ class AnalyticsVisitEventServiceTest {
                 1_710_000_000_000L,
                 null,
                 null,
-                "abc123",
-                "https://example.com/live",
                 "1.2.3.4",
-                "Mozilla/5.0",
-                null,
-                null,
-                Map.of()
+                "Mozilla/5.0"
         )))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("redis down");
@@ -154,8 +127,7 @@ class AnalyticsVisitEventServiceTest {
         AnalyticsVisitEventService service = new AnalyticsVisitEventService(appender, properties, metrics);
 
         service.append(new AnalyticsVisitEventService.RedirectVisitEvent(
-                1L, 10L, 1_710_000_000_000L, null, null, "abc123", null,
-                null, null, null, null, Map.of()
+                1L, 10L, 1_710_000_000_000L, null, null, null, null
         ));
 
         verify(metrics).increment(
@@ -176,8 +148,7 @@ class AnalyticsVisitEventServiceTest {
         AnalyticsVisitEventService service = new AnalyticsVisitEventService(appender, properties, metrics);
 
         service.append(new AnalyticsVisitEventService.RedirectVisitEvent(
-                1L, 10L, 1_710_000_000_000L, null, null, "abc123", null,
-                null, null, null, null, Map.of()
+                1L, 10L, 1_710_000_000_000L, null, null, null, null
         ));
 
         verify(metrics).increment(

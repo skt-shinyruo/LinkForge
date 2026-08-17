@@ -35,9 +35,6 @@ class ShortLinkPaginationApiIntegrationTest extends SharedIntegrationTestSupport
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        registry.add("app.analytics.dimensions.enabled", () -> "false");
-        registry.add("app.analytics.events.enabled", () -> "false");
-        registry.add("app.analytics.events.sample-rate", () -> "1");
     }
 
     @Autowired
@@ -456,13 +453,6 @@ class ShortLinkPaginationApiIntegrationTest extends SharedIntegrationTestSupport
         );
         jdbcTemplate.update(
                 """
-                        INSERT INTO application_policies (application_id, default_domain_scope, default_redirect_status_code, preview_enabled)
-                        VALUES (?, 'TENANT_SHARED', 302, 0)
-                        """,
-                applicationId
-        );
-        jdbcTemplate.update(
-                """
                         INSERT INTO application_quotas (application_id, monthly_link_limit, monthly_click_limit)
                         VALUES (?, 10000, 1000000)
                         """,
@@ -483,13 +473,6 @@ class ShortLinkPaginationApiIntegrationTest extends SharedIntegrationTestSupport
                 tenantId,
                 applicationKey,
                 applicationKey
-        );
-        jdbcTemplate.update(
-                """
-                        INSERT INTO application_policies (application_id, default_domain_scope, default_redirect_status_code, preview_enabled)
-                        VALUES (?, 'APPLICATION_DEDICATED', 302, 0)
-                        """,
-                applicationId
         );
         jdbcTemplate.update(
                 """

@@ -63,20 +63,6 @@ class ApplicationProvisioningIntegrationTest extends PlatformPersistenceIntegrat
                 .containsEntry("application_key", "control-plane")
                 .containsEntry("display_name", "Internal control plane");
 
-        Map<String, Object> policyRow = jdbcTemplate.queryForMap(
-                """
-                        SELECT application_id, default_domain_scope, default_redirect_status_code, preview_enabled
-                        FROM application_policies
-                        WHERE application_id = ?
-                        """,
-                created.id()
-        );
-        assertThat(policyRow)
-                .containsEntry("application_id", created.id())
-                .containsEntry("default_domain_scope", "TENANT_SHARED")
-                .containsEntry("default_redirect_status_code", 302);
-        assertThat(((Number) policyRow.get("preview_enabled")).intValue()).isZero();
-
         Map<String, Object> quotaRow = jdbcTemplate.queryForMap(
                 """
                         SELECT application_id, monthly_link_limit, monthly_click_limit

@@ -3,7 +3,6 @@ package com.linkforge.platform.application;
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
-import com.linkforge.platform.application.port.ApplicationPolicyRepository;
 import com.linkforge.platform.application.port.ApplicationQuotaRepository;
 import com.linkforge.platform.application.port.ApplicationRepository;
 import com.linkforge.platform.application.port.DomainRepository;
@@ -178,8 +177,7 @@ class ApplicationProvisioningServiceTest {
                 new SnowflakeIdGenerator(),
                 applicationRepository,
                 domainRepository,
-                mock(ApplicationQuotaRepository.class),
-                mock(ApplicationPolicyRepository.class)
+                mock(ApplicationQuotaRepository.class)
         );
     }
 

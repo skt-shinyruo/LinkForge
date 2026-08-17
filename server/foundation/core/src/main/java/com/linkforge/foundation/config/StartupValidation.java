@@ -2,8 +2,6 @@ package com.linkforge.foundation.config;
 
 import org.slf4j.Logger;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 /**
@@ -95,176 +93,6 @@ public final class StartupValidation {
         }
     }
 
-    /**
-     * 校验统计追踪参数白名单中的精确项或单个末尾通配项。
-     *
-     * <p>空项被忽略；单独的 {@code *} 和包含其他字符的模式会追加错误。</p>
-     */
-    public static void validateAnalyticsTrackingAllowlist(AnalyticsProperties properties, List<String> errors) {
-        if (properties == null) {
-            return;
-        }
-        var allowlist = properties.getTrackingParamAllowlist();
-        if (allowlist == null) {
-            return;
-        }
-        for (String p : allowlist) {
-            String v = trimToNull(p);
-            if (v == null) {
-                continue;
-            }
-            if (!isValidParamPattern(v)) {
-                errors.add("app.analytics.tracking-param-allowlist 包含不合法项: " + v);
-                break;
-            }
-        }
-    }
-
-    /**
-     * 在维度写入已启用时校验 Redis key 中使用的维度类型名。
-     *
-     * <p>允许小写字母、数字和下划线；空项被忽略，配置未启用或未设置类型时不追加错误。</p>
-     */
-    public static void validateAnalyticsDimensionsTypes(AnalyticsProperties properties, List<String> errors) {
-        if (properties == null) {
-            return;
-        }
-        var dims = properties.getDimensions();
-        if (dims == null || !dims.isEnabled()) {
-            return;
-        }
-        var types = dims.getTypes();
-        if (types == null) {
-            return;
-        }
-        for (String t : types) {
-            String v = trimToNull(t);
-            if (v == null) {
-                continue;
-            }
-            // 维度类型仅允许小写字母/数字/下划线，避免 Redis key 异常
-            String s = v.trim();
-            for (int i = 0; i < s.length(); i++) {
-                char ch = s.charAt(i);
-                boolean ok = (ch >= '0' && ch <= '9')
-                        || (ch >= 'a' && ch <= 'z')
-                        || ch == '_';
-                if (!ok) {
-                    errors.add("app.analytics.dimensions.types 包含不合法项: " + v);
-                    break;
-                }
-            }
-        }
-    }
-
-    /** 校验核心访问流能够覆盖声明的峰值恢复预算。 */
-    public static void validateAnalyticsVisitStream(AnalyticsProperties properties, List<String> errors) {
-        if (properties == null || properties.getVisitStream() == null) {
-            errors.add("app.analytics.visit-stream 配置缺失");
-            return;
-        }
-        AnalyticsProperties.VisitStream stream = properties.getVisitStream();
-        if (stream.getPeakEventsPerSecond() <= 0) {
-            errors.add("app.analytics.visit-stream.peak-events-per-second 必须 > 0");
-        }
-        if (stream.getRecoveryWindowSeconds() <= 0) {
-            errors.add("app.analytics.visit-stream.recovery-window-seconds 必须 > 0");
-        }
-        if (stream.getSafetyMarginPercent() < 0) {
-            errors.add("app.analytics.visit-stream.safety-margin-percent 必须 >= 0");
-        }
-        if (stream.getPeakEventsPerSecond() <= 0
-                || stream.getRecoveryWindowSeconds() <= 0
-                || stream.getSafetyMarginPercent() < 0) {
-            return;
-        }
-
-        long configured = properties.resolveVisitStreamMaxLen();
-        long required = properties.resolveVisitStreamRequiredCapacity();
-        if (configured < required) {
-            errors.add("app.analytics.visit-stream.max-len 必须 >= 恢复容量预算 " + required);
-        }
-    }
-
-    /** 校验 legacy dirty Stream 退役证据；默认 dual-read 不要求伪造外部 rollout 时间。 */
-    public static void validateAnalyticsDirtyMarker(AnalyticsProperties properties, List<String> errors) {
-        validateAnalyticsDirtyMarker(properties, Instant.now(), errors);
-    }
-
-    /** 允许测试固定当前时间的 dirty marker 退役门禁。 */
-    public static void validateAnalyticsDirtyMarker(
-            AnalyticsProperties properties,
-            Instant now,
-            List<String> errors
-    ) {
-        AnalyticsProperties.DirtyMarker cfg = properties == null ? null : properties.getDirtyMarker();
-        if (cfg == null) {
-            errors.add("app.analytics.dirty-marker 配置缺失");
-            return;
-        }
-        if (cfg.getCompatibilityTtlDays() <= 0) {
-            errors.add("app.analytics.dirty-marker.compatibility-ttl-days 必须 > 0");
-            return;
-        }
-        if (cfg.isLegacyReadEnabled()) {
-            return;
-        }
-        if (cfg.isLegacyWriteEnabled()) {
-            errors.add("app.analytics.dirty-marker 关闭 legacy read 前必须停止 legacy write");
-        }
-        if (!cfg.isLegacyRetirementConfirmed()
-                || cfg.getLegacyWriteStoppedAt() == null
-                || cfg.getLegacyDrainedAt() == null) {
-            errors.add("app.analytics.dirty-marker legacy retirement proof 不完整，必须确认写停与排空时间");
-            return;
-        }
-
-        Instant effectiveNow = now == null ? Instant.now() : now;
-        Instant compatibilityCutoff = effectiveNow.minus(cfg.getCompatibilityTtlDays(), ChronoUnit.DAYS);
-        if (cfg.getLegacyWriteStoppedAt().isAfter(compatibilityCutoff)
-                || cfg.getLegacyDrainedAt().isAfter(compatibilityCutoff)) {
-            errors.add("app.analytics.dirty-marker legacy retirement proof 尚未经过完整 compatibility TTL");
-        }
-    }
-
-    /**
-     * 在访问明细消费已启用时校验采样、截断和保留边界。
-     *
-     * <p>关闭 {@code events.enabled} 时明细作业不会启动，因此这些值不在此方法中阻止启动；该开关不代表
-     * Redirect 主链路停止记录访问。</p>
-     */
-    public static void validateAnalyticsEvents(AnalyticsProperties properties, List<String> errors) {
-        if (properties == null) {
-            return;
-        }
-        var ev = properties.getEvents();
-        if (ev == null || !ev.isEnabled()) {
-            return;
-        }
-        double r = ev.getSampleRate();
-        if (r < 0 || r > 1) {
-            errors.add("app.analytics.events.sample-rate 必须在 0~1 之间");
-        }
-        if (ev.getMaxUserAgentLength() < 0) {
-            errors.add("app.analytics.events.max-user-agent-length 必须 >= 0");
-        }
-        if (ev.getMaxTrackingValueLength() < 0) {
-            errors.add("app.analytics.events.max-tracking-value-length 必须 >= 0");
-        }
-        if (ev.getRetentionDays() < 0) {
-            errors.add("app.analytics.events.retention-days 必须 >= 0");
-        }
-        if (ev.getIngestBatchSize() <= 0) {
-            errors.add("app.analytics.events.ingest-batch-size 必须 > 0");
-        }
-        if (ev.getIngestMaxBatches() <= 0) {
-            errors.add("app.analytics.events.ingest-max-batches 必须 > 0");
-        }
-        if (ev.getIngestTimeBudgetMs() <= 0) {
-            errors.add("app.analytics.events.ingest-time-budget-ms 必须 > 0");
-        }
-    }
-
     /** 判断非空配置值是否含有已知开发占位片段；用于提示而非密码强度评估。 */
     public static boolean looksLikeDev(String v) {
         String t = v.trim().toLowerCase();
@@ -288,30 +116,29 @@ public final class StartupValidation {
         return t.isBlank() ? null : t;
     }
 
-    /** 判断参数模式是否为字母数字下划线的精确项，或带单个末尾 {@code *} 的前缀项。 */
-    public static boolean isValidParamPattern(String p) {
-        if (p == null || p.isBlank()) {
+    /** 参数名或末尾带单个通配符的参数前缀。 */
+    public static boolean isValidParamPattern(String value) {
+        if (value == null || value.isBlank()) {
             return false;
         }
-        String t = p.trim();
-        if ("*".equals(t)) {
+        String pattern = value.trim();
+        if ("*".equals(pattern)) {
             return false;
         }
-        boolean star = t.endsWith("*");
-        String base = star ? t.substring(0, t.length() - 1) : t;
+        String base = pattern.endsWith("*") ? pattern.substring(0, pattern.length() - 1) : pattern;
         if (base.isBlank()) {
             return false;
         }
         for (int i = 0; i < base.length(); i++) {
             char ch = base.charAt(i);
-            boolean ok = (ch >= '0' && ch <= '9')
-                    || (ch >= 'A' && ch <= 'Z')
-                    || (ch >= 'a' && ch <= 'z')
-                    || ch == '_';
-            if (!ok) {
+            boolean alphanumeric = ch >= '0' && ch <= '9'
+                    || ch >= 'A' && ch <= 'Z'
+                    || ch >= 'a' && ch <= 'z';
+            if (!(alphanumeric || ch == '_')) {
                 return false;
             }
         }
         return true;
     }
+
 }

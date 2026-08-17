@@ -39,41 +39,40 @@ Java 21 `mvn verify` 成功；构建日志中已没有待处理的 JDK、Maven �
 
 ## 集成测试拓扑
 
-`server/integration-tests` 提供两种 opt-in 基类：
+`server/integration-tests` 提供一个 opt-in 基类：
 
-- `SharedIntegrationTestSupport`：业务数据源使用 shared primary，适合绝大多数持久化、缓存和端到端测试。
-- `SharedReadWriteIntegrationTestSupport`：ShardingSphere 写入使用 shared primary，非事务读取使用独立 replica，适合验证复制延迟与 transactional primary read。
+- `SharedIntegrationTestSupport`：共享一个 MySQL 和一个 Redis，适合持久化、缓存和端到端测试。
 
-两者在同一测试 JVM 内复用一个 primary、一个 replica 和一个 Redis。集成测试源码迁移已经完成：容器定义只存在于
+所有集成测试在同一测试 JVM 内复用这两个容器。容器定义只存在于
 `SharedIntegrationTopology`，测试类不再声明独立 Testcontainers。新测试若没有明确且已记录的不同拓扑需求，必须接入
-上述共享入口；确需新拓扑时，应先补充隔离协议和运行成本说明。
+该共享入口；确需新拓扑时，应先补充隔离协议和运行成本说明。
 
 Spring Test context cache 的最大容量固定为 `8`，避免完整套件因测试装配变体无界保留上下文。新增装配差异前应先判断
 是否能通过现有共享基类和动态属性表达，不能以提高 cache 上限掩盖上下文膨胀。
 
 ### Fixture 隔离协议
 
-两个共享测试基类对每个 opt-in 测试执行以下协议：
+共享测试基类对每个 opt-in 测试执行以下协议：
 
 1. 通过 JUnit `@ResourceLock("shared-integration-fixture")` 串行执行 shared fixture 测试。
-2. 测试前删除 primary 与 replica 中所有业务表数据，并执行 Redis `FLUSHALL`。
-3. 测试持锁运行；共享入口默认关闭后台调度，测试可显式调用 job，并可使用事务、Redis stream/group/pending、HLL、hash、set 和 TTL。
+2. 测试前删除 MySQL 中所有业务表数据，并执行 Redis `FLUSHALL`。
+3. 测试持锁运行；共享入口默认关闭后台调度，测试可显式调用 job，并可使用事务、HLL、hash、set 和 TTL。
 
 绝大多数数据库主键由业务 Snowflake ID 生成；`integration_events.seq` 与 `redirect_cache_invalidation_outbox.id` 是仅有的业务自增序列。reset 不对业务表泛化执行 `TRUNCATE`：删除事务提交并恢复外键检查后，仅当实时元数据显示这两条序列已经前进时，才对对应空表执行 `ALTER TABLE ... AUTO_INCREMENT = 1`。这样避免 DDL 的隐式提交破坏删除回滚语义，也让未触碰这两张表的 fixture 边界不承担 ALTER 成本；该条件 DDL 的耗时仍计入 `averageResetMillis`。
 
-`FLUSHALL` 会一起删除 key、stream、consumer group、pending、DLQ 和过期时间。Spring 上下文或进程内缓存若承载可变业务状态，测试仍须通过公开用例显式初始化或清理，不能把它们误认为 Redis fixture。
+`FLUSHALL` 会删除 Redis key 和过期时间。Spring 上下文或进程内缓存若承载可变业务状态，测试仍须通过公开用例显式初始化或清理，不能把它们误认为 Redis fixture。
 
-共享 fixture 不依赖 JUnit 方法顺序；`SharedIntegrationTopologyIsolationTest` 使用不同哨兵并重复运行，锁定双库、多种 Redis 状态以及两条业务自增序列不泄漏。仓库当前不开启集成测试并行执行；若未来开启，只有继承带资源锁共享基类的测试可以操作这套 topology。
+共享 fixture 不依赖 JUnit 方法顺序；`SharedIntegrationTopologyIsolationTest` 使用不同哨兵并重复运行，锁定数据库、Redis 状态以及两条业务自增序列不泄漏。仓库当前不开启集成测试并行执行；若未来开启，只有继承带资源锁共享基类的测试可以操作这套 topology。
 
-`AnalyticsVisitStreamRecoveryIntegrationTest` 通过真实访问事件 appender 交错执行固定轮数的峰值生产与多轮调度。每次调度的落库增量不得超过 `ingest-batch-size × ingest-max-batches`；生产停止后，测试在有限调度轮数内要求 consumer group 的 lag 与 pending 都回落为零，并验证 Stream 的 `XLEN` 保持在 `MAXLEN ~` 预算及一个 Redis macro-node 容差内。该门禁不使用墙钟性能阈值，避免把 CI 主机抖动误判为恢复语义回归。
+Analytics 集成测试直接写入 Redis 聚合或调用 `VisitRecorderPort`，再显式运行 `AnalyticsFlushJob` 验证 V2 marker 的 claim、generation 冲突和 MySQL upsert。该门禁不使用墙钟性能阈值，避免把 CI 主机抖动误判为恢复语义回归。
 
 ### 故障诊断
 
-容器启动失败会同时报告 primary、replica 和 Redis 镜像名。排查顺序：
+容器启动失败会同时报告 MySQL 和 Redis 镜像名。排查顺序：
 
 1. 确认 Docker daemon 可访问且磁盘空间充足。
 2. 检查 Testcontainers/Ryuk 日志及实际映射端口。
-3. 检查两库是否都从当前 `database/schema.sql` 完整初始化。
+3. 检查 MySQL 是否从当前 `database/schema.sql` 完整初始化。
 4. 若只在单测间歇失败，先检查测试是否绕过共享扩展或在异步任务仍运行时结束。
 5. 若 reset 失败，检查遗留事务、连接池日志与 Redis `FLUSHALL` 返回值。
 

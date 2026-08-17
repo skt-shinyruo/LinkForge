@@ -1,13 +1,11 @@
 package com.linkforge.contract.analytics;
 
 /**
- * Redirect 调用的访问记录发布端口，用于基础 PV/UV、维度和可选明细。
+ * Redirect 调用的基础 PV/UV 记录端口。
  *
  * <p>默认部署为 fail-open，但实现可以通过 {@code app.analytics.events.fail-open=false}
- * 选择传播异常。当前标准实现为每次调用生成新的访问事件/明细 requestId，接口本身没有调用方幂等键；同一
- * Stream 消息的 consumer reclaim 由 requestId 幂等投影保护，但重复调用会生成多个 requestId，仍可能重复增加
- * PV。成功返回只表示同步 appender 未报告失败，不表示 Redis Stream、聚合或 MySQL 已完成持久化；fail-open
- * 返回更不能作为事件已入流的证据。</p>
+ * 选择传播异常。当前标准实现每次调用生成新的 requestId，接口本身没有调用方幂等键，因此重复调用会重复增加
+ * PV。正常返回表示 Redis 聚合已完成，但 MySQL flush 仍为异步；fail-open 返回不证明统计成功。</p>
  */
 public interface VisitRecorderPort {
 

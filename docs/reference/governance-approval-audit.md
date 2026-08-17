@@ -4,11 +4,9 @@
 
 Governance 管理敏感操作审批请求、审批决策、执行器回调和审计日志。它不直接理解 Shortlink 或 Analytics 的内部表结构，而是通过 `contract-governance` 中的稳定载荷和执行端口与其他上下文协作。
 
-当前主要审批场景：
+当前审批场景：
 
 - 应用级短链目标地址变更：`PUBLIC_LINK_DESTINATION_CHANGE`，审批通过后由 Shortlink 执行器真正修改 URL。
-- 访问明细导出：`ANALYTICS_DETAIL_EXPORT`，当前只创建审批和审计，不生成文件。
-- 代码中还保留外部域名绑定、应用配额提升等审批矩阵规则。
 
 ## 流程图
 
@@ -29,7 +27,7 @@ Governance 管理敏感操作审批请求、审批决策、执行器回调和审
   </defs>
   <rect class="box" x="30" y="50" width="170" height="82"/>
   <text class="text" x="115" y="80" text-anchor="middle">业务上下文</text>
-  <text class="small" x="115" y="102" text-anchor="middle">Shortlink / Analytics</text>
+  <text class="small" x="115" y="102" text-anchor="middle">Shortlink</text>
   <text class="small" x="115" y="122" text-anchor="middle">提交敏感操作</text>
 
   <rect class="payload" x="265" y="45" width="190" height="92"/>
@@ -87,8 +85,6 @@ Governance 管理敏感操作审批请求、审批决策、执行器回调和审
 业务上下文不直接插 Governance 表，而是调用 `ApprovalSubmissionPort`：
 
 - `requestLinkDestinationChangeApproval()`：短链目标地址变更。
-- `requestAnalyticsDetailExportApproval()`：访问明细导出。
-
 `GovernanceApprovalApplicationService` 把这些窄口径请求转换成 `SubmitApprovalRequest`，构造版本化结构化 payload，交给 `GovernanceService.submitRequest()`。
 
 `submitRequest()` 会：
@@ -120,8 +116,6 @@ Governance 管理敏感操作审批请求、审批决策、执行器回调和审
 ## 审批矩阵
 
 - `TENANT_ADMIN` 和 `PLATFORM_ADMIN` 可审批一般请求。
-- `EXTERNAL_DOMAIN_BINDING` 必须平台管理员审批。
-- `APPLICATION_QUOTA_INCREASE` 如果请求月发链额度超过 100000，必须平台管理员审批。
 - 没有审批角色直接返回 forbidden。
 
 ## 目标地址变更审批
@@ -143,10 +137,6 @@ Governance 管理敏感操作审批请求、审批决策、执行器回调和审
 - 更新目标地址，乐观锁写入。
 - 发布事件并在事务提交后驱逐 Redirect 缓存。
 
-## 访问明细导出审批
-
-`AnalyticsExportRequestService` 校验链接归属和时间范围后提交 `ANALYTICS_DETAIL_EXPORT`。Governance 会记录审批和审计。当前没有实现审批通过后生成文件的 `ApprovalExecutionPort`，所以审批通过后状态保持 approved，不会进入 executed。
-
 ## 源码分析
 
 - `server/contracts/governance/src/main/java/com/linkforge/contract/governance/ApprovalSubmissionPort.java`
@@ -165,9 +155,6 @@ Governance 管理敏感操作审批请求、审批决策、执行器回调和审
   - 审计日志查询入口。
 - `server/shortlink/application/src/main/java/com/linkforge/shortlink/application/approval/LinkDestinationChangeApprovalExecutor.java`
   - 短链目标地址变更执行器。
-- `server/analytics/application/src/main/java/com/linkforge/analytics/application/AnalyticsExportRequestService.java`
-  - 访问明细导出审批提交方。
-
 ## 审批与审计列表分页
 
 `GET /api/v1/approvals` 和 `GET /api/v1/audit-logs` 共用以下查询与响应语义：

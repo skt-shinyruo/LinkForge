@@ -88,13 +88,12 @@ JWT signing secret。切换到不同的 current pepper 会结束旧二进制的�
 
 `VisitRecorderPort.recordVisit` 接收 Redirect 已确认发生的真实跳转。`RedirectVisitRecord` 包含租户、链接、可选 application/domain、UTC 时间和经过限制的访问上下文。
 
-端口实现把基础访问流写入 Redis Stream；`events.enabled` 只决定后续是否采样并落访问明细，不能关闭基础 PV/UV 或应用点击额度统计。根据配置，部分外围异常可能 fail-open，调用方不得据此推断记录已经持久化。
+标准实现同步执行 Redis Lua，原子更新 PV、HLL UV、scope HLL 和 V2 marker。正常返回表示 Redis 聚合已完成，
+MySQL flush 仍为异步；fail-open 返回不证明统计成功。
 
 ### 点击额度
 
 `ApplicationClickQuotaReservationPort.tryReserveMonthlyClick` 对 UTC 月窗口尝试原子预留。`false` 表示实现已明确判定达到上限；`true` 只表示 Redirect 可以继续，不能等价为“已获得名额”或“计数已递增”。无上限、非法输入，以及 Redis、MySQL 基线查询或 Lua 脚本异常都会固定 fail-open 返回 `true`。因此监控和计费必须区分真正的 Redis 预留与基础设施降级放行。
-
-`ApplicationClickUsagePort` 查询 `[fromInclusiveUtc,toExclusiveUtc)` 的已持久化点击量，主要用于兼容或初始化，不包含尚未 flush 的精确实时保证。
 
 ### Redis key 和 member
 
@@ -103,32 +102,28 @@ JWT signing secret。切换到不同的 current pepper 会结束旧二进制的�
 | 用途 | 格式 |
 | --- | --- |
 | V2 基础 generation marker Hash | `stats:dirty:v2:link:{yyyyMMdd}` |
-| V2 维度 generation marker Hash | `stats:dirty:v2:dim:{yyyyMMdd}` |
 | V2 scope generation marker Hash | `stats:dirty:v2:scope:{yyyyMMdd}` |
-| V2 first-seen Hash | `stats:dirty:v2:{link|dim|scope}:first-seen:{yyyyMMdd}` |
-| V2 claim cursor state | `stats:dirty:v2:{link|dim|scope}:{yyyyMMdd}:claim:cursor` |
-| V2 claim overflow queue | `stats:dirty:v2:{link|dim|scope}:{yyyyMMdd}:claim:overflow` |
-| legacy 基础 dirty Stream | `stats:dirty:flush:{yyyyMMdd}` |
-| legacy 维度 dirty Stream | `stats:dirty:dim:{yyyyMMdd}` |
-| legacy scope dirty Stream | `stats:dirty:scope:{yyyyMMdd}` |
+| V2 first-seen Hash | `stats:dirty:v2:{link|scope}:first-seen:{yyyyMMdd}` |
+| V2 claim cursor state | `{marker}:claim:cursor` |
+| V2 claim overflow queue | `{marker}:claim:overflow` |
 | dirty link member | `{tenantId}:{linkId}` |
 | link PV | `stats:pv:{tenantId}:{linkId}:{yyyyMMdd}` |
 | link UV HLL | `stats:uv:{tenantId}:{linkId}:{yyyyMMdd}` |
+| tenant scope UV HLL | `stats:scope:uv:tenant:{tenantId}:{yyyyMMdd}` |
+| application scope UV HLL | `stats:scope:uv:application:{tenantId}:{applicationId}:{yyyyMMdd}` |
+| domain scope UV HLL | `stats:scope:uv:domain:{tenantId}:{domainId}:{yyyyMMdd}` |
 | tenant scope member | `tenant:{tenantId}:0` |
 | application scope member | `application:{tenantId}:{applicationId}` |
 | domain scope member | `domain:{tenantId}:{domainId}` |
 | 点击额度 | `quota:click:application:{tenantId}:{applicationId}:{yyyyMM}` |
-| 访问流 | `stats:visit:events` |
+| 单次脚本去重 | `stats:projection:dedup:{requestId}` |
 
 dirty member 的 `{tenantId}:{linkId}` wire shape 保持不变；它只表示“需要刷新”，不表示 active set membership。
 当前 producer 在聚合 Lua 内推进 V2 generation，flush 写入当前累计 PV/HLL 后仅在 generation 未变化时删除 field；
-并发新写会产生 CAS 冲突并保留 marker。legacy Stream 仅供滚动升级 dual-read 和显式回滚写，未经停写、排空和完整
-compatibility TTL 的退役证据不得关闭兼容读。标准访问事件以 requestId 幂等投影，同一 visit Stream 记录重放不会
-重复增加 PV；历史无 requestId 消息和调用方生成多个 requestId 的重复访问不在该保证内。
+并发新写会产生 CAS 冲突并保留 marker。每次端口调用生成新的 requestId，所以它只保护一次脚本执行的重试；调用方
+重复调用仍会重复增加 PV。
 
-V2 claim cursor 和 overflow queue 是由 `AnalyticsKeys` 生成、跟随 marker TTL 的内部扫描状态；它们只保存公平
-轮转进度，不改变 marker/member 语义。marker 清空或过期时状态必须一并删除，旧实例不识别这些键也不影响 legacy
-Stream 回滚窗口。
+V2 claim cursor 和 overflow queue 跟随 marker TTL，只保存公平轮转进度，不改变 marker/member 语义。
 
 ## Shortlink 集成事件
 
@@ -148,11 +143,12 @@ Stream 回滚窗口。
 
 ## Governance payload 与执行端口
 
-`ApprovalPayloadTypes` 定义稳定 `type/version`，当前覆盖目标地址变更、统计明细导出和应用额度提升。`ApprovalPayloadCodec`
+`ApprovalPayloadTypes` 定义稳定 `type/version`，当前只覆盖目标地址变更。`ApprovalPayloadCodec`
 对非法 JSON 和未知字段严格失败，但 `read` 只按目标 Java 类型反序列化，不自行校验 `type/version`；调用方必须显式
 检查类型和版本，不能静默忽略审批意图。
 
-`ApprovalSubmissionPort` 接收已经认证的 `ApprovalRequester` 和结构化输入。当前由该端口提交的目标地址变更和访问明细导出使用版本化 JSON；导出没有可比较旧状态，因此 `beforeSnapshot` 为 null。时间范围均按 UTC。Governance 的通用审批实体仍兼容按操作类型解释的历史纯文本快照，不能把所有持久化审批记录都当作同一 JSON DTO。
+`ApprovalSubmissionPort` 接收已经认证的 `ApprovalRequester` 和目标地址变更输入，使用版本化 JSON 保存 before/after
+snapshot。Governance 的通用审批实体仍兼容历史纯文本快照，不能把所有持久化记录都当作同一 JSON DTO。
 
 审批通过时，Governance 的固定顺序是：
 
@@ -166,7 +162,6 @@ Stream 回滚窗口。
 
 ## Null、时间与集合
 
-- 应用额度提升 V1 中 `monthlyLinkLimit` 必填；只有可选的 `monthlyClickLimit` 为 null 时表示本次不携带点击额度变更，二者都不表示清零。
 - legacy 链接的 applicationId/domainId 可以同时为空；新应用级链路要求两者成对。
 - 公开集合视图应视为快照，不依赖实现是否返回可变集合。
 - 日期 key 使用 UTC `LocalDate`；月额度使用 UTC 月初。跨日请求可能在不同日 HLL 中出现，跨日 UV 不能简单相加得到精确去重人数。

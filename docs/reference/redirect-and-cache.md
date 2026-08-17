@@ -107,7 +107,7 @@ Redirect 是流量面，负责把 `/r/{code}` 请求解析成最终跳转响应�
 13. 真正跳转前调用 `VisitRecorderPort.recordVisit()`。
 14. `RedirectHttpResponseWriter` 返回 preview、not found、unavailable 或 redirect 响应。
 
-Shortlink 对 `findRedirectMetaByHostAndCode()` 的发布实现使用只读事务；生产 ShardingSphere 配置把事务内读取路由到 primary，避免副本延迟产生错误负缓存或旧目标正缓存。该边界只覆盖跳转元数据，ownership、summary 等可容忍延迟的控制面查询仍保持普通读路由。Redirect 继续只依赖 `ShortLinkReadPort`，不维护第二份链接事实。
+Shortlink 对 `findRedirectMetaByHostAndCode()` 的发布实现使用只读事务，并与写入使用同一 MySQL 数据源，避免写后读产生错误负缓存或旧目标正缓存。Redirect 继续只依赖 `ShortLinkReadPort`，不维护第二份链接事实。
 
 ### 输入归一化与内容协商
 
@@ -193,7 +193,7 @@ Redis 读故障和坏序列化必须是 miss，而不是负缓存。正/负缓�
 - 按 UTC 月度窗口调用 `ApplicationClickQuotaReservationPort.tryReserveMonthlyClick()`。
 - Analytics 的 Redis quota adapter 会先用 Redis Lua 预留；counter 缺失时从 MySQL 聚合统计读取基线再 seed。
 - 额度故障有两层：`RedisApplicationClickQuotaReservationPort` 内的 Redis script、null 返回、baseline 查询和 seed 异常固定返回允许（fail-open）；`RedirectQuotaGuard` 仍收到的 Platform quota 查询或端口异常才由 `app.analytics.quota.fail-open` 决定放行或按额度不可用处理。
-- Redis counter 首次建立使用 MySQL 已 flush PV 作为 baseline，因此 stream/flush 延迟和 fail-open 窗口可能暂时低估实际点击量。
+- Redis counter 首次建立使用 MySQL 已 flush PV 作为 baseline，因此 flush 延迟和 fail-open 窗口可能暂时低估实际点击量。
 
 `monthlyClickLimit <= 0` 表示不限制。额度以 UTC 月 `[monthStart,nextMonthStart)` 计算，counter 会延长到下月后两天以覆盖边界恢复。
 

@@ -25,27 +25,6 @@
         <result property="uv" column="uv"/>
     </resultMap>
 
-    <resultMap id="DimensionRowResultMap" type="com.linkforge.analytics.infrastructure.persistence.mapper.AnalyticsDimensionRow">
-        <result property="value" column="dim_value"/>
-        <result property="pv" column="pv"/>
-        <result property="uv" column="uv"/>
-    </resultMap>
-
-    <resultMap id="VisitEventRowResultMap" type="com.linkforge.analytics.infrastructure.persistence.mapper.AnalyticsVisitEventRow">
-        <result property="occurredAt" column="occurred_at"/>
-        <result property="requestId" column="request_id"/>
-        <result property="ipHash" column="ip_hash"/>
-        <result property="userAgentRaw" column="ua_raw"/>
-        <result property="userAgentFamily" column="ua_family"/>
-        <result property="osFamily" column="os_family"/>
-        <result property="deviceType" column="device_type"/>
-        <result property="refererDomain" column="referer_domain"/>
-        <result property="language" column="language"/>
-        <result property="utmSource" column="utm_source"/>
-        <result property="utmMedium" column="utm_medium"/>
-        <result property="utmCampaign" column="utm_campaign"/>
-    </resultMap>
-
     <select id="linkDaily" resultMap="DailyStatRowResultMap">
         SELECT day, pv, uv
         FROM link_stats_daily
@@ -291,40 +270,4 @@
         ORDER BY agg.uv DESC, agg.pv DESC, agg.link_id ASC
     </select>
 
-    <select id="linkDimTotalPv" resultType="long">
-        SELECT COALESCE(SUM(pv), 0) AS total_pv
-        FROM link_stats_dim_daily
-        WHERE tenant_id = #{param1}
-          AND link_id = #{param2}
-          AND day &gt;= #{param3}
-          AND day &lt;= #{param4}
-          AND dim_type = #{param5}
-    </select>
-
-    <select id="linkDimRows" resultMap="DimensionRowResultMap">
-        SELECT dim_value, SUM(pv) AS pv, SUM(uv) AS uv
-        FROM link_stats_dim_daily
-        WHERE tenant_id = #{param1}
-          AND link_id = #{param2}
-          AND day &gt;= #{param3}
-          AND day &lt;= #{param4}
-          AND dim_type = #{param5}
-        GROUP BY dim_value
-        ORDER BY pv DESC, uv DESC, dim_value ASC
-        LIMIT #{param6}
-    </select>
-
-    <select id="linkEvents" resultMap="VisitEventRowResultMap">
-        SELECT occurred_at, request_id, ip_hash,
-               ua_raw, ua_family, os_family, device_type,
-               referer_domain, language,
-               utm_source, utm_medium, utm_campaign
-        FROM link_visit_events
-        WHERE tenant_id = #{param1}
-          AND link_id = #{param2}
-          AND occurred_at &gt;= #{param3}
-          AND occurred_at &lt;= #{param4}
-        ORDER BY occurred_at DESC, id DESC
-        LIMIT #{param5}
-    </select>
 </mapper>

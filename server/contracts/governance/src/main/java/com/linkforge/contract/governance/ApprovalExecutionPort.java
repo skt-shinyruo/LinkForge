@@ -32,8 +32,8 @@ public interface ApprovalExecutionPort {
      *
      * <p>实现必须首先确认 {@code request.operation()} 与自身支持的操作一致，再按该操作解释 snapshot 的
      * type/version 和可空规则。它必须以 {@code request.tenantId()} 查询当前资源，验证应用范围、资源状态和
-     * 操作前置条件；存在 before snapshot 时还必须做陈旧状态或等效的乐观并发校验。比如目标地址变更需要比较
-     * before 地址，统计导出的 before 则可以为 {@code null}。</p>
+     * 操作前置条件；存在 before snapshot 时还必须做陈旧状态或等效的乐观并发校验。目标地址变更需要比较
+     * before 地址。</p>
      *
      * <p>任何未完成的业务执行都应抛出异常，不能吞掉后仍返回成功，否则 Governance 会把请求标为
      * {@code EXECUTED}。成功返回只表示本次调用完成，并不替执行器声明外部副作用的 exactly-once；重试防护

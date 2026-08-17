@@ -14,15 +14,12 @@
 
 - `JWT_SECRET`：长度至少 32 bytes
 - `ANALYTICS_SALT`：用于统计访客指纹 hash 的盐
-- （可选）`ANALYTICS_VISIT_STREAM_MAX_LEN`：基础 PV/UV 使用的 Redis 访问流近似最大长度，默认 `200000`
-- （可选）`ANALYTICS_EVENTS_ENABLED` / `ANALYTICS_EVENTS_SAMPLE_RATE`：访问明细落库开关与采样率；只影响 `link_visit_events` 明细，不影响基础 PV/UV
+- （可选）`ANALYTICS_EVENTS_FAIL_OPEN`：Redis 统计写入失败时是否继续跳转，默认 `true`
 - `APP_BASE_URL`：创建短链时用于拼接 shortUrl（建议指向反向代理/网关域名；本地默认 `http://localhost:18080`）
 - （可选）`LINKFORGE_HTTP_BIND` / `LINKFORGE_HTTP_PORT`：本地 compose 网关监听地址与端口，默认 `127.0.0.1:18080`
 - （可选/生产建议）`EDGE_TRUSTED_PROXIES`：可信代理链（CIDR）。当 `/r/**` 经 Nginx/网关反代时需要配置，否则客户端 IP/UV 统计可能严重失真
 - （可选）MySQL 账号（默认值可直接使用）：
-  - `MYSQL_API_USER` / `MYSQL_API_PASSWORD`：主库业务读写账号
-  - `MYSQL_READ_USER` / `MYSQL_READ_PASSWORD`：从库只读账号（ShardingSphere-JDBC 读流量）
-  - `MYSQL_REPLICATION_USER` / `MYSQL_REPLICATION_PASSWORD`：MySQL 主从复制账号
+  - `MYSQL_API_USER` / `MYSQL_API_PASSWORD`：后端业务账号
 
 3) 启动：
 
@@ -31,9 +28,9 @@ cd deploy
 docker compose --env-file .env up --build
 ```
 
-本地 compose 使用 `mysql-primary` + `mysql-replica` 模拟 MySQL 主从部署。全新主库数据卷从 `database/schema.sql` 初始化，后端通过 ShardingSphere-JDBC 暴露一个逻辑数据源。业务写入走 `write_ds`，符合条件的非事务查询可走 `read_ds_0`；事务内读保持走主库，降低复制延迟导致的写后读不一致风险。
+本地 compose 使用一个 MySQL 和一个 Redis。全新 MySQL 数据卷从 `database/schema.sql` 初始化，后端通过 Spring 标准数据源连接同一数据库；需要写后读一致性的操作使用事务保证。
 
-开发期修改 `database/schema.sql`、MySQL 初始化账号或复制参数后，必须先通过 `docker compose down -v` 停止并删除旧卷；本项目命令示例带上环境文件：
+开发期修改 `database/schema.sql` 或 MySQL 初始化账号后，必须先通过 `docker compose down -v` 停止并删除旧卷；本项目命令示例带上环境文件：
 
 ```bash
 cd deploy

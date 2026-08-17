@@ -40,13 +40,6 @@ public interface AccountsUserStore {
     List<UserData> findAllByTenantIdOrderByCreatedAtDesc(Long tenantId);
 
     /**
-     * 按 {@link UserData#id()} 更新用户的可变持久化字段。
-     *
-     * <p>修改密码或主动注销时，调用方通过递增 {@code tokenVersion} 吊销旧令牌；端口不得自行重置该值。</p>
-     */
-    void update(UserData user);
-
-    /**
      * 原子推进用户令牌撤销代次，不读取或覆盖密码、状态等其他字段。
      *
      * @return 用户存在并完成推进时为 {@code true}

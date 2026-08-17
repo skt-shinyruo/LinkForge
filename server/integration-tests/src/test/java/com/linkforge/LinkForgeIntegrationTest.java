@@ -2,28 +2,23 @@ package com.linkforge;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linkforge.app.config.MybatisConfig;
-import com.linkforge.analytics.infrastructure.job.AnalyticsDimensionFlushJob;
-import com.linkforge.analytics.infrastructure.job.AnalyticsEventIngestJob;
 import com.linkforge.analytics.infrastructure.job.AnalyticsFlushJob;
 import com.linkforge.contract.accounts.AccountsErrorCode;
+import com.linkforge.contract.analytics.AnalyticsKeys;
 import com.linkforge.contract.openapi.OpenApiErrorCode;
 import com.linkforge.governance.interfaces.web.ApprovalController;
 import com.linkforge.governance.interfaces.web.AuditController;
 import com.linkforge.platform.interfaces.web.TenantAdminApplicationController;
 import com.linkforge.platform.interfaces.web.TenantAdminDomainController;
 import com.linkforge.testsupport.SharedIntegrationTestSupport;
-import org.mybatis.spring.annotation.MapperScan;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.data.redis.connection.stream.StreamRecords;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.core.annotation.AnnotationUtils;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -43,14 +38,6 @@ abstract class LinkForgeIntegrationTestSupport extends SharedIntegrationTestSupp
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry r) {
-        // 访问明细 + 维度聚合测试开关（避免调度影响测试稳定性）
-        r.add("app.analytics.dimensions.enabled", () -> "true");
-        r.add("app.analytics.events.enabled", () -> "true");
-        r.add("app.analytics.events.sample-rate", () -> "1");
-        r.add("APP_ANALYTICS_EVENT_INGEST_DELAY_MS", () -> "9999999");
-        r.add("APP_ANALYTICS_EVENT_RETENTION_DELAY_MS", () -> "9999999");
-        r.add("APP_ANALYTICS_DIM_FLUSH_DELAY_MS", () -> "9999999");
-
         r.add("APP_ANALYTICS_FLUSH_DELAY_MS", () -> "9999999");
 
     }
@@ -73,12 +60,6 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
     AnalyticsFlushJob analyticsFlushJob;
 
     @Autowired
-    AnalyticsDimensionFlushJob analyticsDimensionFlushJob;
-
-    @Autowired
-    AnalyticsEventIngestJob analyticsEventIngestJob;
-
-    @Autowired
     StringRedisTemplate redis;
 
     @Autowired
@@ -99,9 +80,6 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
         assertThat(hasAnnotation(LinkForgeApplication.class, entityScan))
                 .as("JPA entity scan should not be explicitly enabled")
                 .isFalse();
-        assertThat(AnnotationUtils.findAnnotation(MybatisConfig.class, MapperScan.class))
-                .as("Task 1 bootstrap should not declare empty mapper scan packages")
-                .isNull();
         assertThat(applicationContext.getBeanNamesForType(TenantAdminApplicationController.class))
                 .as("Runtime bootstrap should include platform application controller")
                 .isNotEmpty();
@@ -248,28 +226,6 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
 
         // 6) 手动触发一次 flush，然后查询统计
         analyticsFlushJob.flush();
-        seedDimPv(tenantId, linkId, today, "referer_domain", "google.com", 3);
-        analyticsDimensionFlushJob.flush();
-
-        // 6.1) 模拟访问明细事件写入，并手动触发一次 ingest
-        String streamKey = "stats:visit:events";
-        redis.opsForStream().add(StreamRecords.newRecord().in(streamKey).ofStrings(java.util.Map.of(
-                "ts", String.valueOf(System.currentTimeMillis()),
-                "tenantId", String.valueOf(tenantId),
-                "linkId", String.valueOf(linkId),
-                "requestId", "rid-" + System.nanoTime(),
-                "refererDomain", "google.com",
-                "language", "zh-cn",
-                "uaFamily", "chrome",
-                "osFamily", "macos",
-                "deviceType", "desktop",
-                "utmSource", "ads"
-        )));
-        assertThat(redis.hasKey(streamKey)).isTrue();
-        // ingest 为 best-effort：这里多跑几次以避免消费组初始化/IO 抖动导致的偶发空结果
-        for (int i = 0; i < 3; i++) {
-            analyticsEventIngestJob.ingest();
-        }
 
         String statsResp = mockMvc.perform(
                         get("/api/v1/stats/links/" + linkId + "/daily")
@@ -286,49 +242,6 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
         assertThat(statsJson.get("data").isArray()).isTrue();
         assertThat(statsJson.get("data").size()).isGreaterThan(0);
         assertThat(statsJson.get("data").get(0).get("pv").asLong()).isGreaterThanOrEqualTo(10L);
-
-        // 6.2) 维度分布查询（referer_domain）
-        String dimResp = mockMvc.perform(
-                        get("/api/v1/stats/links/" + linkId + "/dimensions")
-                                .header("Authorization", "Bearer " + token)
-                                .param("from", today.toString())
-                                .param("to", today.toString())
-                                .param("type", "referer_domain")
-                                .param("limit", "10")
-                )
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-        JsonNode dimJson = objectMapper.readTree(dimResp);
-        assertThat(dimJson.get("code").asInt()).isEqualTo(0);
-        assertThat(dimJson.get("data").isArray()).isTrue();
-        assertThat(dimJson.get("data").size()).isGreaterThan(0);
-        assertThat(dimJson.get("data").get(0).get("value").asText()).isEqualTo("google.com");
-
-        // 6.3) 访问明细查询
-        JsonNode eventJson = null;
-        for (int i = 0; i < 5; i++) {
-            String eventResp = mockMvc.perform(
-                            get("/api/v1/stats/links/" + linkId + "/events")
-                                    .header("Authorization", "Bearer " + token)
-                                    .param("limit", "10")
-                    )
-                    .andExpect(status().isOk())
-                    .andReturn()
-                    .getResponse()
-                    .getContentAsString();
-            eventJson = objectMapper.readTree(eventResp);
-            assertThat(eventJson.get("code").asInt()).isEqualTo(0);
-            assertThat(eventJson.get("data").isArray()).isTrue();
-            if (eventJson.get("data").size() > 0) {
-                break;
-            }
-            Thread.sleep(200);
-        }
-        assertThat(eventJson).isNotNull();
-        assertThat(eventJson.get("data").size()).isGreaterThan(0);
-        assertThat(eventJson.get("data").get(0).get("requestId").asText()).isNotBlank();
 
         // 7) Top 链接报表（JWT）
         String topResp = mockMvc.perform(
@@ -1291,9 +1204,9 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
         String dayRaw = day.format(DateTimeFormatter.BASIC_ISO_DATE); // yyyyMMdd
         String pvKey = "stats:pv:" + tenantId + ":" + linkId + ":" + dayRaw;
         String uvKey = "stats:uv:" + tenantId + ":" + linkId + ":" + dayRaw;
-        String statsDirtyStreamKey = "stats:dirty:flush:" + dayRaw;
-        String dimDirtyStreamKey = "stats:dirty:dim:" + dayRaw;
-        String dirtyMember = tenantId + ":" + linkId;
+        String markerKey = AnalyticsKeys.statsDirtyMarkerV2Key(day);
+        String firstSeenKey = AnalyticsKeys.statsDirtyMarkerV2FirstSeenKey(day);
+        String dirtyMember = AnalyticsKeys.dirtyLinkMember(tenantId, linkId);
 
         for (int i = 0; i < pv; i++) {
             redis.opsForValue().increment(pvKey);
@@ -1301,14 +1214,8 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
         for (int i = 0; i < uv; i++) {
             redis.opsForHyperLogLog().add(uvKey, "v" + i + "-" + tenantId + "-" + linkId);
         }
-        redis.opsForStream().add(StreamRecords.newRecord().in(statsDirtyStreamKey).ofStrings(java.util.Map.of(
-                "member", dirtyMember,
-                "ts", String.valueOf(System.currentTimeMillis())
-        )));
-        redis.opsForStream().add(StreamRecords.newRecord().in(dimDirtyStreamKey).ofStrings(java.util.Map.of(
-                "member", dirtyMember,
-                "ts", String.valueOf(System.currentTimeMillis())
-        )));
+        redis.opsForHash().put(markerKey, dirtyMember, "1");
+        redis.opsForHash().put(firstSeenKey, dirtyMember, String.valueOf(System.currentTimeMillis()));
     }
 
     private AppDomainFixture provisionDedicatedApplication(long tenantId, String applicationKey, String hostname) {
@@ -1323,13 +1230,6 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
                 tenantId,
                 applicationKey,
                 applicationKey
-        );
-        jdbcTemplate.update(
-                """
-                        INSERT INTO application_policies (application_id, default_domain_scope, default_redirect_status_code, preview_enabled)
-                        VALUES (?, 'APPLICATION_DEDICATED', 302, 0)
-                        """,
-                applicationId
         );
         jdbcTemplate.update(
                 """
@@ -1367,20 +1267,6 @@ class LinkForgeIntegrationTest extends LinkForgeIntegrationTestSupport {
                 pv,
                 uv
         );
-    }
-
-    private void seedDimPv(long tenantId, long linkId, LocalDate day, String dimType, String dimValue, long pv) {
-        String dayRaw = day.format(DateTimeFormatter.BASIC_ISO_DATE); // yyyyMMdd
-        String t = dimType == null ? "unknown" : dimType.trim().toLowerCase();
-        if (t.isBlank()) {
-            t = "unknown";
-        }
-        t = t.replace(':', '_');
-        String key = "stats:dim:pv:" + tenantId + ":" + linkId + ":" + dayRaw + ":" + t;
-
-        for (int i = 0; i < pv; i++) {
-            redis.opsForHash().increment(key, dimValue, 1L);
-        }
     }
 
     private long createTenantSharedDomain(String token, String hostname) throws Exception {

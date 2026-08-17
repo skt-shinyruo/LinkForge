@@ -2,11 +2,8 @@ package com.linkforge.governance.application;
 
 import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
-import com.linkforge.contract.governance.ApplicationQuotaIncreaseApprovalPayload;
 import com.linkforge.contract.governance.ApprovalExecutionPort;
 import com.linkforge.contract.governance.ApprovalExecutionRequest;
-import com.linkforge.contract.governance.ApprovalPayloadCodec;
-import com.linkforge.contract.governance.ApprovalPayloadTypes;
 import com.linkforge.contract.governance.SensitiveOperation;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
 import com.linkforge.foundation.context.UserActor;
@@ -41,13 +38,12 @@ import java.util.function.ToLongFunction;
  * Spring 事务中同步编排。参与该事务的本地写入会在异常时一起回滚；事务外副作用无法由本服务撤销，
  * {@link ApprovalExecutionPort} 实现必须使用业务幂等键或乐观锁保护重试。</p>
  *
- * <p>审批权限矩阵：主体始终只能处理所属租户；平台管理员在该租户内可审批所有操作，租户管理员可审批
- * 一般操作和不超过 100000 的月短链配额，但外部域名绑定以及更高配额只允许平台管理员审批。</p>
+ * <p>审批权限矩阵：主体始终只能处理所属租户；平台管理员和租户管理员可审批当前支持的目标地址变更。
+ * 其他角色不能审批。</p>
  */
 @Service
 public class GovernanceService {
 
-    private static final long TENANT_ADMIN_MONTHLY_LINK_LIMIT_CEILING = 100_000L;
     private static final int DEFAULT_LIST_LIMIT = 50;
     private static final int MAX_LIST_LIMIT = 200;
 
@@ -116,7 +112,7 @@ public class GovernanceService {
      * <p>执行顺序具有并发含义：</p>
      * <ol>
      *     <li>校验审批人和租户，读取租户内请求，并验证请求仍为待审批且不是自审批；</li>
-     *     <li>执行角色/配额权限矩阵校验，将领域操作映射为发布契约，并确认最多只有一个匹配执行器；</li>
+     *     <li>执行角色权限矩阵校验，将领域操作映射为发布契约，并确认最多只有一个匹配执行器；</li>
      *     <li>用 {@link ApprovalRepository#markApprovedIfPending(long, long, long, String, String, LocalDateTime)}
      *     原子抢占请求；抢占失败直接返回“状态已变化”，不会执行下游操作或写审计；</li>
      *     <li>有执行器时同步执行，再以条件更新推进为 {@code EXECUTED}；没有执行器时请求稳定停留在
@@ -323,12 +319,7 @@ public class GovernanceService {
         return new GovernancePageResult<>(items, hasMore, nextCursor);
     }
 
-    /**
-     * 校验审批角色矩阵。
-     *
-     * <p>配额审批只接受 {@code applicationQuotaIncrease}、版本 1 的结构化 payload，且
-     * {@code monthlyLinkLimit} 必填；无法解析、类型/版本不匹配或字段缺失均拒绝批准。</p>
-     */
+    /** 校验审批角色矩阵。 */
     private void enforceApprovalMatrix(UserActor actor, ApprovalRequest request) {
         Set<String> roles = actor.roles() == null ? Set.of() : actor.roles();
         boolean isPlatformAdmin = roles.contains(StandardRoles.PLATFORM_ADMIN);
@@ -336,32 +327,6 @@ public class GovernanceService {
         if (!isPlatformAdmin && !isTenantAdmin) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "无审批权限");
         }
-        if (request.operationType() == SensitiveOperationType.EXTERNAL_DOMAIN_BINDING && !isPlatformAdmin) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "外部域名绑定需平台管理员审批");
-        }
-        if (request.operationType() == SensitiveOperationType.APPLICATION_QUOTA_INCREASE) {
-            long requestedMonthlyLinkLimit = parseRequestedMonthlyLinkLimit(request.afterSnapshot());
-            if (requestedMonthlyLinkLimit > TENANT_ADMIN_MONTHLY_LINK_LIMIT_CEILING && !isPlatformAdmin) {
-                throw new BusinessException(ErrorCode.FORBIDDEN, "超出租户管理员可审批的配额上限");
-            }
-        }
-    }
-
-    private long parseRequestedMonthlyLinkLimit(String snapshot) {
-        ApplicationQuotaIncreaseApprovalPayload payload;
-        try {
-            payload = ApprovalPayloadCodec.read(snapshot, ApplicationQuotaIncreaseApprovalPayload.class);
-        } catch (IllegalArgumentException ex) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "配额审批 payload 不合法");
-        }
-        if (!ApprovalPayloadTypes.APPLICATION_QUOTA_INCREASE.equals(payload.type())
-                || payload.version() != ApprovalPayloadTypes.VERSION_1) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "配额审批 payload 版本不支持");
-        }
-        if (payload.monthlyLinkLimit() == null) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "配额审批 payload 缺少 monthlyLinkLimit");
-        }
-        return payload.monthlyLinkLimit();
     }
 
     /**

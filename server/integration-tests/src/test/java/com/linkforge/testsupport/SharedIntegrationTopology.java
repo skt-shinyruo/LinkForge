@@ -21,25 +21,21 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Stream;
 
 /**
- * opt-in 集成测试在 JVM 内共享的 MySQL 主库、副本与 Redis 拓扑。
+ * opt-in 集成测试在 JVM 内共享的 MySQL 与 Redis 拓扑。
  *
  * <p>该拓扑拥有容器启动、schema 初始化和连接属性。测试隔离是独立操作：
- * {@link #resetFixtures()} 删除两个数据库中的全部业务数据并执行 Redis {@code FLUSHALL}，
- * 同时清除 stream、consumer group、pending entry 和 TTL 状态。</p>
+ * {@link #resetFixtures()} 删除数据库中的全部业务数据并执行 Redis {@code FLUSHALL}。</p>
  */
 public final class SharedIntegrationTopology {
 
     private static final String MYSQL_IMAGE = "mysql:8.0.36";
     private static final String REDIS_IMAGE = "redis:8.6.2-alpine";
-    private static final String SHARDINGSPHERE_URL =
-            "jdbc:shardingsphere:classpath:shardingsphere-readwrite.yaml?placeholder-type=system_props";
     private static final List<String> BUSINESS_AUTO_INCREMENT_TABLES = List.of(
             "integration_events",
             "redirect_cache_invalidation_outbox"
     );
 
     private static final MySQLContainer<?> PRIMARY = mysql("linkforge_shared_primary");
-    private static final MySQLContainer<?> REPLICA = mysql("linkforge_shared_replica");
     private static final GenericContainer<?> REDIS = new GenericContainer<>(REDIS_IMAGE)
             .withExposedPorts(6379)
             .waitingFor(Wait.forLogMessage(".*Ready to accept connections.*\\n", 1)
@@ -69,14 +65,12 @@ public final class SharedIntegrationTopology {
             long startedAt = System.nanoTime();
             START_ATTEMPTS.incrementAndGet();
             try {
-                Startables.deepStart(Stream.of(PRIMARY, REPLICA, REDIS)).join();
-                configureReadWriteSystemProperties();
+                Startables.deepStart(Stream.of(PRIMARY, REDIS)).join();
                 startupMillis = Duration.ofNanos(System.nanoTime() - startedAt).toMillis();
                 started = true;
             } catch (RuntimeException ex) {
                 throw new IllegalStateException(
-                        "Failed to start shared integration topology (primary=" + PRIMARY.getDockerImageName()
-                                + ", replica=" + REPLICA.getDockerImageName()
+                        "Failed to start shared integration topology (mysql=" + PRIMARY.getDockerImageName()
                                 + ", redis=" + REDIS.getDockerImageName() + ")",
                         ex
                 );
@@ -91,17 +85,10 @@ public final class SharedIntegrationTopology {
         registry.add("spring.datasource.url", PRIMARY::getJdbcUrl);
         registry.add("spring.datasource.username", PRIMARY::getUsername);
         registry.add("spring.datasource.password", PRIMARY::getPassword);
+        // Context caching keeps several Hikari pools alive; keep the shared test DB below MySQL's connection cap.
+        registry.add("spring.datasource.hikari.maximum-pool-size", () -> "4");
+        registry.add("spring.datasource.hikari.minimum-idle", () -> "0");
         registerRedis(registry);
-    }
-
-    /** 注册使用独立主库与刻意保持延迟副本的 ShardingSphere。 */
-    public static void registerReadWriteProperties(DynamicPropertyRegistry registry) {
-        ensureStarted();
-        registry.add("spring.datasource.driver-class-name", () ->
-                "org.apache.shardingsphere.driver.ShardingSphereDriver");
-        registry.add("spring.datasource.url", () -> SHARDINGSPHERE_URL);
-        registerRedis(registry);
-        registry.add("app.edge.risk-control.enabled", () -> "false");
     }
 
     /**
@@ -112,7 +99,6 @@ public final class SharedIntegrationTopology {
         ensureStarted();
         long startedAt = System.nanoTime();
         clearBusinessTables(PRIMARY);
-        clearBusinessTables(REPLICA);
         flushRedis();
         RESET_NANOS.addAndGet(System.nanoTime() - startedAt);
         RESET_COUNT.incrementAndGet();
@@ -121,11 +107,6 @@ public final class SharedIntegrationTopology {
     public static MySQLContainer<?> primary() {
         ensureStarted();
         return PRIMARY;
-    }
-
-    public static MySQLContainer<?> replica() {
-        ensureStarted();
-        return REPLICA;
     }
 
     public static GenericContainer<?> redis() {
@@ -137,17 +118,13 @@ public final class SharedIntegrationTopology {
         return jdbc(PRIMARY);
     }
 
-    public static JdbcTemplate replicaJdbc() {
-        return jdbc(REPLICA);
-    }
-
     /** 集成门禁用于报告启动与 reset 成本的快照。 */
     public static Metrics metrics() {
         long count = RESET_COUNT.get();
         long nanos = RESET_NANOS.get();
         return new Metrics(
                 START_ATTEMPTS.get(),
-                started ? 3 : 0,
+                started ? 2 : 0,
                 startupMillis,
                 count,
                 count == 0 ? 0 : Duration.ofNanos(nanos / count).toMillis()
@@ -161,15 +138,6 @@ public final class SharedIntegrationTopology {
                 "test-secret-please-change-but-long-enough-32-bytes");
         registry.add("app.analytics.salt", () -> "test-analytics-salt");
         registry.add("app.scheduling.enabled", () -> "false");
-    }
-
-    private static void configureReadWriteSystemProperties() {
-        System.setProperty("DB_WRITE_URL", PRIMARY.getJdbcUrl());
-        System.setProperty("DB_WRITE_USERNAME", PRIMARY.getUsername());
-        System.setProperty("DB_WRITE_PASSWORD", PRIMARY.getPassword());
-        System.setProperty("DB_READ_URL", REPLICA.getJdbcUrl());
-        System.setProperty("DB_READ_USERNAME", REPLICA.getUsername());
-        System.setProperty("DB_READ_PASSWORD", REPLICA.getPassword());
     }
 
     private static MySQLContainer<?> mysql(String databaseName) {

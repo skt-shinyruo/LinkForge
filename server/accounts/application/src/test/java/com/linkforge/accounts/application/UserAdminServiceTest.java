@@ -112,7 +112,6 @@ class UserAdminServiceTest {
         assertThat(result.id()).isEqualTo(100L);
 
         verify(userStore).updatePasswordHashAndIncrementTokenVersion(200L, 100L, "new-hash");
-        verify(userStore, never()).update(any());
         verify(statusCache, never()).evictUserStatus(100L);
 
         postCommitHook.runCaptured();
@@ -154,7 +153,6 @@ class UserAdminServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.BAD_REQUEST));
 
-        verify(userStore, never()).update(any());
     }
 
     @Test
@@ -218,7 +216,6 @@ class UserAdminServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.BAD_REQUEST));
 
-        verify(userStore, never()).update(any());
     }
 
     @Test
@@ -249,7 +246,6 @@ class UserAdminServiceTest {
 
         verify(userStore).lockTenantForUserAdministration(200L);
         verify(userStore).updateStatus(200L, 100L, AccountsConstants.STATUS_DISABLED);
-        verify(userStore, never()).update(any());
         verify(statusCache, never()).evictUserStatus(100L);
         postCommitHook.runCaptured();
         verify(statusCache).evictUserStatus(100L);

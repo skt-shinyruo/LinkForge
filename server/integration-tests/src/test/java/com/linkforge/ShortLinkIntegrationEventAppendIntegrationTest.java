@@ -33,8 +33,6 @@ class ShortLinkIntegrationEventAppendIntegrationTest extends SharedIntegrationTe
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry r) {
         // 避免调度任务影响测试稳定性
-        r.add("app.analytics.dimensions.enabled", () -> "false");
-        r.add("app.analytics.events.enabled", () -> "false");
     }
 
     private static final long TENANT_ID = 1L;

@@ -10,8 +10,8 @@ import java.util.HexFormat;
 /**
  * 访问者假名化标识生成器。
  *
- * <p>日 UV 指纹包含 UTC 日期，因而同一客户端跨日会产生不同值；明细 IP 哈希不包含日期，便于排障关联。两者均为
- * SHA-256 摘要而非匿名化数据，salt 必须作为敏感配置管理；更换 salt 会使新旧标识无法连续比较。</p>
+ * <p>日 UV 指纹包含 UTC 日期，因而同一客户端跨日会产生不同值。摘要不是匿名化数据，salt 必须作为敏感配置管理；
+ * 更换 salt 会使新旧标识无法连续比较。</p>
  *
  * <p>输入长度受限，避免不可信 IP 或 User-Agent 在 Redirect 热路径中消耗无界 CPU/内存。</p>
  */
@@ -41,21 +41,6 @@ public final class VisitorFingerprint {
         String ua = firstNonBlankCapped(visitContext == null ? null : visitContext.userAgent(), MAX_FP_UA_LEN);
         String safeSalt = salt == null ? "" : capLen(salt, MAX_FP_SALT_LEN);
         String raw = day + "|" + ip + "|" + ua + "|" + safeSalt;
-        return sha256Hex(raw);
-    }
-
-    /**
-     * IP 哈希（稳定但不可逆）：用于访问明细的“排障关联”，避免落库明文 IP。
-     *
-     * <p>注意：该哈希不包含日期，便于跨天关联；如需更强匿名性可改为按天或按租户 salt。</p>
-     */
-    public static String ipHash(VisitContext visitContext, String salt) {
-        String ip = firstNonBlankCapped(visitContext == null ? null : visitContext.ip(), MAX_FP_IP_LEN);
-        if (ip == null) {
-            return null;
-        }
-        String safeSalt = salt == null ? "" : capLen(salt, MAX_FP_SALT_LEN);
-        String raw = ip + "|" + safeSalt;
         return sha256Hex(raw);
     }
 

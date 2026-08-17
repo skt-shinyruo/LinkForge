@@ -6,8 +6,12 @@ spring:
       - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
 
   datasource:
-    driver-class-name: org.apache.shardingsphere.driver.ShardingSphereDriver
-    url: jdbc:shardingsphere:classpath:shardingsphere-readwrite.yaml?placeholder-type=environment
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${DB_URL:jdbc:mysql://localhost:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true}
+    username: ${DB_USERNAME:linkforge}
+    password: ${DB_PASSWORD:linkforge}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:20}
 
   data:
     redis:
@@ -79,50 +83,13 @@ app:
   analytics:
     salt: ${ANALYTICS_SALT:dev-salt-change-me}
     redis-key-ttl-days: ${ANALYTICS_REDIS_TTL_DAYS:45}
+    # flush 回补窗口（最近 N 天，包含今天），用于部署中断后的追赶补齐
+    flush-backfill-days: ${ANALYTICS_FLUSH_BACKFILL_DAYS:7}
     quota:
       fail-open: ${ANALYTICS_QUOTA_FAIL_OPEN:false}
       lookup-cache-ttl-seconds: ${ANALYTICS_QUOTA_LOOKUP_CACHE_TTL_SECONDS:30}
       lookup-cache-max-entries: ${ANALYTICS_QUOTA_LOOKUP_CACHE_MAX_ENTRIES:10000}
-    # flush 回补窗口（最近 N 天，包含今天），用于部署中断后的追赶补齐
-    flush-backfill-days: ${ANALYTICS_FLUSH_BACKFILL_DAYS:7}
-    # 可选：追踪参数采集白名单（逗号分隔），为空时 Edge 采用安全默认值 utm_*,gclid,fbclid
-    tracking-param-allowlist: ${ANALYTICS_TRACKING_PARAM_ALLOWLIST:}
-    # 核心访问流（Redirect -> Redis Stream -> 异步 PV/UV 聚合），默认启用；不受 events.enabled/sample-rate 影响
-    visit-stream:
-      # 空值时兼容回退到 events.stream-max-len；启动校验要求容量覆盖峰值恢复预算。
-      max-len: ${ANALYTICS_VISIT_STREAM_MAX_LEN:}
-      peak-events-per-second: ${ANALYTICS_VISIT_STREAM_PEAK_EVENTS_PER_SECOND:1000}
-      recovery-window-seconds: ${ANALYTICS_VISIT_STREAM_RECOVERY_WINDOW_SECONDS:180}
-      safety-margin-percent: ${ANALYTICS_VISIT_STREAM_SAFETY_MARGIN_PERCENT:10}
-    dirty-marker:
-      # 新 producer 默认仅推进 V2 generation marker；回滚窗口可临时恢复 additive legacy 写入。
-      legacy-write-enabled: ${ANALYTICS_DIRTY_MARKER_LEGACY_WRITE_ENABLED:false}
-      # 完成全量旧实例停写、排空和 compatibility TTL 之前必须保持开启。
-      legacy-read-enabled: ${ANALYTICS_DIRTY_MARKER_LEGACY_READ_ENABLED:true}
-      legacy-retirement-confirmed: ${ANALYTICS_DIRTY_MARKER_LEGACY_RETIREMENT_CONFIRMED:false}
-      compatibility-ttl-days: ${ANALYTICS_DIRTY_MARKER_COMPATIBILITY_TTL_DAYS:45}
-      legacy-write-stopped-at: ${ANALYTICS_DIRTY_MARKER_LEGACY_WRITE_STOPPED_AT:}
-      legacy-drained-at: ${ANALYTICS_DIRTY_MARKER_LEGACY_DRAINED_AT:}
-    dimensions:
-      enabled: ${ANALYTICS_DIMENSIONS_ENABLED:false}
-      types: ${ANALYTICS_DIMENSIONS_TYPES:}
     events:
-      # 可选访问明细落库（Redis Stream -> MySQL link_visit_events），默认关闭；不影响基础 PV/UV
-      enabled: ${ANALYTICS_EVENTS_ENABLED:false}
-      # 仅影响访问明细落库采样；不影响基础 PV/UV 或应用月点击配额
-      sample-rate: ${ANALYTICS_EVENTS_SAMPLE_RATE:0.1}
-      # 兼容旧配置：当 visit-stream.max-len 为空时作为核心访问流 trim fallback
-      stream-max-len: ${ANALYTICS_EVENTS_STREAM_MAX_LEN:200000}
-      retention-days: ${ANALYTICS_EVENTS_RETENTION_DAYS:14}
-      # consumer 稳定化：多实例部署建议每个实例不同且稳定（可选）
-      consumer-name: ${ANALYTICS_EVENTS_CONSUMER_NAME:}
-      # pending 治理：接管闲置 pending（避免 consumer 漂移/下线导致长期积压）
-      pending-reclaim-enabled: ${ANALYTICS_EVENTS_PENDING_RECLAIM_ENABLED:true}
-      pending-reclaim-min-idle-ms: ${ANALYTICS_EVENTS_PENDING_RECLAIM_MIN_IDLE_MS:60000}
-      pending-reclaim-count: ${ANALYTICS_EVENTS_PENDING_RECLAIM_COUNT:200}
-      ingest-batch-size: ${ANALYTICS_EVENTS_INGEST_BATCH_SIZE:200}
-      ingest-max-batches: ${ANALYTICS_EVENTS_INGEST_MAX_BATCHES:10}
-      ingest-time-budget-ms: ${ANALYTICS_EVENTS_INGEST_TIME_BUDGET_MS:1000}
       fail-open: ${ANALYTICS_EVENTS_FAIL_OPEN:true}
   edge:
     # 可信代理链（CIDR 列表）：仅当 remoteAddr 命中该列表时，才采信 X-Real-IP / X-Forwarded-For 等头部

@@ -23,10 +23,7 @@ final class SensitiveOperationMapper {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "审批操作类型缺失");
         }
         return switch (operationType) {
-            case APPLICATION_QUOTA_INCREASE -> SensitiveOperation.APPLICATION_QUOTA_INCREASE;
-            case EXTERNAL_DOMAIN_BINDING -> SensitiveOperation.EXTERNAL_DOMAIN_BINDING;
             case PUBLIC_LINK_DESTINATION_CHANGE -> SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE;
-            case ANALYTICS_DETAIL_EXPORT -> SensitiveOperation.ANALYTICS_DETAIL_EXPORT;
         };
     }
 }

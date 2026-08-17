@@ -2,7 +2,6 @@ package com.linkforge.analytics.infrastructure.persistence;
 
 import com.linkforge.analytics.application.AnalyticsQueryService;
 import com.linkforge.analytics.infrastructure.persistence.mapper.AnalyticsDailyStatRow;
-import com.linkforge.analytics.infrastructure.persistence.mapper.AnalyticsDimensionRow;
 import com.linkforge.analytics.infrastructure.persistence.mapper.AnalyticsQueryMapper;
 import com.linkforge.analytics.infrastructure.persistence.mapper.AnalyticsTopLinkRow;
 import org.junit.jupiter.api.Test;
@@ -48,19 +47,4 @@ class AnalyticsQueryRepositoryTest {
         verify(mapper).domainTopLinksOrderByUv(1L, 3001L, from, to, 5);
     }
 
-    @Test
-    void normalizesDimensionAndCalculatesPvRatio() {
-        AnalyticsQueryMapper mapper = mock(AnalyticsQueryMapper.class);
-        AnalyticsQueryRepository repository = new AnalyticsQueryRepository(mapper);
-        LocalDate day = LocalDate.parse("2026-04-02");
-        AnalyticsDimensionRow row = new AnalyticsDimensionRow();
-        row.setValue("example.com");
-        row.setPv(3L);
-        row.setUv(2L);
-        when(mapper.linkDimTotalPv(1L, 101L, day, day, "referer_domain")).thenReturn(4L);
-        when(mapper.linkDimRows(1L, 101L, day, day, "referer_domain", 10)).thenReturn(List.of(row));
-
-        assertThat(repository.linkDimensions(1L, 101L, day, day, " Referer_Domain ", 10))
-                .containsExactly(new AnalyticsQueryService.DimensionStat("example.com", 3L, 2L, 0.75));
-    }
 }

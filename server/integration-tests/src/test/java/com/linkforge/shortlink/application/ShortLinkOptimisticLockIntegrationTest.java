@@ -49,9 +49,6 @@ class ShortLinkOptimisticLockIntegrationTest extends SharedIntegrationTestSuppor
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry r) {
-        r.add("app.analytics.dimensions.enabled", () -> "false");
-        r.add("app.analytics.events.enabled", () -> "false");
-        r.add("app.analytics.events.sample-rate", () -> "1");
     }
 
     private static final long TENANT_ID = 1L;

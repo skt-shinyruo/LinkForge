@@ -121,10 +121,10 @@ public class ApiKeyService implements ApiKeyAuthenticator {
      *
      * @throws ApiKeyAuthException Key 格式/secret/应用绑定无效，或 Key 已禁用
      */
-    public ApiKeyAuthResult authenticate(String apiKey) {
+    public ApiKeyAuthenticationResult authenticate(String apiKey) {
         long startedAt = System.nanoTime();
         try {
-            ApiKeyAuthResult result = authenticateInternal(apiKey);
+            ApiKeyAuthenticationResult result = authenticateInternal(apiKey);
             metrics.increment("linkforge.auth.api_key.requests", "result", "success");
             metrics.record(
                     "linkforge.auth.api_key.duration",
@@ -155,7 +155,7 @@ public class ApiKeyService implements ApiKeyAuthenticator {
         }
     }
 
-    private ApiKeyAuthResult authenticateInternal(String apiKey) {
+    private ApiKeyAuthenticationResult authenticateInternal(String apiKey) {
         Parsed parsed = parse(apiKey);
 
         long authCacheTtlSeconds = authCacheTtlSeconds();
@@ -217,7 +217,7 @@ public class ApiKeyService implements ApiKeyAuthenticator {
 
         tryUpdateLastUsedAtThrottled(parsed.id, apiKeyRecord.lastUsedAt(), true);
 
-        return new ApiKeyAuthResult(apiKeyRecord.tenantId(), apiKeyRecord.applicationId(), apiKeyRecord.id());
+        return new ApiKeyAuthenticationResult(apiKeyRecord.tenantId(), apiKeyRecord.applicationId(), apiKeyRecord.id());
     }
 
     /**
@@ -227,8 +227,7 @@ public class ApiKeyService implements ApiKeyAuthenticator {
     @Transactional
     public ApiKeyAuthenticationResult authenticateApiKey(String apiKey) {
         try {
-            ApiKeyAuthResult result = authenticate(apiKey);
-            return new ApiKeyAuthenticationResult(result.tenantId(), result.applicationId(), result.apiKeyId());
+            return authenticate(apiKey);
         } catch (ApiKeyAuthException e) {
             throw new ApiKeyAuthenticationException(toAuthenticationFailure(e.errorCode()));
         }

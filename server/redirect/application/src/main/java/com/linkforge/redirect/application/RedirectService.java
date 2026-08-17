@@ -217,14 +217,9 @@ public class RedirectService {
                 clock.instant().toEpochMilli(),
                 meta.applicationId(),
                 meta.domainId(),
-                meta.code(),
-                meta.originalUrl(),
                 new VisitContext(
                         visitInput == null ? null : visitInput.ip(),
-                        visitInput == null ? null : visitInput.userAgent(),
-                        visitInput == null ? null : visitInput.referer(),
-                        visitInput == null ? null : visitInput.acceptLanguage(),
-                        visitInput == null ? null : visitInput.trackingParams()
+                        visitInput == null ? null : visitInput.userAgent()
                 )
         );
     }

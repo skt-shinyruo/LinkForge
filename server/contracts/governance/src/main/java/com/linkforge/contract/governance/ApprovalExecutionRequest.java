@@ -9,9 +9,8 @@ package com.linkforge.contract.governance;
  * 校验目标资源、应用范围和操作自身的前置条件。</p>
  *
  * <p>{@code beforeSnapshot}/{@code afterSnapshot} 是原样保存的不透明文本。由
- * {@link ApprovalSubmissionPort} 新建的短链和统计审批使用带 {@code type}/{@code version} 的 JSON；历史
- * 外部域名审批可以是自由文本，统计明细导出的 {@code beforeSnapshot} 可以为 {@code null}。执行器必须先按
- * {@code operation} 选择其支持的格式和版本，不能把所有历史记录都反序列化为同一种 payload。</p>
+ * {@link ApprovalSubmissionPort} 新建的短链目标地址审批使用带 {@code type}/{@code version} 的 JSON。
+ * 执行器必须先按 {@code operation} 选择其支持的格式和版本。</p>
  *
  * <p>record 的公开构造器没有校验能力，测试、重放工具或第三方实现直接构造时同样必须维持这些不变量。本对象不
  * 携带执行时间；执行时间由 {@link ApprovalExecutionPort#execute(ApprovalExecutionRequest,

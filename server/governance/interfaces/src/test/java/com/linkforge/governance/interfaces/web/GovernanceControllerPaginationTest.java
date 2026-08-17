@@ -53,7 +53,7 @@ class GovernanceControllerPaginationTest {
         GovernanceService service = mock(GovernanceService.class);
         ApprovalController controller = new ApprovalController(service);
         ApprovalRequestSummaryResult item = new ApprovalRequestSummaryResult(
-                101L, 1L, SensitiveOperationType.ANALYTICS_DETAIL_EXPORT, 9L,
+                101L, 1L, SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE, 9L,
                 6L, "requester@example.test", ApprovalStatus.PENDING_APPROVAL,
                 null, null, null, CREATED_AT
         );

@@ -51,14 +51,6 @@ public class AccountsUserStoreMybatisAdapter implements AccountsUserStore {
     }
 
     @Override
-    public void update(UserData user) {
-        if (user == null) {
-            return;
-        }
-        userMapper.update(toEntity(user));
-    }
-
-    @Override
     public boolean incrementTokenVersion(Long userId) {
         return userId != null && userMapper.incrementTokenVersion(userId) > 0;
     }

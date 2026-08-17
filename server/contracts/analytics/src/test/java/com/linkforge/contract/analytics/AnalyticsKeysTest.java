@@ -14,17 +14,12 @@ class AnalyticsKeysTest {
         assertThat(AnalyticsKeys.dirtyLinkMember(12L, 34L)).isEqualTo("12:34");
         assertThat(AnalyticsKeys.pvKey(12L, 34L, day)).isEqualTo("stats:pv:12:34:20260219");
         assertThat(AnalyticsKeys.uvKey(12L, 34L, day)).isEqualTo("stats:uv:12:34:20260219");
-        assertThat(AnalyticsKeys.scopeDirtyStreamKey(day)).isEqualTo("stats:dirty:scope:20260219");
-        assertThat(AnalyticsKeys.DIRTY_MARKER_WIRE_VERSION).isEqualTo("v2");
         assertThat(AnalyticsKeys.statsDirtyMarkerV2Key(day)).isEqualTo("stats:dirty:v2:link:20260219");
         assertThat(AnalyticsKeys.statsDirtyMarkerV2FirstSeenKey(day))
                 .isEqualTo("stats:dirty:v2:link:first-seen:20260219");
         assertThat(AnalyticsKeys.scopeDirtyMarkerV2Key(day)).isEqualTo("stats:dirty:v2:scope:20260219");
         assertThat(AnalyticsKeys.scopeDirtyMarkerV2FirstSeenKey(day))
                 .isEqualTo("stats:dirty:v2:scope:first-seen:20260219");
-        assertThat(AnalyticsKeys.dimDirtyMarkerV2Key(day)).isEqualTo("stats:dirty:v2:dim:20260219");
-        assertThat(AnalyticsKeys.dimDirtyMarkerV2FirstSeenKey(day))
-                .isEqualTo("stats:dirty:v2:dim:first-seen:20260219");
         assertThat(AnalyticsKeys.dirtyMarkerClaimCursorKey(AnalyticsKeys.statsDirtyMarkerV2Key(day)))
                 .isEqualTo("stats:dirty:v2:link:20260219:claim:cursor");
         assertThat(AnalyticsKeys.dirtyMarkerClaimOverflowKey(AnalyticsKeys.statsDirtyMarkerV2Key(day)))
@@ -37,10 +32,5 @@ class AnalyticsKeysTest {
         assertThat(AnalyticsKeys.domainScopeMember(12L, 78L)).isEqualTo("domain:12:78");
         assertThat(AnalyticsKeys.applicationClickQuotaKey(12L, 56L, LocalDate.of(2026, 2, 1)))
                 .isEqualTo("quota:click:application:12:56:202602");
-        assertThat(AnalyticsKeys.dimPvHashKey(12L, 34L, day, "referer_domain"))
-                .isEqualTo("stats:dim:pv:12:34:20260219:referer_domain");
-        assertThat(AnalyticsKeys.dimPvHashKey(12L, 34L, day, " Referer:Domain "))
-                .isEqualTo("stats:dim:pv:12:34:20260219:referer_domain");
-        assertThat(AnalyticsKeys.visitEventStreamKey()).isEqualTo("stats:visit:events");
     }
 }

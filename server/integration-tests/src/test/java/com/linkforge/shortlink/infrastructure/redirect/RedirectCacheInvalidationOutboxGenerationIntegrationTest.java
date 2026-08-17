@@ -40,8 +40,6 @@ class RedirectCacheInvalidationOutboxGenerationIntegrationTest extends SharedInt
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        registry.add("app.analytics.dimensions.enabled", () -> "false");
-        registry.add("app.analytics.events.enabled", () -> "false");
     }
 
     @Autowired

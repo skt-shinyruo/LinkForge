@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.analytics.infrastructure.job.AnalyticsFlushJob;
-import com.linkforge.analytics.infrastructure.job.AnalyticsRedirectEventProjectorJob;
+import com.linkforge.analytics.infrastructure.job.AnalyticsRedisAggregateWriter;
 import com.linkforge.analytics.infrastructure.catalog.ShortLinkCatalogProjectorJob;
 import com.linkforge.contract.analytics.AnalyticsKeys;
 import com.linkforge.testsupport.SharedIntegrationTestSupport;
@@ -12,7 +12,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.data.redis.connection.stream.StreamRecords;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -21,7 +20,6 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -59,7 +57,7 @@ class ApplicationScopedStatsIntegrationTest extends SharedIntegrationTestSupport
     AnalyticsFlushJob analyticsFlushJob;
 
     @Autowired
-    AnalyticsRedirectEventProjectorJob analyticsRedirectEventProjectorJob;
+    AnalyticsRedisAggregateWriter aggregateWriter;
 
     @Autowired
     ShortLinkCatalogProjectorJob shortLinkCatalogProjectorJob;
@@ -180,7 +178,6 @@ class ApplicationScopedStatsIntegrationTest extends SharedIntegrationTestSupport
         long ts = today.atStartOfDay(ZoneOffset.UTC).plusHours(9).toInstant().toEpochMilli();
         seedVisitEvent(principal.tenantId(), fixture.applicationId(), fixture.domainId(), firstLinkId, ts, "same-visitor");
         seedVisitEvent(principal.tenantId(), fixture.applicationId(), fixture.domainId(), secondLinkId, ts, "same-visitor");
-        analyticsRedirectEventProjectorJob.project();
         analyticsFlushJob.flush();
 
         JsonNode tenantOverview = getJson(
@@ -214,46 +211,6 @@ class ApplicationScopedStatsIntegrationTest extends SharedIntegrationTestSupport
         assertThat(domainOverview.get("data").get(0).get("uv").asLong()).isEqualTo(1L);
     }
 
-    @Test
-    void detailed_export_should_require_governance_request_before_download() throws Exception {
-        RegisteredPrincipal principal = registerTenantAdmin();
-        AppDomainFixture fixture = provisionDedicatedApplication(principal.tenantId(), "stats-export-app", "stats-export.example.test");
-        JsonNode link = createLink(principal.token(), fixture.applicationId(), fixture.domainId(), "https://example.com/export");
-        long linkId = link.get("data").get("id").asLong();
-
-        LocalDateTime to = LocalDateTime.now(ZoneOffset.UTC);
-        LocalDateTime from = to.minusDays(1);
-
-        String response = mockMvc.perform(
-                        post("/api/v1/stats/links/" + linkId + "/events/export-requests")
-                                .header("Authorization", "Bearer " + principal.token())
-                                .param("from", from.toString())
-                                .param("to", to.toString())
-                )
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-
-        JsonNode json = objectMapper.readTree(response);
-        assertThat(json.get("code").asInt()).isEqualTo(0);
-        assertThat(json.get("data").get("operation").asText()).isEqualTo("ANALYTICS_DETAIL_EXPORT");
-        assertThat(json.get("data").get("status").asText()).isEqualTo("PENDING_APPROVAL");
-        assertThat(json.get("data").get("targetApplicationId").asLong()).isEqualTo(fixture.applicationId());
-
-        Integer approvalCount = jdbcTemplate.queryForObject(
-                """
-                        SELECT COUNT(*)
-                        FROM approval_requests
-                        WHERE tenant_id = ?
-                          AND operation_type = 'ANALYTICS_DETAIL_EXPORT'
-                        """,
-                Integer.class,
-                principal.tenantId()
-        );
-        assertThat(approvalCount).isEqualTo(1);
-    }
-
     private RegisteredPrincipal registerTenantAdmin() throws Exception {
         String suffix = Long.toUnsignedString(System.nanoTime());
         JsonNode registerBody = objectMapper.createObjectNode()
@@ -283,13 +240,6 @@ class ApplicationScopedStatsIntegrationTest extends SharedIntegrationTestSupport
                 tenantId,
                 applicationKey,
                 applicationKey
-        );
-        jdbcTemplate.update(
-                """
-                        INSERT INTO application_policies (application_id, default_domain_scope, default_redirect_status_code, preview_enabled)
-                        VALUES (?, 'APPLICATION_DEDICATED', 302, 0)
-                        """,
-                applicationId
         );
         jdbcTemplate.update(
                 """
@@ -358,7 +308,6 @@ class ApplicationScopedStatsIntegrationTest extends SharedIntegrationTestSupport
     private void seedStats(long tenantId, long linkId, LocalDate day, long pv, long uv) {
         String pvKey = AnalyticsKeys.pvKey(tenantId, linkId, day);
         String uvKey = AnalyticsKeys.uvKey(tenantId, linkId, day);
-        String statsDirtyStreamKey = AnalyticsKeys.statsDirtyStreamKey(day);
         String dirtyMember = AnalyticsKeys.dirtyLinkMember(tenantId, linkId);
 
         for (int i = 0; i < pv; i++) {
@@ -367,21 +316,24 @@ class ApplicationScopedStatsIntegrationTest extends SharedIntegrationTestSupport
         for (int i = 0; i < uv; i++) {
             redis.opsForHyperLogLog().add(uvKey, "v" + i + "-" + tenantId + "-" + linkId);
         }
-        redis.opsForStream().add(StreamRecords.newRecord().in(statsDirtyStreamKey).ofStrings(java.util.Map.of(
-                "member", dirtyMember,
-                "ts", String.valueOf(System.currentTimeMillis())
-        )));
+        redis.opsForHash().put(AnalyticsKeys.statsDirtyMarkerV2Key(day), dirtyMember, "1");
+        redis.opsForHash().put(
+                AnalyticsKeys.statsDirtyMarkerV2FirstSeenKey(day),
+                dirtyMember,
+                String.valueOf(System.currentTimeMillis())
+        );
     }
 
     private void seedVisitEvent(long tenantId, long applicationId, long domainId, long linkId, long ts, String visitorKey) {
-        redis.opsForStream().add(StreamRecords.newRecord().in(AnalyticsKeys.visitEventStreamKey()).ofStrings(java.util.Map.of(
-                "ts", String.valueOf(ts),
-                "tenantId", String.valueOf(tenantId),
-                "applicationId", String.valueOf(applicationId),
-                "domainId", String.valueOf(domainId),
-                "linkId", String.valueOf(linkId),
-                "visitorKey", visitorKey
-        )));
+        aggregateWriter.write(
+                tenantId,
+                linkId,
+                ts,
+                applicationId,
+                domainId,
+                visitorKey,
+                "scope-" + linkId + "-" + ts
+        );
     }
 
     private JsonNode getJson(org.springframework.test.web.servlet.RequestBuilder request) throws Exception {

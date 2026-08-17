@@ -4,7 +4,7 @@
 
 - `web`：Vue3 管理后台的 Nginx 容器，同时作为统一网关。
 - `server`：Spring Boot 后端服务。
-- `mysql-primary` / `mysql-replica`：MySQL 主从拓扑，用于模拟读写分离部署。
+- MySQL：业务数据库。
 - `redis`：短链跳转与统计相关缓存/队列依赖。
 
 默认只向宿主机暴露 Nginx 网关端口，MySQL、Redis 和后端服务仅在 Docker 内网可见。
@@ -43,7 +43,7 @@ MySQL 账号默认值可直接用于本地开发；如需修改，请在首次�
 docker compose --env-file deploy/.env -f deploy/docker-compose.yml up --build
 ```
 
-首次启动会构建前端和后端镜像，并初始化 MySQL 主库、从库复制和数据库结构。`server` 通过 management 端口 `8081` 的 `/actuator/health` 报告健康状态；`web` 等待该状态后启动，并通过自身首页 healthcheck 报告网关就绪。网关的 `/healthz` 只反向代理这个汇总健康响应，不暴露其他 management 端点。
+首次启动会构建前端和后端镜像，并初始化 MySQL 数据库结构。`server` 通过 management 端口 `8081` 的 `/actuator/health` 报告健康状态；`web` 等待该状态后启动，并通过自身首页 healthcheck 报告网关就绪。网关的 `/healthz` 只反向代理这个汇总健康响应，不暴露其他 management 端点。
 
 如需执行与 CI 相同的干净镜像 smoke，可运行：
 
@@ -96,7 +96,7 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down
 docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 ```
 
-只有在需要重新初始化数据库、MySQL 账号或主从复制参数时才使用 `down -v`，因为它会删除本地数据库数据。
+只有在需要重新初始化数据库或 MySQL 账号时才使用 `down -v`，因为它会删除本地数据库数据。
 
 ## 配置说明
 
@@ -105,22 +105,15 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v
 常用配置：
 
 - `MYSQL_ROOT_PASSWORD`：MySQL root 密码。
-- `MYSQL_API_USER` / `MYSQL_API_PASSWORD`：后端业务写库账号。
-- `MYSQL_READ_USER` / `MYSQL_READ_PASSWORD`：后端读库账号，读流量访问从库使用。
-- `MYSQL_REPLICATION_USER` / `MYSQL_REPLICATION_PASSWORD`：MySQL 主从复制账号。
+- `MYSQL_API_USER` / `MYSQL_API_PASSWORD`：后端业务账号。
 - `API_KEY_CURRENT_KEY_ID` / `API_KEY_CURRENT_PEPPER`：新 API Key 摘要使用的当前 keyring 项；current key id 最多 64 个字符。
 - `API_KEY_PREVIOUS_KEY_ID` / `API_KEY_PREVIOUS_PEPPER`：轮换兼容窗口内的上一代 keyring 项；previous key id 最多 64 个字符，必须成对配置。
 - `API_KEY_LEGACY_PEPPER`：仅用于验证无 key id 的历史 HMAC 摘要；新部署保持为空。
 - `API_KEY_HMAC_PEPPER`：旧版单 pepper 变量。Compose 继续转发它并在 current/legacy 未设置时作为 fallback，仅用于滚动升级和旧二进制兼容。
 - `API_KEY_LEGACY_JWT_FALLBACK_ENABLED`：仅用于非生产历史兼容；严格配置必须为 `false`。
-- `ANALYTICS_VISIT_STREAM_MAX_LEN`：基础 PV/UV Redis Stream 的近似最大长度；必须不低于峰值速率、恢复窗口和安全余量计算出的容量下限。
-- `ANALYTICS_VISIT_STREAM_PEAK_EVENTS_PER_SECOND` / `ANALYTICS_VISIT_STREAM_RECOVERY_WINDOW_SECONDS` / `ANALYTICS_VISIT_STREAM_SAFETY_MARGIN_PERCENT`：访问流容量预算输入。
-- `ANALYTICS_DIRTY_MARKER_LEGACY_WRITE_ENABLED` / `ANALYTICS_DIRTY_MARKER_LEGACY_READ_ENABLED`：滚动升级默认只写 V2 generation marker、同时读取 V2 与 legacy Stream。回滚时才临时恢复 additive legacy 写入。
-- `ANALYTICS_DIRTY_MARKER_LEGACY_RETIREMENT_CONFIRMED` / `ANALYTICS_DIRTY_MARKER_LEGACY_WRITE_STOPPED_AT` / `ANALYTICS_DIRTY_MARKER_LEGACY_DRAINED_AT` / `ANALYTICS_DIRTY_MARKER_COMPATIBILITY_TTL_DAYS`：legacy 读退役门禁证据。
-- `ANALYTICS_QUOTA_FAIL_OPEN`：应用点击配额后端异常时是否放行。生产建议保持 `false`，避免 Redis/平台查询异常导致配额失效。
-- `ANALYTICS_EVENTS_ENABLED` / `ANALYTICS_EVENTS_SAMPLE_RATE`：访问明细落库开关和采样率，不影响基础 PV/UV。
-- `ANALYTICS_EVENTS_INGEST_BATCH_SIZE` / `ANALYTICS_EVENTS_INGEST_MAX_BATCHES` / `ANALYTICS_EVENTS_INGEST_TIME_BUDGET_MS`：明细消费者单次调度的批量、公平性和时间预算。
-- `ANALYTICS_EVENTS_FAIL_OPEN`：访问 Stream 追加失败时是否继续 Redirect。设为 `true` 时必须监控 `linkforge.analytics.fail_open`，因为放行不代表统计已持久化。
+- `ANALYTICS_QUOTA_FAIL_OPEN`：Platform quota 查询异常时是否放行，生产建议保持 `false`。
+- `ANALYTICS_QUOTA_LOOKUP_CACHE_TTL_SECONDS` / `ANALYTICS_QUOTA_LOOKUP_CACHE_MAX_ENTRIES`：Redirect quota 查询缓存边界。
+- `ANALYTICS_EVENTS_FAIL_OPEN`：Redis 聚合写入失败时是否继续 Redirect。设为 `true` 时必须监控 `linkforge.analytics.fail_open`，因为放行不代表统计已持久化。
 - `EDGE_TRUSTED_PROXIES`：可信代理 CIDR。生产环境应按实际网关/反代地址精确配置。
 - `ID_WORKER_ID` / `ID_DATACENTER_ID`：Snowflake 节点参数，多实例部署时必须保证唯一。
 - `APP_STRICT_CONFIG`：启动期严格配置校验，默认开启；会拒绝示例 JWT secret、示例 analytics salt 和默认 Snowflake 节点组合。
@@ -147,18 +140,7 @@ compatibility pepper 可以在第一阶段按上述要求临时指向同一 API 
 
 ## 注意事项
 
-- MySQL 初始化脚本和 `database/schema.sql` 只会在全新数据卷上执行。修改 schema、MySQL 初始化账号、复制账号或复制参数后，需要执行 `docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v` 再重新启动。
-- Compose 内部使用 `mysql-primary` + `mysql-replica` 模拟主从部署；后端通过 ShardingSphere-JDBC 暴露逻辑数据源，写入走主库，符合条件的非事务查询可走从库。
+- MySQL 初始化脚本和 `database/schema.sql` 只会在全新数据卷上执行。修改 schema 或 MySQL 初始化账号后，需要执行 `docker compose --env-file deploy/.env -f deploy/docker-compose.yml down -v` 再重新启动。
+- Compose 内部使用一个 MySQL 和一个 Redis；后端通过 Spring 标准数据源连接 MySQL，需要写后读一致性的操作在同一数据库事务中完成。
 - 后端健康检查依赖运行时镜像中的 `curl` 和 Spring Boot Actuator management 端口 `8081`。如果健康检查失败，`web` 不会接入后端流量，请先查看 `server` 日志。
 - 本地默认绑定 `127.0.0.1:18080`，外部机器无法直接访问。如需共享访问，请谨慎调整 `LINKFORGE_HTTP_BIND`、`APP_BASE_URL` 和相关安全配置。
-
-legacy dirty Stream 不能在一次部署后直接退役。必须先确认所有旧 producer 已停止写入并设置
-`ANALYTICS_DIRTY_MARKER_LEGACY_WRITE_STOPPED_AT`，持续观察
-`linkforge.analytics.dirty.legacy.retained_entries`、`linkforge.analytics.dirty.legacy.remaining`、
-`linkforge.analytics.dirty.legacy.lag`、`linkforge.analytics.dirty.legacy.pending`、
-`linkforge.analytics.dirty.legacy.last_write_age_millis` 和 `linkforge.analytics.dirty.legacy.drained` 指标确认排空；
-其中 `retained_entries` 是 Stream 保留条目数，实际未完成工作量以 `remaining = lag + pending` 为准。确认排空后再设置
-`ANALYTICS_DIRTY_MARKER_LEGACY_DRAINED_AT`。从两个时间中的较晚者起等待完整
-`ANALYTICS_DIRTY_MARKER_COMPATIBILITY_TTL_DAYS` 后，才可设置
-`ANALYTICS_DIRTY_MARKER_LEGACY_RETIREMENT_CONFIRMED=true` 和
-`ANALYTICS_DIRTY_MARKER_LEGACY_READ_ENABLED=false`；任一证据缺失或 TTL 未满都会被启动校验拒绝。

@@ -13,7 +13,7 @@ function createApproval(id: number, status = "PENDING_APPROVAL"): ApprovalReques
   return {
     id,
     tenantId: 5,
-    operationType: "ANALYTICS_DETAIL_EXPORT",
+    operationType: "PUBLIC_LINK_DESTINATION_CHANGE",
     targetApplicationId: 101,
     requestedByUserId: 7,
     requestedByEmail: "owner@example.com",
@@ -59,10 +59,10 @@ describe("useApprovalsPage", () => {
     const page = useApprovalsPage();
 
     await page.load();
-    page.setDecisionReason(7, " reviewed for export ");
+    page.setDecisionReason(7, " reviewed destination change ");
     await page.approve(7);
 
-    expect(approveRequestMock).toHaveBeenCalledWith(7, { reason: "reviewed for export" });
+    expect(approveRequestMock).toHaveBeenCalledWith(7, { reason: "reviewed destination change" });
     expect(page.decisionReasons[7]).toBeUndefined();
   });
 

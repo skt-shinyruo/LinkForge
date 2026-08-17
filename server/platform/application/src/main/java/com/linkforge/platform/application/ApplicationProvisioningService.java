@@ -4,12 +4,10 @@ import com.linkforge.contract.api.BusinessException;
 import com.linkforge.contract.api.ErrorCode;
 import com.linkforge.foundation.context.UserActor;
 import com.linkforge.foundation.id.SnowflakeIdGenerator;
-import com.linkforge.platform.application.port.ApplicationPolicyRepository;
 import com.linkforge.platform.application.port.ApplicationQuotaRepository;
 import com.linkforge.platform.application.port.ApplicationRepository;
 import com.linkforge.platform.application.port.DomainRepository;
 import com.linkforge.platform.domain.Application;
-import com.linkforge.platform.domain.ApplicationPolicy;
 import com.linkforge.platform.domain.ApplicationQuota;
 import com.linkforge.platform.domain.Domain;
 import com.linkforge.platform.domain.Hostname;
@@ -25,8 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
  * 平台应用与域名的写侧用例服务。
  *
  * <p>该服务在接受写请求时同时校验操作者身份与租户归属，避免调用方传入的
- * {@code tenantId} 与认证主体脱节。创建应用时，应用、默认策略和默认额度必须在同一事务中落库；
- * 任一步失败都会回滚整次开通。应用键和域名的并发唯一性最终由数据库约束裁决，约束冲突会转换为
+ * {@code tenantId} 与认证主体脱节。创建应用时，应用和默认额度必须在同一事务中落库；任一步失败都会回滚
+ * 整次开通。应用键和域名的并发唯一性最终由数据库约束裁决，约束冲突会转换为
  * 面向调用方的参数错误。</p>
  *
  * <p>本服务只负责平台资源本身的业务不变量，不代替接口层的角色授权。</p>
@@ -38,24 +36,21 @@ public class ApplicationProvisioningService {
     private final ApplicationRepository applicationRepository;
     private final DomainRepository domainRepository;
     private final ApplicationQuotaRepository applicationQuotaRepository;
-    private final ApplicationPolicyRepository applicationPolicyRepository;
 
     public ApplicationProvisioningService(
             SnowflakeIdGenerator idGenerator,
             ApplicationRepository applicationRepository,
             DomainRepository domainRepository,
-            ApplicationQuotaRepository applicationQuotaRepository,
-            ApplicationPolicyRepository applicationPolicyRepository
+            ApplicationQuotaRepository applicationQuotaRepository
     ) {
         this.idGenerator = idGenerator;
         this.applicationRepository = applicationRepository;
         this.domainRepository = domainRepository;
         this.applicationQuotaRepository = applicationQuotaRepository;
-        this.applicationPolicyRepository = applicationPolicyRepository;
     }
 
     /**
-     * 为租户创建一个启用状态的应用，并初始化默认策略与默认额度。
+     * 为租户创建一个启用状态的应用，并初始化默认额度。
      *
      * <p>{@code applicationKey} 和 {@code displayName} 会先去除首尾空白；键长度上限为
      * {@code PlatformDefaults.APPLICATION_KEY_MAX_LENGTH}。同一租户内的应用键必须唯一，
@@ -87,14 +82,6 @@ public class ApplicationProvisioningService {
         } catch (DataIntegrityViolationException ex) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "applicationKey 已存在");
         }
-        applicationPolicyRepository.insert(new ApplicationPolicy(
-                applicationId,
-                PlatformDefaults.DEFAULT_DOMAIN_SCOPE,
-                PlatformDefaults.REDIRECT_STATUS_CODE,
-                PlatformDefaults.PREVIEW_ENABLED,
-                null,
-                null
-        ));
         applicationQuotaRepository.insert(new ApplicationQuota(
                 applicationId,
                 PlatformDefaults.MONTHLY_LINK_LIMIT,

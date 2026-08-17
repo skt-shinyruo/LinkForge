@@ -9,8 +9,6 @@ import com.linkforge.testsupport.SharedIntegrationTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.data.redis.connection.stream.PendingMessagesSummary;
-import org.springframework.data.redis.connection.stream.StreamRecords;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -33,23 +31,13 @@ class VersionedDirtyMarkerEndToEndIntegrationTest extends SharedIntegrationTestS
     static void analyticsProperties(DynamicPropertyRegistry registry) {
         registry.add("app.scheduling.enabled", () -> "false");
         registry.add("app.analytics.redis-key-ttl-days", () -> "7");
-        registry.add("app.analytics.dimensions.enabled", () -> "true");
-        registry.add("app.analytics.dimensions.types", () -> "language");
-        registry.add("app.analytics.dirty-marker.legacy-write-enabled", () -> "false");
-        registry.add("app.analytics.dirty-marker.legacy-read-enabled", () -> "true");
     }
 
     @Autowired
     VisitRecorderPort visitRecorder;
 
     @Autowired
-    AnalyticsRedirectEventProjectorJob projector;
-
-    @Autowired
     AnalyticsFlushJob statsFlush;
-
-    @Autowired
-    AnalyticsDimensionFlushJob dimensionFlush;
 
     @Autowired
     StringRedisTemplate redis;
@@ -58,15 +46,13 @@ class VersionedDirtyMarkerEndToEndIntegrationTest extends SharedIntegrationTestS
     JdbcTemplate jdbc;
 
     @Test
-    void v2Marker_shouldBoundHotIdentitySurviveGenerationRaceAndConvergeWithLegacyDrain() {
+    void v2Marker_shouldBoundHotIdentityAndSurviveGenerationRace() {
         LocalDate day = LocalDate.now(ZoneOffset.UTC);
         long occurredAt = day.atTime(12, 0).toInstant(ZoneOffset.UTC).toEpochMilli();
         String member = AnalyticsKeys.dirtyLinkMember(41L, 9_001L);
 
         visitRecorder.recordVisit(visit(occurredAt, "203.0.113.1"));
         visitRecorder.recordVisit(visit(occurredAt + 1, "203.0.113.2"));
-        projector.project();
-
         String markerKey = AnalyticsKeys.statsDirtyMarkerV2Key(day);
         String firstSeenKey = AnalyticsKeys.statsDirtyMarkerV2FirstSeenKey(day);
         assertThat(redis.opsForValue().get(AnalyticsKeys.pvKey(41L, 9_001L, day))).isEqualTo("2");
@@ -75,7 +61,6 @@ class VersionedDirtyMarkerEndToEndIntegrationTest extends SharedIntegrationTestS
         assertThat(redis.opsForHash().get(markerKey, member)).isEqualTo("2");
         assertThat(redis.opsForHash().get(firstSeenKey, member)).isNotNull();
         assertThat(redis.getExpire(markerKey)).isPositive();
-        assertThat(redis.hasKey(AnalyticsKeys.statsDirtyStreamKey(day))).isFalse();
 
         VersionedDirtyMarkerStore markerStore = new VersionedDirtyMarkerStore(redis);
         List<VersionedDirtyMarkerStore.Claim> claimed = markerStore.claim(markerKey, firstSeenKey, 10);
@@ -87,12 +72,7 @@ class VersionedDirtyMarkerEndToEndIntegrationTest extends SharedIntegrationTestS
         assertThat(redis.opsForHash().get(markerKey, member)).isEqualTo("3");
         assertThat(redis.opsForHash().get(firstSeenKey, member)).isNotNull();
 
-        redis.opsForStream().add(StreamRecords.newRecord()
-                .in(AnalyticsKeys.statsDirtyStreamKey(day))
-                .ofStrings(Map.of("member", member, "ts", String.valueOf(System.currentTimeMillis()))));
-
         statsFlush.flush();
-        dimensionFlush.flush();
 
         Map<String, Object> row = jdbc.queryForMap(
                 "SELECT pv, uv FROM link_stats_daily WHERE tenant_id = 41 AND link_id = 9001 AND day = ?",
@@ -101,21 +81,6 @@ class VersionedDirtyMarkerEndToEndIntegrationTest extends SharedIntegrationTestS
         assertThat(((Number) row.get("pv")).longValue()).isEqualTo(3L);
         assertThat(((Number) row.get("uv")).longValue()).isEqualTo(2L);
         assertThat(redis.opsForHash().hasKey(markerKey, member)).isFalse();
-        PendingMessagesSummary pending = redis.opsForStream()
-                .pending(AnalyticsKeys.statsDirtyStreamKey(day), "lf-stats-flush");
-        assertThat(pending.getTotalPendingMessages()).isZero();
-
-        Long dimensionPv = jdbc.queryForObject(
-                """
-                        SELECT pv FROM link_stats_dim_daily
-                        WHERE tenant_id = 41 AND link_id = 9001 AND day = ?
-                          AND dim_type = 'language' AND dim_value = 'en-US'
-                        """,
-                Long.class,
-                day
-        );
-        assertThat(dimensionPv).isEqualTo(2L);
-
         statsFlush.flush();
         assertThat(jdbc.queryForObject(
                 "SELECT pv FROM link_stats_daily WHERE tenant_id = 41 AND link_id = 9001 AND day = ?",
@@ -162,9 +127,7 @@ class VersionedDirtyMarkerEndToEndIntegrationTest extends SharedIntegrationTestS
                 occurredAt,
                 501L,
                 601L,
-                "marker-e2e",
-                "https://example.com/target",
-                new VisitContext(ip, "Mozilla/5.0", "https://ref.example/path", "en-US", Map.of())
+                new VisitContext(ip, "Mozilla/5.0")
         );
     }
 }

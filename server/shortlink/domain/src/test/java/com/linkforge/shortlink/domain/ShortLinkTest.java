@@ -134,7 +134,10 @@ class ShortLinkTest {
         return ShortLink.create(
                 1L,
                 1L,
+                null,
+                null,
                 ShortCode.of("abc123"),
+                ShortLinkLifecycleState.ACTIVE,
                 HttpUrl.of("https://example.com/path"),
                 "note",
                 true,

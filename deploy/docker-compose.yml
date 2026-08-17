@@ -8,16 +8,7 @@ services:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
       MYSQL_API_USER: ${MYSQL_API_USER:-linkforge_api}
       MYSQL_API_PASSWORD: ${MYSQL_API_PASSWORD:-linkforge_api}
-      MYSQL_READ_USER: ${MYSQL_READ_USER:-linkforge_read}
-      MYSQL_READ_PASSWORD: ${MYSQL_READ_PASSWORD:-linkforge_read}
-      MYSQL_REPLICATION_USER: ${MYSQL_REPLICATION_USER:-linkforge_repl}
-      MYSQL_REPLICATION_PASSWORD: ${MYSQL_REPLICATION_PASSWORD:-linkforge_repl}
     command:
-      - "--server-id=1"
-      - "--log-bin=mysql-bin"
-      - "--binlog-format=ROW"
-      - "--gtid-mode=ON"
-      - "--enforce-gtid-consistency=ON"
       - "--character-set-server=utf8mb4"
       - "--collation-server=utf8mb4_unicode_ci"
       # Note: shortlink code is strictly case-sensitive via column-level collation (see database/schema.sql),
@@ -32,32 +23,6 @@ services:
       timeout: 3s
       retries: 20
 
-  mysql-replica:
-    image: mysql:8.0.36
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
-      MYSQL_REPLICATION_USER: ${MYSQL_REPLICATION_USER:-linkforge_repl}
-      MYSQL_REPLICATION_PASSWORD: ${MYSQL_REPLICATION_PASSWORD:-linkforge_repl}
-    command:
-      - "--server-id=2"
-      - "--relay-log=mysql-relay-bin"
-      - "--read-only=ON"
-      - "--gtid-mode=ON"
-      - "--enforce-gtid-consistency=ON"
-      - "--character-set-server=utf8mb4"
-      - "--collation-server=utf8mb4_unicode_ci"
-    volumes:
-      - mysql_replica_data:/var/lib/mysql
-      - ./mysql/replica/init:/docker-entrypoint-initdb.d:ro
-    depends_on:
-      mysql-primary:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "mysql -uroot -p${MYSQL_ROOT_PASSWORD:-root} -e \"SHOW REPLICA STATUS\\G\" | grep -q \"Replica_IO_Running: Yes\" && mysql -uroot -p${MYSQL_ROOT_PASSWORD:-root} -e \"SHOW REPLICA STATUS\\G\" | grep -q \"Replica_SQL_Running: Yes\""]
-      interval: 5s
-      timeout: 5s
-      retries: 30
-
   redis:
     image: redis:8.6.2-alpine
     healthcheck:
@@ -71,12 +36,9 @@ services:
       context: ../server
       dockerfile: Dockerfile
     environment:
-      DB_WRITE_URL: jdbc:mysql://mysql-primary:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true
-      DB_WRITE_USERNAME: ${MYSQL_API_USER:-linkforge_api}
-      DB_WRITE_PASSWORD: ${MYSQL_API_PASSWORD:-linkforge_api}
-      DB_READ_URL: jdbc:mysql://mysql-replica:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true
-      DB_READ_USERNAME: ${MYSQL_READ_USER:-linkforge_read}
-      DB_READ_PASSWORD: ${MYSQL_READ_PASSWORD:-linkforge_read}
+      DB_URL: jdbc:mysql://mysql-primary:3306/linkforge?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true
+      DB_USERNAME: ${MYSQL_API_USER:-linkforge_api}
+      DB_PASSWORD: ${MYSQL_API_PASSWORD:-linkforge_api}
       REDIS_HOST: redis
       REDIS_PORT: 6379
       JWT_SECRET: ${JWT_SECRET}
@@ -93,25 +55,9 @@ services:
       JWT_COOKIE_SECURE: ${JWT_COOKIE_SECURE:-false}
       JWT_COOKIE_SAMESITE: ${JWT_COOKIE_SAMESITE:-Lax}
       ANALYTICS_SALT: ${ANALYTICS_SALT}
-      ANALYTICS_VISIT_STREAM_MAX_LEN: ${ANALYTICS_VISIT_STREAM_MAX_LEN:-}
-      ANALYTICS_VISIT_STREAM_PEAK_EVENTS_PER_SECOND: ${ANALYTICS_VISIT_STREAM_PEAK_EVENTS_PER_SECOND:-1000}
-      ANALYTICS_VISIT_STREAM_RECOVERY_WINDOW_SECONDS: ${ANALYTICS_VISIT_STREAM_RECOVERY_WINDOW_SECONDS:-180}
-      ANALYTICS_VISIT_STREAM_SAFETY_MARGIN_PERCENT: ${ANALYTICS_VISIT_STREAM_SAFETY_MARGIN_PERCENT:-10}
-      ANALYTICS_DIRTY_MARKER_LEGACY_WRITE_ENABLED: ${ANALYTICS_DIRTY_MARKER_LEGACY_WRITE_ENABLED:-false}
-      ANALYTICS_DIRTY_MARKER_LEGACY_READ_ENABLED: ${ANALYTICS_DIRTY_MARKER_LEGACY_READ_ENABLED:-true}
-      ANALYTICS_DIRTY_MARKER_LEGACY_RETIREMENT_CONFIRMED: ${ANALYTICS_DIRTY_MARKER_LEGACY_RETIREMENT_CONFIRMED:-false}
-      ANALYTICS_DIRTY_MARKER_COMPATIBILITY_TTL_DAYS: ${ANALYTICS_DIRTY_MARKER_COMPATIBILITY_TTL_DAYS:-45}
-      ANALYTICS_DIRTY_MARKER_LEGACY_WRITE_STOPPED_AT: ${ANALYTICS_DIRTY_MARKER_LEGACY_WRITE_STOPPED_AT:-}
-      ANALYTICS_DIRTY_MARKER_LEGACY_DRAINED_AT: ${ANALYTICS_DIRTY_MARKER_LEGACY_DRAINED_AT:-}
       ANALYTICS_QUOTA_FAIL_OPEN: ${ANALYTICS_QUOTA_FAIL_OPEN:-false}
       ANALYTICS_QUOTA_LOOKUP_CACHE_TTL_SECONDS: ${ANALYTICS_QUOTA_LOOKUP_CACHE_TTL_SECONDS:-30}
       ANALYTICS_QUOTA_LOOKUP_CACHE_MAX_ENTRIES: ${ANALYTICS_QUOTA_LOOKUP_CACHE_MAX_ENTRIES:-10000}
-      ANALYTICS_EVENTS_ENABLED: ${ANALYTICS_EVENTS_ENABLED:-false}
-      ANALYTICS_EVENTS_SAMPLE_RATE: ${ANALYTICS_EVENTS_SAMPLE_RATE:-0.1}
-      ANALYTICS_EVENTS_STREAM_MAX_LEN: ${ANALYTICS_EVENTS_STREAM_MAX_LEN:-200000}
-      ANALYTICS_EVENTS_INGEST_BATCH_SIZE: ${ANALYTICS_EVENTS_INGEST_BATCH_SIZE:-200}
-      ANALYTICS_EVENTS_INGEST_MAX_BATCHES: ${ANALYTICS_EVENTS_INGEST_MAX_BATCHES:-10}
-      ANALYTICS_EVENTS_INGEST_TIME_BUDGET_MS: ${ANALYTICS_EVENTS_INGEST_TIME_BUDGET_MS:-1000}
       ANALYTICS_EVENTS_FAIL_OPEN: ${ANALYTICS_EVENTS_FAIL_OPEN:-true}
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:18080}
       # 可信代理链（开箱即用）：docker compose + nginx 反代场景下，服务看到的 remoteAddr 通常是 web(Nginx) 容器 IP
@@ -128,8 +74,6 @@ services:
       REDIRECT_DEFAULT_STATUS_CODE: 302
     depends_on:
       mysql-primary:
-        condition: service_healthy
-      mysql-replica:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -160,4 +104,3 @@ services:
 
 volumes:
   mysql_primary_data:
-  mysql_replica_data:

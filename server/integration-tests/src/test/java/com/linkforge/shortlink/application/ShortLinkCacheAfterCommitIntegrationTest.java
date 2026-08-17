@@ -42,9 +42,6 @@ class ShortLinkCacheAfterCommitIntegrationTest extends SharedIntegrationTestSupp
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry r) {
         // 访问明细 + 维度聚合测试开关（避免调度影响测试稳定性）
-        r.add("app.analytics.dimensions.enabled", () -> "false");
-        r.add("app.analytics.events.enabled", () -> "false");
-        r.add("app.analytics.events.sample-rate", () -> "1");
     }
 
     @Autowired

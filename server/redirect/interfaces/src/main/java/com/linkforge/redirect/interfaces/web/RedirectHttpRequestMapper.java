@@ -7,8 +7,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 
-import java.util.Map;
-
 /**
  * 将 Servlet 请求收敛为 Redirect 应用层输入。
  *
@@ -41,10 +39,7 @@ public class RedirectHttpRequestMapper {
         if (visitInfo == null && request != null) {
             return new VisitInfo(
                     request.getRemoteAddr(),
-                    request.getHeader("User-Agent"),
-                    request.getHeader("Referer"),
-                    request.getHeader("Accept-Language"),
-                    Map.of()
+                    request.getHeader("User-Agent")
             );
         }
         return visitInfo;
@@ -91,10 +86,7 @@ public class RedirectHttpRequestMapper {
         }
         return new RedirectVisitInput(
                 visitInfo.ip(),
-                visitInfo.userAgent(),
-                visitInfo.referer(),
-                visitInfo.acceptLanguage(),
-                visitInfo.trackingParams()
+                visitInfo.userAgent()
         );
     }
 }

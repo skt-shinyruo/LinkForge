@@ -16,9 +16,6 @@ abstract class ApplicationAwareShortLinkIntegrationTestSupport extends SharedInt
 
     @DynamicPropertySource
     static void shortLinkProperties(DynamicPropertyRegistry registry) {
-        registry.add("app.analytics.dimensions.enabled", () -> "false");
-        registry.add("app.analytics.events.enabled", () -> "false");
-        registry.add("app.analytics.events.sample-rate", () -> "1");
     }
 
     @AfterEach

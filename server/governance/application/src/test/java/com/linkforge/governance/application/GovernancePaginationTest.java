@@ -149,7 +149,7 @@ class GovernancePaginationTest {
         return new ApprovalRequestSummaryResult(
                 id,
                 1L,
-                SensitiveOperationType.ANALYTICS_DETAIL_EXPORT,
+                SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE,
                 99L,
                 7L,
                 "requester@example.test",

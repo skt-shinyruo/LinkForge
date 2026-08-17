@@ -26,12 +26,6 @@ public abstract class SharedIntegrationTestSupport {
 
     /** 让与持久化测试无关的 Analytics 调度与投影保持停用。 */
     protected static void registerDisabledAnalytics(DynamicPropertyRegistry registry) {
-        registry.add("app.analytics.dimensions.enabled", () -> "false");
-        registry.add("app.analytics.events.enabled", () -> "false");
-        registry.add("app.analytics.events.sample-rate", () -> "1");
-        registry.add("APP_ANALYTICS_EVENT_INGEST_DELAY_MS", () -> "9999999");
-        registry.add("APP_ANALYTICS_EVENT_RETENTION_DELAY_MS", () -> "9999999");
-        registry.add("APP_ANALYTICS_DIM_FLUSH_DELAY_MS", () -> "9999999");
         registry.add("APP_ANALYTICS_FLUSH_DELAY_MS", () -> "9999999");
     }
 }

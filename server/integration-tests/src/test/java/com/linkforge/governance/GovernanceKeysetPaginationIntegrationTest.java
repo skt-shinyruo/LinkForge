@@ -130,7 +130,7 @@ class GovernanceKeysetPaginationIntegrationTest extends GovernancePersistenceInt
                         INSERT INTO approval_requests (
                             id, tenant_id, operation_type, target_application_id, requested_by_user_id,
                             requested_by_email, status, before_snapshot, after_snapshot, created_at
-                        ) VALUES (?, ?, 'ANALYTICS_DETAIL_EXPORT', 99, 7, 'requester@example.test', ?, 'before', ?, ?)
+                        ) VALUES (?, ?, 'PUBLIC_LINK_DESTINATION_CHANGE', 99, 7, 'requester@example.test', ?, 'before', ?, ?)
                         """,
                 id,
                 tenantId,

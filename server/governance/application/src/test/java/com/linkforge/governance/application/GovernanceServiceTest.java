@@ -1,7 +1,6 @@
 package com.linkforge.governance.application;
 
 import com.linkforge.contract.api.BusinessException;
-import com.linkforge.contract.governance.AnalyticsDetailExportApprovalPayload;
 import com.linkforge.contract.governance.ApprovalExecutionPort;
 import com.linkforge.contract.governance.ApprovalExecutionRequest;
 import com.linkforge.contract.governance.ApprovalPayloadCodec;
@@ -22,12 +21,9 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -49,16 +45,9 @@ class GovernanceServiceTest {
 
     @Test
     void sensitiveOperationMapper_shouldMapEveryInternalOperationTypeExplicitly() {
-        Map<SensitiveOperationType, SensitiveOperation> actual = Arrays.stream(SensitiveOperationType.values())
-                .collect(Collectors.toMap(type -> type, SensitiveOperationMapper::toContractOperation));
-
-        assertThat(actual).containsExactlyInAnyOrderEntriesOf(Map.of(
-                SensitiveOperationType.APPLICATION_QUOTA_INCREASE, SensitiveOperation.APPLICATION_QUOTA_INCREASE,
-                SensitiveOperationType.EXTERNAL_DOMAIN_BINDING, SensitiveOperation.EXTERNAL_DOMAIN_BINDING,
-                SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE, SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE,
-                SensitiveOperationType.ANALYTICS_DETAIL_EXPORT, SensitiveOperation.ANALYTICS_DETAIL_EXPORT
-        ));
-        assertThat(actual.values()).containsExactlyInAnyOrder(SensitiveOperation.values());
+        assertThat(SensitiveOperationMapper.toContractOperation(
+                SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE
+        )).isEqualTo(SensitiveOperation.PUBLIC_LINK_DESTINATION_CHANGE);
     }
 
     @Test
@@ -194,61 +183,6 @@ class GovernanceServiceTest {
     }
 
     @Test
-    void approveRequest_shouldEnforceQuotaCeilingFromStructuredPayload() {
-        SnowflakeIdGenerator idGenerator = mock(SnowflakeIdGenerator.class);
-        ApprovalRepository approvalRepository = mock(ApprovalRepository.class);
-        AuditLogRepository auditLogRepository = mock(AuditLogRepository.class);
-        GovernanceService service = service(idGenerator, approvalRepository, auditLogRepository, List.of());
-        ApprovalRequest pending = quotaRequest("""
-                {"type":"applicationQuotaIncrease","version":1,"monthlyLinkLimit":250000,"monthlyClickLimit":1000000}
-                """);
-        when(approvalRepository.findByTenantIdAndId(1L, 503L)).thenReturn(Optional.of(pending));
-
-        assertThatThrownBy(() -> service.approveRequest(1L, 503L, "too high", approver(), NOW))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("超出租户管理员可审批的配额上限");
-
-        verify(approvalRepository, never()).markApprovedIfPending(anyLong(), anyLong(), anyLong(), any(), any(), any());
-        verifyNoInteractions(auditLogRepository);
-    }
-
-    @Test
-    void approveRequest_shouldRejectQuotaPayloadMissingMonthlyLinkLimit() {
-        SnowflakeIdGenerator idGenerator = mock(SnowflakeIdGenerator.class);
-        ApprovalRepository approvalRepository = mock(ApprovalRepository.class);
-        AuditLogRepository auditLogRepository = mock(AuditLogRepository.class);
-        GovernanceService service = service(idGenerator, approvalRepository, auditLogRepository, List.of());
-        ApprovalRequest pending = quotaRequest("""
-                {"type":"applicationQuotaIncrease","version":1,"monthlyClickLimit":1000000}
-                """);
-        when(approvalRepository.findByTenantIdAndId(1L, 503L)).thenReturn(Optional.of(pending));
-
-        assertThatThrownBy(() -> service.approveRequest(1L, 503L, "missing link limit", approver(), NOW))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("monthlyLinkLimit");
-
-        verify(approvalRepository, never()).markApprovedIfPending(anyLong(), anyLong(), anyLong(), any(), any(), any());
-        verifyNoInteractions(auditLogRepository);
-    }
-
-    @Test
-    void approveRequest_shouldRejectLegacyQuotaTextPayload() {
-        SnowflakeIdGenerator idGenerator = mock(SnowflakeIdGenerator.class);
-        ApprovalRepository approvalRepository = mock(ApprovalRepository.class);
-        AuditLogRepository auditLogRepository = mock(AuditLogRepository.class);
-        GovernanceService service = service(idGenerator, approvalRepository, auditLogRepository, List.of());
-        ApprovalRequest pending = quotaRequest("monthlyLinkLimit=50000,monthlyClickLimit=1000000");
-        when(approvalRepository.findByTenantIdAndId(1L, 503L)).thenReturn(Optional.of(pending));
-
-        assertThatThrownBy(() -> service.approveRequest(1L, 503L, "legacy text", approver(), NOW))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("配额审批 payload 不合法");
-
-        verify(approvalRepository, never()).markApprovedIfPending(anyLong(), anyLong(), anyLong(), any(), any(), any());
-        verifyNoInteractions(auditLogRepository);
-    }
-
-    @Test
     void approveRequest_shouldPropagateExecutorFailureWithoutAuditOrExecutedTransition() {
         SnowflakeIdGenerator idGenerator = mock(SnowflakeIdGenerator.class);
         ApprovalRepository approvalRepository = mock(ApprovalRepository.class);
@@ -351,7 +285,7 @@ class GovernanceServiceTest {
         return new ApprovalRequest(
                 502L,
                 1L,
-                SensitiveOperationType.ANALYTICS_DETAIL_EXPORT,
+                SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE,
                 2001L,
                 7L,
                 "requester@example.com",
@@ -359,8 +293,8 @@ class GovernanceServiceTest {
                 null,
                 null,
                 null,
-                null,
-                analyticsDetailExportPayload(),
+                linkDestinationPayload(101L, "https://example.com/old"),
+                linkDestinationPayload(101L, "https://example.com/new"),
                 NOW.minusHours(1),
                 null,
                 null
@@ -375,7 +309,7 @@ class GovernanceServiceTest {
         return new ApprovalRequest(
                 502L,
                 1L,
-                SensitiveOperationType.ANALYTICS_DETAIL_EXPORT,
+                SensitiveOperationType.PUBLIC_LINK_DESTINATION_CHANGE,
                 2001L,
                 7L,
                 "requester@example.com",
@@ -383,31 +317,11 @@ class GovernanceServiceTest {
                 8L,
                 "approver@example.com",
                 "ok",
-                null,
-                analyticsDetailExportPayload(),
+                linkDestinationPayload(101L, "https://example.com/old"),
+                linkDestinationPayload(101L, "https://example.com/new"),
                 NOW.minusHours(1),
                 decidedAt,
                 executedAt
-        );
-    }
-
-    private static ApprovalRequest quotaRequest(String afterSnapshot) {
-        return new ApprovalRequest(
-                503L,
-                1L,
-                SensitiveOperationType.APPLICATION_QUOTA_INCREASE,
-                2001L,
-                7L,
-                "requester@example.com",
-                ApprovalStatus.PENDING_APPROVAL,
-                null,
-                null,
-                null,
-                null,
-                afterSnapshot,
-                NOW.minusHours(1),
-                null,
-                null
         );
     }
 
@@ -415,11 +329,4 @@ class GovernanceServiceTest {
         return ApprovalPayloadCodec.write(LinkDestinationChangeApprovalPayload.v1(linkId, originalUrl));
     }
 
-    private static String analyticsDetailExportPayload() {
-        return ApprovalPayloadCodec.write(AnalyticsDetailExportApprovalPayload.v1(
-                101L,
-                LocalDateTime.parse("2026-04-01T00:00:00"),
-                LocalDateTime.parse("2026-04-02T00:00:00")
-        ));
-    }
 }

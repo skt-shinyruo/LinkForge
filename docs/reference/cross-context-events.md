@@ -24,7 +24,7 @@ LinkForge 是模块化单体，但模块边界仍按服务边界对待：
 | `ApprovalSubmissionPort` | Governance | 提交结构化审批 | payload 编码或业务校验失败时不创建请求 |
 | `ApprovalExecutionPort` | 业务上下文 | 执行已批准操作 | 必须重新校验资源状态；操作定义 before snapshot 时还要校验陈旧状态 |
 
-已删除的 `LinkMetaSourcePort` 不再是第二条权威读取契约。Redirect 缓存未命中只调用 `ShortLinkReadPort`，可用性只由 `RedirectService` 判定。Shortlink 发布实现仅把跳转元数据查询包在只读事务中，按生产 ShardingSphere 的 transactional read strategy 路由 primary；其他控制面读不随之切换。
+已删除的 `LinkMetaSourcePort` 不再是第二条权威读取契约。Redirect 缓存未命中只调用 `ShortLinkReadPort`，可用性只由 `RedirectService` 判定。Shortlink 发布实现把跳转元数据查询包在只读事务中，与写入使用同一 MySQL 数据源，保证写后读一致性。
 
 ## 短链事务写入
 
@@ -92,31 +92,14 @@ Shortlink 应用命令在聚合持久化成功后、同一事务内直接调用 
 
 目录延迟只影响报表展示补全，不能改变 Redirect 结果。
 
-## Analytics 访问流
+## Analytics 访问聚合
 
-Redirect 发生真实跳转时把记录交给 Analytics：
+Redirect 发生真实跳转时把记录交给 Analytics。appender 直接执行 Redis Lua 原子聚合，更新 PV、HLL UV、scope HLL
+和 V2 generation marker；写入后由 `AnalyticsFlushJob` 读取 marker 当前快照，
+upsert MySQL 后按 generation compare-and-delete。并发新写会保留 marker，下一轮继续处理。
 
-1. appender 写 `stats:visit:events`。
-2. projector 消费访问记录，增加 Redis PV/HLL 并原子推进 V2 generation marker。
-3. flush consumer 读取 marker member 对应的当前累计值，upsert MySQL 后按 generation compare-and-delete；兼容期同时 ACK legacy dirty Stream。
-4. 可选明细 consumer 采样、`insert ignore` 并 ACK。
-
-这里存在两类重放边界：
-
-- 标准访问记录携带 requestId，projector 重放由 Redis Lua 幂等投影吸收；历史无 requestId 消息仍可能重复增加 PV。
-- V2 marker CAS 冲突会保留新 generation；legacy message 重放只会再次读取当前累计值并 upsert，不会由 flush 增加计数。
-
-因此报表是最终一致且非 exactly-once。dirty member 固定为 `{tenantId}:{linkId}`，只表示需要刷新，不是
-active-set membership。当前 producer 默认只写 V2，consumer 在退役门禁完成前保持 V2/legacy dual-read。
-
-## ACK、pending 与 DLQ
-
-- Redis consumer group 只有在对应写入成功后才应 ACK。
-- 普通 Redis/DB 故障保留 pending，后续由同 consumer 或 reclaim 处理。
-- poison record 只有在 DLQ 写入成功后才 ACK；DLQ 写入失败会保留原消息 pending，避免隔离记录丢失。
-- DLQ 写成功后的近似裁剪和容量采样是 best-effort 维护，不改变该次持久化结果。
-- DLQ 写入与原 Stream ACK 不在同一事务中；ACK 失败会保留 pending 并允许安全重放，也可能再次写入同一隔离记录。因此 DLQ 不是事务审计日志。
-- consumer name 应在多实例中稳定且唯一；频繁变化会增加 pending reclaim 压力。
+Redis 写入失败是否影响跳转由 `app.analytics.events.fail-open` 决定。正常返回表示 Redis 聚合已完成，MySQL 报表仍为
+最终一致。request id 只保护一次脚本执行的重试；调用方重复调用接口会生成新 id 并重复增加 PV，HLL UV 仍是近似值。
 
 ## 一致性等级
 
@@ -127,8 +110,7 @@ active-set membership。当前 producer 默认只写 V2，consumer 在退役门�
 | Redirect 读取 | 同步权威回源 | `ShortLinkReadPort` |
 | Redirect Redis 缓存 | 最终一致/best-effort | outbox 重试 + MISS 回源 |
 | Analytics 目录 | 最终一致 | integration event + checkpoint |
-| PV/UV Redis 到 MySQL | 最终一致 | V2 generation CAS + 当前快照 upsert；兼容期 dual-read legacy Stream |
-| 访问明细 | 可选、采样、最终一致 | visit stream consumer |
+| PV/UV Redis 到 MySQL | 最终一致 | V2 generation CAS + 当前快照 upsert |
 | 审批业务执行 | 状态机 + 业务幂等/CAS | Governance 与执行上下文事务 |
 
 ## 排障顺序
@@ -149,15 +131,14 @@ active-set membership。当前 producer 默认只写 V2，consumer 在退役门�
 
 ### PV/UV 落后或偏大
 
-1. 检查 visit stream lag/pending/reclaim。
-2. 检查 V2 marker cardinality/age/CAS 冲突、legacy Stream pending 和 flush 日志。
-3. 对比 Redis 当前累计值与 MySQL upsert 值。
-4. 检查 requestId 去重指标和历史无 requestId 消息；调用方重复生成多个 requestId 仍可能使 PV 偏大。
+1. 检查 V2 marker cardinality/age/CAS 冲突和 flush 日志。
+2. 对比 Redis 当前累计值与 MySQL upsert 值。
+3. 检查 requestId 去重指标；调用方重复生成多个 requestId 仍可能使 PV 偏大。
 
 ## 源码入口
 
 - `ShortLinkEventPublisher`、`ShortLinkEventPublisherAdapter`、`ShortLinkEventFactory`、`ShortLinkEventAppender`
 - `RedirectCacheInvalidations`、`RedirectCacheInvalidationOutboxJob`、`RedirectCacheSyncAdapter`
 - `MybatisIntegrationEventStore`、`ShortLinkCatalogProjectorJob`
-- `AnalyticsRedirectEventProjectorJob`、`AnalyticsFlushJob`、`AnalyticsEventIngestJob`
+- `RedisAnalyticsVisitEventAppender`、`AnalyticsRedisAggregateWriter`、`AnalyticsFlushJob`
 - `MybatisShortLinkReadRepository`、`RedirectService`

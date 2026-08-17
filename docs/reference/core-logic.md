@@ -60,14 +60,13 @@ LinkForge 是模块化单体。`server/app` 是 Spring Boot 组合根，各限�
 
 ### 统计
 
-1. Redirect 把真实访问追加到 Redis visit stream；基础流不受访问明细开关影响。
-2. projector 增加 PV、HLL UV、可选维度和 scope 统计，并原子推进 V2 generation marker。
-3. flush consumer 按 marker member 读取当前累计值、upsert MySQL 后做 generation CAS；兼容期双读 legacy Stream，不扫描 active set。
-4. 明细 consumer 根据配置采样入库；poison message 只有在 DLQ 持久化成功后才 ACK，写入后的近似裁剪和容量采样是 best-effort。
-5. 报表读取 MySQL，并通过 Shortlink 发布读端口补全链接摘要。
+1. Redirect 把真实访问交给 Analytics appender，直接执行 Redis Lua 原子聚合。
+2. 脚本增加 PV、HLL UV、scope HLL 并推进 V2 generation marker。
+3. `AnalyticsFlushJob` 按 marker 读取当前累计值、upsert MySQL 后做 generation CAS。
+4. 报表读取 MySQL，并通过 Shortlink 发布读端口补全链接摘要。
 
-统计是最终一致链路：标准访问事件的 Stream 重放由 requestId 幂等投影保护，历史无 requestId 消息和调用方重复生成
-事件仍可能重复 PV；HLL UV 是近似值。权威口径、隐私与限制见 [统计采集与报表](analytics-ingestion-and-reporting.md)。
+统计是最终一致链路：requestId 保护单次脚本重试，但调用方重复生成事件仍可能重复 PV；HLL UV 是近似值。权威口径、
+隐私与限制见 [统计采集与报表](analytics-ingestion-and-reporting.md)。
 
 ### 审批
 
@@ -75,7 +74,7 @@ LinkForge 是模块化单体。`server/app` 是 Spring Boot 组合根，各限�
 2. Governance 保存待审批聚合并记录审计。
 3. 审批时先选择并校验唯一执行器，再推进 CAS 状态。
 4. 执行器重新校验租户、资源当前状态及操作定义的前置条件；存在 before snapshot 时还要校验陈旧状态，不能把批准当作绕过并发保护的凭据。
-5. 执行结果进入终态和审计；导出等未实现执行器的场景只创建审批，不承诺产物生成。
+5. 执行结果进入终态和审计；目标地址变更是当前支持的敏感操作。
 
 权威说明：[审批与审计](governance-approval-audit.md)、[发布契约](published-contracts.md)。
 
@@ -99,7 +98,7 @@ LinkForge 是模块化单体。`server/app` 是 Spring Boot 组合根，各限�
 
 ### Analytics
 
-拥有 visit stream 消费、PV/UV/维度聚合、明细、报表、统计目录和导出审批入口。详细说明见 [统计采集与报表](analytics-ingestion-and-reporting.md)。
+拥有 Redis PV/UV 聚合、V2 marker flush、报表和统计目录。详细说明见 [统计采集与报表](analytics-ingestion-and-reporting.md)。
 
 ### Governance
 
@@ -127,10 +126,9 @@ LinkForge 是模块化单体。`server/app` 是 Spring Boot 组合根，各限�
 ## 当前限制
 
 - 点击额度 Redis adapter 内部故障固定 fail-open；外围 `quota.fail-open` 只覆盖仍外抛的查询/调用错误。
-- 标准事件的 stream 重放不会重复 PV；历史无 requestId 或调用方重复生成事件仍可能重复，HLL UV 是近似值且跨日不能直接求和。
+- requestId 只保护单次脚本重试；调用方重复生成事件仍可能重复 PV，HLL UV 是近似值且跨日不能直接求和。
 - scope UV 在历史/缺失 scope 数据上存在 fallback，不能当作精确审计口径。
-- 访问明细 poison message 只有在 DLQ 写入成功后才 ACK；DLQ 写入失败会保留 pending，ACK 失败则允许安全重放。DLQ 的近似裁剪和容量采样是 best-effort，且 DLQ 与原 Stream 的 ACK 不在同一事务中，因此它不是事务审计日志。
-- legacy provisioning、统计采样和部分审批终态语义为兼容行为，本轮只记录，不做高风险改写。
+- legacy provisioning 和部分审批终态语义为兼容行为，本轮只记录，不做高风险改写。
 
 ## 维护入口
 

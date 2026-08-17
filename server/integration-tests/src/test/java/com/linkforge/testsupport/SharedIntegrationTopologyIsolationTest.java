@@ -45,7 +45,7 @@ class SharedIntegrationTopologyIsolationTest extends SharedIntegrationTestSuppor
     }
 
     @RepeatedTest(2)
-    void repeatedFixture_shouldNotLeakMysqlRedisStreamGroupOrTtlState() throws Exception {
+    void repeatedFixture_shouldNotLeakMysqlOrRedisState() throws Exception {
         String marker = "repeat-" + UUID.randomUUID();
         assertFixtureIsEmpty();
 
@@ -56,10 +56,6 @@ class SharedIntegrationTopologyIsolationTest extends SharedIntegrationTestSuppor
         redis("PFADD", "fixture:hll", marker);
         redis("SADD", "fixture:set", marker);
         redis("SETEX", "fixture:ttl", "60", marker);
-        redis("XADD", "fixture:stream", "*", "marker", marker);
-        redis("XGROUP", "CREATE", "fixture:stream", "fixture-group", "0");
-        redis("XREADGROUP", "GROUP", "fixture-group", "fixture-consumer", "COUNT", "1",
-                "STREAMS", "fixture:stream", ">");
 
         SharedIntegrationTopology.resetFixtures();
 
@@ -71,7 +67,7 @@ class SharedIntegrationTopologyIsolationTest extends SharedIntegrationTestSuppor
         SharedIntegrationTopology.Metrics metrics = SharedIntegrationTopology.metrics();
 
         assertThat(metrics.topologyStartAttempts()).isOne();
-        assertThat(metrics.containerStartCount()).isEqualTo(3);
+        assertThat(metrics.containerStartCount()).isEqualTo(2);
         assertThat(metrics.startupMillis()).isPositive();
         assertThat(metrics.resetCount()).isPositive();
         assertThat(metrics.averageResetMillis()).isNotNegative();
@@ -83,26 +79,14 @@ class SharedIntegrationTopologyIsolationTest extends SharedIntegrationTestSuppor
                 SharedIntegrationTopology.primaryJdbc(),
                 "primary"
         );
-        AutoIncrementIds firstReplica = insertAutoIncrementFixtures(
-                SharedIntegrationTopology.replicaJdbc(),
-                "replica"
-        );
-
         SharedIntegrationTopology.resetFixtures();
 
         AutoIncrementIds secondPrimary = insertAutoIncrementFixtures(
                 SharedIntegrationTopology.primaryJdbc(),
                 "primary"
         );
-        AutoIncrementIds secondReplica = insertAutoIncrementFixtures(
-                SharedIntegrationTopology.replicaJdbc(),
-                "replica"
-        );
-
         assertThat(firstPrimary).isEqualTo(new AutoIncrementIds(1L, 1L));
-        assertThat(firstReplica).isEqualTo(new AutoIncrementIds(1L, 1L));
         assertThat(secondPrimary).isEqualTo(firstPrimary);
-        assertThat(secondReplica).isEqualTo(firstReplica);
     }
 
     private static void assertFixtureIsEmpty() throws Exception {

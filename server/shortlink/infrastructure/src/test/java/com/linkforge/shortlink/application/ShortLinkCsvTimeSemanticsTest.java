@@ -15,6 +15,7 @@ import com.linkforge.shortlink.domain.CreatedByType;
 import com.linkforge.shortlink.domain.HttpUrl;
 import com.linkforge.shortlink.domain.ShortCode;
 import com.linkforge.shortlink.domain.ShortLink;
+import com.linkforge.shortlink.domain.ShortLinkLifecycleState;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -247,7 +248,10 @@ class ShortLinkCsvTimeSemanticsTest {
         ShortLink withExpiresAt = ShortLink.rehydrate(
                 1L,
                 1L,
+                null,
+                null,
                 ShortCode.of("abcdef"),
+                ShortLinkLifecycleState.ACTIVE,
                 HttpUrl.of("https://example.com/1"),
                 null,
                 true,
@@ -267,7 +271,10 @@ class ShortLinkCsvTimeSemanticsTest {
         ShortLink noExpiresAt = ShortLink.rehydrate(
                 2L,
                 1L,
+                null,
+                null,
                 ShortCode.of("ghijkl"),
+                ShortLinkLifecycleState.ACTIVE,
                 HttpUrl.of("https://example.com/2"),
                 null,
                 true,

@@ -5,13 +5,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkforge.LinkForgeApplication;
 import com.linkforge.analytics.infrastructure.catalog.ShortLinkCatalogProjectorJob;
 import com.linkforge.analytics.infrastructure.job.AnalyticsFlushJob;
+import com.linkforge.contract.analytics.AnalyticsKeys;
 import com.linkforge.testsupport.SharedIntegrationTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.data.redis.connection.stream.StreamRecords;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -28,6 +28,7 @@ import java.time.format.DateTimeFormatter;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -37,9 +38,6 @@ class ControlPlaneEndToEndIntegrationTest extends SharedIntegrationTestSupport {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry r) {
-        r.add("app.analytics.dimensions.enabled", () -> "false");
-        r.add("app.analytics.events.enabled", () -> "false");
-        r.add("app.analytics.events.sample-rate", () -> "1");
         r.add("APP_ANALYTICS_FLUSH_DELAY_MS", () -> "9999999");
     }
 
@@ -113,17 +111,15 @@ class ControlPlaneEndToEndIntegrationTest extends SharedIntegrationTestSupport {
         long linkId = createdLink.get("data").get("id").asLong();
         String code = createdLink.get("data").get("code").asText();
 
-        LocalDateTimeRange range = LocalDateTimeRange.lastDayUtc();
-        JsonNode approvalRequest = postJson(
-                "/api/v1/applications/" + applicationId + "/links/" + linkId + "/events/export-requests"
-                        + "?from=" + range.from() + "&to=" + range.to(),
-                null,
-                owner.token(),
-                null
+        JsonNode pendingChange = getJson(
+                put("/api/v1/links/" + linkId)
+                        .header("Authorization", "Bearer " + owner.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"originalUrl\":\"https://example.com/orders-v2\"}")
         );
-        long approvalId = approvalRequest.get("data").get("id").asLong();
-        assertThat(approvalRequest.get("data").get("status").asText()).isEqualTo("PENDING_APPROVAL");
-        assertThat(approvalRequest.get("data").get("targetApplicationId").asLong()).isEqualTo(applicationId);
+        long approvalId = pendingChange.get("data").get("approvalRequestId").asLong();
+        assertThat(pendingChange.get("data").get("pendingApproval").asBoolean()).isTrue();
+        assertThat(pendingChange.get("data").get("originalUrl").asText()).isEqualTo("https://example.com/orders");
 
         TenantUser approver = createTenantAdminUser(owner.token(), "approver-" + System.nanoTime() + "@example.com");
         JsonNode approved = postJson(
@@ -132,7 +128,7 @@ class ControlPlaneEndToEndIntegrationTest extends SharedIntegrationTestSupport {
                 approver.token(),
                 null
         );
-        assertThat(approved.get("data").get("status").asText()).isEqualTo("APPROVED");
+        assertThat(approved.get("data").get("status").asText()).isEqualTo("EXECUTED");
 
         mockMvc.perform(
                         get("/r/" + code)
@@ -140,7 +136,7 @@ class ControlPlaneEndToEndIntegrationTest extends SharedIntegrationTestSupport {
                                 .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
                 )
                 .andExpect(status().isFound())
-                .andExpect(header().string(HttpHeaders.LOCATION, "https://example.com/orders"));
+                .andExpect(header().string(HttpHeaders.LOCATION, "https://example.com/orders-v2"));
 
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
         shortLinkCatalogProjectorJob.project();
@@ -208,8 +204,9 @@ class ControlPlaneEndToEndIntegrationTest extends SharedIntegrationTestSupport {
         String dayRaw = day.format(DateTimeFormatter.BASIC_ISO_DATE);
         String pvKey = "stats:pv:" + tenantId + ":" + linkId + ":" + dayRaw;
         String uvKey = "stats:uv:" + tenantId + ":" + linkId + ":" + dayRaw;
-        String dirtyStreamKey = "stats:dirty:flush:" + dayRaw;
-        String dirtyMember = tenantId + ":" + linkId;
+        String markerKey = AnalyticsKeys.statsDirtyMarkerV2Key(day);
+        String firstSeenKey = AnalyticsKeys.statsDirtyMarkerV2FirstSeenKey(day);
+        String dirtyMember = AnalyticsKeys.dirtyLinkMember(tenantId, linkId);
 
         for (int i = 0; i < pv; i++) {
             redis.opsForValue().increment(pvKey);
@@ -217,10 +214,8 @@ class ControlPlaneEndToEndIntegrationTest extends SharedIntegrationTestSupport {
         for (int i = 0; i < uv; i++) {
             redis.opsForHyperLogLog().add(uvKey, "v" + i + "-" + tenantId + "-" + linkId);
         }
-        redis.opsForStream().add(StreamRecords.newRecord().in(dirtyStreamKey).ofStrings(java.util.Map.of(
-                "member", dirtyMember,
-                "ts", String.valueOf(System.currentTimeMillis())
-        )));
+        redis.opsForHash().put(markerKey, dirtyMember, "1");
+        redis.opsForHash().put(firstSeenKey, dirtyMember, String.valueOf(System.currentTimeMillis()));
     }
 
     private JsonNode postJson(String path, JsonNode body, String bearerToken, String apiKey) throws Exception {
@@ -265,11 +260,4 @@ class ControlPlaneEndToEndIntegrationTest extends SharedIntegrationTestSupport {
     private record TenantUser(long id, String email, String token) {
     }
 
-    private record LocalDateTimeRange(String from, String to) {
-        private static LocalDateTimeRange lastDayUtc() {
-            java.time.LocalDateTime to = java.time.LocalDateTime.now(ZoneOffset.UTC);
-            java.time.LocalDateTime from = to.minusDays(1);
-            return new LocalDateTimeRange(from.toString(), to.toString());
-        }
-    }
 }

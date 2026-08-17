@@ -35,7 +35,6 @@ class SharedIntegrationTopologyConcurrencyTest {
                     SharedIntegrationTopology.ensureStarted();
                     return new Object[]{
                             SharedIntegrationTopology.primary(),
-                            SharedIntegrationTopology.replica(),
                             SharedIntegrationTopology.redis()
                     };
                 }));
@@ -48,7 +47,6 @@ class SharedIntegrationTopologyConcurrencyTest {
                 Object[] topology = future.get(120, TimeUnit.SECONDS);
                 assertThat(topology[0]).isSameAs(first[0]);
                 assertThat(topology[1]).isSameAs(first[1]);
-                assertThat(topology[2]).isSameAs(first[2]);
             }
         } finally {
             executor.shutdownNow();
@@ -57,6 +55,6 @@ class SharedIntegrationTopologyConcurrencyTest {
 
         SharedIntegrationTopology.Metrics metrics = SharedIntegrationTopology.metrics();
         assertThat(metrics.topologyStartAttempts()).isOne();
-        assertThat(metrics.containerStartCount()).isEqualTo(3);
+        assertThat(metrics.containerStartCount()).isEqualTo(2);
     }
 }

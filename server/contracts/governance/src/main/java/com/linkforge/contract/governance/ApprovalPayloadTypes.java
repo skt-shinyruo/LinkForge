@@ -15,12 +15,6 @@ public final class ApprovalPayloadTypes {
     /** {@link LinkDestinationChangeApprovalPayload} 使用的目标地址变更 type token。 */
     public static final String LINK_DESTINATION_CHANGE = "linkDestinationChange";
 
-    /** {@link AnalyticsDetailExportApprovalPayload} 使用的访问明细导出 type token。 */
-    public static final String ANALYTICS_DETAIL_EXPORT = "analyticsDetailExport";
-
-    /** {@link ApplicationQuotaIncreaseApprovalPayload} 使用的应用额度提升 type token。 */
-    public static final String APPLICATION_QUOTA_INCREASE = "applicationQuotaIncrease";
-
     private ApprovalPayloadTypes() {
     }
 }

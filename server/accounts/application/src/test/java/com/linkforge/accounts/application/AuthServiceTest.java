@@ -139,7 +139,6 @@ class AuthServiceTest {
         service.logout(100L);
 
         verify(userStore).incrementTokenVersion(100L);
-        verify(userStore, never()).update(org.mockito.ArgumentMatchers.any());
         verify(statusCache, never()).evictUserStatus(100L);
 
         postCommitHook.runCaptured();

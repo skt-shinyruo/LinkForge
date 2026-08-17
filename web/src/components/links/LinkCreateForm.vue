@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { LinkCreateFormState } from "../../composables/useLinksPage";
+import type { LinkCreateFormState } from "../../composables/links/linkFormCodec";
 import type { LinkImportResult } from "../../services/types";
 
 const props = defineProps<{

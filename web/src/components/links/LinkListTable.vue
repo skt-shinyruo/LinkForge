@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import type { LinkEditFormState } from "../../composables/useLinksPage";
+import { formatInstantLocal, policySummary, type LinkEditFormState } from "../../composables/links/linkFormCodec";
 import type { LinkDto } from "../../services/types";
 
 const props = defineProps<{
@@ -15,9 +15,6 @@ const props = defineProps<{
   page: number;
   size: number;
   total: number;
-  formatInstantLocal: (value?: string | null) => string;
-  policySummary: (link: LinkDto) => string;
-  statusLabel: (link: LinkDto) => string;
 }>();
 
 const emit = defineEmits<{
@@ -97,14 +94,14 @@ const hasNextPage = computed(() => (props.page + 1) * props.size < props.total);
                 <span v-for="tag in item.tags" :key="tag" class="tag">{{ tag }}</span>
               </div>
             </td>
-            <td class="mono">{{ props.formatInstantLocal(item.expiresAt) }}</td>
-            <td class="mono">{{ props.policySummary(item) }}</td>
+            <td class="mono">{{ formatInstantLocal(item.expiresAt) }}</td>
+            <td class="mono">{{ policySummary(item) }}</td>
             <td>
               <span :class="item.archivedAt ? 'muted' : item.enabled ? 'ok' : 'bad'">
-                {{ props.statusLabel(item) }}
+                {{ item.archivedAt ? "已归档" : item.enabled ? "启用" : "禁用" }}
               </span>
               <div v-if="item.archivedAt" class="sub">
-                archivedAt: {{ props.formatInstantLocal(item.archivedAt) }}
+                archivedAt: {{ formatInstantLocal(item.archivedAt) }}
               </div>
             </td>
             <td class="actions-col">

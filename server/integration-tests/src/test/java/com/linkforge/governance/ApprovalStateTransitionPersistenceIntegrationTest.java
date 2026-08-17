@@ -120,7 +120,7 @@ class ApprovalStateTransitionPersistenceIntegrationTest extends GovernancePersis
                             before_snapshot,
                             after_snapshot,
                             created_at
-                        ) VALUES (?, ?, 'ANALYTICS_DETAIL_EXPORT', 2001, 7, 'requester@example.com', ?, NULL, 'snapshot', ?)
+                        ) VALUES (?, ?, 'PUBLIC_LINK_DESTINATION_CHANGE', 2001, 7, 'requester@example.com', ?, 'before', 'after', ?)
                         """,
                 requestId,
                 tenantId,

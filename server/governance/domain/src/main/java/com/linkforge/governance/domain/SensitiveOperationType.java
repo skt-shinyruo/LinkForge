@@ -7,8 +7,5 @@ package com.linkforge.governance.domain;
  * 更新映射、审批权限矩阵、payload 类型/版本定义和执行器覆盖，不能依赖两个枚举的序号或隐式名称转换。</p>
  */
 public enum SensitiveOperationType {
-    APPLICATION_QUOTA_INCREASE,
-    EXTERNAL_DOMAIN_BINDING,
-    PUBLIC_LINK_DESTINATION_CHANGE,
-    ANALYTICS_DETAIL_EXPORT
+    PUBLIC_LINK_DESTINATION_CHANGE
 }

@@ -1,7 +1,7 @@
 package com.linkforge.accounts;
 
 import com.linkforge.LinkForgeApplication;
-import com.linkforge.accounts.application.ApiKeyAuthResult;
+import com.linkforge.foundation.security.ApiKeyAuthenticationResult;
 import com.linkforge.accounts.application.ApiKeyInfoResult;
 import com.linkforge.accounts.application.AuthResult;
 import com.linkforge.accounts.application.CreatedApiKeyResult;
@@ -121,7 +121,7 @@ class ApiKeyPersistenceIntegrationTest extends AccountsPersistenceIntegrationTes
                 .extracting(ApiKeyInfoResult::lastUsedAt)
                 .isNull();
 
-        ApiKeyAuthResult authenticated = apiKeyService.authenticate(firstKey.apiKey());
+        ApiKeyAuthenticationResult authenticated = apiKeyService.authenticate(firstKey.apiKey());
         assertThat(authenticated.tenantId()).isEqualTo(registered.principal().getTenantId());
         assertThat(authenticated.applicationId()).isEqualTo(applicationId);
         assertThat(authenticated.apiKeyId()).isEqualTo(firstKey.id());
@@ -141,7 +141,7 @@ class ApiKeyPersistenceIntegrationTest extends AccountsPersistenceIntegrationTes
         ApiKeyInfoResult enabled = apiKeyService.enable(registered.principal().getTenantId(), firstKey.id());
         assertThat(enabled.status()).isEqualTo(AccountsConstants.STATUS_ACTIVE);
 
-        ApiKeyAuthResult authenticatedRotated = apiKeyService.authenticate(rotated.apiKey());
+        ApiKeyAuthenticationResult authenticatedRotated = apiKeyService.authenticate(rotated.apiKey());
         assertThat(authenticatedRotated.applicationId()).isEqualTo(applicationId);
         assertThat(authenticatedRotated.apiKeyId()).isEqualTo(firstKey.id());
 
@@ -180,13 +180,6 @@ class ApiKeyPersistenceIntegrationTest extends AccountsPersistenceIntegrationTes
                 tenantId,
                 applicationKey,
                 applicationKey
-        );
-        jdbcTemplate.update(
-                """
-                        INSERT INTO application_policies (application_id, default_domain_scope, default_redirect_status_code, preview_enabled)
-                        VALUES (?, 'TENANT_SHARED', 302, 0)
-                        """,
-                applicationId
         );
         jdbcTemplate.update(
                 """

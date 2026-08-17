@@ -37,9 +37,6 @@ class ShortLinkCodeCaseSensitivityIntegrationTest extends SharedIntegrationTestS
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry r) {
         // Keep tests stable (avoid scheduling side effects).
-        r.add("app.analytics.dimensions.enabled", () -> "false");
-        r.add("app.analytics.events.enabled", () -> "false");
-        r.add("app.analytics.events.sample-rate", () -> "1");
     }
 
     @Autowired

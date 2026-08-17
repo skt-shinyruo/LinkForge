@@ -31,11 +31,6 @@
             <groupId>com.linkforge</groupId>
             <artifactId>linkforge-contract-shortlink</artifactId>
         </dependency>
-        <dependency>
-            <groupId>com.linkforge</groupId>
-            <artifactId>linkforge-contract-governance</artifactId>
-        </dependency>
-
         <!-- test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

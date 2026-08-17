@@ -111,48 +111,6 @@ public class ShortLink {
     }
 
     /**
-     * 创建不绑定应用和自定义域名的短链。
-     *
-     * <p>该便捷入口委托给完整创建方法，生命周期默认为 {@link ShortLinkLifecycleState#ACTIVE}，并记录一条创建事件。</p>
-     */
-    public static ShortLink create(
-            long id,
-            long tenantId,
-            ShortCode code,
-            HttpUrl originalUrl,
-            String note,
-            Boolean enabled,
-            LocalDateTime expiresAtUtc,
-            Integer redirectStatusCode,
-            Boolean previewEnabled,
-            HttpUrl unavailableLandingUrl,
-            QueryForwardMode queryForwardMode,
-            QueryForwardAllowlist queryForwardAllowlist,
-            CreatedByType createdByType,
-            long createdBy
-    ) {
-        return create(
-                id,
-                tenantId,
-                null,
-                null,
-                code,
-                ShortLinkLifecycleState.ACTIVE,
-                originalUrl,
-                note,
-                enabled,
-                expiresAtUtc,
-                redirectStatusCode,
-                previewEnabled,
-                unavailableLandingUrl,
-                queryForwardMode,
-                queryForwardAllowlist,
-                createdByType,
-                createdBy
-        );
-    }
-
-    /**
      * 创建新的短链聚合。
      *
      * <p>{@code enabled == null} 时默认为启用，{@code previewEnabled == null} 时默认为关闭；生命周期为空时默认为
@@ -204,56 +162,6 @@ public class ShortLink {
                 null
         );
         return link;
-    }
-
-    /**
-     * 从旧版、不包含应用与域名范围的持久化记录恢复聚合。
-     *
-     * <p>恢复只重建当前状态；缺失的生命周期按 {@code ACTIVE} 处理。</p>
-     */
-    public static ShortLink rehydrate(
-            long id,
-            long tenantId,
-            ShortCode code,
-            HttpUrl originalUrl,
-            String note,
-            boolean enabled,
-            LocalDateTime expiresAtUtc,
-            LocalDateTime archivedAtUtc,
-            Integer redirectStatusCode,
-            boolean previewEnabled,
-            HttpUrl unavailableLandingUrl,
-            QueryForwardMode queryForwardMode,
-            QueryForwardAllowlist queryForwardAllowlist,
-            CreatedByType createdByType,
-            long createdBy,
-            long version,
-            LocalDateTime createdAtUtc,
-            LocalDateTime updatedAtUtc
-    ) {
-        return rehydrate(
-                id,
-                tenantId,
-                null,
-                null,
-                code,
-                ShortLinkLifecycleState.ACTIVE,
-                originalUrl,
-                note,
-                enabled,
-                expiresAtUtc,
-                archivedAtUtc,
-                redirectStatusCode,
-                previewEnabled,
-                unavailableLandingUrl,
-                queryForwardMode,
-                queryForwardAllowlist,
-                createdByType,
-                createdBy,
-                version,
-                createdAtUtc,
-                updatedAtUtc
-        );
     }
 
     /**

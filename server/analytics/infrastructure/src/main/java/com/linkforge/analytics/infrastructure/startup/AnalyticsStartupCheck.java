@@ -12,8 +12,8 @@ import java.util.List;
 /**
  * Analytics 配置的启动期校验入口。
  *
- * <p>复用 foundation 的统一校验规则检查基础开关、tracking 参数白名单、维度类型和明细消费配置。
- * 校验只收集错误；是否阻止应用启动由外层 {@code strict} 策略决定，避免模块私自改变全局启动语义。</p>
+ * <p>复用 foundation 的统一校验规则检查盐和 Redis 生命周期。校验只收集错误；是否阻止应用启动由外层
+ * {@code strict} 策略决定。</p>
  */
 @Component
 public class AnalyticsStartupCheck implements StartupCheck {
@@ -30,14 +30,5 @@ public class AnalyticsStartupCheck implements StartupCheck {
     @Override
     public void validate(boolean strict, List<String> errors) {
         StartupValidation.validateAnalyticsBasics(analyticsProperties, strict, log, errors);
-        try {
-            StartupValidation.validateAnalyticsTrackingAllowlist(analyticsProperties, errors);
-            StartupValidation.validateAnalyticsDimensionsTypes(analyticsProperties, errors);
-            StartupValidation.validateAnalyticsVisitStream(analyticsProperties, errors);
-            StartupValidation.validateAnalyticsDirtyMarker(analyticsProperties, errors);
-            StartupValidation.validateAnalyticsEvents(analyticsProperties, errors);
-        } catch (Exception e) {
-            errors.add("analytics 配置校验异常: " + e.getMessage());
-        }
     }
 }

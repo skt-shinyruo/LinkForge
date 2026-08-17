@@ -18,7 +18,7 @@
 - [短链管理链路](shortlink-management.md)：创建、查询、更新、归档、恢复、删除、标签、CSV 导入导出。
 - [OpenAPI 与 API Key 链路](openapi-api-key.md)：API Key 生命周期、认证过滤器、应用绑定和 OpenAPI 发链。
 - [跳转与缓存链路](redirect-and-cache.md)：`/r/{code}`、风控、Redis 正/负缓存、预览页、query 转发和点击额度。
-- [统计采集与报表链路](analytics-ingestion-and-reporting.md)：访问事件、Redis Stream、PV/UV 聚合、明细入库、报表和导出审批入口。
+- [统计采集与报表链路](analytics-ingestion-and-reporting.md)：真实跳转、Redis PV/UV 原子聚合、marker flush 和报表。
 - [审批与审计链路](governance-approval-audit.md)：敏感操作申请、审批矩阵、执行器、目标地址变更和审计日志。
 - [前端控制台链路](frontend-console.md)：Vue 路由守卫、auth store、HTTP service、页面 composables 和主要页面流转。
 - [跨上下文事件与一致性链路](cross-context-events.md)：集成事件、事务后缓存驱逐、Shortlink 读契约、Analytics 目录投影。
